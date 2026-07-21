@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
+import { evaluatePermissions } from '../services/permissions'
 import type { Visibility } from '../types'
 
 const TABS = ['overview', 'library', 'context', 'access'] as const
@@ -39,6 +40,21 @@ export function ProjectPage() {
     nav(`/chat/${c.id}`)
   }
 
+  const canWrite = evaluatePermissions(data.permissionGrants, {
+    userId: data.currentUserId,
+    resourceKind: 'project',
+    resourceId: project.id,
+    action: 'write',
+  })
+
+  const requestCreate = (kind: 'agent' | 'site' | 'api' | 'dashboard' | 'interface') => {
+    if (!canWrite.allowed) {
+      toast('Blocked', canWrite.reason)
+      return
+    }
+    setCreateKind(kind)
+  }
+
   return (
     <div className="content-page">
       <div className="page-header">
@@ -48,7 +64,7 @@ export function ProjectPage() {
           <p>{project.description}</p>
         </div>
         <div className="page-header-actions">
-          <button className="secondary-btn" onClick={() => setCreateKind('agent')}><Icon name="plus" className="icon sm" />New agent</button>
+          <button className="secondary-btn" onClick={() => requestCreate('agent')}><Icon name="plus" className="icon sm" />New agent</button>
           <button className="primary-btn" onClick={openChat}><Icon name="message" className="icon sm" />Open chat</button>
         </div>
       </div>
@@ -70,7 +86,7 @@ export function ProjectPage() {
               <div className="card-body">
                 <div className="setting-row"><div className="setting-copy"><strong>System prompt</strong><span>Corporate-safe behavior and escalation</span></div><span className="status-pill green">Active</span></div>
                 <div className="setting-row"><div className="setting-copy"><strong>Custom agents</strong><span>{agents.length} defined</span></div><button className="tiny-btn" onClick={() => setTab('library')}>Open</button></div>
-                <div className="setting-row"><div className="setting-copy"><strong>Interfaces</strong><span>{ifaces.length} layouts</span></div><button className="tiny-btn" onClick={() => setCreateKind('interface')}>New</button></div>
+                <div className="setting-row"><div className="setting-copy"><strong>Interfaces</strong><span>{ifaces.length} layouts</span></div><button className="tiny-btn" onClick={() => requestCreate('interface')}>New</button></div>
               </div>
             </div>
             <div className="card"><div className="card-header"><div><h3>Child projects</h3><p>Nested scopes inherit and narrow access</p></div></div>
@@ -93,7 +109,7 @@ export function ProjectPage() {
         <>
           <div className="resource-tabs">
             {([['agent', 'Agent'], ['site', 'Site'], ['api', 'Quick API'], ['dashboard', 'Dashboard'], ['interface', 'Interface']] as const).map(([k, label]) => (
-              <button key={k} className="secondary-btn" onClick={() => setCreateKind(k)}><Icon name="plus" className="icon sm" />{label}</button>
+              <button key={k} className="secondary-btn" onClick={() => requestCreate(k)}><Icon name="plus" className="icon sm" />{label}</button>
             ))}
           </div>
           <h3 style={{ fontSize: 14, margin: '8px 0' }}>Chats</h3>

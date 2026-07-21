@@ -8,6 +8,7 @@ import {
 } from '../lib/simulation'
 import type { AgentRunBlock, Harness, Message, ModelKey, RuntimeKind } from '../types'
 import { evaluatePermissions } from '../services/permissions'
+import { applyRunEvent } from '../lib/runEvents'
 
 export function ChatPage() {
   const { chatId } = useParams()
@@ -35,6 +36,7 @@ export function ChatPage() {
   const [activity, setActivity] = useState<Array<{ title: string; sub: string; kind?: string; t: string }>>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const runUnsub = useRef<(() => void) | null>(null)
+  const attachRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (chatId) {
@@ -128,25 +130,41 @@ export function ChatPage() {
           harnessKey: r.harnessKey,
           runtimeKey: r.runtimeKey,
         })
-        updateMessage(placeholder.id, {
-          run: {
-            id: started.runId, kind: 'coding',
-            title: 'Agent run', model: MODEL_LABEL[r.modelKey], harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
-            statusText: started.mode ?? 'running', done: false, tools: [], plan: [], artifacts: [],
-          },
-        })
-        runUnsub.current = services.runtime.subscribe(started.runId, (event) => {
-          setActivity((a) => [...a, { title: event.type, sub: JSON.stringify(event.payload).slice(0, 80), t: `#${event.sequence}` }])
-          if (event.type === 'agent.completed' || event.type === 'session.closed') {
-            setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
-          }
-        })
-        // Keep rich demo artifacts via simulation in parallel for Pages/mock UX
-        if (!started.mode || started.mode === 'mock' || started.mode === 'simulated' || started.mode === 'mock_with_repo') {
+        const mode = started.mode ?? 'mock'
+        const isMockMode = mode === 'mock' || mode === 'mock_with_repo'
+
+        if (isMockMode) {
+          // Local mock runtime: the simulation IS the event source.
           await simulateAgentRun(prompt, r, (run: AgentRunBlock) => {
             updateMessage(placeholder.id, { run: { ...run, id: started.runId } })
+            if (run.tools.length) {
+              const last = run.tools[run.tools.length - 1]!
+              setActivity((a) => a.some((x) => x.title === last.name) ? a : [...a, { title: last.name, sub: last.output, t: last.duration }])
+            }
           })
+          setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
+          return
         }
+
+        // Real runtime (OpenSaddle simulated/safe_builtin/real_cli): build the
+        // run card entirely from live session events.
+        let liveRun: AgentRunBlock = {
+          id: started.runId, kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
+          title: 'Agent run', model: MODEL_LABEL[r.modelKey], harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
+          statusText: mode.replace('_', ' '), done: false, tools: [], plan: [], artifacts: [],
+        }
+        updateMessage(placeholder.id, { run: liveRun })
+        runUnsub.current = services.runtime.subscribe(started.runId, (event) => {
+          liveRun = applyRunEvent(liveRun, event)
+          updateMessage(placeholder.id, { run: liveRun })
+          setActivity((a) => [...a, { title: event.type, sub: liveRun.statusText, t: `#${event.sequence}` }])
+          if (event.type === 'agent.completed' || event.type === 'agent.failed') {
+            setActivity((a) => [...a, {
+              title: event.type === 'agent.completed' ? 'Run completed' : 'Run failed',
+              sub: liveRun.statusText, kind: event.type === 'agent.failed' ? 'error' : 'info', t: 'done',
+            }])
+          }
+        })
         return
       } catch {
         // fall through to simulation
@@ -241,9 +259,30 @@ export function ChatPage() {
                 rows={1}
               />
               <div className="composer-bottom">
-                <button className="composer-btn" onClick={() => toast('Attach files', 'Mock file picker.')}><Icon name="plus" className="icon sm" /></button>
+                <input
+                  ref={attachRef}
+                  type="file"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    void (async () => {
+                      if (!services?.files?.importFiles || !e.target.files?.length) {
+                        toast('Attach unavailable', 'File storage is not ready yet.')
+                        return
+                      }
+                      const paths = await services.files.importFiles(e.target.files)
+                      toast('Attached to workspace', `${paths.length} file(s) → Files`)
+                      appendMessage({
+                        chatId: chat.id, role: 'user',
+                        text: `Attached ${paths.length} file(s): ${paths.join(', ')}`,
+                      })
+                      e.target.value = ''
+                    })()
+                  }}
+                />
+                <button className="composer-btn" title="Attach files (stored in workspace Files)" onClick={() => attachRef.current?.click()}><Icon name="plus" className="icon sm" /></button>
                 <button className="composer-btn" onClick={() => { setRouteOpen(false); setToolsOpen((v) => !v) }}><Icon name="tools" className="icon sm" />Tools</button>
-                <button className="composer-btn access" onClick={() => toast('Scoped access', `${project.name} boundary enforced.`)}><Icon name="shield" className="icon sm" />Scoped access</button>
+                <button className="composer-btn access" title="View this project's permission grants" onClick={() => nav(`/permissions/${project.id}`)}><Icon name="shield" className="icon sm" />Scoped access</button>
                 <span className="composer-spacer" />
                 <button className={`route-pill ${auto ? '' : 'manual'}`} onClick={() => { setToolsOpen(false); setRouteOpen((v) => !v); refreshRoute(text || pending || 'build a feature') }}>
                   {auto && <span className="pulse" />}

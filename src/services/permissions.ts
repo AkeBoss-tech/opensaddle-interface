@@ -23,7 +23,10 @@ export function evaluatePermissions(
   },
 ): EffectivePermission {
   const relevant = grants.filter((g) => {
-    if (g.resourceKind !== input.resourceKind || g.resourceId !== input.resourceId) return false
+    // Organization-scoped grants inherit down to every resource in the workspace.
+    const scopeMatches = (g.resourceKind === input.resourceKind && g.resourceId === input.resourceId)
+      || g.resourceKind === 'organization'
+    if (!scopeMatches) return false
     if (g.action !== input.action && g.action !== 'administer') return false
     if (g.expiresAt && g.expiresAt < Date.now()) return false
     if (g.pathPrefix && input.path && !input.path.startsWith(g.pathPrefix)) return false

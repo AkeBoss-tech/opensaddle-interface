@@ -37,15 +37,26 @@ export function FilesPage() {
     setContent(await services.files.read(entry.path))
   }
 
+  const checkWrite = () => {
+    const check = evaluatePermissions(data.permissionGrants, {
+      userId: data.currentUserId,
+      resourceKind: 'project',
+      resourceId: data.activeProjectId,
+      action: 'write',
+    })
+    if (!check.allowed) toast('Blocked', check.reason)
+    return check.allowed
+  }
+
   const save = async () => {
-    if (!services?.files || !selected) return
+    if (!services?.files || !selected || !checkWrite()) return
     await services.files.write(selected, content)
     toast('Saved', selected)
     await refresh()
   }
 
   const createFile = async () => {
-    if (!services?.files) return
+    if (!services?.files || !checkWrite()) return
     const full = path ? `${path}/${newName}` : newName
     await services.files.write(full, '')
     toast('Created', full)
@@ -97,7 +108,7 @@ export function FilesPage() {
         </div>
         <div className="page-header-actions">
           <input type="file" multiple onChange={async (e) => {
-            if (!services?.files?.importFiles || !e.target.files?.length) return
+            if (!services?.files?.importFiles || !e.target.files?.length || !checkWrite()) return
             const paths = await services.files.importFiles(e.target.files)
             toast('Imported', `${paths.length} file(s)`)
             setPath('imports')
