@@ -2,7 +2,7 @@
 
 Interactive enterprise agent workspace prototype — React + Vite + TypeScript, with localStorage-backed mock data.
 
-**Live demo:** https://akeboss-tech.github.io/opensaddle-interface/
+**Live demo:** https://akeboss-tech.github.io/opensaddle-interface/ (also https://akashdubey.me/opensaddle-interface/)
 
 ## Features
 
