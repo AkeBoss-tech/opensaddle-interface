@@ -105,7 +105,10 @@
     .tree-row { padding-left: 9px; }
     .tree-row.depth-1 { padding-left: 28px; }
     .tree-row.depth-2 { padding-left: 48px; }
-    .tree-row .chev { width:13px; height:13px; color:#7e7f78; }
+    .tree-row .chev-toggle { display:flex; align-items:center; justify-content:center; width:16px; height:16px; margin:-2px; padding:2px; border-radius:4px; flex:0 0 auto; }
+    .tree-row .chev-toggle:hover { background: rgba(255,255,255,.12); }
+    .tree-row .chev { width:13px; height:13px; color:#7e7f78; transform:rotate(90deg); transition:transform .15s ease; }
+    .tree-row.collapsed .chev { transform:none; }
     .tree-row .folder { color:#bbbdb5; }
     .tree-row .tree-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .tree-row .tree-meta { margin-left:auto; display:flex; align-items:center; gap:5px; color:#8d8e87; }

@@ -20,22 +20,56 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
   const tree = useMemo(() => projectTree(data.projects), [data.projects])
   const [wsOpen, setWsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('opensaddle-tree-collapsed')
+      return new Set(raw ? JSON.parse(raw) as string[] : [])
+    } catch {
+      return new Set()
+    }
+  })
   const unread = data.notifications.filter((n) => !n.read).length
 
+  const toggleCollapsed = (id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      localStorage.setItem('opensaddle-tree-collapsed', JSON.stringify([...next]))
+      return next
+    })
+  }
+
   const renderBranch = (parentId: string | null, depth: number) =>
-    (tree.get(parentId) ?? []).map((p) => (
-      <div key={p.id}>
-        <button
-          className={`tree-row depth-${Math.min(depth, 2)} ${data.activeProjectId === p.id ? 'active' : ''}`}
-          onClick={() => { setActiveProject(p.id); nav(`/project/${p.id}`) }}
-        >
-          {depth < 2 && (tree.get(p.id)?.length ? <Icon name="chevron" className="icon sm chev" /> : <span style={{ width: 13 }} />)}
-          <Icon name={depth >= 2 ? 'branch' : 'folder'} className="icon sm folder" />
-          <span className="tree-title">{p.name}</span>
-        </button>
-        {renderBranch(p.id, depth + 1)}
-      </div>
-    ))
+    (tree.get(parentId) ?? []).map((p) => {
+      const hasChildren = Boolean(tree.get(p.id)?.length)
+      const isCollapsed = collapsed.has(p.id)
+      return (
+        <div key={p.id}>
+          <button
+            className={`tree-row depth-${Math.min(depth, 2)} ${data.activeProjectId === p.id ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`}
+            onClick={() => { setActiveProject(p.id); nav(`/project/${p.id}`) }}
+          >
+            {depth < 2 && (hasChildren
+              ? (
+                <span
+                  className="chev-toggle"
+                  role="button"
+                  aria-label={isCollapsed ? `Expand ${p.name}` : `Collapse ${p.name}`}
+                  aria-expanded={!isCollapsed}
+                  onClick={(e) => { e.stopPropagation(); toggleCollapsed(p.id) }}
+                >
+                  <Icon name="chevron" className="icon sm chev" />
+                </span>
+              )
+              : <span style={{ width: 13 }} />)}
+            <Icon name={depth >= 2 ? 'branch' : 'folder'} className="icon sm folder" />
+            <span className="tree-title">{p.name}</span>
+          </button>
+          {hasChildren && !isCollapsed && renderBranch(p.id, depth + 1)}
+        </div>
+      )
+    })
 
   return (
     <aside className="sidebar" id="sidebar">
