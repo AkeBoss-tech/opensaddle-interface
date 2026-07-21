@@ -1,0 +1,66 @@
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useStore } from '../../data/store'
+import { Icon } from '../common/Icon'
+
+export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalette: () => void }) {
+  const { data, setTheme, markNotificationsRead, toast } = useStore()
+  const [notifOpen, setNotifOpen] = useState(false)
+  const nav = useNavigate()
+  const unread = data.notifications.filter((n) => !n.read).length
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); onPalette() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onPalette])
+
+  const cycleTheme = () => {
+    const order = ['dark', 'light', 'hc'] as const
+    const next = order[(order.indexOf(data.settings.theme) + 1) % order.length]
+    setTheme(next)
+    toast('Theme changed', next === 'dark' ? 'Dark' : next === 'light' ? 'Light' : 'High contrast')
+  }
+
+  return (
+    <header className="topbar" style={{ position: 'relative' }}>
+      <button className="icon-btn mobile-menu" onClick={() => document.getElementById('sidebar')?.classList.toggle('mobile-open')}><Icon name="menu" /></button>
+      <div className="crumbs">{crumbs}</div>
+      <div className="topbar-actions">
+        <span className="crumb-pill"><span className="pulse" />Gateway healthy</span>
+        <button className="icon-btn" title="Command palette" onClick={onPalette}><Icon name="command" /></button>
+        <button className="icon-btn" title="Toggle theme" onClick={cycleTheme}><Icon name="sun" /></button>
+        <button className="icon-btn" title="Notifications" onClick={() => { setNotifOpen((v) => !v); if (!notifOpen) markNotificationsRead() }} style={{ position: 'relative' }}>
+          <Icon name="bell" />
+          {unread > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--orange)' }} />}
+        </button>
+        <Link to="/settings" className="icon-btn" title="Settings"><Icon name="settings" /></Link>
+      </div>
+      {notifOpen && (
+        <div className="notif-panel">
+          <div className="inspector-header" style={{ padding: '10px 12px' }}><strong>Notifications</strong><button className="icon-btn" onClick={() => setNotifOpen(false)}><Icon name="x" className="icon sm" /></button></div>
+          {data.notifications.map((n) => (
+            <div key={n.id} className={`notif-item ${n.read ? '' : 'unread'}`} onClick={() => { setNotifOpen(false); if (n.href) nav(n.href) }}>
+              <strong style={{ display: 'block', fontSize: 11 }}>{n.title}</strong>
+              <span style={{ fontSize: 10, color: 'var(--muted)' }}>{n.body}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </header>
+  )
+}
+
+export function DemoBanner() {
+  const { data, updateSettings, toast } = useStore()
+  if (!data.settings.demoMode) return null
+  return (
+    <div className="demo-banner">
+      <Icon name="spark" className="icon sm" />
+      <span>Simulated prototype · all data stays in this browser · try ⌘K or a demo flow</span>
+      <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>
+    </div>
+  )
+}
