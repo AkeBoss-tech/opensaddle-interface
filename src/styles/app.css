@@ -107,6 +107,9 @@
     .tree-row.depth-2 { padding-left: 48px; }
     .tree-row .chev-toggle { display:flex; align-items:center; justify-content:center; width:16px; height:16px; margin:-2px; padding:2px; border-radius:4px; flex:0 0 auto; }
     .tree-row .chev-toggle:hover { background: rgba(255,255,255,.12); }
+    .tree-row .row-gear { display:flex; align-items:center; justify-content:center; width:20px; height:20px; margin-left:auto; border-radius:5px; color:#8d8e87; opacity:0; flex:0 0 auto; transition:opacity .12s ease; }
+    .tree-row:hover .row-gear, .tree-row.active .row-gear { opacity:1; }
+    .tree-row .row-gear:hover { background: rgba(255,255,255,.12); color:#e6e7e1; }
     .tree-row .chev { width:13px; height:13px; color:#7e7f78; transform:rotate(90deg); transition:transform .15s ease; }
     .tree-row.collapsed .chev { transform:none; }
     .tree-row .folder { color:#bbbdb5; }
@@ -203,6 +206,8 @@
     }
     .composer-context { height:35px; display:flex; align-items:center; padding:0 13px; gap:9px; border-bottom:1px solid #363732; color:#c8c9c2; font-size:11px; }
     .context-chip { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+    .context-gear { display:flex; align-items:center; justify-content:center; width:20px; height:20px; border:0; border-radius:5px; background:transparent; color:#9ea098; cursor:pointer; padding:0; }
+    .context-gear:hover { background: rgba(255,255,255,.09); color:#e6e7e1; }
     .context-chip.branch { color:#d6d7d1; }
     .context-chip.runtime { margin-left:auto; color:#9ea098; }
     .composer textarea {

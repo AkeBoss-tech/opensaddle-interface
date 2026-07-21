@@ -15,7 +15,7 @@ function projectTree(projects: Project[]) {
 }
 
 export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
-  const { data, setActiveProject, createChat, setActiveChat } = useStore()
+  const { data, setActiveProject, createChat, setActiveChat, toast } = useStore()
   const nav = useNavigate()
   const tree = useMemo(() => projectTree(data.projects), [data.projects])
   const [wsOpen, setWsOpen] = useState(false)
@@ -40,15 +40,35 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
     })
   }
 
+  // Leaf projects represent agents: clicking one drops you into a chat with
+  // that agent; the gear (hover) opens the project settings page instead.
+  const openAgentChat = (p: Project) => {
+    setActiveProject(p.id)
+    const agent = data.agents.find((a) => a.projectId === p.id)
+    const draft = data.chats.find((c) =>
+      c.projectId === p.id && !c.archived
+      && (agent ? c.agentId === agent.id : true)
+      && !data.messages.some((m) => m.chatId === c.id),
+    )
+    const chat = draft ?? createChat(p.id, agent ? `Chat with ${agent.name}` : `${p.name} chat`, agent?.id)
+    setActiveChat(chat.id)
+    nav(`/chat/${chat.id}`)
+    if (!draft) toast('New chat', agent ? `Talking to ${agent.name}` : p.name)
+  }
+
   const renderBranch = (parentId: string | null, depth: number) =>
     (tree.get(parentId) ?? []).map((p) => {
       const hasChildren = Boolean(tree.get(p.id)?.length)
       const isCollapsed = collapsed.has(p.id)
+      const isLeafAgent = !hasChildren
       return (
         <div key={p.id}>
           <button
             className={`tree-row depth-${Math.min(depth, 2)} ${data.activeProjectId === p.id ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`}
-            onClick={() => { setActiveProject(p.id); nav(`/project/${p.id}`) }}
+            onClick={() => {
+              if (isLeafAgent) openAgentChat(p)
+              else { setActiveProject(p.id); nav(`/project/${p.id}`) }
+            }}
           >
             {depth < 2 && (hasChildren
               ? (
@@ -65,6 +85,15 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
               : <span style={{ width: 13 }} />)}
             <Icon name={depth >= 2 ? 'branch' : 'folder'} className="icon sm folder" />
             <span className="tree-title">{p.name}</span>
+            <span
+              className="row-gear"
+              role="button"
+              aria-label={`${p.name} settings`}
+              title="Project settings"
+              onClick={(e) => { e.stopPropagation(); setActiveProject(p.id); nav(`/project/${p.id}`) }}
+            >
+              <Icon name="settings" className="icon sm" />
+            </span>
           </button>
           {hasChildren && !isCollapsed && renderBranch(p.id, depth + 1)}
         </div>

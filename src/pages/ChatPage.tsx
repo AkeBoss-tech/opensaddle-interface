@@ -226,6 +226,9 @@ export function ChatPage() {
             <div className="composer" id="composer">
               <div className="composer-context">
                 <span className="context-chip"><Icon name="folder" className="icon sm" />{project.name}</span>
+                <button className="context-gear" title={`${project.name} settings`} aria-label={`${project.name} settings`} onClick={() => nav(`/project/${project.id}`)}>
+                  <Icon name="settings" className="icon sm" />
+                </button>
                 <span className="context-chip branch"><Icon name="vm" className="icon sm" />{RUNTIME_LABEL[route.runtimeKey].split(' ')[0]}</span>
                 <span className="context-chip branch"><Icon name="branch" className="icon sm" />{chat.visibility}</span>
                 <span className="context-chip runtime">{route.runtimeKey === 'local' ? 'No cloud runtime allocated' : RUNTIME_LABEL[route.runtimeKey]}</span>

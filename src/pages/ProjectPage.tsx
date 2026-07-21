@@ -4,7 +4,13 @@ import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 import type { Visibility } from '../types'
 
-const TABS = ['overview', 'library', 'knowledge', 'services', 'permissions', 'members', 'usage'] as const
+const TABS = ['overview', 'library', 'context', 'access'] as const
+const TAB_LABEL: Record<(typeof TABS)[number], string> = {
+  overview: 'Overview',
+  library: 'Library',
+  context: 'Knowledge & services',
+  access: 'Access',
+}
 
 export function ProjectPage() {
   const { projectId } = useParams()
@@ -37,9 +43,9 @@ export function ProjectPage() {
     <div className="content-page">
       <div className="page-header">
         <div className="page-header-copy">
-          <div className="eyebrow">Project configuration</div>
+          <div className="eyebrow">{project.lineage.join(' / ')}</div>
           <h1>{project.name}</h1>
-          <p>Define the project boundary once. Chats, agents, sites, APIs, dashboards, and interfaces inherit scope, knowledge, and permissions.</p>
+          <p>{project.description}</p>
         </div>
         <div className="page-header-actions">
           <button className="secondary-btn" onClick={() => setCreateKind('agent')}><Icon name="plus" className="icon sm" />New agent</button>
@@ -47,50 +53,40 @@ export function ProjectPage() {
         </div>
       </div>
 
-      <div className="project-hero">
-        <div>
-          <div className="project-title-row">
-            <div className="project-icon"><Icon name="folder" className="icon lg" /></div>
-            <div><h2>{project.name}</h2><div className="project-breadcrumb">{project.lineage.join(' / ')}</div></div>
-          </div>
-          <p className="project-description">{project.description}</p>
-        </div>
-        <div className="project-stats">
-          <div className="project-stat"><strong>{project.knowledgeCount}</strong><span>Knowledge sources</span></div>
-          <div className="project-stat"><strong>{project.serviceCount}</strong><span>Internal services</span></div>
-          <div className="project-stat"><strong>{agents.length + sites.length + apis.length}</strong><span>Custom resources</span></div>
-          <div className="project-stat"><strong>{project.autoConfidence}%</strong><span>Auto-route confidence</span></div>
-        </div>
-      </div>
-
-      <div className="scope-callout"><Icon name="shield" /><div><strong>Enforced project boundary.</strong> Shared resources are visible to members. Private ones stay with the owner.</div></div>
-
       <div className="tabs">
-        {TABS.map((t) => <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t[0]!.toUpperCase() + t.slice(1)}</button>)}
+        {TABS.map((t) => <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{TAB_LABEL[t]}</button>)}
       </div>
 
       {tab === 'overview' && (
-        <div className="grid-2">
-          <div className="card"><div className="card-header"><div><h3>Agent definition</h3><p>Inherited by chats in this project</p></div></div>
-            <div className="card-body">
-              <div className="setting-row"><div className="setting-copy"><strong>System prompt</strong><span>Corporate-safe behavior and escalation</span></div><span className="status-pill green">Active</span></div>
-              <div className="setting-row"><div className="setting-copy"><strong>Custom agents</strong><span>{agents.length} defined</span></div><button className="tiny-btn" onClick={() => setTab('library')}>Open</button></div>
-              <div className="setting-row"><div className="setting-copy"><strong>Interfaces</strong><span>{ifaces.length} layouts</span></div><button className="tiny-btn" onClick={() => setCreateKind('interface')}>New</button></div>
+        <>
+          <div className="task-summary">
+            <div className="summary-card"><span className="label">Chats</span><strong>{chats.length}</strong></div>
+            <div className="summary-card"><span className="label">Agents</span><strong>{agents.length}</strong></div>
+            <div className="summary-card"><span className="label">Knowledge sources</span><strong>{project.knowledgeCount}</strong></div>
+            <div className="summary-card"><span className="label">Auto-route confidence</span><strong>{project.autoConfidence}%</strong></div>
+          </div>
+          <div className="grid-2">
+            <div className="card"><div className="card-header"><div><h3>Agent definition</h3><p>Inherited by chats in this project</p></div></div>
+              <div className="card-body">
+                <div className="setting-row"><div className="setting-copy"><strong>System prompt</strong><span>Corporate-safe behavior and escalation</span></div><span className="status-pill green">Active</span></div>
+                <div className="setting-row"><div className="setting-copy"><strong>Custom agents</strong><span>{agents.length} defined</span></div><button className="tiny-btn" onClick={() => setTab('library')}>Open</button></div>
+                <div className="setting-row"><div className="setting-copy"><strong>Interfaces</strong><span>{ifaces.length} layouts</span></div><button className="tiny-btn" onClick={() => setCreateKind('interface')}>New</button></div>
+              </div>
+            </div>
+            <div className="card"><div className="card-header"><div><h3>Child projects</h3><p>Nested scopes inherit and narrow access</p></div></div>
+              <div className="card-body row-list">
+                {data.projects.filter((p) => p.parentId === project.id).map((c) => (
+                  <div key={c.id} className="row-item" style={{ cursor: 'pointer' }} onClick={() => nav(`/project/${c.id}`)}>
+                    <div className="row-icon"><Icon name="folder" /></div>
+                    <div className="row-copy"><div className="row-title">{c.name}</div><div className="row-sub">{c.description}</div></div>
+                    <span className="status-pill">{c.childCount} children</span>
+                  </div>
+                ))}
+                {!data.projects.some((p) => p.parentId === project.id) && <p style={{ color: 'var(--muted)', fontSize: 12 }}>No child projects.</p>}
+              </div>
             </div>
           </div>
-          <div className="card"><div className="card-header"><div><h3>Child projects</h3><p>Nested scopes inherit and narrow access</p></div></div>
-            <div className="card-body row-list">
-              {data.projects.filter((p) => p.parentId === project.id).map((c) => (
-                <div key={c.id} className="row-item" style={{ cursor: 'pointer' }} onClick={() => nav(`/project/${c.id}`)}>
-                  <div className="row-icon"><Icon name="folder" /></div>
-                  <div className="row-copy"><div className="row-title">{c.name}</div><div className="row-sub">{c.description}</div></div>
-                  <span className="status-pill">{c.childCount} children</span>
-                </div>
-              ))}
-              {!data.projects.some((p) => p.parentId === project.id) && <p style={{ color: 'var(--muted)', fontSize: 12 }}>No child projects.</p>}
-            </div>
-          </div>
-        </div>
+        </>
       )}
 
       {tab === 'library' && (
@@ -147,64 +143,57 @@ export function ProjectPage() {
         </>
       )}
 
-      {tab === 'knowledge' && (
-        <div className="knowledge-card-grid">
-          {knowledge.map((k) => (
-            <div key={k.id} className="knowledge-card">
-              <div className="knowledge-card-top"><h4>{k.name}</h4></div>
-              <p>{k.kind} · {k.items} items · Owner {k.owner}</p>
-              <div className="knowledge-card-footer"><span className={`status-pill ${k.status === 'Error' ? 'red' : k.status === 'Partial' ? 'yellow' : 'green'}`}>{k.status}</span><span>{k.lastSync}</span><span className="vis-badge">{k.sensitivity}</span></div>
-            </div>
-          ))}
-        </div>
+      {tab === 'context' && (
+        <>
+          <h3 style={{ fontSize: 14, margin: '8px 0' }}>Knowledge sources</h3>
+          <div className="knowledge-card-grid" style={{ marginBottom: 20 }}>
+            {knowledge.map((k) => (
+              <div key={k.id} className="knowledge-card">
+                <div className="knowledge-card-top"><h4>{k.name}</h4></div>
+                <p>{k.kind} · {k.items} items · Owner {k.owner}</p>
+                <div className="knowledge-card-footer"><span className={`status-pill ${k.status === 'Error' ? 'red' : k.status === 'Partial' ? 'yellow' : 'green'}`}>{k.status}</span><span>{k.lastSync}</span><span className="vis-badge">{k.sensitivity}</span></div>
+              </div>
+            ))}
+          </div>
+          <h3 style={{ fontSize: 14, margin: '8px 0' }}>Internal services</h3>
+          <div className="card"><div className="card-body row-list">
+            {services.map((s) => (
+              <div key={s.id} className="row-item">
+                <div className="plugin-logo" style={{ width: 32, height: 32, padding: 6 }}><img src={`${import.meta.env.BASE_URL}assets/${s.logo}`} alt="" /></div>
+                <div className="row-copy"><div className="row-title">{s.name}</div><div className="row-sub">{s.subtitle}</div></div>
+                <span className="status-pill">{s.status}</span>
+              </div>
+            ))}
+          </div></div>
+        </>
       )}
 
-      {tab === 'services' && (
-        <div className="card"><div className="card-body row-list">
-          {services.map((s) => (
-            <div key={s.id} className="row-item">
-              <div className="plugin-logo" style={{ width: 32, height: 32, padding: 6 }}><img src={`${import.meta.env.BASE_URL}assets/${s.logo}`} alt="" /></div>
-              <div className="row-copy"><div className="row-title">{s.name}</div><div className="row-sub">{s.subtitle}</div></div>
-              <span className="status-pill">{s.status}</span>
+      {tab === 'access' && (
+        <div className="grid-2">
+          <div className="card"><div className="card-header"><div><h3>Scope inheritance</h3><p>Shared resources are visible to members; private ones stay with the owner</p></div></div>
+            <div className="card-body">
+              <div className="lineage" style={{ marginBottom: 14 }}>
+                {project.lineage.map((n, i) => (
+                  <span key={n} style={{ display: 'contents' }}>
+                    {i > 0 && <Icon name="chevron" className="icon sm" />}
+                    <span className={`node ${i === project.lineage.length - 1 ? 'current' : ''}`}>{n}</span>
+                  </span>
+                ))}
+              </div>
+              <table className="permission-matrix"><thead><tr><th>Capability</th><th>Effective</th><th>Source</th></tr></thead>
+                <tbody>{caps.map((c) => (
+                  <tr key={c.capability}><td>{c.capability}</td><td><span className={`status-pill ${c.source === 'denied' ? 'red' : c.source === 'override' ? 'yellow' : 'green'}`}>{c.value}</span></td><td><span className={`inh ${c.source}`}>{c.sourceLabel}</span></td></tr>
+                ))}</tbody>
+              </table>
             </div>
-          ))}
-        </div></div>
-      )}
-
-      {tab === 'permissions' && (
-        <div className="card"><div className="card-header"><div><h3>Scope inheritance</h3><p>Each capability shows where its value comes from</p></div></div>
-          <div className="card-body">
-            <div className="lineage" style={{ marginBottom: 14 }}>
-              {project.lineage.map((n, i) => (
-                <span key={n} style={{ display: 'contents' }}>
-                  {i > 0 && <Icon name="chevron" className="icon sm" />}
-                  <span className={`node ${i === project.lineage.length - 1 ? 'current' : ''}`}>{n}</span>
-                </span>
+          </div>
+          <div className="card"><div className="card-header"><div><h3>Members</h3><p>{data.members.length} people with access</p></div></div>
+            <div className="card-body row-list">
+              {data.members.map((m) => (
+                <div key={m.id} className="row-item"><div className="avatar">{m.initials}</div><div className="row-copy"><div className="row-title">{m.name}</div><div className="row-sub">{m.email}</div></div><span className="status-pill">{m.role}</span></div>
               ))}
             </div>
-            <table className="permission-matrix"><thead><tr><th>Capability</th><th>Effective</th><th>Source</th></tr></thead>
-              <tbody>{caps.map((c) => (
-                <tr key={c.capability}><td>{c.capability}</td><td><span className={`status-pill ${c.source === 'denied' ? 'red' : c.source === 'override' ? 'yellow' : 'green'}`}>{c.value}</span></td><td><span className={`inh ${c.source}`}>{c.sourceLabel}</span></td></tr>
-              ))}</tbody>
-            </table>
           </div>
-        </div>
-      )}
-
-      {tab === 'members' && (
-        <div className="card"><div className="card-body row-list">
-          {data.members.map((m) => (
-            <div key={m.id} className="row-item"><div className="avatar">{m.initials}</div><div className="row-copy"><div className="row-title">{m.name}</div><div className="row-sub">{m.email}</div></div><span className="status-pill">{m.role}</span></div>
-          ))}
-        </div></div>
-      )}
-
-      {tab === 'usage' && (
-        <div className="task-summary">
-          <div className="summary-card"><span className="label">Chats</span><strong>{chats.length}</strong></div>
-          <div className="summary-card"><span className="label">Agents</span><strong>{agents.length}</strong></div>
-          <div className="summary-card"><span className="label">Shared resources</span><strong>{[...agents, ...sites, ...apis].filter((x) => x.visibility !== 'private').length}</strong></div>
-          <div className="summary-card"><span className="label">Auto confidence</span><strong>{project.autoConfidence}%</strong></div>
         </div>
       )}
 
