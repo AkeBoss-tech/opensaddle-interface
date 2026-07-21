@@ -4,7 +4,7 @@ import { useStore } from '../../data/store'
 import { Icon } from '../common/Icon'
 
 export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalette: () => void }) {
-  const { data, setTheme, markNotificationsRead, toast } = useStore()
+  const { data, setTheme, markNotificationsRead, toast, runtimeModeLabel } = useStore()
   const [notifOpen, setNotifOpen] = useState(false)
   const nav = useNavigate()
   const unread = data.notifications.filter((n) => !n.read).length
@@ -29,7 +29,7 @@ export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalet
       <button className="icon-btn mobile-menu" onClick={() => document.getElementById('sidebar')?.classList.toggle('mobile-open')}><Icon name="menu" /></button>
       <div className="crumbs">{crumbs}</div>
       <div className="topbar-actions">
-        <span className="crumb-pill"><span className="pulse" />Gateway healthy</span>
+        <span className="crumb-pill"><span className="pulse" />{runtimeModeLabel}</span>
         <button className="icon-btn" title="Command palette" onClick={onPalette}><Icon name="command" /></button>
         <button className="icon-btn" title="Toggle theme" onClick={cycleTheme}><Icon name="sun" /></button>
         <button className="icon-btn" title="Notifications" onClick={() => { setNotifOpen((v) => !v); if (!notifOpen) markNotificationsRead() }} style={{ position: 'relative' }}>
@@ -54,12 +54,12 @@ export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalet
 }
 
 export function DemoBanner() {
-  const { data, updateSettings, toast } = useStore()
+  const { data, updateSettings, toast, runtimeModeLabel } = useStore()
   if (!data.settings.demoMode) return null
   return (
     <div className="demo-banner">
       <Icon name="spark" className="icon sm" />
-      <span>Simulated prototype · all data stays in this browser · try ⌘K or a demo flow</span>
+      <span>{runtimeModeLabel} · localStorage + OPFS · Agents/Workflows/Permissions are first-class · ⌘K</span>
       <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>
     </div>
   )

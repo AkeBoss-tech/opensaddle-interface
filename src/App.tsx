@@ -11,8 +11,13 @@ import { RunsPage } from './pages/RunsPage'
 import { EnvironmentsPage } from './pages/EnvironmentsPage'
 import { PluginsPage } from './pages/PluginsPage'
 import { UsagePage } from './pages/UsagePage'
+import { WikiPage } from './pages/WikiPage'
 import { AdminPage, SettingsPage } from './pages/SettingsPage'
 import { ApiPage, DashboardPage, InterfacePage, SitePage } from './pages/ResourcePages'
+import { FilesPage } from './pages/FilesPage'
+import { AgentsPage } from './pages/AgentsPage'
+import { WorkflowsPage } from './pages/WorkflowsPage'
+import { PermissionsPage } from './pages/PermissionsPage'
 import './styles/app.css'
 
 function Shell() {
@@ -58,6 +63,11 @@ function Shell() {
   const items: PaletteItem[] = useMemo(() => [
     { id: 'new', group: 'Go to', label: 'New chat', icon: 'plus', run: () => { const c = createChat(data.activeProjectId); nav(`/chat/${c.id}`) } },
     { id: 'runs', group: 'Go to', label: 'Runs & automations', icon: 'clock', run: () => nav('/runs') },
+    { id: 'wiki', group: 'Go to', label: 'Team wiki', icon: 'review', run: () => nav('/wiki') },
+    { id: 'agents', group: 'Go to', label: 'Agents', icon: 'spark', run: () => nav('/agents') },
+    { id: 'workflows', group: 'Go to', label: 'Workflows', icon: 'clock', run: () => nav('/workflows') },
+    { id: 'files', group: 'Go to', label: 'Files', icon: 'file', run: () => nav('/files') },
+    { id: 'perms', group: 'Go to', label: 'Permissions', icon: 'shield', run: () => nav('/permissions') },
     { id: 'env', group: 'Go to', label: 'Environments', icon: 'vm', run: () => nav('/environments') },
     { id: 'plug', group: 'Go to', label: 'Plugin store', icon: 'plugin', run: () => nav('/plugins') },
     { id: 'usage', group: 'Go to', label: 'Usage & budgets', icon: 'chart', run: () => nav('/usage') },
@@ -82,6 +92,14 @@ function Shell() {
             <Route path="/chat/:chatId" element={<ChatPage />} />
             <Route path="/project/:projectId" element={<ProjectPage />} />
             <Route path="/runs" element={<RunsPage />} />
+            <Route path="/wiki" element={<WikiPage />} />
+            <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/agents/:projectId" element={<AgentsPage />} />
+            <Route path="/workflows" element={<WorkflowsPage />} />
+            <Route path="/workflows/:projectId" element={<WorkflowsPage />} />
+            <Route path="/files" element={<FilesPage />} />
+            <Route path="/permissions" element={<PermissionsPage />} />
+            <Route path="/permissions/:projectId" element={<PermissionsPage />} />
             <Route path="/environments" element={<EnvironmentsPage />} />
             <Route path="/plugins" element={<PluginsPage />} />
             <Route path="/usage" element={<UsagePage />} />

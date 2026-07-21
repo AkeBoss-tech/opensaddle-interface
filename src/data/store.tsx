@@ -1,8 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
-  AgentInterface, AppData, Chat, CustomAgent, Dashboard, Message, QuickApi, SettingsState, Site, Theme, Visibility,
+  AgentInterface, AppData, Chat, CustomAgent, Dashboard, Message, PermissionGrant, ProjectSource, QuickApi, SettingsState, Site, Theme, Visibility, WikiSettings, WorkflowDef,
 } from '../types'
 import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
+import { initServices, resetServices, type ServiceBundle } from '../services'
+import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 
 function load(): AppData {
   try {
@@ -45,12 +47,22 @@ interface StoreApi {
   markNotificationsRead: () => void
   updateTaskStatus: (id: string, status: AppData['tasks'][0]['status']) => void
   updateEnvironmentStatus: (id: string, status: AppData['environments'][0]['status']) => void
+  updateWikiSettings: (patch: Partial<WikiSettings>) => void
+  refreshWikiSummaries: (projectId: string) => void
+  setPermissionGrants: (grants: PermissionGrant[]) => void
+  upsertPermissionGrant: (grant: Omit<PermissionGrant, 'id' | 'createdAt'> & { id?: string }) => PermissionGrant
+  revokePermissionGrant: (id: string) => void
+  createWorkflow: (input: Omit<WorkflowDef, 'id' | 'createdAt'>) => WorkflowDef
+  updateWorkflowStatus: (id: string, status: WorkflowDef['status']) => void
+  attachSource: (input: Omit<ProjectSource, 'id' | 'lastSyncAt'>) => ProjectSource
   updateHunk: (messageId: string, hunkId: string, status: 'accepted' | 'rejected') => void
   resetData: () => void
   exportData: () => string
   toast: (title: string, message: string) => void
   toasts: Array<{ id: string; title: string; message: string }>
   dismissToast: (id: string) => void
+  services: ServiceBundle | null
+  runtimeModeLabel: string
 }
 
 const StoreContext = createContext<StoreApi | null>(null)
@@ -58,6 +70,9 @@ const StoreContext = createContext<StoreApi | null>(null)
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(() => load())
   const [toasts, setToasts] = useState<Array<{ id: string; title: string; message: string }>>([])
+  const [services, setServices] = useState<ServiceBundle | null>(null)
+  const grantsRef = useRef(data.permissionGrants)
+  grantsRef.current = data.permissionGrants
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
@@ -68,6 +83,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (data.settings.theme === 'dark') document.body.removeAttribute('data-theme')
     else document.body.setAttribute('data-theme', data.settings.theme)
   }, [data.settings.theme])
+
+  useEffect(() => {
+    let cancelled = false
+    void initServices({
+      getGrants: () => grantsRef.current,
+      setGrants: (grants) => setData((d) => ({ ...d, permissionGrants: grants })),
+      currentUserId: data.currentUserId,
+    }).then((bundle) => {
+      if (!cancelled) setServices(bundle)
+    })
+    return () => { cancelled = true }
+  }, [data.currentUserId])
 
   const toast = useCallback((title: string, message: string) => {
     const id = uid('toast')
@@ -210,15 +237,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     markNotificationsRead: () => patch((d) => { d.notifications.forEach((n) => { n.read = true }); return d }),
     updateTaskStatus: (id, status) => patch((d) => { const t = d.tasks.find((x) => x.id === id); if (t) t.status = status; return d }),
     updateEnvironmentStatus: (id, status) => patch((d) => { const e = d.environments.find((x) => x.id === id); if (e) e.status = status; return d }),
+    updateWikiSettings: (settings) => patch((d) => {
+      d.wikiSettings = { ...d.wikiSettings, ...settings }
+      return d
+    }),
+    refreshWikiSummaries: (projectId) => patch((d) => {
+      const refreshedAt = Date.now()
+      for (const summary of d.wikiSummaries) {
+        if (summary.projectId === projectId) summary.updatedAt = refreshedAt
+      }
+      return d
+    }),
+    setPermissionGrants: (grants) => patch((d) => { d.permissionGrants = grants; return d }),
+    upsertPermissionGrant: (grant) => {
+      const next: PermissionGrant = { ...grant, id: grant.id ?? uid('grant'), createdAt: Date.now() }
+      patch((d) => {
+        const idx = d.permissionGrants.findIndex((g) => g.id === next.id)
+        if (idx >= 0) d.permissionGrants[idx] = next
+        else d.permissionGrants.push(next)
+        return d
+      })
+      return next
+    },
+    revokePermissionGrant: (id) => patch((d) => { d.permissionGrants = d.permissionGrants.filter((g) => g.id !== id); return d }),
+    createWorkflow: (input) => {
+      const wf: WorkflowDef = { ...input, id: uid('wf'), createdAt: Date.now() }
+      patch((d) => { d.workflows.unshift(wf); return d })
+      return wf
+    },
+    updateWorkflowStatus: (id, status) => patch((d) => {
+      const wf = d.workflows.find((w) => w.id === id)
+      if (wf) wf.status = status
+      return d
+    }),
+    attachSource: (input) => {
+      const source: ProjectSource = { ...input, id: uid('src'), lastSyncAt: Date.now() }
+      patch((d) => { d.sources.unshift(source); return d })
+      return source
+    },
     updateHunk: (messageId, hunkId, status) => patch((d) => {
       const m = d.messages.find((x) => x.id === messageId)
       const files = m?.run?.artifacts?.flatMap((a) => a.diff ?? []) ?? []
       for (const f of files) for (const h of f.hunks) if (h.id === hunkId) h.status = status
       return d
     }),
-    resetData: () => { const seed = createSeedData(); setData(seed); toast('Data reset', 'Demo workspace restored from seed.') },
+    resetData: () => {
+      resetServices()
+      const seed = createSeedData()
+      setData(seed)
+      toast('Data reset', 'Demo workspace restored from seed.')
+    },
     exportData: () => JSON.stringify(data, null, 2),
-  }), [data, toast, toasts, dismissToast, patch])
+    services,
+    runtimeModeLabel: modeLabel(detectRuntimeMode()),
+  }), [data, toast, toasts, dismissToast, patch, services])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

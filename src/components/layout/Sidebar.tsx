@@ -70,6 +70,11 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
         <div className="nav-group">
           <div className="nav-label">Workspace</div>
           <NavLink to="/runs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="clock" />Runs & automations{unread ? <span className="status-dot" /> : null}</NavLink>
+          <NavLink to="/wiki" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="review" />Team wiki</NavLink>
+          <NavLink to="/agents" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="spark" />Agents<span className="nav-count">{data.agentSessions.filter((s) => s.status === 'running').length}</span></NavLink>
+          <NavLink to="/workflows" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="activity" />Workflows</NavLink>
+          <NavLink to="/files" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="file" />Files</NavLink>
+          <NavLink to="/permissions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="shield" />Permissions</NavLink>
           <NavLink to="/environments" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="vm" />Environments<span className="nav-count">{data.environments.filter((e) => e.status === 'Running').length}</span></NavLink>
           <NavLink to="/plugins" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="plugin" />Plugin store</NavLink>
           <NavLink to="/usage" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="chart" />Usage & budgets</NavLink>

@@ -4,8 +4,8 @@ const now = Date.now()
 const hour = 3600_000
 const day = 24 * hour
 
-export const DATA_VERSION = 1
-export const STORAGE_KEY = 'opensaddle-data-v1'
+export const DATA_VERSION = 3
+export const STORAGE_KEY = 'opensaddle-data-v3'
 
 export function createSeedData(): AppData {
   const corp = 'proj-corp'
@@ -384,6 +384,151 @@ export function createSeedData(): AppData {
       { id: 'b2', name: 'Engineering project', used: 1820, limit: 2000 },
       { id: 'b3', name: 'Customer Operations', used: 640, limit: 2500 },
       { id: 'b4', name: 'Cloud runtime · daily', used: 12.84, limit: 60 },
+    ],
+    wikiSummaries: [
+      {
+        id: 'wiki-eng-team',
+        projectId: eng,
+        scope: 'team',
+        headline: 'Engineering is focused on secure runtimes and PR throughput',
+        overview: 'The team is converging on the secure VM background-work milestone while keeping review latency low. Jira delivery signals, GitHub pull requests, and Slack incident threads agree that the runtime approval path is the critical dependency this week.',
+        highlights: [
+          'Secure VM request flow is in review; 18 runtime tests are passing.',
+          'PR review automation analyzed 183 files and raised two medium findings.',
+          'Model Router cost controls are ready for a staged rollout.',
+        ],
+        blockers: [
+          'Security sign-off is required for persistent workspace secrets.',
+          'Two Jira issues are waiting on API ownership decisions.',
+        ],
+        sourceIds: ['svc-jira', 'svc-gh', 'svc-slack', 'kn-github'],
+        updatedAt: now - 18 * 60_000,
+      },
+      {
+        id: 'wiki-corp-team',
+        projectId: corp,
+        scope: 'team',
+        headline: 'Corporate workflows are expanding governed self-service',
+        overview: 'Operations and engineering are standardizing permission-aware agent workflows. The current emphasis is knowledge freshness, model routing policy, and making every protected write auditable.',
+        highlights: [
+          'SharePoint knowledge index covers 1,240 internal items.',
+          'Morning operations brief is active for Customer Operations.',
+          'US-region model policy is applied to regulated workflows.',
+        ],
+        blockers: ['SCIM provisioning remains in pilot.', 'Restricted-source indexing needs an owner review.'],
+        sourceIds: ['svc-slack', 'kn-sharepoint', 'kn-drive'],
+        updatedAt: now - 42 * 60_000,
+      },
+      {
+        id: 'wiki-member-ad',
+        projectId: eng,
+        scope: 'member',
+        memberId: 'user-ad',
+        headline: 'Driving secure runtime delivery',
+        overview: 'Akash is coordinating the secure VM background feature and the approval gateway changes needed to ship it safely.',
+        highlights: ['Reviewed the VM provisioning diff.', 'Aligned runtime budget checks with the Model Router project.'],
+        blockers: ['Needs final security approval for persistent secrets.'],
+        sourceIds: ['svc-jira', 'svc-gh'],
+        updatedAt: now - 22 * 60_000,
+      },
+      {
+        id: 'wiki-member-maya',
+        projectId: eng,
+        scope: 'member',
+        memberId: 'user-maya',
+        headline: 'Improving workflow UX and documentation',
+        overview: 'Maya is refining agent workflow states and documenting how teams should request protected actions.',
+        highlights: ['Drafted the approval-state UX.', 'Updated the secure runtime onboarding guide.'],
+        blockers: ['Waiting for API ownership guidance on two Jira issues.'],
+        sourceIds: ['svc-jira', 'svc-slack', 'kn-github'],
+        updatedAt: now - 31 * 60_000,
+      },
+      {
+        id: 'wiki-member-jordan',
+        projectId: eng,
+        scope: 'member',
+        memberId: 'user-jordan',
+        headline: 'Reviewing automation quality and policy',
+        overview: 'Jordan is validating coding-agent findings and checking that automated comments remain within read-only policy.',
+        highlights: ['Reviewed PR #1932 findings.', 'Validated the GitHub webhook monitor timeline.'],
+        blockers: [],
+        sourceIds: ['svc-gh', 'svc-jira'],
+        updatedAt: now - 35 * 60_000,
+      },
+    ],
+    wikiSettings: {
+      individualSummariesEnabled: false,
+      selectedProjectId: eng,
+      refreshCadence: 'daily',
+    },
+    folders: [
+      { id: 'folder-eng-src', projectId: eng, name: 'src', path: 'src', description: 'Application source' },
+      { id: 'folder-eng-ops', projectId: eng, name: 'ops', path: 'ops', description: 'Runbooks and infra' },
+      { id: 'folder-coding', projectId: coding, name: 'runtime', path: 'src/runtime', description: 'Secure runtime package' },
+    ],
+    sources: [
+      { id: 'src-gh-opensaddle', projectId: eng, kind: 'github', name: 'opensaddle', externalId: 'AkeBoss-tech/opensaddle', url: 'https://github.com/AkeBoss-tech/opensaddle', status: 'connected', branch: 'main', lastSyncAt: now - 40 * 60_000 },
+      { id: 'src-gh-interface', projectId: coding, kind: 'github', name: 'opensaddle-interface', externalId: 'AkeBoss-tech/opensaddle-interface', url: 'https://github.com/AkeBoss-tech/opensaddle-interface', status: 'connected', branch: 'main', lastSyncAt: now - 12 * 60_000 },
+      { id: 'src-jira-eng', projectId: eng, kind: 'jira', name: 'Engineering board', externalId: 'ENG', status: 'connected', lastSyncAt: now - 18 * 60_000 },
+      { id: 'src-slack-eng', projectId: eng, kind: 'slack', name: '#engineering', externalId: 'C0ENG', status: 'connected', lastSyncAt: now - 8 * 60_000 },
+    ],
+    workflows: [
+      {
+        id: 'wf-pr-review', projectId: coding, name: 'PR opened → review', description: 'Coding agent reviews new pull requests and posts findings.',
+        trigger: 'source_event', schedule: 'GitHub pull_request.opened', agentIds: ['agent-coder'],
+        steps: [
+          { id: 's1', label: 'Load repository context', kind: 'context' },
+          { id: 's2', label: 'Run coding harness', kind: 'agent' },
+          { id: 's3', label: 'Post review comments', kind: 'tool' },
+        ],
+        status: 'active', approvalRequired: false, createdAt: now - 10 * day, lastRunAt: now - 2 * hour,
+      },
+      {
+        id: 'wf-morning-brief', projectId: cust, name: 'Morning operations brief', description: 'Research agent summarizes overnight ops signals.',
+        trigger: 'cron', schedule: 'Weekdays · 8:00 AM', agentIds: ['agent-research'],
+        steps: [
+          { id: 's1', label: 'Pull Jira + Slack', kind: 'tool' },
+          { id: 's2', label: 'Synthesize brief', kind: 'agent' },
+          { id: 's3', label: 'Publish wiki summary', kind: 'write' },
+        ],
+        status: 'active', approvalRequired: false, createdAt: now - 20 * day, lastRunAt: now - day,
+      },
+      {
+        id: 'wf-claims', projectId: claims, name: 'High-sev claim draft', description: 'Draft claim responses for human approval.',
+        trigger: 'source_event', schedule: 'Salesforce high-sev case', agentIds: ['agent-claims'],
+        steps: [
+          { id: 's1', label: 'Read case', kind: 'tool' },
+          { id: 's2', label: 'Draft response', kind: 'agent' },
+          { id: 's3', label: 'Request approval', kind: 'approval' },
+        ],
+        status: 'paused', approvalRequired: true, createdAt: now - 14 * day,
+      },
+    ],
+    workflowRuns: [
+      { id: 'wfr-1', workflowId: 'wf-pr-review', projectId: coding, agentId: 'agent-coder', status: 'completed', startedAt: now - 2 * hour, finishedAt: now - 2 * hour + 9 * 60_000, summary: 'Reviewed PR #1932 · 2 findings' },
+      { id: 'wfr-2', workflowId: 'wf-morning-brief', projectId: cust, agentId: 'agent-research', status: 'completed', startedAt: now - day, finishedAt: now - day + 4 * 60_000, summary: 'Published ops brief to wiki' },
+      { id: 'wfr-3', workflowId: 'wf-claims', projectId: claims, agentId: 'agent-claims', status: 'waiting', startedAt: now - 45 * 60_000, summary: 'Waiting for human approval' },
+    ],
+    agentSessions: [
+      { id: 'asess-1', agentId: 'agent-coder', projectId: coding, status: 'running', harness: 'Coding', model: 'Claude Opus', startedAt: now - 12 * 60_000, title: 'Secure VM background feature' },
+      { id: 'asess-2', agentId: 'agent-research', projectId: corp, status: 'idle', harness: 'Research', model: 'GPT-5.6', startedAt: now - 3 * hour, title: 'Model gateway architecture' },
+      { id: 'asess-3', agentId: 'agent-claims', projectId: claims, status: 'waiting', harness: 'Browser', model: 'Claude Sonnet', startedAt: now - 40 * 60_000, title: 'At-risk renewals draft' },
+    ],
+    permissionGrants: [
+      { id: 'grant-ad-org', principalKind: 'user', principalId: 'user-ad', resourceKind: 'organization', resourceId: 'org-acme', action: 'administer', effect: 'allow', inheritance: 'direct', createdAt: now - 30 * day, createdBy: 'user-ad' },
+      { id: 'grant-ad-eng', principalKind: 'user', principalId: 'user-ad', resourceKind: 'project', resourceId: eng, action: 'administer', effect: 'allow', inheritance: 'direct', createdAt: now - 20 * day, createdBy: 'user-ad' },
+      { id: 'grant-maya-eng-write', principalKind: 'user', principalId: 'user-maya', resourceKind: 'project', resourceId: eng, action: 'write', effect: 'allow', inheritance: 'direct', createdAt: now - 18 * day, createdBy: 'user-ad' },
+      { id: 'grant-jordan-eng-read', principalKind: 'user', principalId: 'user-jordan', resourceKind: 'project', resourceId: eng, action: 'read', effect: 'allow', inheritance: 'direct', createdAt: now - 18 * day, createdBy: 'user-ad' },
+      { id: 'grant-coder-repo', principalKind: 'agent', principalId: 'agent-coder', resourceKind: 'repository', resourceId: 'src-gh-interface', action: 'write', effect: 'allow', inheritance: 'direct', approvalRequired: true, createdAt: now - 10 * day, createdBy: 'user-ad' },
+      { id: 'grant-coder-exec', principalKind: 'agent', principalId: 'agent-coder', resourceKind: 'project', resourceId: coding, action: 'execute', effect: 'allow', inheritance: 'direct', createdAt: now - 10 * day, createdBy: 'user-ad' },
+      { id: 'grant-ad-coding-exec', principalKind: 'user', principalId: 'user-ad', resourceKind: 'project', resourceId: coding, action: 'execute', effect: 'allow', inheritance: 'inherited', createdAt: now - 10 * day, createdBy: 'user-ad' },
+      { id: 'grant-claims-sf-deny', principalKind: 'agent', principalId: 'agent-claims', resourceKind: 'tool', resourceId: 'salesforce', action: 'write', effect: 'deny', inheritance: 'override', createdAt: now - 6 * day, createdBy: 'user-ad' },
+      { id: 'grant-claims-sf-read', principalKind: 'agent', principalId: 'agent-claims', resourceKind: 'tool', resourceId: 'salesforce', action: 'read', effect: 'allow', approvalRequired: true, inheritance: 'direct', createdAt: now - 6 * day, createdBy: 'user-ad' },
+      { id: 'grant-ad-github', principalKind: 'user', principalId: 'user-ad', resourceKind: 'tool', resourceId: 'github', action: 'write', effect: 'allow', approvalRequired: true, createdAt: now - 5 * day, createdBy: 'user-ad' },
+      { id: 'grant-coder-github', principalKind: 'agent', principalId: 'agent-coder', resourceKind: 'tool', resourceId: 'github', action: 'write', effect: 'allow', approvalRequired: true, createdAt: now - 5 * day, createdBy: 'user-ad' },
+      { id: 'grant-ad-github-read', principalKind: 'user', principalId: 'user-ad', resourceKind: 'tool', resourceId: 'github', action: 'read', effect: 'allow', createdAt: now - 5 * day, createdBy: 'user-ad' },
+      { id: 'grant-coder-github-read', principalKind: 'agent', principalId: 'agent-coder', resourceKind: 'tool', resourceId: 'github', action: 'read', effect: 'allow', createdAt: now - 5 * day, createdBy: 'user-ad' },
+      { id: 'grant-folder-deny', principalKind: 'agent', principalId: 'agent-coder', resourceKind: 'folder', resourceId: 'folder-eng-ops', action: 'write', effect: 'deny', pathPrefix: 'ops/secrets', createdAt: now - 4 * day, createdBy: 'user-sec' },
     ],
     settings: {
       theme: 'dark',

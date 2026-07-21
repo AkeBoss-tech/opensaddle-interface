@@ -8,7 +8,11 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint src",
     "preview": "vite preview",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "krail": "npm run start --prefix packages/krail",
+    "electron:build": "npm run build --prefix electron",
+    "electron:dev": "npm run build && npm run build --prefix electron && npm run start --prefix electron",
+    "desktop": "npm run electron:dev"
   },
   "dependencies": {
     "react": "^19.2.7",

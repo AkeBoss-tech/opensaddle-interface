@@ -12,7 +12,7 @@ export function ChatPage() {
   const { chatId } = useParams()
   const nav = useNavigate()
   const store = useStore()
-  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, branchChat, renameChat, deleteChat, updateHunk, toast } = store
+  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, branchChat, renameChat, deleteChat, updateHunk, toast, services } = store
   const project = data.projects.find((p) => p.id === data.activeProjectId) ?? data.projects[0]
   const chat = data.chats.find((c) => c.id === (chatId ?? data.activeChatId))
   const messages = useMemo(() => data.messages.filter((m) => m.chatId === chat?.id).sort((a, b) => a.createdAt - b.createdAt), [data.messages, chat?.id])
@@ -165,7 +165,7 @@ export function ChatPage() {
 
             <div className={`messages ${messages.length ? 'active' : ''}`}>
               {messages.map((m) => (
-                <MessageView key={m.id} m={m} onHunk={(hid, st) => updateHunk(m.id, hid, st)} toast={toast} />
+                <MessageView key={m.id} m={m} onHunk={(hid, st) => updateHunk(m.id, hid, st)} toast={toast} files={services?.files} />
               ))}
             </div>
           </div>
@@ -362,7 +362,12 @@ export function ChatPage() {
   )
 }
 
-function MessageView({ m, onHunk, toast }: { m: Message; onHunk: (id: string, s: 'accepted' | 'rejected') => void; toast: (t: string, m: string) => void }) {
+function MessageView({ m, onHunk, toast, files }: {
+  m: Message
+  onHunk: (id: string, s: 'accepted' | 'rejected') => void
+  toast: (t: string, m: string) => void
+  files?: { write: (path: string, content: string) => Promise<void> } | null
+}) {
   if (m.role === 'user') {
     return <div className="message user"><div className="message-body"><div className="message-text">{m.text}</div></div></div>
   }
@@ -410,8 +415,22 @@ function MessageView({ m, onHunk, toast }: { m: Message; onHunk: (id: string, s:
                   <span className="a-ico"><Icon name={a.type === 'diff' ? 'git' : a.type === 'table' ? 'chart' : 'file'} className="icon sm" /></span>
                   <span className="a-title"><strong>{a.title}</strong><span>{a.subtitle}</span></span>
                   <span className="a-actions">
-                    {a.type === 'diff' && <button className="secondary-btn" style={{ minHeight: 27 }} onClick={() => toast('Pull request created', 'PR #1933 opened (simulated).')}>Create pull request</button>}
-                    {a.type === 'report' && <button className="tiny-btn" onClick={() => toast('Saved', 'Report saved to project.')}>Save to project</button>}
+                    {a.type === 'diff' && <button className="secondary-btn" style={{ minHeight: 27 }} onClick={async () => {
+                      if (files) {
+                        await files.write(`artifacts/pr-${Date.now()}.md`, `# Simulated PR\n\nFrom message ${m.id}\n`)
+                        toast('Pull request artifact saved', 'Wrote to OPFS artifacts/')
+                      } else {
+                        toast('Pull request created', 'PR #1933 opened (simulated).')
+                      }
+                    }}>Create pull request</button>}
+                    {a.type === 'report' && <button className="tiny-btn" onClick={async () => {
+                      if (files && a.reportHtml) {
+                        await files.write(`artifacts/report-${Date.now()}.html`, a.reportHtml)
+                        toast('Saved', 'Report written to OPFS artifacts/')
+                      } else {
+                        toast('Saved', 'Report saved to project.')
+                      }
+                    }}>Save to project</button>}
                   </span>
                 </div>
                 {a.diff?.map((f) => (

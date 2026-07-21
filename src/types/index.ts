@@ -302,6 +302,104 @@ export interface Budget {
   limit: number
 }
 
+export interface WikiSummary {
+  id: string
+  projectId: string
+  scope: 'team' | 'member'
+  memberId?: string
+  headline: string
+  overview: string
+  highlights: string[]
+  blockers: string[]
+  sourceIds: string[]
+  updatedAt: number
+}
+
+export interface WikiSettings {
+  individualSummariesEnabled: boolean
+  selectedProjectId: string
+  refreshCadence: 'manual' | 'daily' | 'weekly'
+}
+
+export type PrincipalKind = 'user' | 'group' | 'agent'
+export type ResourceKind = 'organization' | 'project' | 'folder' | 'repository' | 'source' | 'tool' | 'workflow'
+export type CapabilityAction = 'read' | 'write' | 'execute' | 'administer' | string
+
+export interface PermissionGrant {
+  id: string
+  principalKind: PrincipalKind
+  principalId: string
+  resourceKind: ResourceKind
+  resourceId: string
+  action: CapabilityAction
+  effect: 'allow' | 'deny'
+  inheritance?: 'direct' | 'inherited' | 'override'
+  approvalRequired?: boolean
+  expiresAt?: number
+  pathPrefix?: string
+  createdAt: number
+  createdBy: string
+}
+
+export interface ProjectFolder {
+  id: string
+  projectId: string
+  name: string
+  path: string
+  description: string
+}
+
+export interface ProjectSource {
+  id: string
+  projectId: string
+  kind: 'github' | 'jira' | 'slack' | 'sharepoint' | 'drive'
+  name: string
+  externalId: string
+  url?: string
+  status: 'connected' | 'error' | 'pending'
+  branch?: string
+  folderPath?: string
+  lastSyncAt: number
+}
+
+export interface WorkflowDef {
+  id: string
+  projectId: string
+  name: string
+  description: string
+  trigger: 'manual' | 'cron' | 'webhook' | 'source_event'
+  schedule?: string
+  agentIds: string[]
+  steps: Array<{ id: string; label: string; kind: string }>
+  status: 'active' | 'paused' | 'draft'
+  approvalRequired: boolean
+  budgetLimit?: number
+  lastRunAt?: number
+  createdAt: number
+}
+
+export interface WorkflowRun {
+  id: string
+  workflowId: string
+  projectId: string
+  agentId?: string
+  status: RunStatus
+  startedAt: number
+  finishedAt?: number
+  summary: string
+}
+
+export interface AgentSession {
+  id: string
+  agentId: string
+  projectId: string
+  status: 'idle' | 'running' | 'waiting' | 'paused'
+  harness: string
+  model: string
+  startedAt: number
+  title: string
+}
+
 export interface SettingsState {
   theme: Theme
   displayName: string
@@ -352,6 +450,14 @@ export interface AppData {
   notifications: NotificationItem[]
   usageDays: UsageDay[]
   budgets: Budget[]
+  wikiSummaries: WikiSummary[]
+  wikiSettings: WikiSettings
+  permissionGrants: PermissionGrant[]
+  folders: ProjectFolder[]
+  sources: ProjectSource[]
+  workflows: WorkflowDef[]
+  workflowRuns: WorkflowRun[]
+  agentSessions: AgentSession[]
   settings: SettingsState
   recentChatIds: string[]
   activeProjectId: string
