@@ -5,8 +5,9 @@ import { useStore } from '../data/store'
 
 export function WorkflowsPage() {
   const { projectId } = useParams()
-  const { data, createWorkflow, updateWorkflowStatus, toast } = useStore()
+  const { data, createWorkflow, updateWorkflowStatus, runWorkflow, toast } = useStore()
   const [name, setName] = useState('New workflow')
+  const [runningId, setRunningId] = useState<string | null>(null)
 
   const workflows = useMemo(
     () => data.workflows.filter((w) => !projectId || w.projectId === projectId),
@@ -77,7 +78,10 @@ export function WorkflowsPage() {
                     <button className="tiny-btn" onClick={() => updateWorkflowStatus(wf.id, wf.status === 'active' ? 'paused' : 'active')}>
                       {wf.status === 'active' ? 'Pause' : 'Activate'}
                     </button>
-                    <button className="tiny-btn" onClick={() => toast('Manual run', `Queued ${wf.name}`)}>Run now</button>
+                    <button className="tiny-btn" disabled={runningId === wf.id} onClick={() => {
+                      setRunningId(wf.id)
+                      void runWorkflow(wf.id).finally(() => setRunningId(null))
+                    }}>{runningId === wf.id ? 'Running…' : 'Run now'}</button>
                   </div>
                 </div>
               )

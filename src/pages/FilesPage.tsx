@@ -3,9 +3,10 @@ import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 import type { FileEntry } from '../services/contracts'
 import { can } from '../services/capabilities'
+import { evaluatePermissions } from '../services/permissions'
 
 export function FilesPage() {
-  const { services, toast, runtimeModeLabel } = useStore()
+  const { services, toast, runtimeModeLabel, data } = useStore()
   const [path, setPath] = useState('')
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [selected, setSelected] = useState<string | null>(null)
@@ -55,6 +56,16 @@ export function FilesPage() {
 
   const runSandbox = async () => {
     if (!services?.sandbox || !services.files) return
+    const check = evaluatePermissions(data.permissionGrants, {
+      userId: data.currentUserId,
+      resourceKind: 'project',
+      resourceId: data.activeProjectId,
+      action: 'execute',
+    })
+    if (!check.allowed) {
+      toast('Blocked', check.reason)
+      return
+    }
     const files: Record<string, string> = {}
     try { files['README.md'] = await services.files.read('README.md') } catch { /* optional */ }
     if (selected) files[selected.split('/').pop()!] = content

@@ -18,6 +18,7 @@ import { FilesPage } from './pages/FilesPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 import { PermissionsPage } from './pages/PermissionsPage'
+import { HarnessPage } from './pages/HarnessPage'
 import './styles/app.css'
 
 function Shell() {
@@ -66,6 +67,7 @@ function Shell() {
     { id: 'wiki', group: 'Go to', label: 'Team wiki', icon: 'review', run: () => nav('/wiki') },
     { id: 'agents', group: 'Go to', label: 'Agents', icon: 'spark', run: () => nav('/agents') },
     { id: 'workflows', group: 'Go to', label: 'Workflows', icon: 'clock', run: () => nav('/workflows') },
+    { id: 'harness', group: 'Go to', label: 'Desktop harness', icon: 'vm', run: () => nav('/harness') },
     { id: 'files', group: 'Go to', label: 'Files', icon: 'file', run: () => nav('/files') },
     { id: 'perms', group: 'Go to', label: 'Permissions', icon: 'shield', run: () => nav('/permissions') },
     { id: 'env', group: 'Go to', label: 'Environments', icon: 'vm', run: () => nav('/environments') },
@@ -97,6 +99,7 @@ function Shell() {
             <Route path="/agents/:projectId" element={<AgentsPage />} />
             <Route path="/workflows" element={<WorkflowsPage />} />
             <Route path="/workflows/:projectId" element={<WorkflowsPage />} />
+            <Route path="/harness" element={<HarnessPage />} />
             <Route path="/files" element={<FilesPage />} />
             <Route path="/permissions" element={<PermissionsPage />} />
             <Route path="/permissions/:projectId" element={<PermissionsPage />} />

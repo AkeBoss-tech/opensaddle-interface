@@ -32,7 +32,8 @@ export class MockRuntimeClient implements RuntimeClient {
     modelKey?: ModelKey
     harnessKey?: Harness
     runtimeKey?: RuntimeKind
-  }): Promise<{ runId: string; sessionId: string }> {
+    repo?: string
+  }): Promise<{ runId: string; sessionId: string; mode?: string }> {
     const runId = uid('run')
     const sessionId = uid('ses')
     const route = deriveRoute(input.task, 'quality', {
@@ -42,7 +43,7 @@ export class MockRuntimeClient implements RuntimeClient {
     })
 
     void this.emitStream(runId, sessionId, input.task, route)
-    return { runId, sessionId }
+    return { runId, sessionId, mode: input.repo ? 'mock_with_repo' : 'mock' }
   }
 
   subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void {

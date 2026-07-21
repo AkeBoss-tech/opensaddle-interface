@@ -7,6 +7,7 @@ import {
   type RouteDecision,
 } from '../lib/simulation'
 import type { AgentRunBlock, Harness, Message, ModelKey, RuntimeKind } from '../types'
+import { evaluatePermissions } from '../services/permissions'
 
 export function ChatPage() {
   const { chatId } = useParams()
@@ -33,6 +34,7 @@ export function ChatPage() {
   const [permScope, setPermScope] = useState('once')
   const [activity, setActivity] = useState<Array<{ title: string; sub: string; kind?: string; t: string }>>([])
   const scrollRef = useRef<HTMLDivElement>(null)
+  const runUnsub = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (chatId) {
@@ -78,6 +80,20 @@ export function ChatPage() {
   }
 
   const runAgent = async (prompt: string, r: RouteDecision, cid: string) => {
+    const agentId = chat?.agentId
+    const exec = evaluatePermissions(data.permissionGrants, {
+      userId: data.currentUserId,
+      agentId,
+      resourceKind: 'project',
+      resourceId: project.id,
+      action: 'execute',
+    })
+    if (!exec.allowed) {
+      toast('Blocked', exec.reason)
+      setActivity([{ title: 'Permission denied', sub: exec.reason, kind: 'error', t: 'now' }])
+      return
+    }
+
     setActivity([{ title: 'Run started', sub: `${project.name} · ${RUNTIME_LABEL[r.runtimeKey]}`, kind: 'info', t: '0.0s' }])
     setInspector(true)
     setItab('activity')
@@ -100,6 +116,42 @@ export function ChatPage() {
         statusText: 'Planning', done: false, tools: [], plan: [], artifacts: [],
       },
     })
+
+    runUnsub.current?.()
+    if (services?.runtime) {
+      try {
+        const started = await services.runtime.startRun({
+          projectId: project.id,
+          task: prompt,
+          agentId,
+          modelKey: r.modelKey,
+          harnessKey: r.harnessKey,
+          runtimeKey: r.runtimeKey,
+        })
+        updateMessage(placeholder.id, {
+          run: {
+            id: started.runId, kind: 'coding',
+            title: 'Agent run', model: MODEL_LABEL[r.modelKey], harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
+            statusText: started.mode ?? 'running', done: false, tools: [], plan: [], artifacts: [],
+          },
+        })
+        runUnsub.current = services.runtime.subscribe(started.runId, (event) => {
+          setActivity((a) => [...a, { title: event.type, sub: JSON.stringify(event.payload).slice(0, 80), t: `#${event.sequence}` }])
+          if (event.type === 'agent.completed' || event.type === 'session.closed') {
+            setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
+          }
+        })
+        // Keep rich demo artifacts via simulation in parallel for Pages/mock UX
+        if (!started.mode || started.mode === 'mock' || started.mode === 'simulated' || started.mode === 'mock_with_repo') {
+          await simulateAgentRun(prompt, r, (run: AgentRunBlock) => {
+            updateMessage(placeholder.id, { run: { ...run, id: started.runId } })
+          })
+        }
+        return
+      } catch {
+        // fall through to simulation
+      }
+    }
 
     await simulateAgentRun(prompt, r, (run: AgentRunBlock) => {
       updateMessage(placeholder.id, { run })

@@ -64,7 +64,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     modelKey?: ModelKey
     harnessKey?: Harness
     runtimeKey?: RuntimeKind
-  }): Promise<{ runId: string; sessionId: string }> {
+    repo?: string
+  }): Promise<{ runId: string; sessionId: string; mode?: string }> {
     if (!(await this.healthy())) return this.fallback.startRun(input)
     try {
       const res = await fetch(`${this.baseUrl}/api/runs`, {
@@ -77,11 +78,12 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
           model_key: input.modelKey,
           harness_key: input.harnessKey,
           runtime_key: input.runtimeKey,
+          repo: input.repo,
         }),
       })
       if (!res.ok) return this.fallback.startRun(input)
-      const data = await res.json() as { run_id: string; session_id: string }
-      return { runId: data.run_id, sessionId: data.session_id }
+      const data = await res.json() as { run_id: string; session_id: string; mode?: string }
+      return { runId: data.run_id, sessionId: data.session_id, mode: data.mode }
     } catch {
       return this.fallback.startRun(input)
     }

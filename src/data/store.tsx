@@ -1,10 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
-  AgentInterface, AppData, Chat, CustomAgent, Dashboard, Message, PermissionGrant, ProjectSource, QuickApi, SettingsState, Site, Theme, Visibility, WikiSettings, WorkflowDef,
+  AgentInterface, AppData, Chat, CustomAgent, Dashboard, Message, PermissionGrant, ProjectSource, QuickApi, SettingsState, Site, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
 } from '../types'
 import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
 import { initServices, resetServices, type ServiceBundle } from '../services'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
+import { evaluatePermissions } from '../services/permissions'
 
 function load(): AppData {
   try {
@@ -54,6 +55,7 @@ interface StoreApi {
   revokePermissionGrant: (id: string) => void
   createWorkflow: (input: Omit<WorkflowDef, 'id' | 'createdAt'>) => WorkflowDef
   updateWorkflowStatus: (id: string, status: WorkflowDef['status']) => void
+  runWorkflow: (id: string) => Promise<WorkflowRun | null>
   attachSource: (input: Omit<ProjectSource, 'id' | 'lastSyncAt'>) => ProjectSource
   updateHunk: (messageId: string, hunkId: string, status: 'accepted' | 'rejected') => void
   resetData: () => void
@@ -270,6 +272,98 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (wf) wf.status = status
       return d
     }),
+    runWorkflow: async (id) => {
+      const wf = data.workflows.find((w) => w.id === id)
+      if (!wf) {
+        toast('Missing workflow', id)
+        return null
+      }
+      const agentId = wf.agentIds[0]
+      const check = evaluatePermissions(data.permissionGrants, {
+        userId: data.currentUserId,
+        agentId,
+        resourceKind: 'project',
+        resourceId: wf.projectId,
+        action: 'execute',
+      })
+      if (!check.allowed) {
+        toast('Blocked', check.reason)
+        return null
+      }
+      if (wf.approvalRequired && check.approvalRequired) {
+        toast('Approval required', `Confirm ${wf.name} before continuing`)
+      }
+
+      const run: WorkflowRun = {
+        id: uid('wfr'),
+        workflowId: wf.id,
+        projectId: wf.projectId,
+        agentId,
+        status: 'running',
+        startedAt: Date.now(),
+        summary: `Running ${wf.steps.map((s) => s.label).join(' → ')}`,
+      }
+      patch((d) => {
+        d.workflowRuns.unshift(run)
+        const target = d.workflows.find((w) => w.id === wf.id)
+        if (target) target.lastRunAt = run.startedAt
+        return d
+      })
+
+      try {
+        if (services?.runtime && agentId) {
+          const agent = data.agents.find((a) => a.id === agentId)
+          const started = await services.runtime.startRun({
+            projectId: wf.projectId,
+            task: `Workflow ${wf.name}: ${wf.description}`,
+            agentId,
+            modelKey: agent?.modelPolicy === 'claude' ? 'claude' : undefined,
+            harnessKey: agent?.harness,
+            runtimeKey: agent?.runtime,
+          })
+          await new Promise<void>((resolve) => {
+            const stop = services.runtime.subscribe(started.runId, (event) => {
+              if (event.type === 'agent.completed' || event.type === 'agent.failed' || event.type === 'session.closed') {
+                stop()
+                resolve()
+              }
+            })
+            window.setTimeout(() => { stop(); resolve() }, 20_000)
+          })
+        } else {
+          await new Promise((r) => window.setTimeout(r, 900))
+        }
+        const finished: WorkflowRun = {
+          ...run,
+          status: 'completed',
+          finishedAt: Date.now(),
+          summary: `Completed ${wf.steps.length} steps · ${wf.name}`,
+        }
+        patch((d) => {
+          const row = d.workflowRuns.find((r) => r.id === run.id)
+          if (row) {
+            row.status = finished.status
+            row.finishedAt = finished.finishedAt
+            row.summary = finished.summary
+          }
+          return d
+        })
+        toast('Workflow finished', wf.name)
+        return finished
+      } catch (err) {
+        patch((d) => {
+          const row = d.workflowRuns.find((r) => r.id === run.id)
+          if (row) {
+            row.status = 'failed'
+            row.finishedAt = Date.now()
+            row.summary = String(err)
+          }
+          return d
+        })
+        toast('Workflow failed', String(err))
+        return null
+      }
+    },
     attachSource: (input) => {
       const source: ProjectSource = { ...input, id: uid('src'), lastSyncAt: Date.now() }
       patch((d) => { d.sources.unshift(source); return d })

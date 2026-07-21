@@ -24,6 +24,9 @@ export class KrailClient {
     argv?: string[]
     cwd?: string
     url?: string
+    task?: string
+    repo?: string
+    agent_id?: string
   }): Promise<{ sessionId: string; runId: string } | null> {
     if (!(await this.healthy())) return null
     const res = await fetch(`${this.baseUrl}/sessions`, {
@@ -43,10 +46,17 @@ export class KrailClient {
     return await res.json() as Array<{ id: string; runId: string; kind: string; status: string }>
   }
 
-  subscribe(sessionId: string, onEvent: (event: SessionEvent) => void): () => void {
+  async eventsSince(sessionId: string, after = -1): Promise<SessionEvent[]> {
+    if (!(await this.healthy())) return []
+    const res = await fetch(`${this.baseUrl}/sessions/${sessionId}/events?after=${after}`)
+    if (!res.ok) return []
+    return await res.json() as SessionEvent[]
+  }
+
+  subscribe(sessionId: string, onEvent: (event: SessionEvent) => void, after = -1): () => void {
     let ws: WebSocket | null = null
     try {
-      const url = this.baseUrl.replace('http', 'ws') + `/ws?session_id=${encodeURIComponent(sessionId)}`
+      const url = this.baseUrl.replace('http', 'ws') + `/ws?session_id=${encodeURIComponent(sessionId)}&after=${after}`
       ws = new WebSocket(url)
       ws.onmessage = (msg) => {
         try {

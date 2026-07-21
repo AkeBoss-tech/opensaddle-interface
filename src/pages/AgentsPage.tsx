@@ -6,9 +6,10 @@ import { evaluatePermissions } from '../services/permissions'
 
 export function AgentsPage() {
   const { projectId } = useParams()
-  const { data, createChat, toast } = useStore()
+  const { data, createChat, toast, services } = useStore()
   const nav = useNavigate()
   const [filter, setFilter] = useState('')
+  const [testingId, setTestingId] = useState<string | null>(null)
 
   const agents = useMemo(() => {
     let list = data.agents
@@ -91,7 +92,34 @@ export function AgentsPage() {
                     nav(`/chat/${c.id}`)
                   }}>Open chat</button>
                   <Link className="tiny-btn" to={`/project/${agent.projectId}`}>Project</Link>
-                  <button className="tiny-btn" onClick={() => toast('Test run', `Queued dry-run for ${agent.name}`)}>Test</button>
+                  <button className="tiny-btn" disabled={testingId === agent.id || !exec.allowed} onClick={() => {
+                    if (!exec.allowed) {
+                      toast('Blocked', exec.reason)
+                      return
+                    }
+                    setTestingId(agent.id)
+                    void (async () => {
+                      try {
+                        if (!services?.runtime) {
+                          toast('Test run', `Queued dry-run for ${agent.name}`)
+                          return
+                        }
+                        const started = await services.runtime.startRun({
+                          projectId: agent.projectId,
+                          task: `Dry-run smoke test for ${agent.name}`,
+                          agentId: agent.id,
+                          modelKey: agent.modelPolicy,
+                          harnessKey: agent.harness,
+                          runtimeKey: agent.runtime,
+                        })
+                        toast('Test run', `${started.mode ?? 'started'} · ${started.runId}`)
+                      } catch (err) {
+                        toast('Test failed', String(err))
+                      } finally {
+                        setTestingId(null)
+                      }
+                    })()
+                  }}>{testingId === agent.id ? 'Testing…' : 'Test'}</button>
                 </div>
               </div>
             </article>

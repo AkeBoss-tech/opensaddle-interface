@@ -1,8 +1,8 @@
 /**
  * KRAIL session service — resumable interactive execution bridge.
  *
- * Owns PTY/session lifecycle, event sequencing, approvals, and (stubbed)
- * browser runtime hooks. OpenSaddle selects routes; KRAIL streams live sessions.
+ * Owns PTY/session lifecycle, event sequencing, approvals, OpenSaddle run
+ * bridging, and browser observation stubs.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -51,9 +51,11 @@ interface Session {
   child?: ChildProcessWithoutNullStreams
   command?: string
   cwd?: string
+  opensaddleUrl?: string
 }
 
 const sessions = new Map<string, Session>()
+const DEFAULT_OPENSADDLE = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
 
 function pushEvent(session: Session, type: KrailEventType, payload: Record<string, unknown> = {}) {
   const event: KrailEvent = {
@@ -122,15 +124,81 @@ function startBrowserSession(url = 'about:blank') {
   const session = createSession('browser')
   pushEvent(session, 'browser.started', {
     url,
-    note: 'Playwright profile isolation hooks in; desktop Electron hosts the preview surface.',
+    note: 'Isolated Chromium profile reserved for Electron WebContentsView / Playwright.',
   })
-  // Simulated observation loop for protocol completeness without requiring Playwright in CI.
   setTimeout(() => {
-    pushEvent(session, 'browser.screenshot', { url, stub: true })
+    pushEvent(session, 'browser.screenshot', { url, stub: true, width: 1280, height: 800 })
     pushEvent(session, 'agent.completed', { status: 'completed' })
     session.status = 'completed'
     pushEvent(session, 'session.closed', {})
-  }, 800)
+  }, 600)
+  return session
+}
+
+async function bridgeOpenSaddle(input: {
+  task: string
+  repo?: string
+  agentId?: string
+  opensaddleUrl?: string
+}) {
+  const base = input.opensaddleUrl || DEFAULT_OPENSADDLE
+  const session = createSession('opensaddle')
+  session.opensaddleUrl = base
+  pushEvent(session, 'agent.started', { task: input.task, repo: input.repo, bridge: base })
+
+  try {
+    const res = await fetch(`${base}/api/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project_id: 'krail',
+        task: input.task,
+        repo: input.repo,
+        agent_id: input.agentId ?? 'safe_local',
+      }),
+    })
+    if (!res.ok) throw new Error(`opensaddle HTTP ${res.status}`)
+    const data = await res.json() as { run_id: string; session_id: string; mode?: string }
+    session.runId = data.run_id
+    pushEvent(session, 'agent.output.delta', { status: `bridged ${data.mode ?? 'run'}`, opensaddle_run: data.run_id })
+
+    // Poll events via SSE-ish JSON list by reading run status + replaying through EventSource polyfill
+    const es = await fetch(`${base}/api/runs/${data.run_id}/events`)
+    if (!es.ok || !es.body) throw new Error('events stream unavailable')
+    const reader = es.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const chunks = buffer.split('\n\n')
+      buffer = chunks.pop() ?? ''
+      for (const chunk of chunks) {
+        const line = chunk.split('\n').find((l) => l.startsWith('data: '))
+        if (!line) continue
+        try {
+          const evt = JSON.parse(line.slice(6)) as { type: string; payload: Record<string, unknown> }
+          const type = (evt.type as KrailEventType) || 'agent.output.delta'
+          pushEvent(session, type, { ...evt.payload, bridged: true })
+          if (type === 'agent.completed' || type === 'agent.failed' || type === 'session.closed') {
+            if (type !== 'session.closed') session.status = type === 'agent.completed' ? 'completed' : 'failed'
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+    }
+    if (session.status === 'running') {
+      session.status = 'completed'
+      pushEvent(session, 'agent.completed', { status: 'completed' })
+      pushEvent(session, 'session.closed', {})
+    }
+  } catch (err) {
+    session.status = 'failed'
+    pushEvent(session, 'agent.failed', { error: String(err) })
+    pushEvent(session, 'session.closed', {})
+  }
   return session
 }
 
@@ -158,7 +226,12 @@ export function startKrailServer(port = 8787) {
     if (req.method === 'OPTIONS') return sendJson(res, 204, {})
 
     if (req.method === 'GET' && req.url === '/health') {
-      return sendJson(res, 200, { ok: true, service: 'krail', sessions: sessions.size })
+      return sendJson(res, 200, {
+        ok: true,
+        service: 'krail',
+        sessions: sessions.size,
+        opensaddle: DEFAULT_OPENSADDLE,
+      })
     }
 
     if (req.method === 'GET' && req.url === '/sessions') {
@@ -175,8 +248,12 @@ export function startKrailServer(port = 8787) {
         return sendJson(res, 200, { session_id: session.id, run_id: session.runId })
       }
       if (kind === 'opensaddle') {
-        const session = createSession('opensaddle')
-        pushEvent(session, 'agent.started', { note: 'Attach OpenSaddle run via /attach' })
+        const session = await bridgeOpenSaddle({
+          task: String(body.task ?? 'local coding task'),
+          repo: body.repo ? String(body.repo) : undefined,
+          agentId: body.agent_id ? String(body.agent_id) : undefined,
+          opensaddleUrl: body.opensaddle_url ? String(body.opensaddle_url) : undefined,
+        })
         return sendJson(res, 200, { session_id: session.id, run_id: session.runId })
       }
       const command = String(body.command ?? 'echo')
@@ -212,7 +289,9 @@ export function startKrailServer(port = 8787) {
     if (req.method === 'GET' && eventsMatch) {
       const session = sessions.get(eventsMatch[1]!)
       if (!session) return sendJson(res, 404, { error: 'session not found' })
-      return sendJson(res, 200, session.events)
+      const url = new URL(req.url, 'http://localhost')
+      const after = Number(url.searchParams.get('after') ?? '-1')
+      return sendJson(res, 200, session.events.filter((e) => e.sequence > after))
     }
 
     return sendJson(res, 404, { error: 'not found' })
@@ -222,14 +301,17 @@ export function startKrailServer(port = 8787) {
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const sessionId = url.searchParams.get('session_id')
+    const after = Number(url.searchParams.get('after') ?? '-1')
     if (!sessionId || !sessions.has(sessionId)) {
       ws.close(1008, 'unknown session')
       return
     }
     const session = sessions.get(sessionId)!
     session.observers.add(ws)
-    pushEvent(session, 'session.attached', { observers: session.observers.size })
-    for (const event of session.events) ws.send(JSON.stringify(event))
+    pushEvent(session, 'session.attached', { observers: session.observers.size, after })
+    for (const event of session.events) {
+      if (event.sequence > after) ws.send(JSON.stringify(event))
+    }
     ws.on('close', () => session.observers.delete(ws))
     ws.on('message', (data) => {
       try {

@@ -49,7 +49,8 @@ export interface RuntimeClient {
     modelKey?: ModelKey
     harnessKey?: Harness
     runtimeKey?: RuntimeKind
-  }): Promise<{ runId: string; sessionId: string }>
+    repo?: string
+  }): Promise<{ runId: string; sessionId: string; mode?: string }>
   subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void
   cancel(runId: string): Promise<void>
   getDiff?(runId: string): Promise<AgentRunBlock['artifacts']>
