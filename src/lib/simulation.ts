@@ -1,4 +1,5 @@
 import type { AgentRunBlock, Artifact, Harness, ModelKey, RuntimeKind, ToolCall } from '../types'
+import { can } from '../services/capabilities'
 
 export const MODEL_LABEL: Record<ModelKey, string> = {
   auto: 'Auto', gpt: 'GPT-5.6 Thinking', claude: 'Claude Opus', sonnet: 'Claude Sonnet', gemini: 'Gemini Pro', llama: 'Private Llama 4',
@@ -28,19 +29,25 @@ export function classify(text: string): RouteDecision['klass'] {
   return 'chat'
 }
 
+/** Web builds start in the browser sandbox; local only when the desktop harness provides it. */
+export function defaultRuntime(): RuntimeKind {
+  return can('runtime.local') ? 'local' : 'browser'
+}
+
 export function deriveRoute(text: string, pref: string, overrides?: { model?: ModelKey; harness?: Harness | 'auto'; runtime?: RuntimeKind | 'auto' }): RouteDecision {
   const klass = classify(text)
+  const baseRuntime = defaultRuntime()
   let modelKey: ModelKey = 'sonnet'
   let harnessKey: Harness = 'chat'
-  let runtimeKey: RuntimeKind = 'local'
+  let runtimeKey: RuntimeKind = baseRuntime
   let cost = '$0.03 – $0.09'
 
-  if (klass === 'coding') { harnessKey = 'coding'; modelKey = pref === 'quality' ? 'claude' : 'sonnet'; runtimeKey = 'local'; cost = '$0.18 – $0.42' }
+  if (klass === 'coding') { harnessKey = 'coding'; modelKey = pref === 'quality' ? 'claude' : 'sonnet'; runtimeKey = baseRuntime; cost = '$0.18 – $0.42' }
   else if (klass === 'research') { harnessKey = 'research'; modelKey = pref === 'fast' ? 'gemini' : 'gpt'; runtimeKey = 'sandbox'; cost = '$0.22 – $0.55' }
   else if (klass === 'browser' || klass === 'ops') { harnessKey = 'browser'; modelKey = 'sonnet'; runtimeKey = 'browser'; cost = '$0.06 – $0.15' }
-  else { harnessKey = 'chat'; modelKey = pref === 'quality' ? 'claude' : 'sonnet'; runtimeKey = 'local'; cost = '$0.02 – $0.06' }
+  else { harnessKey = 'chat'; modelKey = pref === 'quality' ? 'claude' : 'sonnet'; runtimeKey = baseRuntime; cost = '$0.02 – $0.06' }
 
-  if (pref === 'local') runtimeKey = 'local'
+  if (pref === 'local') runtimeKey = baseRuntime
   if (pref === 'enterprise') modelKey = 'llama'
   if (pref === 'cost') modelKey = 'sonnet'
   if (pref === 'fast') modelKey = 'gemini'
@@ -53,7 +60,9 @@ export function deriveRoute(text: string, pref: string, overrides?: { model?: Mo
     `Task classified as ${klass === 'ops' ? 'operational change' : klass === 'coding' ? 'repository editing' : klass === 'research' ? 'research & analysis' : klass === 'browser' ? 'authenticated web use' : 'direct conversation'}`,
     `Project allows ${RUNTIME_LABEL[runtimeKey].toLowerCase()} access`,
     `${MODEL_LABEL[modelKey]} selected for ${pref}`,
-    runtimeKey === 'local' ? 'VM not required — runs on device' : `${RUNTIME_LABEL[runtimeKey]} available for isolation`,
+    runtimeKey === 'local' ? 'VM not required — runs on device'
+      : runtimeKey === 'browser' ? 'Runs in the browser sandbox — no install or VM needed'
+      : `${RUNTIME_LABEL[runtimeKey]} available for isolation`,
   ]
 
   return { klass, modelKey, harnessKey, runtimeKey, reasons, cost }
