@@ -4,6 +4,17 @@ import { useStore } from '../../data/store'
 import { Icon } from '../common/Icon'
 import type { Project } from '../../types'
 
+function relativeTime(ts: number) {
+  const diff = Date.now() - ts
+  const min = Math.round(diff / 60_000)
+  if (min < 1) return 'now'
+  if (min < 60) return `${min}m`
+  const hours = Math.round(min / 60)
+  if (hours < 24) return `${hours}h`
+  const days = Math.round(hours / 24)
+  return `${days}d`
+}
+
 function projectTree(projects: Project[]) {
   const byParent = new Map<string | null, Project[]>()
   for (const p of projects) {
@@ -153,16 +164,20 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
 
         <div className="nav-group">
           <div className="nav-label">Recent</div>
-          {data.recentChatIds.map((id) => {
-            const chat = data.chats.find((c) => c.id === id)
-            if (!chat || chat.archived) return null
-            return (
-              <button key={id} className="nav-item recent" onClick={() => { setActiveChat(id); setActiveProject(chat.projectId); nav(`/chat/${id}`) }}>
+          {data.recentChatIds
+            .map((id) => data.chats.find((c) => c.id === id))
+            .filter((chat): chat is NonNullable<typeof chat> => Boolean(chat && !chat.archived))
+            .slice(0, 8)
+            .map((chat) => (
+              <button key={chat.id} className="nav-item recent" onClick={() => { setActiveChat(chat.id); setActiveProject(chat.projectId); nav(`/chat/${chat.id}`) }}>
                 <Icon name="message" className="icon sm" />
                 <span className="recent-title">{chat.title}</span>
+                <span className="nav-count">{relativeTime(chat.updatedAt)}</span>
               </button>
-            )
-          })}
+            ))}
+          {!data.recentChatIds.some((id) => data.chats.some((c) => c.id === id && !c.archived)) && (
+            <p className="recent-empty">Chats you open show up here.</p>
+          )}
         </div>
       </div>
 

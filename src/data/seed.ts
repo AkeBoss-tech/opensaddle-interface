@@ -4,8 +4,8 @@ const now = Date.now()
 const hour = 3600_000
 const day = 24 * hour
 
-export const DATA_VERSION = 3
-export const STORAGE_KEY = 'opensaddle-data-v3'
+export const DATA_VERSION = 4
+export const STORAGE_KEY = 'opensaddle-data-v4'
 
 export function createSeedData(): AppData {
   const corp = 'proj-corp'
@@ -551,7 +551,8 @@ export function createSeedData(): AppData {
       networkPolicy: 'Deny egress for restricted environments; allowlist for sandboxes',
       demoMode: true,
     },
-    recentChatIds: [chatCoding, chatResearch, chatClaims, 'chat-policy', 'chat-sharepoint', 'chat-prs'],
+    // Populated from actual usage — opening or creating a chat adds it here.
+    recentChatIds: [],
     activeProjectId: corp,
     activeChatId: chatNew,
   }

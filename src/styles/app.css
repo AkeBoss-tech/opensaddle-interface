@@ -116,6 +116,7 @@
     .tree-row .tree-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .tree-row .tree-meta { margin-left:auto; display:flex; align-items:center; gap:5px; color:#8d8e87; }
     .recent-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .recent-empty { padding: 4px 10px 6px; margin: 0; font-size: 11px; color: #8c8d86; }
     .sidebar-footer { margin-top:auto; border-top:1px solid #3a3a36; padding:9px; }
     .profile-button {
       width:100%; border:0; background:transparent; min-height:44px; border-radius:9px; display:flex; align-items:center; gap:9px; padding:6px 8px; cursor:pointer;
