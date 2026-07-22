@@ -1,8 +1,8 @@
-import { NavLink, useNavigate } from 'react-router-dom'
-import { useMemo, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../../data/store'
 import { Icon } from '../common/Icon'
-import type { Project } from '../../types'
+import type { PinnedArtifact, Project } from '../../types'
 
 function relativeTime(ts: number) {
   const diff = Date.now() - ts
@@ -26,11 +26,16 @@ function projectTree(projects: Project[]) {
 }
 
 export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
-  const { data, setActiveProject, createChat, setActiveChat, toast } = useStore()
+  const { data, setActiveProject, createChat, setActiveChat, switchUser, toast, updateWikiSettings, setPinnedArtifacts } = useStore()
   const nav = useNavigate()
+  const location = useLocation()
   const tree = useMemo(() => projectTree(data.projects), [data.projects])
+  const wikiActiveFor = (projectId: string) =>
+    location.pathname.startsWith('/wiki') && data.wikiSettings.selectedProjectId === projectId
+  const siteActiveFor = (siteId: string) => location.pathname === `/site/${siteId}`
   const [wsOpen, setWsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const pinned = data.pinnedArtifacts ?? []
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('opensaddle-tree-collapsed')
@@ -40,6 +45,30 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
     }
   })
   const unread = data.notifications.filter((n) => !n.read).length
+
+  useEffect(() => {
+    if (data.pinnedArtifacts) return
+    try {
+      const legacy = localStorage.getItem('opensaddle-pinned')
+      setPinnedArtifacts(legacy ? JSON.parse(legacy) as PinnedArtifact[] : [])
+      localStorage.removeItem('opensaddle-pinned')
+    } catch {
+      setPinnedArtifacts([])
+    }
+  }, [data.pinnedArtifacts, setPinnedArtifacts])
+
+  const isPinned = (kind: PinnedArtifact['kind'], id: string) => pinned.some((x) => x.kind === kind && x.id === id)
+  const togglePin = (kind: PinnedArtifact['kind'], id: string, label: string) => {
+    const exists = pinned.some((x) => x.kind === kind && x.id === id)
+    const next = exists ? pinned.filter((x) => !(x.kind === kind && x.id === id)) : [...pinned, { kind, id }]
+    setPinnedArtifacts(next)
+    toast(exists ? 'Unpinned' : 'Pinned', `${label} · synced to workspace`)
+  }
+
+  const openWiki = (projectId: string) => {
+    updateWikiSettings({ selectedProjectId: projectId })
+    nav('/wiki')
+  }
 
   const toggleCollapsed = (id: string) => {
     setCollapsed((prev) => {
@@ -69,9 +98,13 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
 
   const renderBranch = (parentId: string | null, depth: number) =>
     (tree.get(parentId) ?? []).map((p) => {
-      const hasChildren = Boolean(tree.get(p.id)?.length)
+      const childProjects = tree.get(p.id) ?? []
+      const sites = data.sites.filter((s) => s.projectId === p.id)
+      const hasWiki = data.wikiSummaries.some((w) => w.projectId === p.id && w.scope === 'team')
+      const hasChildren = childProjects.length > 0 || sites.length > 0 || hasWiki
       const isCollapsed = collapsed.has(p.id)
-      const isLeafAgent = !hasChildren
+      const isLeafAgent = childProjects.length === 0
+      const childDepth = Math.min(depth + 1, 2)
       return (
         <div key={p.id}>
           <button
@@ -97,6 +130,15 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
             <Icon name={depth >= 2 ? 'branch' : 'folder'} className="icon sm folder" />
             <span className="tree-title">{p.name}</span>
             <span
+              className={`row-hover-btn ${isPinned('project', p.id) ? 'pinned' : ''}`}
+              role="button"
+              aria-label={isPinned('project', p.id) ? `Unpin ${p.name}` : `Pin ${p.name}`}
+              title={isPinned('project', p.id) ? 'Unpin' : 'Pin'}
+              onClick={(e) => { e.stopPropagation(); togglePin('project', p.id, p.name) }}
+            >
+              <Icon name="pin" className="icon sm" />
+            </span>
+            <span
               className="row-gear"
               role="button"
               aria-label={`${p.name} settings`}
@@ -106,16 +148,92 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
               <Icon name="settings" className="icon sm" />
             </span>
           </button>
-          {hasChildren && !isCollapsed && renderBranch(p.id, depth + 1)}
+          {hasChildren && !isCollapsed && (
+            <>
+              {hasWiki && (
+                <button
+                  key={`wiki-${p.id}`}
+                  className={`tree-row depth-${childDepth} resource-row ${wikiActiveFor(p.id) ? 'active' : ''}`}
+                  title={`${p.name} wiki`}
+                  onClick={() => openWiki(p.id)}
+                >
+                  <span style={{ width: 13 }} />
+                  <Icon name="book" className="icon sm resource-icon wiki" />
+                  <span className="tree-title">Team wiki</span>
+                  <span
+                    className={`row-hover-btn ${isPinned('wiki', p.id) ? 'pinned' : ''}`}
+                    role="button"
+                    title={isPinned('wiki', p.id) ? 'Unpin' : 'Pin'}
+                    onClick={(e) => { e.stopPropagation(); togglePin('wiki', p.id, `${p.name} wiki`) }}
+                  >
+                    <Icon name="pin" className="icon sm" />
+                  </span>
+                </button>
+              )}
+              {sites.map((s) => (
+                <button
+                  key={s.id}
+                  className={`tree-row depth-${childDepth} resource-row ${siteActiveFor(s.id) ? 'active' : ''}`}
+                  title={`${s.name} — site`}
+                  onClick={() => { setActiveProject(p.id); nav(`/site/${s.id}`) }}
+                >
+                  <span style={{ width: 13 }} />
+                  <Icon name="globe" className="icon sm resource-icon site" />
+                  <span className="tree-title">{s.name}</span>
+                  <span
+                    className={`row-hover-btn ${isPinned('site', s.id) ? 'pinned' : ''}`}
+                    role="button"
+                    title={isPinned('site', s.id) ? 'Unpin' : 'Pin'}
+                    onClick={(e) => { e.stopPropagation(); togglePin('site', s.id, s.name) }}
+                  >
+                    <Icon name="pin" className="icon sm" />
+                  </span>
+                  <span className="resource-tag">Site</span>
+                </button>
+              ))}
+              {renderBranch(p.id, depth + 1)}
+            </>
+          )}
         </div>
       )
     })
+
+  const pinnedRows = pinned
+    .map((item) => {
+      if (item.kind === 'project') {
+        const p = data.projects.find((x) => x.id === item.id)
+        if (!p) return null
+        const isLeafAgent = !(tree.get(p.id)?.length)
+        return {
+          key: `project:${p.id}`, item, icon: 'folder', iconClass: 'folder', label: p.name,
+          active: location.pathname === `/project/${p.id}`,
+          go: () => { if (isLeafAgent) openAgentChat(p); else { setActiveProject(p.id); nav(`/project/${p.id}`) } },
+        }
+      }
+      if (item.kind === 'site') {
+        const s = data.sites.find((x) => x.id === item.id)
+        if (!s) return null
+        return {
+          key: `site:${s.id}`, item, icon: 'globe', iconClass: 'resource-icon site', label: s.name,
+          active: siteActiveFor(s.id),
+          go: () => { setActiveProject(s.projectId); nav(`/site/${s.id}`) },
+        }
+      }
+      const p = data.projects.find((x) => x.id === item.id)
+      if (!p) return null
+      return {
+        key: `wiki:${p.id}`, item, icon: 'book', iconClass: 'resource-icon wiki', label: `${p.name} wiki`,
+        active: wikiActiveFor(p.id),
+        go: () => openWiki(p.id),
+      }
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null)
 
   return (
     <aside className="sidebar" id="sidebar">
       <div className="sidebar-top" style={{ position: 'relative' }}>
         <button className="workspace-switcher" onClick={() => setWsOpen((v) => !v)}>
-          <span className="workspace-logo"><Icon name="spark" className="icon sm" /></span>
+          <span className="workspace-logo"><Icon name="saddle" className="icon sm" /></span>
           <span style={{ minWidth: 0, flex: 1 }}>
             <span className="workspace-name">OpenSaddle</span>
             <span className="workspace-meta">{data.workspaceName}</span>
@@ -147,15 +265,30 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
           <NavLink to="/wiki" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="review" />Team wiki</NavLink>
           <NavLink to="/agents" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="spark" />Agents<span className="nav-count">{data.agentSessions.filter((s) => s.status === 'running').length}</span></NavLink>
           <NavLink to="/workflows" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="activity" />Workflows</NavLink>
-          <NavLink to="/harness" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="tools" />Harness</NavLink>
-          <NavLink to="/files" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="file" />Files</NavLink>
-          <NavLink to="/permissions" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="shield" />Permissions</NavLink>
-          <NavLink to="/environments" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="vm" />Environments<span className="nav-count">{data.environments.filter((e) => e.status === 'Running').length}</span></NavLink>
-          <NavLink to="/plugins" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="plugin" />Plugin store</NavLink>
-          <NavLink to="/usage" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="chart" />Usage & budgets</NavLink>
-          <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="users" />Organization</NavLink>
-          <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="settings" />Settings</NavLink>
+          <NavLink to="/sites" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="globe" />Sites<span className="nav-count">{data.sites.length}</span></NavLink>
         </div>
+
+        {pinnedRows.length > 0 && (
+          <div className="nav-group">
+            <div className="nav-label">Pinned</div>
+            <div className="tree">
+              {pinnedRows.map((row) => (
+                <button key={row.key} className={`tree-row pinned-row ${row.active ? 'active' : ''}`} onClick={row.go}>
+                  <Icon name={row.icon} className={`icon sm ${row.iconClass}`} />
+                  <span className="tree-title">{row.label}</span>
+                  <span
+                    className="row-hover-btn pinned"
+                    role="button"
+                    title="Unpin"
+                    onClick={(e) => { e.stopPropagation(); togglePin(row.item.kind, row.item.id, row.label) }}
+                  >
+                    <Icon name="pin" className="icon sm" />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="nav-group">
           <div className="nav-label">Projects <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={onCreateProject} title="Create project"><Icon name="plus" className="icon sm" /></button></div>
@@ -182,17 +315,58 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
       </div>
 
       <div className="sidebar-footer" style={{ position: 'relative' }}>
-        <button className="profile-button" onClick={() => setProfileOpen((v) => !v)}>
-          <span className="avatar">AD</span>
-          <span className="profile-copy"><span className="profile-name">{data.settings.displayName}</span><span className="profile-plan">Enterprise · Full access</span></span>
-          <Icon name="settings" className="icon sm" />
-        </button>
-        {profileOpen && (
-          <div className="menu-dropdown" style={{ left: 8, right: 8, bottom: 56 }}>
-            <button className="menu-item" onClick={() => { setProfileOpen(false); nav('/settings') }}>Profile & preferences</button>
-            <button className="menu-item" onClick={() => { setProfileOpen(false); nav('/admin') }}>Organization admin</button>
-          </div>
-        )}
+        {(() => {
+          const me = data.members.find((m) => m.id === data.currentUserId)
+          const roleLabel = me?.role === 'Admin' ? 'Enterprise · Full access'
+            : me?.role === 'Editor' ? 'Enterprise · Can edit'
+            : me?.role === 'Reviewer' ? 'Enterprise · Review only'
+            : 'Enterprise · View only'
+          const go = (path: string) => { setProfileOpen(false); nav(path) }
+          return (
+            <>
+              <button className="profile-button" onClick={() => setProfileOpen((v) => !v)}>
+                <span className="avatar">{me?.initials ?? 'AD'}</span>
+                <span className="profile-copy"><span className="profile-name">{data.settings.displayName}</span><span className="profile-plan">{roleLabel}</span></span>
+                <Icon name="settings" className="icon sm" />
+              </button>
+              {profileOpen && (
+                <div className="menu-dropdown profile-menu" style={{ left: 8, right: 8, bottom: 56 }}>
+                  <div className="menu-section-label">View as · demo profiles</div>
+                  {data.members.map((m) => (
+                    <button key={m.id} className={`menu-item persona-row ${m.id === data.currentUserId ? 'current' : ''}`} onClick={() => {
+                      if (m.id !== data.currentUserId) {
+                        switchUser(m.id)
+                        toast('Profile switched', `${m.name} · ${m.role} — permissions re-evaluated`)
+                      }
+                      setProfileOpen(false)
+                    }}>
+                      <span className="avatar" style={{ width: 22, height: 22, fontSize: 8 }}>{m.initials}</span>
+                      <span className="persona-copy"><span>{m.name}</span><small>{m.role}</small></span>
+                      {m.id === data.currentUserId && <Icon name="check" className="icon sm" />}
+                    </button>
+                  ))}
+                  <div className="menu-divider" />
+                  <div className="menu-section-label">Personal</div>
+                  <button className="menu-item" onClick={() => go('/settings')}><Icon name="settings" className="icon sm" /> Profile & preferences</button>
+                  <button className="menu-item" onClick={() => go('/files')}><Icon name="file" className="icon sm" /> Files</button>
+                  <button className="menu-item" onClick={() => go('/usage')}><Icon name="chart" className="icon sm" /> Usage & budgets</button>
+                  <div className="menu-divider" />
+                  <div className="menu-section-label">Workspace tools</div>
+                  <button className="menu-item" onClick={() => go('/permissions')}><Icon name="shield" className="icon sm" /> Permissions</button>
+                  <button className="menu-item" onClick={() => go('/environments')}><Icon name="vm" className="icon sm" /> Environments</button>
+                  <button className="menu-item" onClick={() => go('/plugins')}><Icon name="plugin" className="icon sm" /> Plugin store</button>
+                  <button className="menu-item" onClick={() => go('/harness')}><Icon name="tools" className="icon sm" /> Desktop harness</button>
+                  {me?.role === 'Admin' && (
+                    <>
+                      <div className="menu-divider" />
+                      <button className="menu-item" onClick={() => go('/admin')}><Icon name="users" className="icon sm" /> Organization admin</button>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )
+        })()}
       </div>
       <div className="sidebar-resizer" id="sidebarResizer" title="Drag to resize" />
     </aside>

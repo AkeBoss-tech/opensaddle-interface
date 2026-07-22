@@ -2,6 +2,15 @@ export type Theme = 'dark' | 'light' | 'hc'
 export type Visibility = 'private' | 'shared' | 'project'
 export type Inheritance = 'org' | 'parent' | 'override' | 'denied'
 export type Harness = 'chat' | 'research' | 'coding' | 'browser' | 'vm'
+export type CodingProvider =
+  | 'auto'
+  | 'opensaddle'
+  | 'codex'
+  | 'claude'
+  | 'cursor'
+  | 'gemini'
+  | 'opencode'
+  | 'custom'
 export type RuntimeKind = 'local' | 'browser' | 'sandbox' | 'vm' | 'gpu' | 'restricted'
 export type ModelKey = 'auto' | 'gpt' | 'claude' | 'sonnet' | 'gemini' | 'llama'
 export type InterfaceKind = 'chat' | 'form' | 'dashboard' | 'document' | 'custom'
@@ -28,6 +37,17 @@ export interface Project {
   childCount: number
   autoConfidence: number
   lineage: string[]
+  routingDefaults?: {
+    modelKey: ModelKey
+    providerKey: CodingProvider
+    runtimeKey: RuntimeKind
+    reviewProviderKey?: CodingProvider
+  }
+}
+
+export interface PinnedArtifact {
+  kind: 'project' | 'site' | 'wiki'
+  id: string
 }
 
 export interface Chat {
@@ -130,6 +150,27 @@ export interface SitePage {
   title: string
   body: string
   agentRail: boolean
+  eyebrow?: string
+  ctaLabel?: string
+  ctaUrl?: string
+  sections?: Array<{ id: string; title: string; body: string }>
+}
+
+export interface SiteVersion {
+  id: string
+  label: string
+  summary: string
+  status: 'draft' | 'published' | 'archived'
+  createdAt: number
+  createdBy: string
+  snapshot?: {
+    name: string
+    description: string
+    accent: string
+    pages: SitePage[]
+    agentId?: string
+    agentPlacement: 'bubble' | 'rail'
+  }
 }
 
 export interface Site {
@@ -137,10 +178,16 @@ export interface Site {
   projectId: string
   name: string
   description: string
+  slug: string
+  accent: string
   pages: SitePage[]
+  versions: SiteVersion[]
+  publishedVersionId?: string
   agentId?: string
+  agentPlacement: 'bubble' | 'rail'
   visibility: Visibility
   createdAt: number
+  updatedAt: number
 }
 
 export interface ApiField {
@@ -460,6 +507,7 @@ export interface AppData {
   agentSessions: AgentSession[]
   settings: SettingsState
   recentChatIds: string[]
+  pinnedArtifacts?: PinnedArtifact[]
   activeProjectId: string
   activeChatId: string | null
 }

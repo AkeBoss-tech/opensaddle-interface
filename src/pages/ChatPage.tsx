@@ -6,7 +6,8 @@ import {
   DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL, simulateAgentRun,
   type RouteDecision,
 } from '../lib/simulation'
-import type { AgentRunBlock, Harness, Message, ModelKey, RuntimeKind } from '../types'
+import type { AgentRunBlock, CodingProvider, Harness, Message, ModelKey, RuntimeKind } from '../types'
+import { PROVIDER_NAME, ProviderLogo, providerFromLabel } from '../components/common/ProviderLogo'
 import { evaluatePermissions } from '../services/permissions'
 import { applyRunEvent } from '../lib/runEvents'
 
@@ -28,8 +29,20 @@ export function ChatPage() {
   const [auto, setAuto] = useState(true)
   const [modelOv, setModelOv] = useState<ModelKey | 'auto'>('auto')
   const [harnessOv, setHarnessOv] = useState<Harness | 'auto'>('auto')
+  const [providerOv, setProviderOv] = useState<CodingProvider>('auto')
   const [runtimeOv, setRuntimeOv] = useState<RuntimeKind | 'auto'>('auto')
+  const [openRouterModelId, setOpenRouterModelId] = useState('')
+  const [freeModels, setFreeModels] = useState<Array<{ id: string; name: string; contextLength?: number }>>([])
   const [route, setRoute] = useState<RouteDecision>(() => deriveRoute('', data.settings.routingPref))
+  const [providerKey, setProviderKey] = useState<CodingProvider>('opensaddle')
+  const PROVIDER_LABEL: Record<Exclude<CodingProvider, 'auto' | 'custom'>, string> = {
+    opensaddle: 'OpenSaddle',
+    codex: 'Codex',
+    claude: 'Claude Code',
+    cursor: 'Cursor',
+    gemini: 'Gemini CLI',
+    opencode: 'OpenCode',
+  }
   const [perm, setPerm] = useState<ReturnType<typeof needsPermission>>(null)
   const [pending, setPending] = useState('')
   const [permScope, setPermScope] = useState('once')
@@ -54,15 +67,66 @@ export function ChatPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages.length, messages[messages.length - 1]?.run?.statusText])
 
+  const serverRouting = Boolean(services?.controlPlane.connected) && auto
+  const defaults = project?.routingDefaults
+  const defaultModel = defaults?.modelKey && defaults.modelKey !== 'auto' ? defaults.modelKey : undefined
+  const defaultProvider = defaults?.providerKey && defaults.providerKey !== 'auto' ? defaults.providerKey : undefined
+  const defaultRuntime = defaults?.runtimeKey
+  const modelLabel = (key: ModelKey) =>
+    serverRouting && services?.controlPlane.modelProvider === 'openrouter'
+      ? freeModels.find((model) => model.id === openRouterModelId)?.name ?? 'OpenRouter free'
+      : MODEL_LABEL[key]
+
+  useEffect(() => {
+    if (!routeOpen || services?.controlPlane.modelProvider !== 'openrouter' || !services.runtime.listOpenRouterFreeModels) return
+    void services.runtime.listOpenRouterFreeModels().then(setFreeModels).catch(() => setFreeModels([]))
+  }, [routeOpen, services])
+
   const refreshRoute = (prompt: string) => {
     const r = deriveRoute(prompt, data.settings.routingPref, {
       model: modelOv === 'auto' ? undefined : modelOv,
       harness: harnessOv === 'auto' ? undefined : harnessOv,
       runtime: runtimeOv === 'auto' ? undefined : runtimeOv,
     })
-    setRoute(r)
+    // When the control plane routes for real, don't overwrite its estimate
+    // with the local mock — the debounced effect below keeps the pill honest.
+    if (!serverRouting) setRoute(r)
     return r
   }
+
+  // Reflect the backend's actual route estimate in the pill while typing.
+  useEffect(() => {
+    if (!serverRouting || !services) return
+    const task = (text || pending || 'general chat message').trim()
+    const timer = window.setTimeout(() => {
+      void services.runtime.estimate(task, {
+        projectId: project.id,
+        routingPref: data.settings.routingPref,
+        modelKey: modelOv === 'auto' ? defaultModel : modelOv,
+        modelId: openRouterModelId || undefined,
+        harnessKey: harnessOv === 'auto' ? undefined : harnessOv,
+        providerKey: providerOv === 'auto' ? defaultProvider : providerOv,
+        runtimeKey: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
+      })
+        .then((est) => {
+          setRoute((r) => ({
+            ...r,
+            klass: est.harnessKey === 'coding' ? 'coding'
+              : est.harnessKey === 'research' ? 'research'
+              : est.harnessKey === 'browser' ? 'browser'
+              : r.klass === 'ops' ? 'ops' : 'chat',
+            modelKey: est.modelKey,
+            harnessKey: est.harnessKey,
+            runtimeKey: est.runtimeKey,
+            reasons: est.reasons,
+            cost: est.cost,
+          }))
+          if (est.providerKey) setProviderKey(est.providerKey)
+        })
+        .catch(() => undefined)
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [text, pending, serverRouting, services, data.settings.routingPref, modelOv, harnessOv, providerOv, runtimeOv, openRouterModelId, project.id, defaultModel, defaultProvider, defaultRuntime])
 
   const send = async (forced?: string) => {
     const prompt = (forced ?? text).trim()
@@ -81,7 +145,7 @@ export function ChatPage() {
     await runAgent(prompt, r, chat.id)
   }
 
-  const runAgent = async (prompt: string, r: RouteDecision, cid: string) => {
+  const runAgent = async (prompt: string, r: RouteDecision, cid: string, approvalId?: string) => {
     const agentId = chat?.agentId
     const exec = evaluatePermissions(data.permissionGrants, {
       userId: data.currentUserId,
@@ -95,12 +159,30 @@ export function ChatPage() {
       setActivity([{ title: 'Permission denied', sub: exec.reason, kind: 'error', t: 'now' }])
       return
     }
+    const effectiveProvider = providerOv === 'auto' ? (defaultProvider ?? providerKey) : providerOv
+    if (!approvalId && !exec.approvalRequired && effectiveProvider === 'claude' && services?.runtime.requestApproval) {
+      try {
+        const approval = await services.runtime.requestApproval({
+          projectId: project.id,
+          agentId,
+          action: 'harness.claude.shell',
+        })
+        if (approval.status === 'pending') {
+          if (!services.runtime.resolveApproval) throw new Error('Claude Code shell approval is waiting for a reviewer')
+          await services.runtime.resolveApproval(approval.id, true)
+        }
+        approvalId = approval.id
+      } catch (error) {
+        toast('Approval required', error instanceof Error ? error.message : String(error))
+        return
+      }
+    }
 
     setActivity([{ title: 'Run started', sub: `${project.name} · ${RUNTIME_LABEL[r.runtimeKey]}`, kind: 'info', t: '0.0s' }])
     setInspector(true)
     setItab('activity')
 
-    if (r.klass === 'chat') {
+    if (r.klass === 'chat' && !services?.controlPlane.connected) {
       appendMessage({
         chatId: cid, role: 'assistant', text: '',
         lightHtml: `<p>Handled directly via <strong>${MODEL_LABEL[r.modelKey]}</strong> — lightweight answer, no side effects.</p><p>Ask me to build, research, or operate on a system for a full agent run.</p>`,
@@ -109,14 +191,15 @@ export function ChatPage() {
       return
     }
 
+    const runBlock: AgentRunBlock | undefined = r.klass === 'chat' ? undefined : {
+      id: 'pending', kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
+      title: 'Agent run', model: MODEL_LABEL[r.modelKey], harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
+      statusText: 'Planning', done: false, tools: [], plan: [], artifacts: [],
+    }
     const placeholder = appendMessage({
       chatId: cid, role: 'assistant', text: '',
       routingNote: `Auto · ${MODEL_LABEL[r.modelKey]} · ${HARNESS_LABEL[r.harnessKey]} · ${RUNTIME_LABEL[r.runtimeKey]}`,
-      run: {
-        id: 'pending', kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
-        title: 'Agent run', model: MODEL_LABEL[r.modelKey], harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
-        statusText: 'Planning', done: false, tools: [], plan: [], artifacts: [],
-      },
+      run: runBlock,
     })
 
     runUnsub.current?.()
@@ -126,12 +209,31 @@ export function ChatPage() {
           projectId: project.id,
           task: prompt,
           agentId,
-          modelKey: r.modelKey,
-          harnessKey: r.harnessKey,
-          runtimeKey: r.runtimeKey,
+          modelKey: modelOv === 'auto' ? defaultModel : modelOv,
+          modelId: openRouterModelId || undefined,
+          harnessKey: harnessOv === 'auto' ? undefined : harnessOv,
+          providerKey: providerOv === 'auto' ? defaultProvider : providerOv,
+          runtimeKey: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
+          approvalId,
+          reviewProviderKey: defaults?.reviewProviderKey === 'auto' ? undefined : defaults?.reviewProviderKey,
         })
         const mode = started.mode ?? 'mock'
         const isMockMode = mode === 'mock' || mode === 'mock_with_repo'
+        const actualModel = started.route?.modelKey ?? r.modelKey
+        const actualHarness = started.route?.harnessKey ?? r.harnessKey
+        const actualRuntime = started.route?.runtimeKey ?? r.runtimeKey
+        const actualProvider = started.route?.providerKey ?? providerKey
+        const providerNote = actualHarness === 'coding' && actualProvider && actualProvider !== 'auto' && actualProvider !== 'custom'
+          ? ` · ${PROVIDER_LABEL[actualProvider]}`
+          : ''
+        updateMessage(placeholder.id, {
+          routingNote: `${started.route ? 'Server' : 'Auto'} · ${MODEL_LABEL[actualModel]} · ${HARNESS_LABEL[actualHarness]}${providerNote} · ${RUNTIME_LABEL[actualRuntime]}`,
+        })
+        // Keep the composer pill consistent with what the server actually ran.
+        if (started.route) {
+          setRoute((prev) => ({ ...prev, modelKey: actualModel, harnessKey: actualHarness, runtimeKey: actualRuntime }))
+          if (started.route.providerKey) setProviderKey(started.route.providerKey)
+        }
 
         if (isMockMode) {
           // Local mock runtime: the simulation IS the event source.
@@ -150,13 +252,18 @@ export function ChatPage() {
         // run card entirely from live session events.
         let liveRun: AgentRunBlock = {
           id: started.runId, kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
-          title: 'Agent run', model: MODEL_LABEL[r.modelKey], harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
+          title: 'Agent run', model: MODEL_LABEL[actualModel], harness: HARNESS_LABEL[actualHarness], runtime: RUNTIME_LABEL[actualRuntime],
           statusText: mode.replace('_', ' '), done: false, tools: [], plan: [], artifacts: [],
         }
-        updateMessage(placeholder.id, { run: liveRun })
+        if (runBlock) updateMessage(placeholder.id, { run: liveRun })
+        let liveText = ''
         runUnsub.current = services.runtime.subscribe(started.runId, (event) => {
+          if (event.type === 'agent.output.delta' && typeof event.payload.text === 'string') {
+            liveText += event.payload.text
+            updateMessage(placeholder.id, { text: liveText })
+          }
           liveRun = applyRunEvent(liveRun, event)
-          updateMessage(placeholder.id, { run: liveRun })
+          if (runBlock) updateMessage(placeholder.id, { run: liveRun })
           setActivity((a) => [...a, { title: event.type, sub: liveRun.statusText, t: `#${event.sequence}` }])
           if (event.type === 'agent.completed' || event.type === 'agent.failed') {
             setActivity((a) => [...a, {
@@ -166,8 +273,14 @@ export function ChatPage() {
           }
         })
         return
-      } catch {
-        // fall through to simulation
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        updateMessage(placeholder.id, runBlock
+          ? { run: { ...runBlock, statusText: reason, done: true } }
+          : { text: `OpenSaddle could not complete this message: ${reason}` })
+        setActivity((a) => [...a, { title: 'Run rejected', sub: reason, kind: 'error', t: 'now' }])
+        toast('Run failed', reason)
+        return
       }
     }
 
@@ -186,11 +299,38 @@ export function ChatPage() {
 
   const grantPerm = async () => {
     setPerm(null)
+    let approvalId: string | undefined
+    const execution = chat ? evaluatePermissions(data.permissionGrants, {
+      userId: data.currentUserId,
+      agentId: chat.agentId,
+      resourceKind: 'project',
+      resourceId: project.id,
+      action: 'execute',
+    }) : null
+    if (execution?.approvalRequired && services?.runtime.requestApproval && chat) {
+      try {
+        const approval = await services.runtime.requestApproval({
+          projectId: project.id,
+          agentId: chat.agentId,
+          action: 'execute',
+        })
+        approvalId = approval.id
+        if (approval.status === 'pending') {
+          if (!services.runtime.resolveApproval) throw new Error('Approval is waiting for an authorized reviewer')
+          await services.runtime.resolveApproval(approval.id, true)
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        toast('Approval pending', reason)
+        setActivity((a) => [...a, { title: 'Approval requested', sub: reason, kind: 'info', t: 'now' }])
+        return
+      }
+    }
     toast('Access granted', `Scope: ${permScope}`)
     setActivity((a) => [...a, { title: 'Permission granted', sub: perm?.resource ?? '', kind: 'info', t: 'now' }])
     if (chat) {
       const r = refreshRoute(pending)
-      await runAgent(pending, r, chat.id)
+      await runAgent(pending, r, chat.id, approvalId)
     }
   }
 
@@ -210,7 +350,7 @@ export function ChatPage() {
           <div className="chat-scroll" ref={scrollRef}>
             {!messages.length && (
               <div className="welcome">
-                <div className="welcome-logo"><Icon name="spark" className="icon xl" /></div>
+                <div className="welcome-logo"><Icon name="saddle" className="icon xl" /></div>
                 <h1>What should we build?</h1>
                 <div className="starter-grid">
                   {starters.map((s) => (
@@ -235,7 +375,17 @@ export function ChatPage() {
 
             <div className={`messages ${messages.length ? 'active' : ''}`}>
               {messages.map((m) => (
-                <MessageView key={m.id} m={m} onHunk={(hid, st) => updateHunk(m.id, hid, st)} toast={toast} files={services?.files} />
+                <MessageView key={m.id} m={m} onHunk={async (filePath, hunkIndex, hid, st) => {
+                  try {
+                    if (m.run?.id && m.run.id !== 'pending' && services?.runtime.resolveDiff) {
+                      await services.runtime.resolveDiff(m.run.id, filePath, hunkIndex, st)
+                    }
+                    updateHunk(m.id, hid, st)
+                    toast(st === 'accepted' ? 'Hunk accepted' : 'Hunk reverted', filePath)
+                  } catch (error) {
+                    toast('Diff update failed', error instanceof Error ? error.message : String(error))
+                  }
+                }} toast={toast} files={services?.files} />
               ))}
             </div>
           </div>
@@ -284,11 +434,15 @@ export function ChatPage() {
                 <button className="composer-btn" onClick={() => { setRouteOpen(false); setToolsOpen((v) => !v) }}><Icon name="tools" className="icon sm" />Tools</button>
                 <button className="composer-btn access" title="View this project's permission grants" onClick={() => nav(`/permissions/${project.id}`)}><Icon name="shield" className="icon sm" />Scoped access</button>
                 <span className="composer-spacer" />
-                <button className={`route-pill ${auto ? '' : 'manual'}`} onClick={() => { setToolsOpen(false); setRouteOpen((v) => !v); refreshRoute(text || pending || 'build a feature') }}>
+                <button className={`route-pill ${auto ? '' : 'manual'}`} title={serverRouting ? 'Routed by the OpenSaddle control plane' : 'Routed locally (mock)'} onClick={() => { setToolsOpen(false); setRouteOpen((v) => !v); refreshRoute(text || pending || 'build a feature') }}>
                   {auto && <span className="pulse" />}
-                  <span className="route-seg">{auto ? 'Auto' : 'Manual'}</span><span className="sep">·</span>
-                  <span className="route-seg">{MODEL_LABEL[route.modelKey].split(' ')[0]} {MODEL_LABEL[route.modelKey].split(' ')[1] ?? ''}</span><span className="sep">·</span>
-                  <span className="route-seg">{HARNESS_LABEL[route.harnessKey]}</span><span className="sep">·</span>
+                  <span className="route-seg">{auto ? (serverRouting ? 'Server' : 'Auto') : 'Manual'}</span><span className="sep">·</span>
+                  <span className="route-seg">{modelLabel(route.modelKey).split(' ').slice(0, 2).join(' ')}</span><span className="sep">·</span>
+                  <span className="route-seg">{
+                    route.harnessKey === 'coding' && providerKey !== 'auto' && providerKey !== 'custom'
+                      ? PROVIDER_LABEL[providerKey]
+                      : HARNESS_LABEL[route.harnessKey]
+                  }</span><span className="sep">·</span>
                   <span className="route-seg">{RUNTIME_LABEL[route.runtimeKey].split(' ')[0]}</span>
                   <Icon name="chevron" className="icon sm" />
                 </button>
@@ -328,9 +482,17 @@ export function ChatPage() {
                   </div>
                   <div className="rp-selectors">
                     <div className="popover-title" style={{ paddingLeft: 0 }}>Override manually</div>
-                    <div><label>Model</label><select value={modelOv} onChange={(e) => { setModelOv(e.target.value as ModelKey | 'auto'); setAuto(e.target.value === 'auto' && harnessOv === 'auto'); refreshRoute(text) }}><option value="auto">Auto</option><option value="gpt">GPT-5.6</option><option value="claude">Claude Opus</option><option value="sonnet">Claude Sonnet</option><option value="gemini">Gemini</option><option value="llama">Llama</option></select></div>
+                    <div><label>Model</label><select value={modelOv} onChange={(e) => { setModelOv(e.target.value as ModelKey | 'auto'); setAuto(e.target.value === 'auto' && harnessOv === 'auto' && providerOv === 'auto'); refreshRoute(text) }}><option value="auto">Auto (task-optimized)</option><option value="gpt">GPT / balanced</option><option value="claude">Claude Opus / quality</option><option value="sonnet">Claude Sonnet / fast</option><option value="gemini">Gemini</option><option value="llama">Llama / local</option></select></div>
+                    {services?.controlPlane.modelProvider === 'openrouter' && (
+                      <div><label>OpenRouter free model</label><select value={openRouterModelId} onChange={(e) => setOpenRouterModelId(e.target.value)}>
+                        <option value="">Auto free router</option>
+                        {freeModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+                      </select></div>
+                    )}
                     <div><label>Harness</label><select value={harnessOv} onChange={(e) => { setHarnessOv(e.target.value as Harness | 'auto'); setAuto(false); refreshRoute(text) }}><option value="auto">Auto</option><option value="chat">Chat</option><option value="research">Research</option><option value="coding">Coding</option><option value="browser">Browser</option></select></div>
+                    <div><label>Coding provider</label><select value={providerOv} onChange={(e) => { setProviderOv(e.target.value as CodingProvider); setAuto(false); if (e.target.value !== 'auto') setHarnessOv('coding') }}><option value="auto">Auto</option><option value="opensaddle">OpenSaddle agent</option><option value="codex">Codex CLI</option><option value="claude">Claude Code</option><option value="cursor">Cursor Agent</option><option value="gemini">Gemini CLI</option><option value="opencode">OpenCode</option></select></div>
                     <div><label>Runtime</label><select value={runtimeOv} onChange={(e) => { setRuntimeOv(e.target.value as RuntimeKind | 'auto'); setAuto(false); refreshRoute(text) }}><option value="auto">Auto</option><option value="local">Local</option><option value="browser">Browser</option><option value="sandbox">Cloud VM</option><option value="gpu">GPU</option></select></div>
+                    <p className="rp-hint">Model maps into the chosen coding CLI (e.g. Codex `--model`). Auto picks a stronger model for architecture/migrations and a faster one for typos/lint fixes.</p>
                   </div>
                 </div>
               )}
@@ -458,7 +620,7 @@ export function ChatPage() {
 
 function MessageView({ m, onHunk, toast, files }: {
   m: Message
-  onHunk: (id: string, s: 'accepted' | 'rejected') => void
+  onHunk: (filePath: string, hunkIndex: number, id: string, s: 'accepted' | 'rejected') => void
   toast: (t: string, m: string) => void
   files?: { write: (path: string, content: string) => Promise<void> } | null
 }) {
@@ -468,13 +630,19 @@ function MessageView({ m, onHunk, toast, files }: {
   const run = m.run
   return (
     <div className="message assistant">
-      {!run && <div className="assistant-avatar"><Icon name="spark" /></div>}
+      {!run && (
+        <div className="assistant-avatar" title={PROVIDER_NAME[providerFromLabel(m.routingNote)]}>
+          <ProviderLogo label={m.routingNote} className="provider-logo" />
+        </div>
+      )}
       <div className="message-body" style={run ? { maxWidth: 760 } : undefined}>
         {m.lightHtml && <div className="message-text" dangerouslySetInnerHTML={{ __html: m.lightHtml }} />}
+        {!m.lightHtml && m.text && <div className="message-text">{m.text}</div>}
+        {!run && !m.lightHtml && !m.text && <div className="message-thinking"><span className="pulse" />Thinking…</div>}
         {run && (
           <div className="agent-run">
             <div className="run-top">
-              <div className="run-avatar"><Icon name="spark" className="icon sm" /></div>
+              <div className="run-avatar" title={PROVIDER_NAME[providerFromLabel(run.model)]}><ProviderLogo label={run.model} className="provider-logo sm" /></div>
               <div><div className="run-title">{run.title}</div><div className="run-sub">Auto · {run.model} · {run.harness} · {run.runtime}</div></div>
               <div className={`run-live ${run.done ? 'done' : ''}`}>{run.done ? 'Done' : <><span className="spinner" /> Working</>}</div>
             </div>
@@ -531,11 +699,11 @@ function MessageView({ m, onHunk, toast, files }: {
                   <details key={f.path} className="diff-file" open>
                     <summary className="diff-file-head"><span className="df-path">{f.path}</span><span className="df-right"><span className="diff-stat"><span className="add">+{f.add}</span> <span className="del">−{f.del}</span></span></span></summary>
                     <div className="diff-hunks">
-                      {f.hunks.map((h) => (
+                      {f.hunks.map((h, hunkIndex) => (
                         <div key={h.id} className={`hunk ${h.status === 'rejected' ? 'rejected' : ''}`}>
                           <div className="hunk-bar"><span>{h.range}</span><span className="hunk-actions">
                             {h.status === 'accepted' ? <span className="accepted-pill">Accepted</span> : (
-                              <><button className="tiny-btn" onClick={() => onHunk(h.id, 'rejected')}>Reject</button><button className="tiny-btn" onClick={() => onHunk(h.id, 'accepted')}>Accept</button></>
+                              <><button className="tiny-btn" onClick={() => onHunk(f.path, hunkIndex, h.id, 'rejected')}>Reject</button><button className="tiny-btn" onClick={() => onHunk(f.path, hunkIndex, h.id, 'accepted')}>Accept</button></>
                             )}
                           </span></div>
                           {h.lines.map((ln, i) => (

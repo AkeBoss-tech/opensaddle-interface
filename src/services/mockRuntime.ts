@@ -1,6 +1,6 @@
 import { deriveRoute, simulateAgentRun } from '../lib/simulation'
 import type { RuntimeClient, RouteEstimate, SessionEvent } from './contracts'
-import type { Harness, ModelKey, RuntimeKind } from '../types'
+import type { CodingProvider, Harness, ModelKey, RuntimeKind } from '../types'
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
@@ -10,11 +10,24 @@ export class MockRuntimeClient implements RuntimeClient {
   private listeners = new Map<string, Set<(e: SessionEvent) => void>>()
   private cancelled = new Set<string>()
 
-  async estimate(task: string, prefs?: { routingPref?: string }): Promise<RouteEstimate> {
-    const route = deriveRoute(task, prefs?.routingPref ?? 'quality')
+  async estimate(task: string, prefs?: {
+    routingPref?: string
+    modelKey?: ModelKey
+    harnessKey?: Harness
+    providerKey?: CodingProvider
+    runtimeKey?: RuntimeKind
+  }): Promise<RouteEstimate> {
+    const route = deriveRoute(task, prefs?.routingPref ?? 'quality', {
+      model: prefs?.modelKey && prefs.modelKey !== 'auto' ? prefs.modelKey : undefined,
+      harness: prefs?.harnessKey,
+      runtime: prefs?.runtimeKey,
+    })
     return {
       modelKey: route.modelKey,
       harnessKey: route.harnessKey,
+      providerKey: prefs?.providerKey && prefs.providerKey !== 'auto'
+        ? prefs.providerKey
+        : (route.harnessKey === 'coding' ? 'opensaddle' : undefined),
       runtimeKey: route.runtimeKey,
       reasons: route.reasons,
       cost: route.cost,

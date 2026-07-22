@@ -1,21 +1,35 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
-  AgentInterface, AppData, Chat, CustomAgent, Dashboard, Message, PermissionGrant, ProjectSource, QuickApi, SettingsState, Site, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
+  AgentInterface, AppData, Chat, CustomAgent, Dashboard, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
 } from '../types'
 import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
 import { initServices, resetServices, type ServiceBundle } from '../services'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
 
+function normalizeWorkspace(data: AppData): AppData {
+  data.pinnedArtifacts ??= []
+  const codingProject = data.projects.find((project) => project.id === 'proj-coding')
+  if (codingProject && !codingProject.routingDefaults) {
+    codingProject.routingDefaults = {
+      providerKey: 'codex',
+      modelKey: 'sonnet',
+      runtimeKey: 'sandbox',
+      reviewProviderKey: 'claude',
+    }
+  }
+  return data
+}
+
 function load(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return createSeedData()
+    if (!raw) return normalizeWorkspace(createSeedData())
     const parsed = JSON.parse(raw) as AppData
-    if (parsed.version !== DATA_VERSION) return createSeedData()
-    return parsed
+    if (parsed.version !== DATA_VERSION) return normalizeWorkspace(createSeedData())
+    return normalizeWorkspace(parsed)
   } catch {
-    return createSeedData()
+    return normalizeWorkspace(createSeedData())
   }
 }
 
@@ -38,8 +52,14 @@ interface StoreApi {
   appendMessage: (msg: Omit<Message, 'id' | 'createdAt'> & { id?: string }) => Message
   updateMessage: (id: string, patch: Partial<Message>) => void
   createProject: (name: string, parentId: string | null, description: string) => string
+  updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description' | 'routingDefaults'>>) => void
+  setPinnedArtifacts: (items: PinnedArtifact[]) => void
   createAgent: (input: Omit<CustomAgent, 'id' | 'createdAt'>) => CustomAgent
-  createSite: (input: Omit<Site, 'id' | 'createdAt'>) => Site
+  createSite: (input: Omit<Site, 'id' | 'createdAt' | 'updatedAt' | 'slug' | 'accent' | 'versions' | 'agentPlacement'> & Partial<Pick<Site, 'slug' | 'accent' | 'agentPlacement'>>) => Site
+  createSiteVersion: (siteId: string, label: string, summary: string) => SiteVersion | null
+  publishSiteVersion: (siteId: string, versionId: string) => void
+  updateSite: (siteId: string, patch: Partial<Pick<Site, 'name' | 'slug' | 'accent' | 'pages' | 'agentId' | 'agentPlacement' | 'visibility' | 'description'>>) => void
+  switchUser: (userId: string) => void
   createApi: (input: Omit<QuickApi, 'id' | 'createdAt' | 'runHistory' | 'records'> & { records?: QuickApi['records'] }) => QuickApi
   mutateApi: (id: string, action: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'TRANSFORM', payload?: Record<string, string | number | boolean>) => void
   createDashboard: (input: Omit<Dashboard, 'id' | 'createdAt'>) => Dashboard
@@ -51,8 +71,8 @@ interface StoreApi {
   updateWikiSettings: (patch: Partial<WikiSettings>) => void
   refreshWikiSummaries: (projectId: string) => void
   setPermissionGrants: (grants: PermissionGrant[]) => void
-  upsertPermissionGrant: (grant: Omit<PermissionGrant, 'id' | 'createdAt'> & { id?: string }) => PermissionGrant
-  revokePermissionGrant: (id: string) => void
+  upsertPermissionGrant: (grant: Omit<PermissionGrant, 'id' | 'createdAt'> & { id?: string }) => Promise<PermissionGrant>
+  revokePermissionGrant: (id: string) => Promise<void>
   createWorkflow: (input: Omit<WorkflowDef, 'id' | 'createdAt'>) => WorkflowDef
   updateWorkflowStatus: (id: string, status: WorkflowDef['status']) => void
   runWorkflow: (id: string) => Promise<WorkflowRun | null>
@@ -65,6 +85,8 @@ interface StoreApi {
   dismissToast: (id: string) => void
   services: ServiceBundle | null
   runtimeModeLabel: string
+  persistenceStatus: 'local' | 'loading' | 'syncing' | 'synced' | 'error'
+  lastSavedAt: number | null
 }
 
 const StoreContext = createContext<StoreApi | null>(null)
@@ -73,8 +95,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(() => load())
   const [toasts, setToasts] = useState<Array<{ id: string; title: string; message: string }>>([])
   const [services, setServices] = useState<ServiceBundle | null>(null)
+  const [persistenceStatus, setPersistenceStatus] = useState<StoreApi['persistenceStatus']>('loading')
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const grantsRef = useRef(data.permissionGrants)
+  const currentUserRef = useRef(data.currentUserId)
+  const dataRef = useRef(data)
+  const workspaceHydratedRef = useRef(false)
+  const saveSequenceRef = useRef(0)
   grantsRef.current = data.permissionGrants
+  currentUserRef.current = data.currentUserId
+  dataRef.current = data
+
+  const toast = useCallback((title: string, message: string) => {
+    const id = uid('toast')
+    setToasts((t) => [...t, { id, title, message }])
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3600)
+  }, [])
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
@@ -92,17 +128,61 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       getGrants: () => grantsRef.current,
       setGrants: (grants) => setData((d) => ({ ...d, permissionGrants: grants })),
       currentUserId: data.currentUserId,
-    }).then((bundle) => {
-      if (!cancelled) setServices(bundle)
+      getCurrentUserId: () => currentUserRef.current,
+    }).then(async (bundle) => {
+      if (cancelled) return
+      setServices(bundle)
+      if (!workspaceHydratedRef.current && bundle.workspace) {
+        try {
+          const remote = await bundle.workspace.load()
+          if (cancelled) return
+          if (remote?.version === DATA_VERSION) {
+            const normalized = normalizeWorkspace(remote)
+            setData(normalized)
+            const result = await bundle.workspace.save(normalized)
+            setLastSavedAt(result.updatedAt)
+          } else {
+            const result = await bundle.workspace.save(dataRef.current)
+            setLastSavedAt(result.updatedAt)
+          }
+          workspaceHydratedRef.current = true
+          setPersistenceStatus('synced')
+        } catch (error) {
+          workspaceHydratedRef.current = true
+          setPersistenceStatus('error')
+          toast('Database sync unavailable', error instanceof Error ? error.message : String(error))
+        }
+      } else if (!bundle.workspace) {
+        workspaceHydratedRef.current = true
+        setPersistenceStatus('local')
+      }
+    }).catch((error: unknown) => {
+      if (!cancelled) {
+        setServices(null)
+        setPersistenceStatus('local')
+        toast('Control plane unavailable', error instanceof Error ? error.message : String(error))
+      }
     })
     return () => { cancelled = true }
-  }, [data.currentUserId])
+  }, [data.currentUserId, toast])
 
-  const toast = useCallback((title: string, message: string) => {
-    const id = uid('toast')
-    setToasts((t) => [...t, { id, title, message }])
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3600)
-  }, [])
+  useEffect(() => {
+    if (!services?.workspace || !workspaceHydratedRef.current) return
+    const sequence = ++saveSequenceRef.current
+    setPersistenceStatus('syncing')
+    const timer = window.setTimeout(() => {
+      void services.workspace?.save(data).then((result) => {
+        if (sequence !== saveSequenceRef.current) return
+        setLastSavedAt(result.updatedAt)
+        setPersistenceStatus('synced')
+      }).catch((error: unknown) => {
+        if (sequence !== saveSequenceRef.current) return
+        setPersistenceStatus('error')
+        toast('Database save failed', error instanceof Error ? error.message : String(error))
+      })
+    }, 450)
+    return () => window.clearTimeout(timer)
+  }, [data, services, toast])
 
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), [])
 
@@ -113,6 +193,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toasts,
     dismissToast,
     toast,
+    persistenceStatus,
+    lastSavedAt,
     setTheme: (t) => patch((d) => { d.settings.theme = t; return d }),
     updateSettings: (s) => patch((d) => { d.settings = { ...d.settings, ...s, notifications: { ...d.settings.notifications, ...(s.notifications ?? {}) } }; return d }),
     setActiveProject: (id) => patch((d) => { d.activeProjectId = id; return d }),
@@ -186,16 +268,110 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
       return id
     },
+    updateProject: (id, projectPatch) => patch((d) => {
+      const project = d.projects.find((item) => item.id === id)
+      if (project) Object.assign(project, projectPatch)
+      return d
+    }),
+    setPinnedArtifacts: (items) => patch((d) => {
+      d.pinnedArtifacts = items
+      return d
+    }),
     createAgent: (input) => {
       const agent: CustomAgent = { ...input, id: uid('agent'), createdAt: Date.now() }
       patch((d) => { d.agents.unshift(agent); return d })
       return agent
     },
     createSite: (input) => {
-      const site: Site = { ...input, id: uid('site'), createdAt: Date.now() }
+      const slug = input.slug ?? input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+      const site: Site = {
+        ...input,
+        id: uid('site'),
+        slug,
+        accent: input.accent ?? '#80a9ff',
+        versions: [],
+        agentPlacement: input.agentPlacement ?? 'bubble',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      const firstVersion: SiteVersion = {
+        id: uid('sv'), label: 'v1', summary: 'Initial version', status: 'draft', createdAt: Date.now(), createdBy: data.currentUserId,
+        snapshot: {
+          name: site.name,
+          description: site.description,
+          accent: site.accent,
+          pages: structuredClone(site.pages),
+          agentId: site.agentId,
+          agentPlacement: site.agentPlacement,
+        },
+      }
+      site.versions = [firstVersion]
       patch((d) => { d.sites.unshift(site); return d })
       return site
     },
+    createSiteVersion: (siteId, label, summary) => {
+      let version: SiteVersion | null = null
+      let ok = false
+      patch((d) => {
+        const s = d.sites.find((x) => x.id === siteId)
+        if (s) {
+          version = {
+            id: uid('sv'), label, summary, status: 'draft', createdAt: Date.now(), createdBy: data.currentUserId,
+            snapshot: {
+              name: s.name,
+              description: s.description,
+              accent: s.accent,
+              pages: structuredClone(s.pages),
+              agentId: s.agentId,
+              agentPlacement: s.agentPlacement,
+            },
+          }
+          s.versions.unshift(version)
+          s.updatedAt = Date.now()
+          ok = true
+        }
+        return d
+      })
+      return ok ? version : null
+    },
+    publishSiteVersion: (siteId, versionId) => patch((d) => {
+      const s = d.sites.find((x) => x.id === siteId)
+      if (!s) return d
+      for (const v of s.versions) {
+        if (v.id === versionId) v.status = 'published'
+        else if (v.status === 'published') v.status = 'archived'
+      }
+      s.publishedVersionId = versionId
+      s.updatedAt = Date.now()
+      return d
+    }),
+    updateSite: (siteId, sitePatch) => patch((d) => {
+      const s = d.sites.find((x) => x.id === siteId)
+      if (s) {
+        Object.assign(s, sitePatch)
+        s.updatedAt = Date.now()
+        const currentDraft = s.versions.find((version) => version.status === 'draft')
+        if (currentDraft) {
+          currentDraft.snapshot = {
+            name: s.name,
+            description: s.description,
+            accent: s.accent,
+            pages: structuredClone(s.pages),
+            agentId: s.agentId,
+            agentPlacement: s.agentPlacement,
+          }
+        }
+      }
+      return d
+    }),
+    switchUser: (userId) => patch((d) => {
+      const member = d.members.find((m) => m.id === userId)
+      if (!member) return d
+      d.currentUserId = member.id
+      d.settings.displayName = member.name
+      d.settings.email = member.email
+      return d
+    }),
     createApi: (input) => {
       const apiItem: QuickApi = { ...input, id: uid('api'), createdAt: Date.now(), records: input.records ?? [], runHistory: [] }
       patch((d) => { d.apis.unshift(apiItem); return d })
@@ -251,8 +427,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return d
     }),
     setPermissionGrants: (grants) => patch((d) => { d.permissionGrants = grants; return d }),
-    upsertPermissionGrant: (grant) => {
-      const next: PermissionGrant = { ...grant, id: grant.id ?? uid('grant'), createdAt: Date.now() }
+    upsertPermissionGrant: async (grant) => {
+      const next = services
+        ? await services.permissions.upsert(grant)
+        : { ...grant, id: grant.id ?? uid('grant'), createdAt: Date.now() }
       patch((d) => {
         const idx = d.permissionGrants.findIndex((g) => g.id === next.id)
         if (idx >= 0) d.permissionGrants[idx] = next
@@ -261,7 +439,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
       return next
     },
-    revokePermissionGrant: (id) => patch((d) => { d.permissionGrants = d.permissionGrants.filter((g) => g.id !== id); return d }),
+    revokePermissionGrant: async (id) => {
+      if (services) await services.permissions.revoke(id)
+      patch((d) => { d.permissionGrants = d.permissionGrants.filter((g) => g.id !== id); return d })
+    },
     createWorkflow: (input) => {
       const wf: WorkflowDef = { ...input, id: uid('wf'), createdAt: Date.now() }
       patch((d) => { d.workflows.unshift(wf); return d })
@@ -384,7 +565,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     exportData: () => JSON.stringify(data, null, 2),
     services,
     runtimeModeLabel: modeLabel(detectRuntimeMode()),
-  }), [data, toast, toasts, dismissToast, patch, services])
+  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, lastSavedAt])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

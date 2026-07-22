@@ -4,8 +4,8 @@ const now = Date.now()
 const hour = 3600_000
 const day = 24 * hour
 
-export const DATA_VERSION = 4
-export const STORAGE_KEY = 'opensaddle-data-v4'
+export const DATA_VERSION = 5
+export const STORAGE_KEY = 'opensaddle-data-v5'
 
 export function createSeedData(): AppData {
   const corp = 'proj-corp'
@@ -31,6 +31,7 @@ export function createSeedData(): AppData {
       { id: 'user-maya', name: 'Maya Chen', initials: 'MC', role: 'Editor', email: 'maya@acme.com' },
       { id: 'user-jordan', name: 'Jordan Lee', initials: 'JL', role: 'Reviewer', email: 'jordan@acme.com' },
       { id: 'user-sec', name: 'Security Ops', initials: 'SO', role: 'Reviewer', email: 'secops@acme.com' },
+      { id: 'user-priya', name: 'Priya Shah', initials: 'PS', role: 'Viewer', email: 'priya@acme.com' },
     ],
     projects: [
       { id: corp, name: 'Corporate Base Agent', parentId: null, description: 'Default enterprise agent with corporate-safe routing, shared knowledge, and a permission gateway.', iconColor: '#80a9ff', knowledgeCount: 12, serviceCount: 8, childCount: 4, autoConfidence: 93, lineage: ['Organization', 'Corporate Base Agent'] },
@@ -38,7 +39,7 @@ export function createSeedData(): AppData {
       { id: claims, name: 'Claims Assistant', parentId: cust, description: 'Drafts claim responses with human approval on writes.', iconColor: '#8f78de', knowledgeCount: 4, serviceCount: 3, childCount: 0, autoConfidence: 91, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Claims Assistant'] },
       { id: cold, name: 'Cold Emailer', parentId: cust, description: 'Outreach drafts with send gated by approval.', iconColor: '#d6af63', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 84, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Cold Emailer'] },
       { id: eng, name: 'Engineering', parentId: corp, description: 'Repositories, CI systems, and coding agents.', iconColor: '#73a8dd', knowledgeCount: 9, serviceCount: 5, childCount: 3, autoConfidence: 95, lineage: ['Organization', 'Corporate Base Agent', 'Engineering'] },
-      { id: coding, name: 'Coding Agent', parentId: eng, description: 'Repository-aware planning, patches, tests, and PRs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 0, autoConfidence: 96, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Coding Agent'] },
+      { id: coding, name: 'Coding Agent', parentId: eng, description: 'Repository-aware planning, patches, tests, and PRs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 0, autoConfidence: 96, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Coding Agent'], routingDefaults: { providerKey: 'codex', modelKey: 'sonnet', runtimeKey: 'sandbox', reviewProviderKey: 'claude' } },
       { id: router, name: 'Model Router', parentId: eng, description: 'Routing policy, cost controls, and harness selection.', iconColor: '#73a8dd', knowledgeCount: 5, serviceCount: 2, childCount: 0, autoConfidence: 90, lineage: ['Organization', 'Engineering', 'Model Router'] },
       { id: audit, name: 'Degree Audit', parentId: coding, description: 'Nested project that inherits GitHub but denies production DB writes.', iconColor: '#65c78b', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 89, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Degree Audit'] },
     ],
@@ -202,14 +203,45 @@ export function createSeedData(): AppData {
     ],
     sites: [
       {
-        id: 'site-claims', projectId: claims, name: 'Claims intake portal', description: 'Customer-facing page with an embedded claims agent rail.',
-        agentId: 'agent-claims', visibility: 'shared', createdAt: now - 5 * day,
-        pages: [{ id: 'sp1', title: 'Home', body: 'Submit a claim update and let the assistant draft a response for review.', agentRail: true }],
+        id: 'site-claims', projectId: claims, name: 'Claims intake portal', description: 'Customer-facing intake experience with an embedded claims agent.',
+        slug: 'claims-intake', accent: '#8f78de',
+        agentId: 'agent-claims', agentPlacement: 'bubble', visibility: 'shared', createdAt: now - 5 * day, updatedAt: now - 3 * hour,
+        pages: [
+          { id: 'sp1', title: 'Home', body: 'Submit a claim update and let the assistant draft a response for review. Every submission is routed through the claims copilot with human approval on writes.', agentRail: true },
+          { id: 'sp1b', title: 'Track a claim', body: 'Enter your claim ID to see live status, adjuster notes, and expected resolution dates.', agentRail: true },
+          { id: 'sp1c', title: 'FAQ', body: 'Answers to common coverage, deductible, and timeline questions — the agent can answer anything not covered here.', agentRail: true },
+        ],
+        versions: [
+          { id: 'sv-claims-3', label: 'v3', summary: 'Added claim tracking page and FAQ', status: 'draft', createdAt: now - 3 * hour, createdBy: 'user-maya' },
+          { id: 'sv-claims-2', label: 'v2', summary: 'Embedded claims copilot bubble on every page', status: 'published', createdAt: now - 2 * day, createdBy: 'user-ad' },
+          { id: 'sv-claims-1', label: 'v1', summary: 'Initial intake form', status: 'archived', createdAt: now - 5 * day, createdBy: 'user-ad' },
+        ],
+        publishedVersionId: 'sv-claims-2',
       },
       {
-        id: 'site-status', projectId: eng, name: 'Engineering status page', description: 'Internal status with agent Q&A.',
-        agentId: 'agent-coder', visibility: 'project', createdAt: now - 4 * day,
-        pages: [{ id: 'sp2', title: 'Status', body: 'All systems operational. Ask the coding agent about recent incidents.', agentRail: true }],
+        id: 'site-status', projectId: eng, name: 'Engineering status page', description: 'Internal status page with coding-agent Q&A on incidents.',
+        slug: 'eng-status', accent: '#73a8dd',
+        agentId: 'agent-coder', agentPlacement: 'rail', visibility: 'project', createdAt: now - 4 * day, updatedAt: now - day,
+        pages: [
+          { id: 'sp2', title: 'Status', body: 'All systems operational. Ask the coding agent about recent incidents, deploys, or postmortems.', agentRail: true },
+          { id: 'sp2b', title: 'Incidents', body: 'No active incidents. Last incident: elevated API latency (resolved Jul 18).', agentRail: true },
+        ],
+        versions: [
+          { id: 'sv-status-2', label: 'v2', summary: 'Incident history + agent rail', status: 'published', createdAt: now - day, createdBy: 'user-ad' },
+          { id: 'sv-status-1', label: 'v1', summary: 'Basic status board', status: 'archived', createdAt: now - 4 * day, createdBy: 'user-ad' },
+        ],
+        publishedVersionId: 'sv-status-2',
+      },
+      {
+        id: 'site-outreach', projectId: cold, name: 'Outreach preview studio', description: 'Review outreach drafts and approve sends from one page.',
+        slug: 'outreach-studio', accent: '#d6af63',
+        agentId: 'agent-cold', agentPlacement: 'bubble', visibility: 'private', createdAt: now - 2 * day, updatedAt: now - 5 * hour,
+        pages: [
+          { id: 'sp3', title: 'Drafts', body: 'Pending outreach drafts appear here. Approve, edit, or ask the drafter agent to rewrite in a different tone.', agentRail: true },
+        ],
+        versions: [
+          { id: 'sv-outreach-1', label: 'v1', summary: 'Draft review board', status: 'draft', createdAt: now - 2 * day, createdBy: 'user-ad' },
+        ],
       },
     ],
     apis: [
@@ -521,7 +553,14 @@ export function createSeedData(): AppData {
       { id: 'grant-ad-org', principalKind: 'user', principalId: 'user-ad', resourceKind: 'organization', resourceId: 'org-acme', action: 'administer', effect: 'allow', inheritance: 'direct', createdAt: now - 30 * day, createdBy: 'user-ad' },
       { id: 'grant-ad-eng', principalKind: 'user', principalId: 'user-ad', resourceKind: 'project', resourceId: eng, action: 'administer', effect: 'allow', inheritance: 'direct', createdAt: now - 20 * day, createdBy: 'user-ad' },
       { id: 'grant-maya-eng-write', principalKind: 'user', principalId: 'user-maya', resourceKind: 'project', resourceId: eng, action: 'write', effect: 'allow', inheritance: 'direct', createdAt: now - 18 * day, createdBy: 'user-ad' },
+      { id: 'grant-maya-coding-write', principalKind: 'user', principalId: 'user-maya', resourceKind: 'project', resourceId: coding, action: 'write', effect: 'allow', inheritance: 'inherited', createdAt: now - 18 * day, createdBy: 'user-ad' },
+      { id: 'grant-maya-coding-exec', principalKind: 'user', principalId: 'user-maya', resourceKind: 'project', resourceId: coding, action: 'execute', effect: 'allow', inheritance: 'direct', createdAt: now - 18 * day, createdBy: 'user-ad' },
+      { id: 'grant-maya-corp-exec', principalKind: 'user', principalId: 'user-maya', resourceKind: 'project', resourceId: corp, action: 'execute', effect: 'allow', approvalRequired: true, inheritance: 'direct', createdAt: now - 18 * day, createdBy: 'user-ad' },
       { id: 'grant-jordan-eng-read', principalKind: 'user', principalId: 'user-jordan', resourceKind: 'project', resourceId: eng, action: 'read', effect: 'allow', inheritance: 'direct', createdAt: now - 18 * day, createdBy: 'user-ad' },
+      { id: 'grant-jordan-coding-read', principalKind: 'user', principalId: 'user-jordan', resourceKind: 'project', resourceId: coding, action: 'read', effect: 'allow', inheritance: 'inherited', createdAt: now - 18 * day, createdBy: 'user-ad' },
+      { id: 'grant-jordan-coding-exec', principalKind: 'user', principalId: 'user-jordan', resourceKind: 'project', resourceId: coding, action: 'execute', effect: 'allow', approvalRequired: true, inheritance: 'direct', createdAt: now - 15 * day, createdBy: 'user-ad' },
+      { id: 'grant-priya-corp-read', principalKind: 'user', principalId: 'user-priya', resourceKind: 'project', resourceId: corp, action: 'read', effect: 'allow', inheritance: 'direct', createdAt: now - 12 * day, createdBy: 'user-ad' },
+      { id: 'grant-priya-claims-deny', principalKind: 'user', principalId: 'user-priya', resourceKind: 'project', resourceId: claims, action: 'read', effect: 'deny', inheritance: 'override', createdAt: now - 12 * day, createdBy: 'user-sec' },
       { id: 'grant-coder-repo', principalKind: 'agent', principalId: 'agent-coder', resourceKind: 'repository', resourceId: 'src-gh-interface', action: 'write', effect: 'allow', inheritance: 'direct', approvalRequired: true, createdAt: now - 10 * day, createdBy: 'user-ad' },
       { id: 'grant-coder-exec', principalKind: 'agent', principalId: 'agent-coder', resourceKind: 'project', resourceId: coding, action: 'execute', effect: 'allow', inheritance: 'direct', createdAt: now - 10 * day, createdBy: 'user-ad' },
       { id: 'grant-ad-coding-exec', principalKind: 'user', principalId: 'user-ad', resourceKind: 'project', resourceId: coding, action: 'execute', effect: 'allow', inheritance: 'inherited', createdAt: now - 10 * day, createdBy: 'user-ad' },

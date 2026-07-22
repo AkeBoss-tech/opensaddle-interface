@@ -13,12 +13,15 @@ import { PluginsPage } from './pages/PluginsPage'
 import { UsagePage } from './pages/UsagePage'
 import { WikiPage } from './pages/WikiPage'
 import { AdminPage, SettingsPage } from './pages/SettingsPage'
-import { ApiPage, DashboardPage, InterfacePage, SitePage } from './pages/ResourcePages'
+import { ApiPage, DashboardPage, InterfacePage } from './pages/ResourcePages'
+import { PublishedSitePage, SiteExperiencePage, SitesPage } from './pages/SitesPage'
+import { AgentDetailPage } from './pages/AgentDetailPage'
 import { FilesPage } from './pages/FilesPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 import { PermissionsPage } from './pages/PermissionsPage'
 import { HarnessPage } from './pages/HarnessPage'
+import { BrowserRuntimePage } from './pages/BrowserRuntimePage'
 import './styles/app.css'
 
 function Shell() {
@@ -67,7 +70,9 @@ function Shell() {
     { id: 'wiki', group: 'Go to', label: 'Team wiki', icon: 'review', run: () => nav('/wiki') },
     { id: 'agents', group: 'Go to', label: 'Agents', icon: 'spark', run: () => nav('/agents') },
     { id: 'workflows', group: 'Go to', label: 'Workflows', icon: 'clock', run: () => nav('/workflows') },
+    { id: 'sites', group: 'Go to', label: 'Sites', icon: 'globe', run: () => nav('/sites') },
     { id: 'harness', group: 'Go to', label: 'Desktop harness', icon: 'vm', run: () => nav('/harness') },
+    { id: 'browser-runtime', group: 'Go to', label: 'Browser agent runtime', icon: 'globe', run: () => nav('/browser-runtime') },
     { id: 'files', group: 'Go to', label: 'Files', icon: 'file', run: () => nav('/files') },
     { id: 'perms', group: 'Go to', label: 'Permissions', icon: 'shield', run: () => nav('/permissions') },
     { id: 'env', group: 'Go to', label: 'Environments', icon: 'vm', run: () => nav('/environments') },
@@ -80,6 +85,10 @@ function Shell() {
     { id: 'theme', group: 'Actions', label: 'Toggle theme', icon: 'sun', run: cycleTheme },
     { id: 'reset', group: 'Actions', label: 'Reset demo data', icon: 'refresh', run: () => { if (confirm('Reset demo data?')) resetData() } },
   ], [createChat, data.activeProjectId, data.projects, nav, setActiveProject, cycleTheme, resetData])
+
+  if (loc.pathname.startsWith('/published/')) {
+    return <Routes><Route path="/published/:slug" element={<PublishedSitePage />} /></Routes>
+  }
 
   return (
     <div className="app">
@@ -100,6 +109,7 @@ function Shell() {
             <Route path="/workflows" element={<WorkflowsPage />} />
             <Route path="/workflows/:projectId" element={<WorkflowsPage />} />
             <Route path="/harness" element={<HarnessPage />} />
+            <Route path="/browser-runtime" element={<BrowserRuntimePage />} />
             <Route path="/files" element={<FilesPage />} />
             <Route path="/permissions" element={<PermissionsPage />} />
             <Route path="/permissions/:projectId" element={<PermissionsPage />} />
@@ -108,7 +118,9 @@ function Shell() {
             <Route path="/usage" element={<UsagePage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/admin" element={<AdminPage />} />
-            <Route path="/site/:siteId" element={<SitePage />} />
+            <Route path="/sites" element={<SitesPage />} />
+            <Route path="/agent/:agentId" element={<AgentDetailPage />} />
+            <Route path="/site/:siteId" element={<SiteExperiencePage />} />
             <Route path="/api/:apiId" element={<ApiPage />} />
             <Route path="/dashboard/:dashboardId" element={<DashboardPage />} />
             <Route path="/interface/:interfaceId" element={<InterfacePage />} />

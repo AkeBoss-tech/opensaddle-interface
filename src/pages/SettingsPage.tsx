@@ -2,8 +2,19 @@ import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 
 export function SettingsPage() {
-  const { data, updateSettings, setTheme, resetData, exportData } = useStore()
+  const {
+    data,
+    updateSettings,
+    setTheme,
+    resetData,
+    exportData,
+    services,
+    persistenceStatus,
+    lastSavedAt,
+  } = useStore()
   const s = data.settings
+  const controlPlane = services?.controlPlane
+  const isOpenRouter = controlPlane?.modelProvider === 'openrouter'
 
   const download = () => {
     const blob = new Blob([exportData()], { type: 'application/json' })
@@ -16,8 +27,53 @@ export function SettingsPage() {
   return (
     <div className="content-page">
       <div className="page-header">
-        <div className="page-header-copy"><div className="eyebrow">Preferences</div><h1>Settings</h1><p>Profile, appearance, routing, notifications, retention, and demo controls.</p></div>
+        <div className="page-header-copy"><div className="eyebrow">Workspace control center</div><h1>Settings</h1><p>Connect models, verify local storage, and manage the preferences that shape every run.</p></div>
       </div>
+
+      <section className="settings-overview">
+        <div className="settings-overview-copy">
+          <div className="eyebrow">System status</div>
+          <h2>{controlPlane?.connected ? 'OpenSaddle is connected' : 'Running from browser cache'}</h2>
+          <p>
+            {controlPlane?.connected
+              ? `${controlPlane.mode === 'company' ? 'Company' : 'Local'} control plane · ${controlPlane.storage ?? 'server'} persistence`
+              : 'Start the control plane to enable durable chats, server permissions, and real model routing.'}
+          </p>
+        </div>
+        <div className="settings-status-grid">
+          <div className="settings-status-card">
+            <span className={`status-light ${controlPlane?.connected ? 'online' : ''}`} />
+            <div><small>Control plane</small><strong>{controlPlane?.connected ? 'Online' : 'Offline'}</strong></div>
+          </div>
+          <div className="settings-status-card">
+            <Icon name="spark" className="icon sm" />
+            <div><small>Model gateway</small><strong>{isOpenRouter ? 'OpenRouter · Free' : controlPlane?.models.length ? 'Custom endpoint' : 'Not configured'}</strong></div>
+          </div>
+          <div className="settings-status-card">
+            <Icon name="db" className="icon sm" />
+            <div><small>Workspace data</small><strong>{controlPlane?.storage === 'sqlite' ? 'SQLite' : 'Browser cache'}</strong></div>
+          </div>
+          <div className="settings-status-card">
+            <Icon name="refresh" className="icon sm" />
+            <div><small>Sync</small><strong>{persistenceStatus === 'synced' ? 'Saved' : persistenceStatus}</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section className="provider-setup card">
+        <div className="provider-setup-icon"><Icon name="key" /></div>
+        <div className="provider-setup-copy">
+          <div className="eyebrow">Model provider</div>
+          <h3>OpenRouter free models</h3>
+          <p>Your API key belongs in the backend only. Copy <code>packages/control-plane/.env.example</code> to <code>packages/control-plane/.env</code>, then set:</p>
+          <pre>OPENROUTER_API_KEY=sk-or-v1-…{'\n'}OPENROUTER_MODEL=openrouter/free</pre>
+          <span className="provider-note"><Icon name="shield" className="icon sm" />The key never enters localStorage or the browser bundle.</span>
+        </div>
+        <div className={`provider-state ${isOpenRouter ? 'connected' : ''}`}>
+          <span className={`status-light ${isOpenRouter ? 'online' : ''}`} />
+          {isOpenRouter ? 'Connected' : 'Restart backend after adding key'}
+        </div>
+      </section>
 
       <div className="grid-2">
         <div className="card"><div className="card-header"><div><h3>Profile</h3></div></div><div className="card-body">
@@ -50,15 +106,16 @@ export function SettingsPage() {
           ))}
         </div></div>
 
-        <div className="card"><div className="card-header"><div><h3>Data & retention</h3></div></div><div className="card-body">
+        <div className="card"><div className="card-header"><div><h3>Data & retention</h3><p>{controlPlane?.storage === 'sqlite' ? 'Durable SQLite database' : 'Local browser cache'}</p></div></div><div className="card-body">
           <div className="form-row"><label>Chat retention (days)</label><input type="number" value={s.retentionDays} onChange={(e) => updateSettings({ retentionDays: Number(e.target.value) })} /></div>
           <div className="form-row"><label>Tool output retention</label><input type="number" value={s.toolRetentionDays} onChange={(e) => updateSettings({ toolRetentionDays: Number(e.target.value) })} /></div>
           <div className="form-row"><label>Region</label><select value={s.region} onChange={(e) => updateSettings({ region: e.target.value })}><option>United States</option><option>EU</option></select></div>
           <div className="setting-row"><div className="setting-copy"><strong>Disable provider training</strong></div><button className={`switch ${s.trainingDisabled ? 'on' : ''}`} onClick={() => updateSettings({ trainingDisabled: !s.trainingDisabled })} /></div>
+          <div className="setting-row"><div className="setting-copy"><strong>Last database save</strong><span>{lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString() : 'Waiting for first sync'}</span></div><span className={`sync-badge ${persistenceStatus}`}>{persistenceStatus}</span></div>
         </div></div>
 
         <div className="card"><div className="card-header"><div><h3>Demo data</h3></div></div><div className="card-body">
-          <div className="setting-row"><div className="setting-copy"><strong>Export workspace JSON</strong><span>Download localStorage mock data</span></div><button className="tiny-btn" onClick={download}>Export</button></div>
+          <div className="setting-row"><div className="setting-copy"><strong>Export workspace JSON</strong><span>Portable backup of the current workspace</span></div><button className="tiny-btn" onClick={download}>Export</button></div>
           <div className="setting-row"><div className="setting-copy"><strong>Reset to seed</strong><span>Restores the full demo workspace</span></div><button className="danger-btn" onClick={() => { if (confirm('Reset all local demo data?')) resetData() }}>Reset</button></div>
         </div></div>
       </div>

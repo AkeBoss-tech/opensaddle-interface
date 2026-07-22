@@ -98,6 +98,14 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       }
       break
     }
+    case 'review.started':
+      next.statusText = `Reviewing with ${typeof event.payload.provider === 'string' ? event.payload.provider : 'second agent'}`
+      next.plan.push({ label: 'Independent review', status: 'active' })
+      break
+    case 'review.completed':
+      next.statusText = 'Independent review completed'
+      for (const step of next.plan) if (step.status === 'active') step.status = 'done'
+      break
     case 'verification.completed': {
       const checks = Array.isArray(event.payload.checks) ? event.payload.checks as RawCheck[] : []
       if (checks.length) {
@@ -129,6 +137,13 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       next.statusText = `Failed · ${reason}`
       break
     }
+    case 'session.closed':
+      if (event.payload.status === 'completed') {
+        next.done = true
+        next.statusText = 'Completed'
+        for (const step of next.plan) if (step.status !== 'done') step.status = 'done'
+      }
+      break
     default:
       break
   }

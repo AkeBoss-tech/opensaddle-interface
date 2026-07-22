@@ -57,7 +57,7 @@ export function AgentsPage() {
           })
           return (
             <article className="card wiki-person" key={agent.id}>
-              <div className="card-header">
+              <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => nav(`/agent/${agent.id}`)}>
                 <div>
                   <h3>{agent.name}</h3>
                   <p>{project?.name} · {agent.harness} · {agent.modelPolicy}</p>
@@ -87,6 +87,7 @@ export function AgentsPage() {
                   <p>{exec.reason}{exec.approvalRequired ? ' · approval required for writes' : ''}</p>
                 </div>
                 <div className="row-actions" style={{ marginTop: 12 }}>
+                  <Link className="tiny-btn" to={`/agent/${agent.id}`}>Details</Link>
                   <button className="tiny-btn" onClick={() => {
                     const c = createChat(agent.projectId, `Chat with ${agent.name}`, agent.id)
                     nav(`/chat/${c.id}`)

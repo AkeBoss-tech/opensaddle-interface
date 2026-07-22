@@ -4,7 +4,7 @@ import { useStore } from '../../data/store'
 import { Icon } from '../common/Icon'
 
 export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalette: () => void }) {
-  const { data, setTheme, markNotificationsRead, toast, runtimeModeLabel } = useStore()
+  const { data, setTheme, markNotificationsRead, toast, runtimeModeLabel, services, persistenceStatus } = useStore()
   const [notifOpen, setNotifOpen] = useState(false)
   const nav = useNavigate()
   const unread = data.notifications.filter((n) => !n.read).length
@@ -29,7 +29,13 @@ export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalet
       <button className="icon-btn mobile-menu" onClick={() => document.getElementById('sidebar')?.classList.toggle('mobile-open')}><Icon name="menu" /></button>
       <div className="crumbs">{crumbs}</div>
       <div className="topbar-actions">
-        <span className="crumb-pill"><span className="pulse" />{runtimeModeLabel}</span>
+        <Link to="/settings" className="crumb-pill system-pill" title="Open system settings">
+          <span className={`pulse ${services?.controlPlane.connected ? '' : 'offline'}`} />
+          {services?.controlPlane.connected
+            ? `${services.controlPlane.modelProvider === 'openrouter' ? 'OpenRouter' : runtimeModeLabel} · ${services.controlPlane.storage ?? 'server'}`
+            : runtimeModeLabel}
+          {persistenceStatus === 'syncing' && <span className="system-pill-sync">Saving…</span>}
+        </Link>
         <button className="icon-btn" title="Command palette" onClick={onPalette}><Icon name="command" /></button>
         <button className="icon-btn" title="Toggle theme" onClick={cycleTheme}><Icon name="sun" /></button>
         <button className="icon-btn" title="Notifications" onClick={() => { setNotifOpen((v) => !v); if (!notifOpen) markNotificationsRead() }} style={{ position: 'relative' }}>
@@ -54,12 +60,16 @@ export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalet
 }
 
 export function DemoBanner() {
-  const { data, updateSettings, toast, runtimeModeLabel } = useStore()
+  const { data, updateSettings, toast, runtimeModeLabel, services } = useStore()
   if (!data.settings.demoMode) return null
   return (
     <div className="demo-banner">
-      <Icon name="spark" className="icon sm" />
-      <span>{runtimeModeLabel} · localStorage + OPFS · Agents/Workflows/Permissions are first-class · ⌘K</span>
+      <Icon name="saddle" className="icon sm" />
+      <span>
+        {services?.controlPlane.connected
+          ? `${services.controlPlane.mode === 'company' ? 'Company' : 'Local'} control plane · ${services.controlPlane.modelProvider === 'openrouter' ? 'OpenRouter' : 'model gateway'} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
+          : `${runtimeModeLabel} · offline cache · start the control plane for durable chats`}
+      </span>
       <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>
     </div>
   )

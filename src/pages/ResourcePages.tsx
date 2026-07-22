@@ -3,42 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 
-export function SitePage() {
-  const { siteId } = useParams()
-  const { data, createChat, toast } = useStore()
-  const nav = useNavigate()
-  const site = data.sites.find((s) => s.id === siteId)
-  const agent = data.agents.find((a) => a.id === site?.agentId)
-  if (!site) return <div className="content-page empty-state"><h3>Site not found</h3></div>
-  const page = site.pages[0]!
-
-  return (
-    <div className="content-page">
-      <div className="page-header">
-        <div className="page-header-copy"><div className="eyebrow">Project site</div><h1>{site.name}</h1><p>{site.description}</p></div>
-        <div className="page-header-actions"><Link className="secondary-btn" to={`/project/${site.projectId}`}>Back to project</Link></div>
-      </div>
-      <div className="site-frame">
-        <div className="main-pane">
-          <h2 style={{ marginTop: 0 }}>{page.title}</h2>
-          <p style={{ fontSize: 14, lineHeight: 1.6 }}>{page.body}</p>
-          <button className="primary-btn" style={{ marginTop: 16 }} onClick={() => toast('Form submitted', 'Agent will draft a response (simulated).')}>Submit</button>
-        </div>
-        {page.agentRail && (
-          <div className="agent-rail">
-            <strong style={{ fontSize: 12 }}>{agent?.name ?? 'Project agent'}</strong>
-            <p style={{ fontSize: 11, color: '#aaa', margin: '8px 0 14px' }}>AI running inside this page — ask questions or request a draft.</p>
-            <button className="secondary-btn" style={{ width: '100%' }} onClick={() => {
-              const c = createChat(site.projectId, `${site.name} session`, site.agentId)
-              nav(`/chat/${c.id}`)
-            }}>Open agent chat</button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
 export function ApiPage() {
   const { apiId } = useParams()
   const { data, mutateApi, toast } = useStore()

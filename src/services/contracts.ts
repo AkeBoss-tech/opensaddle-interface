@@ -1,4 +1,4 @@
-import type { AgentRunBlock, Harness, ModelKey, RuntimeKind } from '../types'
+import type { AgentRunBlock, AppData, CodingProvider, Harness, ModelKey, RuntimeKind, SitePage } from '../types'
 
 export type RunEventType =
   | 'session.created'
@@ -13,6 +13,8 @@ export type RunEventType =
   | 'approval.resolved'
   | 'file.changed'
   | 'diff.updated'
+  | 'review.started'
+  | 'review.completed'
   | 'verification.started'
   | 'verification.completed'
   | 'agent.paused'
@@ -33,7 +35,9 @@ export interface SessionEvent {
 
 export interface RouteEstimate {
   modelKey: ModelKey
+  modelId?: string
   harnessKey: Harness
+  providerKey?: CodingProvider
   runtimeKey: RuntimeKind
   reasons: string[]
   cost: string
@@ -41,19 +45,51 @@ export interface RouteEstimate {
 }
 
 export interface RuntimeClient {
-  estimate(task: string, prefs?: { routingPref?: string }): Promise<RouteEstimate>
+  estimate(task: string, prefs?: {
+    projectId?: string
+    routingPref?: string
+    modelKey?: ModelKey
+    modelId?: string
+    harnessKey?: Harness
+    providerKey?: CodingProvider
+    runtimeKey?: RuntimeKind
+  }): Promise<RouteEstimate>
   startRun(input: {
     projectId: string
     task: string
     agentId?: string
     modelKey?: ModelKey
+    modelId?: string
     harnessKey?: Harness
+    providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
     repo?: string
-  }): Promise<{ runId: string; sessionId: string; mode?: string }>
+    approvalId?: string
+    reviewProviderKey?: CodingProvider
+  }): Promise<{ runId: string; sessionId: string; mode?: string; route?: RouteEstimate }>
   subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void
   cancel(runId: string): Promise<void>
+  requestApproval?(input: {
+    projectId: string
+    agentId?: string
+    action: string
+  }): Promise<{ id: string; status: 'pending' | 'approved' | 'denied' | 'consumed' }>
+  resolveApproval?(approvalId: string, allow: boolean): Promise<void>
   getDiff?(runId: string): Promise<AgentRunBlock['artifacts']>
+  resolveDiff?(runId: string, filePath: string, hunkIndex: number, decision: 'accepted' | 'rejected'): Promise<void>
+  listOpenRouterFreeModels?(): Promise<Array<{ id: string; name: string; contextLength?: number }>>
+  generateSite?(input: { projectId: string; prompt: string }): Promise<{
+    name: string
+    description: string
+    slug: string
+    accent: string
+    pages: SitePage[]
+  }>
+}
+
+export interface WorkspaceClient {
+  load(): Promise<AppData | null>
+  save(workspace: AppData): Promise<{ updatedAt: number; documents: number }>
 }
 
 export interface FileEntry {

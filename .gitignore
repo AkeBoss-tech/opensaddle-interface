@@ -12,6 +12,10 @@ dist
 dist-ssr
 dist-electron
 *.local
+.env
+.env.*
+!.env.example
+.opensaddle/
 
 # Editor directories and files
 .vscode/*

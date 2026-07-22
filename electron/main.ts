@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
-let opensaddleProc: ChildProcess | null = null
+let controlPlaneProc: ChildProcess | null = null
 let krailProc: ChildProcess | null = null
 
 const OPENSADDLE_URL = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
@@ -32,12 +32,17 @@ async function discoverClis(): Promise<string[]> {
 }
 
 function startSidecars() {
-  const opensaddleRoot = path.resolve(__dirname, '../../../opensaddle')
-  if (existsSync(opensaddleRoot)) {
-    opensaddleProc = spawn('uv', ['run', 'opensaddle', 'serve-api', '--port', '8765'], {
-      cwd: opensaddleRoot,
+  const controlPlaneEntry = path.resolve(__dirname, '../../packages/control-plane/src/server.ts')
+  if (existsSync(controlPlaneEntry)) {
+    controlPlaneProc = spawn('npx', ['tsx', controlPlaneEntry], {
+      cwd: path.resolve(__dirname, '../..'),
       stdio: 'ignore',
-      detached: false,
+      env: {
+        ...process.env,
+        OPENSADDLE_MODE: 'local',
+        OPENSADDLE_PORT: '8765',
+        OPENSADDLE_RUNTIME_PROVIDER: process.env.OPENSADDLE_RUNTIME_PROVIDER ?? 'local',
+      },
     })
   }
 
@@ -106,7 +111,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  opensaddleProc?.kill()
+  controlPlaneProc?.kill()
   krailProc?.kill()
   if (process.platform !== 'darwin') app.quit()
 })

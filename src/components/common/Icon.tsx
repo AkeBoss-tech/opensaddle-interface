@@ -43,6 +43,10 @@ const PATHS: Record<string, string> = {
   sun: 'M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 2v2M12 20v2M4 12H2M22 12h-2',
   trace: 'M6 6m-2.4 0a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0-4.8 0M18 12m-2.4 0a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0-4.8 0M6 18m-2.4 0a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0-4.8 0',
   layout: 'M4 4h16v16H4zM4 10h16M10 10v10',
+  pin: 'M9 3h6M10 3v5.5L6.5 12h11L14 8.5V3M12 12v8',
+  // OpenSaddle brand mark: saddle seat with pommel/cantle rises + stirrup.
+  saddle: 'M4 8c0 4.4 3.6 7 8 7s8-2.6 8-7M4 8V5.6M20 8V5M12 15v3.4M12 20.1m-1.7 0a1.7 1.7 0 1 0 3.4 0a1.7 1.7 0 1 0-3.4 0',
+  book: 'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2V5ZM8 7h8M8 11h6',
 }
 
 export function Icon({ name, className = 'icon' }: { name: string; className?: string }) {

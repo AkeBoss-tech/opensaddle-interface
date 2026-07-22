@@ -99,7 +99,11 @@ export function PermissionsPage() {
                       <td>{g.resourceKind}/{g.resourceId}{g.pathPrefix ? ` · ${g.pathPrefix}` : ''}</td>
                       <td>{g.action}{g.approvalRequired ? ' · approve' : ''}</td>
                       <td><span className={`status-pill ${g.effect === 'allow' ? 'green' : 'red'}`}>{g.effect}</span></td>
-                      <td><button className="tiny-btn" onClick={() => { revokePermissionGrant(g.id); toast('Revoked', g.id) }}>Revoke</button></td>
+                      <td><button className="tiny-btn" onClick={() => {
+                        void revokePermissionGrant(g.id)
+                          .then(() => toast('Revoked', g.id))
+                          .catch((error: unknown) => toast('Revoke failed', error instanceof Error ? error.message : String(error)))
+                      }}>Revoke</button></td>
                     </tr>
                   )
                 })}
@@ -166,11 +170,12 @@ export function PermissionsPage() {
               <button className={`switch ${approvalRequired ? 'on' : ''}`} onClick={() => setApprovalRequired((v) => !v)} />
             </div>
             <button className="primary-btn" onClick={() => {
-              upsertPermissionGrant({
+              void upsertPermissionGrant({
                 principalKind, principalId, resourceKind, resourceId, action, effect,
                 approvalRequired, pathPrefix: pathPrefix || undefined, createdBy: data.currentUserId, inheritance: 'direct',
               })
-              toast('Grant saved', `${principalKind}:${principalId} → ${effect} ${action}`)
+                .then(() => toast('Grant saved', `${principalKind}:${principalId} → ${effect} ${action}`))
+                .catch((error: unknown) => toast('Grant failed', error instanceof Error ? error.message : String(error)))
             }}>Save grant</button>
           </div>
         </div>
