@@ -138,6 +138,8 @@ export function SiteExperiencePage() {
   const [editSlug, setEditSlug] = useState('')
   const [editAccent, setEditAccent] = useState('#80a9ff')
   const [editPages, setEditPages] = useState<Site['pages']>([])
+  const [settingsPanel, setSettingsPanel] = useState<'versions' | 'agent' | 'details' | null>(null)
+  const [previewFullscreen, setPreviewFullscreen] = useState(false)
 
   const project = data.projects.find((p) => p.id === site?.projectId)
   const agent = data.agents.find((a) => a.id === site?.agentId)
@@ -242,7 +244,7 @@ export function SiteExperiencePage() {
   )
 
   return (
-    <div className="content-page" style={{ maxWidth: 1280 }}>
+    <div className={`content-page site-experience ${previewFullscreen ? 'site-experience-fullscreen' : ''}`} style={{ maxWidth: 1280 }}>
       <div className="page-header">
         <div className="page-header-copy">
           <div className="eyebrow">Site · {project.name}</div>
@@ -254,10 +256,45 @@ export function SiteExperiencePage() {
             void navigator.clipboard.writeText(shareUrl)
             toast('Share link copied', shareUrl)
           }}><Icon name="globe" className="icon sm" />Share</button>
+          <button className="secondary-btn" onClick={() => setSettingsPanel('versions')}><Icon name="clock" className="icon sm" />Versions</button>
+          <button className="secondary-btn" onClick={() => setSettingsPanel('agent')}><Icon name="spark" className="icon sm" />Agent</button>
+          <button className="secondary-btn" onClick={() => setSettingsPanel('details')}><Icon name="info" className="icon sm" />Details</button>
+          <button className="secondary-btn" aria-pressed={previewFullscreen} onClick={() => setPreviewFullscreen((value) => !value)}><Icon name="layout" className="icon sm" />{previewFullscreen ? 'Exit full screen' : 'Full screen'}</button>
+          <a className="secondary-btn" href={shareUrl} target="_blank" rel="noreferrer"><Icon name="globe" className="icon sm" />Open preview</a>
           <button className="primary-btn" onClick={openEditor}><Icon name="sliders" className="icon sm" />Edit site</button>
           <Link className="secondary-btn" to={`/project/${site.projectId}`}><Icon name="folder" className="icon sm" />Project</Link>
         </div>
       </div>
+
+      {settingsPanel && (
+        <div className="modal-backdrop open" onClick={(event) => { if (event.target === event.currentTarget) setSettingsPanel(null) }}>
+          <div className="modal site-settings-modal">
+            <div className="modal-head">
+              <div className="modal-icon"><Icon name={settingsPanel === 'versions' ? 'clock' : settingsPanel === 'agent' ? 'spark' : 'info'} /></div>
+              <div><h3>{settingsPanel === 'versions' ? 'Versions' : settingsPanel === 'agent' ? 'Embedded agent' : 'Site details'}</h3><p>Site configuration for {site.name}.</p></div>
+              <button className="icon-btn" onClick={() => setSettingsPanel(null)}><Icon name="x" className="icon sm" /></button>
+            </div>
+            <div className="modal-body">
+              {settingsPanel === 'versions' && (
+                <div className="row-list">
+                  {site.versions.map((version) => <button key={version.id} className="version-main" onClick={() => { setPreviewVersionId(version.id); setSettingsPanel(null) }}><div className="version-title"><strong>{version.label}</strong><span className={`status-pill ${version.status === 'published' ? 'green' : version.status === 'draft' ? 'yellow' : ''}`}>{version.status}</span></div><span className="version-sub">{version.summary}</span></button>)}
+                </div>
+              )}
+              {settingsPanel === 'agent' && (
+                <>
+                  <div className="form-row"><label>Agent</label><select value={site.agentId ?? ''} onChange={(event) => guardWrite(() => updateSite(site.id, { agentId: event.target.value || undefined }))}><option value="">None</option>{projectAgents.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+                  <div className="form-row"><label>Placement</label><div className="seg"><button className={site.agentPlacement === 'bubble' ? 'active' : ''} onClick={() => guardWrite(() => updateSite(site.id, { agentPlacement: 'bubble' }))}>Floating bubble</button><button className={site.agentPlacement === 'rail' ? 'active' : ''} onClick={() => guardWrite(() => updateSite(site.id, { agentPlacement: 'rail' }))}>Side rail</button></div></div>
+                  <div className="scope-box"><strong>Permission boundary</strong><p>Visitors are read-only. Any write by the embedded agent uses this project’s approval rules.</p></div>
+                </>
+              )}
+              {settingsPanel === 'details' && (
+                <div className="site-details-list"><div className="kv"><span>Public URL</span><span>{shareUrl}</span></div><div className="kv"><span>Project</span><span>{project.name}</span></div><div className="kv"><span>Visibility</span><span>{site.visibility}</span></div><div className="kv"><span>Pages</span><span>{renderedPages.length}</span></div><div className="kv"><span>Your access</span><span>{canWrite.allowed ? 'Can edit & publish' : 'View only'}</span></div></div>
+              )}
+            </div>
+            <div className="modal-actions"><button className="primary-btn" onClick={() => setSettingsPanel(null)}>Done</button></div>
+          </div>
+        </div>
+      )}
 
       <div className="site-layout">
         <div className="site-viewer" style={{ '--site-accent': renderedSite.accent } as React.CSSProperties}>

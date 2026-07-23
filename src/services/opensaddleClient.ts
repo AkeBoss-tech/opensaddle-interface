@@ -89,6 +89,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       const data = await res.json() as {
         model_key: ModelKey
         model_id?: string
+        native_model_default?: boolean
         harness_key: Harness
         provider_key?: CodingProvider
         runtime_key: RuntimeKind
@@ -99,6 +100,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       return {
         modelKey: data.model_key,
         modelId: data.model_id,
+        nativeModelDefault: data.native_model_default,
         harnessKey: data.harness_key,
         providerKey: data.provider_key,
         runtimeKey: data.runtime_key,

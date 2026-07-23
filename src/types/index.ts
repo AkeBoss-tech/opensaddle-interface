@@ -10,6 +10,7 @@ export type CodingProvider =
   | 'cursor'
   | 'gemini'
   | 'opencode'
+  | 'antigravity'
   | 'custom'
 export type RuntimeKind = 'local' | 'browser' | 'sandbox' | 'vm' | 'gpu' | 'restricted'
 export type ModelKey = 'auto' | 'gpt' | 'claude' | 'sonnet' | 'gemini' | 'llama'
@@ -429,6 +430,7 @@ export interface WorkflowRun {
   id: string
   workflowId: string
   projectId: string
+  ownerId?: string
   agentId?: string
   status: RunStatus
   startedAt: number

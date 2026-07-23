@@ -39,7 +39,7 @@ export function createSeedData(): AppData {
       { id: claims, name: 'Claims Assistant', parentId: cust, description: 'Drafts claim responses with human approval on writes.', iconColor: '#8f78de', knowledgeCount: 4, serviceCount: 3, childCount: 0, autoConfidence: 91, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Claims Assistant'] },
       { id: cold, name: 'Cold Emailer', parentId: cust, description: 'Outreach drafts with send gated by approval.', iconColor: '#d6af63', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 84, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Cold Emailer'] },
       { id: eng, name: 'Engineering', parentId: corp, description: 'Repositories, CI systems, and coding agents.', iconColor: '#73a8dd', knowledgeCount: 9, serviceCount: 5, childCount: 3, autoConfidence: 95, lineage: ['Organization', 'Corporate Base Agent', 'Engineering'] },
-      { id: coding, name: 'Coding Agent', parentId: eng, description: 'Repository-aware planning, patches, tests, and PRs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 0, autoConfidence: 96, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Coding Agent'], routingDefaults: { providerKey: 'codex', modelKey: 'sonnet', runtimeKey: 'sandbox', reviewProviderKey: 'claude' } },
+      { id: coding, name: 'Coding Agent', parentId: eng, description: 'Repository-aware planning, patches, tests, and PRs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 0, autoConfidence: 96, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Coding Agent'], routingDefaults: { providerKey: 'codex', modelKey: 'auto', runtimeKey: 'sandbox', reviewProviderKey: 'claude' } },
       { id: router, name: 'Model Router', parentId: eng, description: 'Routing policy, cost controls, and harness selection.', iconColor: '#73a8dd', knowledgeCount: 5, serviceCount: 2, childCount: 0, autoConfidence: 90, lineage: ['Organization', 'Engineering', 'Model Router'] },
       { id: audit, name: 'Degree Audit', parentId: coding, description: 'Nested project that inherits GitHub but denies production DB writes.', iconColor: '#65c78b', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 89, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Degree Audit'] },
     ],
@@ -540,9 +540,9 @@ export function createSeedData(): AppData {
       },
     ],
     workflowRuns: [
-      { id: 'wfr-1', workflowId: 'wf-pr-review', projectId: coding, agentId: 'agent-coder', status: 'completed', startedAt: now - 2 * hour, finishedAt: now - 2 * hour + 9 * 60_000, summary: 'Reviewed PR #1932 · 2 findings' },
-      { id: 'wfr-2', workflowId: 'wf-morning-brief', projectId: cust, agentId: 'agent-research', status: 'completed', startedAt: now - day, finishedAt: now - day + 4 * 60_000, summary: 'Published ops brief to wiki' },
-      { id: 'wfr-3', workflowId: 'wf-claims', projectId: claims, agentId: 'agent-claims', status: 'waiting', startedAt: now - 45 * 60_000, summary: 'Waiting for human approval' },
+      { id: 'wfr-1', workflowId: 'wf-pr-review', projectId: coding, ownerId: 'user-ad', agentId: 'agent-coder', status: 'completed', startedAt: now - 2 * hour, finishedAt: now - 2 * hour + 9 * 60_000, summary: 'Reviewed PR #1932 · 2 findings' },
+      { id: 'wfr-2', workflowId: 'wf-morning-brief', projectId: cust, ownerId: 'user-maya', agentId: 'agent-research', status: 'completed', startedAt: now - day, finishedAt: now - day + 4 * 60_000, summary: 'Published ops brief to wiki' },
+      { id: 'wfr-3', workflowId: 'wf-claims', projectId: claims, ownerId: 'user-ad', agentId: 'agent-claims', status: 'waiting', startedAt: now - 45 * 60_000, summary: 'Waiting for human approval' },
     ],
     agentSessions: [
       { id: 'asess-1', agentId: 'agent-coder', projectId: coding, status: 'running', harness: 'Coding', model: 'Claude Opus', startedAt: now - 12 * 60_000, title: 'Secure VM background feature' },

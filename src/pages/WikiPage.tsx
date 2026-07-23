@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 
-type WikiTab = 'overview' | 'people' | 'sources'
+type WikiTab = 'overview' | 'people' | 'pages' | 'sources'
+type WikiPerspective = 'business' | 'engineering'
+
+const PERSPECTIVE_COPY: Record<WikiPerspective, { label: string; description: string }> = {
+  business: { label: 'Business', description: 'Customer operations, delivery health, budgets, and governed automation.' },
+  engineering: { label: 'Engineering', description: 'Runtime reliability, agent tooling, security, and delivery throughput.' },
+}
 
 function relativeTime(timestamp: number) {
   const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000))
@@ -24,6 +30,7 @@ export function WikiPage() {
   } = useStore()
   const navigate = useNavigate()
   const [tab, setTab] = useState<WikiTab>('overview')
+  const [perspective, setPerspective] = useState<WikiPerspective>('engineering')
   const [refreshing, setRefreshing] = useState(false)
   const selectedProjectId = data.wikiSettings.selectedProjectId
   const project = data.projects.find((item) => item.id === selectedProjectId) ?? data.projects[0]
@@ -75,9 +82,9 @@ export function WikiPage() {
     <div className="content-page">
       <div className="page-header">
         <div className="page-header-copy">
-          <div className="eyebrow">AI knowledge hub</div>
+          <div className="eyebrow">OpenSaddle knowledge base</div>
           <h1>Team wiki</h1>
-          <p>Source-grounded summaries of current priorities, blockers, and individual work across Jira and approved knowledge systems.</p>
+          <p>A source-grounded reference for this team’s priorities, decisions, risks, and connected systems.</p>
         </div>
         <div className="page-header-actions">
           <select
@@ -89,6 +96,11 @@ export function WikiPage() {
               <option key={item.id} value={item.id}>{item.name}</option>
             ))}
           </select>
+          <div className="seg wiki-perspective" aria-label="Wiki perspective">
+            {(Object.entries(PERSPECTIVE_COPY) as Array<[WikiPerspective, { label: string; description: string }]>).map(([id, copy]) => (
+              <button key={id} className={perspective === id ? 'active' : ''} title={copy.description} onClick={() => setPerspective(id)}>{copy.label}</button>
+            ))}
+          </div>
           <button className="secondary-btn" onClick={askAgent}><Icon name="message" className="icon sm" />Ask the team agent</button>
           <button className="primary-btn" onClick={refresh} disabled={refreshing}>
             <Icon name="refresh" className={`icon sm ${refreshing ? 'spin' : ''}`} />
@@ -97,19 +109,13 @@ export function WikiPage() {
         </div>
       </div>
 
-      <div className="wiki-workflow-banner">
-        <div className="wiki-workflow-icon"><Icon name="spark" /></div>
-        <div>
-          <strong>Team intelligence workflow</strong>
-          <p>Read-only AI synthesis from {sources.length} approved sources. Every summary keeps source provenance and never changes Jira or connected systems.</p>
-        </div>
-        <span className="status-pill green"><span className="status-dot" />Active · {data.wikiSettings.refreshCadence}</span>
-      </div>
+      <div className="wiki-article-note"><Icon name="review" className="icon sm" /><span>This page is maintained from {sources.length} approved sources. Summaries are read-only and keep their citations.</span></div>
 
       <div className="tabs" role="tablist" aria-label="Team wiki sections">
         {([
           ['overview', 'Overview'],
           ['people', 'People'],
+          ['pages', 'Pages'],
           ['sources', `Sources · ${sources.length}`],
         ] as Array<[WikiTab, string]>).map(([id, label]) => (
           <button key={id} className={`tab ${tab === id ? 'active' : ''}`} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>
@@ -223,6 +229,28 @@ export function WikiPage() {
               </div>
               <p>{source.detail}</p>
               <div className="knowledge-card-footer"><span className="status-pill green">{source.status}</span><span>Used in cited summaries</span></div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {tab === 'pages' && (
+        <div className="wiki-pages-grid">
+          {[
+            perspective === 'engineering'
+              ? ['Runtime architecture', 'How local, browser, VM, and GPU runtimes are selected, provisioned, and audited.', 'Engineering', 'Runtime policy · Updated today']
+              : ['Customer operations handbook', 'Claims intake, outreach review, and human approval patterns for customer-facing workflows.', 'Business', 'Operations · Updated today'],
+            perspective === 'engineering'
+              ? ['Agent provider guide', 'When to use Codex App Server, Claude Code, Cursor, Gemini, or the native OpenSaddle agent.', 'Engineering', 'Model routing · Updated yesterday']
+              : ['Workflow governance', 'How teams request access, review protected writes, and measure automation quality.', 'Business', 'Governance · Updated yesterday'],
+            perspective === 'engineering'
+              ? ['Incident response runbook', 'Debugging failed runs, inspecting tool timelines, and recovering from unavailable providers.', 'Engineering', 'Runbooks · Updated 2d ago']
+              : ['Weekly operating brief', 'A concise view of priorities, blockers, service health, and recent workflow activity.', 'Business', 'Leadership · Updated 2d ago'],
+            ['Project directory', `Pages and source-grounded notes for ${project.name}.`, PERSPECTIVE_COPY[perspective].label, 'Reference · Maintained continuously'],
+          ].map(([title, body, group, meta]) => (
+            <article className="card wiki-page-card" key={title}>
+              <div className="card-header"><div><span className="eyebrow">{group}</span><h3>{title}</h3></div><Icon name="file" className="icon sm" /></div>
+              <div className="card-body"><p>{body}</p><div className="wiki-page-meta"><span>{meta}</span><button className="tiny-btn" onClick={() => toast('Wiki page opened', title)}>Open page</button></div></div>
             </article>
           ))}
         </div>

@@ -32,8 +32,8 @@ export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalet
         <Link to="/settings" className="crumb-pill system-pill" title="Open system settings">
           <span className={`pulse ${services?.controlPlane.connected ? '' : 'offline'}`} />
           {services?.controlPlane.connected
-            ? `${services.controlPlane.modelProvider === 'openrouter' ? 'OpenRouter' : runtimeModeLabel} · ${services.controlPlane.storage ?? 'server'}`
-            : runtimeModeLabel}
+            ? `Codex · ${services.controlPlane.modelProvider === 'unconfigured' ? 'connected · no model' : services.controlPlane.modelProvider} · ${services.controlPlane.storage ?? 'server'}`
+            : `Codex · ${runtimeModeLabel} · offline cache`}
           {persistenceStatus === 'syncing' && <span className="system-pill-sync">Saving…</span>}
         </Link>
         <button className="icon-btn" title="Command palette" onClick={onPalette}><Icon name="command" /></button>
@@ -67,8 +67,8 @@ export function DemoBanner() {
       <Icon name="saddle" className="icon sm" />
       <span>
         {services?.controlPlane.connected
-          ? `${services.controlPlane.mode === 'company' ? 'Company' : 'Local'} control plane · ${services.controlPlane.modelProvider === 'openrouter' ? 'OpenRouter' : 'model gateway'} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
-          : `${runtimeModeLabel} · offline cache · start the control plane for durable chats`}
+          ? `Codex connected · ${services.controlPlane.mode === 'company' ? 'company' : 'local'} control plane · ${services.controlPlane.modelProvider === 'unconfigured' ? 'configure a model in Settings' : services.controlPlane.modelProvider} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
+          : `${runtimeModeLabel} · Codex offline cache · start the control plane for durable chats`}
       </span>
       <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>
     </div>

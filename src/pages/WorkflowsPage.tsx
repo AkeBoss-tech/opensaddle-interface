@@ -18,6 +18,21 @@ export function WorkflowsPage() {
     () => data.workflowRuns.filter((r) => !projectId || r.projectId === projectId),
     [data.workflowRuns, projectId],
   )
+  const recentRuns = useMemo(
+    () => runs.filter((run) => run.ownerId === data.currentUserId),
+    [runs, data.currentUserId],
+  )
+  const companyTop = useMemo(
+    () => data.workflows
+      .map((workflow) => ({
+        workflow,
+        runCount: data.workflowRuns.filter((run) => run.workflowId === workflow.id).length,
+      }))
+      .sort((a, b) => b.runCount - a.runCount || (b.workflow.lastRunAt ?? b.workflow.createdAt) - (a.workflow.lastRunAt ?? a.workflow.createdAt))
+      .slice(0, 3)
+      .map(({ workflow }) => workflow),
+    [data.workflows, data.workflowRuns],
+  )
 
   return (
     <div className="content-page">
@@ -90,9 +105,10 @@ export function WorkflowsPage() {
         </div>
 
         <div className="card">
-          <div className="card-header"><div><h3>Recent runs</h3></div></div>
+          <div className="card-header"><div><h3>Work clues</h3><p>Your recent runs and the company’s most-used workflows</p></div></div>
           <div className="card-body row-list">
-            {runs.map((run) => {
+            <div className="workflow-clue-heading">Your recent runs</div>
+            {recentRuns.map((run) => {
               const wf = data.workflows.find((w) => w.id === run.workflowId)
               return (
                 <div className="row-item" key={run.id}>
@@ -104,6 +120,12 @@ export function WorkflowsPage() {
                   <span className={`status-pill ${run.status === 'completed' ? 'green' : run.status === 'waiting' ? 'yellow' : ''}`}>{run.status}</span>
                 </div>
               )
+            })}
+            <div className="workflow-clue-heading">Most-used workflows in the company</div>
+            {companyTop.map((workflow) => {
+              const project = data.projects.find((item) => item.id === workflow.projectId)
+              const runCount = data.workflowRuns.filter((run) => run.workflowId === workflow.id).length
+              return <Link key={`top-${workflow.id}`} className="row-item workflow-company-row" to={`/workflows/${workflow.projectId}`}><div className="row-icon"><Icon name="spark" className="icon sm" /></div><div className="row-copy"><div className="row-title">{workflow.name}</div><div className="row-sub">{project?.name} · {runCount} run{runCount === 1 ? '' : 's'}</div></div><span className={`status-pill ${workflow.status === 'active' ? 'green' : ''}`}>{workflow.status}</span></Link>
             })}
           </div>
         </div>

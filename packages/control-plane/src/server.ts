@@ -50,7 +50,7 @@ await app.register(cors, {
     else callback(new Error('Origin not allowed'), false)
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-OpenSaddle-User'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-OpenSaddle-User', 'If-Unmodified-Since'],
 })
 
 app.addHook('preHandler', async (request, reply) => {
@@ -247,6 +247,15 @@ app.put('/api/workspace', async (request, reply) => {
       return reply.code(400).send({ error: `workspace_${collection}_must_be_an_array` })
     }
   }
+  const expectedRevision = request.headers['if-unmodified-since']
+  const currentRevision = store.workspaceInfo()?.updatedAt
+  if (expectedRevision && currentRevision && Number(expectedRevision) !== currentRevision) {
+    return reply.code(409).send({
+      error: 'workspace_conflict',
+      message: 'The remote workspace changed since it was loaded. Reload it before saving.',
+      updatedAt: currentRevision,
+    })
+  }
   await store.saveWorkspace(record, request.principal.userId)
   return {
     ok: true,
@@ -361,13 +370,14 @@ app.post('/api/routes/estimate', async (request) => {
     modelKey: enumValue(body, 'model_key', ['auto', 'gpt', 'claude', 'sonnet', 'gemini', 'llama'] as const) ?? defaults.modelKey,
     modelId: openRouterModelId(body),
     harnessKey: enumValue(body, 'harness_key', ['chat', 'research', 'coding', 'browser', 'vm'] as const),
-    providerKey: enumValue(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'custom'] as const) ?? defaults.providerKey,
+    providerKey: enumValue(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom'] as const) ?? defaults.providerKey,
     runtimeKey: enumValue(body, 'runtime_key', ['local', 'browser', 'sandbox', 'vm', 'gpu', 'restricted'] as const) ?? defaults.runtimeKey,
     telemetry: store.routeTelemetry(projectId),
   })
   return {
     model_key: route.modelKey,
     model_id: route.modelId,
+    native_model_default: route.nativeModelDefault,
     harness_key: route.harnessKey,
     provider_key: route.providerKey,
     runtime_key: route.runtimeKey,
@@ -403,7 +413,7 @@ app.post('/api/runs', async (request, reply) => {
     modelKey: enumValue<ModelKey>(body, 'model_key', ['auto', 'gpt', 'claude', 'sonnet', 'gemini', 'llama']) ?? defaults.modelKey,
     modelId: openRouterModelId(body),
     harnessKey: enumValue<Harness>(body, 'harness_key', ['chat', 'research', 'coding', 'browser', 'vm']),
-    providerKey: enumValue<CodingProvider>(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'custom']) ?? defaults.providerKey,
+    providerKey: enumValue<CodingProvider>(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom']) ?? defaults.providerKey,
     runtimeKey: enumValue<RuntimeKind>(body, 'runtime_key', ['local', 'browser', 'sandbox', 'vm', 'gpu', 'restricted']) ?? defaults.runtimeKey,
     routingPref: optionalString(body, 'routing_pref', 50),
     telemetry: store.routeTelemetry(projectId),
@@ -448,7 +458,7 @@ app.post('/api/runs', async (request, reply) => {
     task,
     agentId,
     route,
-    reviewProviderKey: enumValue<CodingProvider>(body, 'review_provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'custom']) ?? defaults.reviewProviderKey,
+    reviewProviderKey: enumValue<CodingProvider>(body, 'review_provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom']) ?? defaults.reviewProviderKey,
     repo: optionalString(body, 'repo', 2_000),
     principal: request.principal,
   })

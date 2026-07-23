@@ -191,21 +191,27 @@ export class RunManager {
 
         if (run.reviewProviderKey && run.reviewProviderKey !== run.route.providerKey) {
           await this.emit(run, 'review.started', { provider: run.reviewProviderKey })
-          const reviewRoute = { ...run.route, providerKey: run.reviewProviderKey }
-          const review = await this.harnesses.run({
-            runId: run.id,
-            sessionId: run.sessionId,
-            task: 'Review the current working-tree diff. Do not modify files. Report correctness, security, and test issues concisely.',
-            projectId: run.projectId,
-            agentId: run.agentId,
-            route: reviewRoute,
-            workspacePath,
-            providerId: run.reviewProviderKey,
-            signal: controller.signal,
-            emit,
-          })
-          await this.emit(run, 'review.completed', { provider: run.reviewProviderKey, summary: review.summary })
-          await this.emit(run, 'agent.output.delta', { text: `\n\nReview (${run.reviewProviderKey}):\n${review.summary}` })
+          try {
+            const reviewRoute = { ...run.route, providerKey: run.reviewProviderKey }
+            const review = await this.harnesses.run({
+              runId: run.id,
+              sessionId: run.sessionId,
+              task: 'Review the current working-tree diff. Do not modify files. Report correctness, security, and test issues concisely.',
+              projectId: run.projectId,
+              agentId: run.agentId,
+              route: reviewRoute,
+              workspacePath,
+              providerId: run.reviewProviderKey,
+              signal: controller.signal,
+              emit,
+            })
+            await this.emit(run, 'review.completed', { provider: run.reviewProviderKey, summary: review.summary })
+            await this.emit(run, 'agent.output.delta', { text: `\n\nReview (${run.reviewProviderKey}):\n${review.summary}` })
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error)
+            await this.emit(run, 'review.failed', { provider: run.reviewProviderKey, error: reason })
+            await this.emit(run, 'agent.output.delta', { text: `\n\nReview (${run.reviewProviderKey}) unavailable: ${reason}` })
+          }
         }
       } else {
         await this.emit(run, 'agent.started', {

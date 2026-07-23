@@ -64,15 +64,14 @@ Build the frontend with:
 
 ```bash
 VITE_OPENSADDLE_URL=https://control.agents.example.com \
-VITE_OPENSADDLE_TOKEN=development-only-token \
 VITE_ALLOW_MOCK_FALLBACK=false \
 npm run build
 ```
 
 For production browser auth, terminate OIDC at an identity-aware reverse proxy
 and inject a short-lived bearer credential. The static `VITE_OPENSADDLE_TOKEN`
-option is intended for local development and private prototypes because Vite
-embeds it in browser JavaScript.
+option is not supported for production because Vite embeds it in browser JavaScript.
+Use a short-lived credential through the Settings connection panel instead.
 
 Put TLS and request-rate limits in front of the service. Company mode refuses
 to start without API keys and never imports permissions from browser state.

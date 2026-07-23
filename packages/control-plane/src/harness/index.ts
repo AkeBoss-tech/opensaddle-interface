@@ -3,6 +3,7 @@ import { delimiter, isAbsolute } from 'node:path'
 import type { ControlPlaneConfig } from '../config.js'
 import type { ModelGateway } from '../modelGateway.js'
 import { CliHarnessAdapter } from './cliAdapter.js'
+import { CodexAppServerAdapter } from './codexAppServer.js'
 import { OpenSaddleCodingHarness } from './opensaddleCoding.js'
 import { BUILTIN_PROFILES, mergeProfiles } from './profiles.js'
 import type {
@@ -30,7 +31,9 @@ export class HarnessRegistry {
     this.adapters.set('opensaddle', new OpenSaddleCodingHarness(models))
     for (const profile of this.profiles) {
       if (profile.kind === 'cli') {
-        this.adapters.set(profile.id, new CliHarnessAdapter(profile))
+        this.adapters.set(profile.id, profile.protocol === 'codex-app-server'
+          ? new CodexAppServerAdapter()
+          : new CliHarnessAdapter(profile))
       }
     }
   }

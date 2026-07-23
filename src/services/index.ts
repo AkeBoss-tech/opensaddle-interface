@@ -29,33 +29,47 @@ export interface ServiceBundle {
   }
 }
 
-let bundlePromise: Promise<ServiceBundle> | null = null
+export interface ConnectionProfile {
+  id: string
+  name: string
+  mode: 'demo' | 'remote'
+  baseUrl: string
+  token?: string
+  allowMockFallback: boolean
+}
+
+export function defaultConnectionProfile(): ConnectionProfile {
+  const baseUrl = (import.meta.env.VITE_OPENSADDLE_URL as string | undefined) ?? 'http://127.0.0.1:8765'
+  return {
+    id: 'configured-server',
+    name: import.meta.env.VITE_OPENSADDLE_URL ? 'Configured OpenSaddle server' : 'Local OpenSaddle server',
+    mode: 'remote',
+    baseUrl,
+    allowMockFallback: import.meta.env.VITE_ALLOW_MOCK_FALLBACK === 'true',
+  }
+}
 
 export function initServices(opts: {
   getGrants: () => PermissionGrant[]
   setGrants: (g: PermissionGrant[]) => void
   currentUserId: string
   getCurrentUserId?: () => string
-  opensaddleBaseUrl?: string
+  connection?: ConnectionProfile
 }): Promise<ServiceBundle> {
-  if (!bundlePromise) {
-    bundlePromise = (async () => {
+  return (async () => {
       const mode = detectRuntimeMode()
       const files = await createFileStore()
-      const baseUrl = opts.opensaddleBaseUrl
-        ?? import.meta.env.VITE_OPENSADDLE_URL
-        ?? 'http://127.0.0.1:8765'
-      const token = import.meta.env.VITE_OPENSADDLE_TOKEN as string | undefined
+      const connection = opts.connection ?? defaultConnectionProfile()
+      const baseUrl = connection.baseUrl
+      const token = connection.token
       const getUserId = opts.getCurrentUserId ?? (() => opts.currentUserId)
-      const explicitlyRemote = Boolean(import.meta.env.VITE_OPENSADDLE_URL)
-      const allowFallback = import.meta.env.VITE_ALLOW_MOCK_FALLBACK === 'true'
-        || (!explicitlyRemote && import.meta.env.VITE_ALLOW_MOCK_FALLBACK !== 'false')
+      const allowFallback = connection.mode === 'demo' || connection.allowMockFallback
       let backendAvailable = false
       let backendMode: 'local' | 'company' | undefined
       let modelProvider: string | undefined
       let configuredModels: string[] = []
       let storage: string | undefined
-      if (mode !== 'mock') {
+      if (connection.mode === 'remote' && mode !== 'mock') {
         try {
           const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/health`, {
             headers: {
@@ -99,7 +113,7 @@ export function initServices(opts: {
       const tools = new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
       const sandbox = new WorkerSandboxClient()
       const browserRuntime = new BrowserAgentRuntime(files, sandbox, permissions, ['https://example.com'])
-      const runtime = mode === 'desktop' || mode === 'browser'
+      const runtime = connection.mode === 'remote' && (mode === 'desktop' || mode === 'browser')
           ? new OpenSaddleRuntimeClient(baseUrl, new MockRuntimeClient(), {
             token,
             getUserId,
@@ -127,10 +141,8 @@ export function initServices(opts: {
         },
       }
     })()
-  }
-  return bundlePromise
 }
 
 export function resetServices() {
-  bundlePromise = null
+  // Kept for callers that used to reset the singleton service cache.
 }

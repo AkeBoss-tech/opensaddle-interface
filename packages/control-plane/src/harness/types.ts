@@ -8,6 +8,7 @@ export type CodingProvider =
   | 'cursor'
   | 'gemini'
   | 'opencode'
+  | 'antigravity'
   | 'custom'
 
 export type HarnessAvailability = 'available' | 'missing' | 'disabled'
@@ -19,6 +20,8 @@ export interface HarnessProfile {
   command: string
   description: string
   kind: 'native' | 'cli'
+  /** Optional provider protocol. Codex's rich-client integration uses app-server JSONL. */
+  protocol?: 'cli' | 'codex-app-server'
   /** How the prompt is passed to the CLI. */
   promptMode: 'final_arg' | 'flag' | 'stdin' | 'native'
   promptFlag?: string

@@ -15,6 +15,7 @@ export type RunEventType =
   | 'diff.updated'
   | 'review.started'
   | 'review.completed'
+  | 'review.failed'
   | 'verification.started'
   | 'verification.completed'
   | 'agent.paused'
@@ -36,6 +37,7 @@ export interface SessionEvent {
 export interface RouteEstimate {
   modelKey: ModelKey
   modelId?: string
+  nativeModelDefault?: boolean
   harnessKey: Harness
   providerKey?: CodingProvider
   runtimeKey: RuntimeKind

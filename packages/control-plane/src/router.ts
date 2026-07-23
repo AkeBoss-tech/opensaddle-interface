@@ -156,6 +156,9 @@ export function estimateRoute(
   }
 
   const externalCodingCli = harnessKey === 'coding' && providerKey !== 'opensaddle'
+  const explicitModel = Boolean(overrides.modelId) || Boolean(overrides.modelKey && overrides.modelKey !== 'auto')
+  const nativeModelDefault = externalCodingCli && !explicitModel
+  if (nativeModelDefault) reasons.push(`${providerKey} native model router selected`)
   const modelKey = externalCodingCli ? preferredModel : configuredModel(config, preferredModel)
   if (modelKey !== preferredModel && config.modelRoutes[modelKey]) {
     reasons.push(`Preferred model unavailable; routed to configured ${modelKey} endpoint`)
@@ -166,9 +169,10 @@ export function estimateRoute(
 
   return {
     modelKey,
-    modelId: overrides.modelId,
+    modelId: nativeModelDefault ? undefined : overrides.modelId,
     harnessKey,
     providerKey,
+    nativeModelDefault,
     runtimeKey,
     reasons,
     cost: externalCodingCli

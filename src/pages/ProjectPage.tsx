@@ -35,9 +35,12 @@ export function ProjectPage() {
   const [buildingSite, setBuildingSite] = useState(false)
   const [publishGeneratedSite, setPublishGeneratedSite] = useState(false)
 
+  // The store API is recreated whenever data changes; the ID guard prevents a
+  // state-update loop while keeping the active project synchronized.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (project) setActiveProject(project.id)
-  }, [project, setActiveProject])
+    if (project && data.activeProjectId !== project.id) setActiveProject(project.id)
+  }, [data.activeProjectId, project?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const agents = data.agents.filter((a) => a.projectId === project.id)
   const sites = data.sites.filter((s) => s.projectId === project.id)
@@ -52,6 +55,8 @@ export function ProjectPage() {
   const caps = data.capabilities[project.id] ?? data.capabilities['proj-coding'] ?? []
   const knowledge = data.knowledge.filter((k) => k.projectId === project.id || !k.projectId)
   const services = data.services.filter((s) => s.projectId === project.id || s.projectId === 'proj-corp')
+  const projectWorkflows = data.workflows.filter((workflow) => workflow.projectId === project.id)
+  const projectWorkflowRuns = data.workflowRuns.filter((run) => run.projectId === project.id).slice(0, 3)
 
   const canWrite = evaluatePermissions(data.permissionGrants, {
     userId: data.currentUserId,
@@ -144,6 +149,14 @@ export function ProjectPage() {
               ))}
             </>
           )}
+          <div className="project-work-clues">
+            <div className="project-work-clues-head"><div><h3 className="proj-section-title">Workflows</h3><p>Recent work and automations for this project.</p></div><Link className="tiny-btn" to={`/workflows/${project.id}`}>View all</Link></div>
+            <div className="project-work-clues-grid">
+              {projectWorkflows.slice(0, 3).map((workflow) => <Link key={workflow.id} className="project-work-clue" to={`/workflows/${project.id}`}><Icon name="clock" className="icon sm" /><span><strong>{workflow.name}</strong><small>{workflow.status} · {workflow.trigger}</small></span></Link>)}
+              {projectWorkflowRuns.map((run) => { const workflow = projectWorkflows.find((item) => item.id === run.workflowId) ?? data.workflows.find((item) => item.id === run.workflowId); return <Link key={run.id} className="project-work-clue" to={`/workflows/${project.id}`}><Icon name="activity" className="icon sm" /><span><strong>{workflow?.name ?? 'Workflow run'}</strong><small>{run.summary}</small></span></Link> })}
+              {!projectWorkflows.length && !projectWorkflowRuns.length && <span className="row-sub">No workflows are attached to this project yet.</span>}
+            </div>
+          </div>
         </div>
       )}
 
@@ -333,7 +346,7 @@ export function ProjectPage() {
                     providerKey: event.target.value as CodingProvider,
                   },
                 })}>
-                  <option value="auto">Auto</option><option value="opensaddle">OpenSaddle</option><option value="codex">Codex CLI</option><option value="claude">Claude Code</option><option value="cursor">Cursor Agent</option><option value="gemini">Gemini CLI</option><option value="opencode">OpenCode</option>
+                    <option value="auto">Auto</option><option value="opensaddle">OpenSaddle</option><option value="codex">Codex CLI</option><option value="claude">Claude Code</option><option value="cursor">Cursor Agent</option><option value="gemini">Gemini CLI</option><option value="opencode">OpenCode</option><option value="antigravity">Antigravity CLI</option>
                 </select>
               </div>
               <div className="form-row"><label>Model policy</label>
@@ -369,7 +382,7 @@ export function ProjectPage() {
                     reviewProviderKey: event.target.value as CodingProvider,
                   },
                 })}>
-                  <option value="auto">No automatic second review</option><option value="codex">Codex CLI</option><option value="claude">Claude Code</option><option value="cursor">Cursor Agent</option><option value="gemini">Gemini CLI</option><option value="opencode">OpenCode</option>
+                    <option value="auto">No automatic second review</option><option value="codex">Codex CLI</option><option value="claude">Claude Code</option><option value="cursor">Cursor Agent</option><option value="gemini">Gemini CLI</option><option value="opencode">OpenCode</option><option value="antigravity">Antigravity CLI</option>
                 </select>
               </div>
             </div>

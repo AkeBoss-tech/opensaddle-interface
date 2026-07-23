@@ -106,6 +106,10 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       next.statusText = 'Independent review completed'
       for (const step of next.plan) if (step.status === 'active') step.status = 'done'
       break
+    case 'review.failed':
+      next.statusText = `Review unavailable · ${typeof event.payload.provider === 'string' ? event.payload.provider : 'reviewer'}`
+      for (const step of next.plan) if (step.status === 'active') step.status = 'done'
+      break
     case 'verification.completed': {
       const checks = Array.isArray(event.payload.checks) ? event.payload.checks as RawCheck[] : []
       if (checks.length) {

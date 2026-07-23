@@ -3,7 +3,7 @@ import type {
   AgentInterface, AppData, Chat, CustomAgent, Dashboard, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
 } from '../types'
 import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
-import { initServices, resetServices, type ServiceBundle } from '../services'
+import { defaultConnectionProfile, initServices, resetServices, type ConnectionProfile, type ServiceBundle } from '../services'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
 
@@ -85,8 +85,12 @@ interface StoreApi {
   dismissToast: (id: string) => void
   services: ServiceBundle | null
   runtimeModeLabel: string
-  persistenceStatus: 'local' | 'loading' | 'syncing' | 'synced' | 'error'
+  persistenceStatus: 'local' | 'loading' | 'syncing' | 'synced' | 'needs_setup' | 'error'
   lastSavedAt: number | null
+  connection: ConnectionProfile
+  connectToServer: (profile: Pick<ConnectionProfile, 'name' | 'baseUrl' | 'token'>) => Promise<void>
+  switchToDemo: () => void
+  initializeRemoteWorkspace: () => Promise<void>
 }
 
 const StoreContext = createContext<StoreApi | null>(null)
@@ -97,6 +101,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [services, setServices] = useState<ServiceBundle | null>(null)
   const [persistenceStatus, setPersistenceStatus] = useState<StoreApi['persistenceStatus']>('loading')
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  const [connection, setConnection] = useState<ConnectionProfile>(() => defaultConnectionProfile())
   const grantsRef = useRef(data.permissionGrants)
   const currentUserRef = useRef(data.currentUserId)
   const dataRef = useRef(data)
@@ -129,6 +134,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setGrants: (grants) => setData((d) => ({ ...d, permissionGrants: grants })),
       currentUserId: data.currentUserId,
       getCurrentUserId: () => currentUserRef.current,
+      connection,
     }).then(async (bundle) => {
       if (cancelled) return
       setServices(bundle)
@@ -139,11 +145,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (remote?.version === DATA_VERSION) {
             const normalized = normalizeWorkspace(remote)
             setData(normalized)
-            const result = await bundle.workspace.save(normalized)
-            setLastSavedAt(result.updatedAt)
           } else {
-            const result = await bundle.workspace.save(dataRef.current)
-            setLastSavedAt(result.updatedAt)
+            workspaceHydratedRef.current = true
+            setPersistenceStatus('needs_setup')
+            toast('Remote workspace needs setup', 'No compatible workspace was found. Choose Initialize remote workspace to upload demo data explicitly.')
+            return
           }
           workspaceHydratedRef.current = true
           setPersistenceStatus('synced')
@@ -164,10 +170,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     })
     return () => { cancelled = true }
-  }, [data.currentUserId, toast])
+  }, [connection, data.currentUserId, toast])
 
   useEffect(() => {
-    if (!services?.workspace || !workspaceHydratedRef.current) return
+    if (!services?.workspace || !workspaceHydratedRef.current || persistenceStatus === 'needs_setup') return
     const sequence = ++saveSequenceRef.current
     setPersistenceStatus('syncing')
     const timer = window.setTimeout(() => {
@@ -182,7 +188,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
     }, 450)
     return () => window.clearTimeout(timer)
-  }, [data, services, toast])
+  }, [data, persistenceStatus, services, toast])
 
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), [])
 
@@ -195,6 +201,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast,
     persistenceStatus,
     lastSavedAt,
+    connection,
+    connectToServer: async (profile) => {
+      const baseUrl = profile.baseUrl.trim().replace(/\/$/, '')
+      if (!/^https?:\/\//i.test(baseUrl)) throw new Error('Server URL must start with http:// or https://')
+      const response = await fetch(`${baseUrl}/api/health`, {
+        headers: {
+          ...(profile.token ? { Authorization: `Bearer ${profile.token}` } : {}),
+          'X-OpenSaddle-User': currentUserRef.current,
+        },
+        signal: AbortSignal.timeout(3000),
+      })
+      if (!response.ok) throw new Error(`OpenSaddle server returned HTTP ${response.status}`)
+      setPersistenceStatus('loading')
+      workspaceHydratedRef.current = false
+      setServices(null)
+      setConnection({ id: `remote-${baseUrl}`, name: profile.name.trim() || baseUrl, mode: 'remote', baseUrl, token: profile.token, allowMockFallback: false })
+    },
+    switchToDemo: () => {
+      workspaceHydratedRef.current = false
+      setServices(null)
+      setConnection(defaultConnectionProfile().mode === 'demo' ? defaultConnectionProfile() : {
+        id: 'demo', name: 'Demo workspace', mode: 'demo', baseUrl: 'http://127.0.0.1:8765', allowMockFallback: true,
+      })
+    },
+    initializeRemoteWorkspace: async () => {
+      if (!services?.workspace || connection.mode !== 'remote') throw new Error('Connect to a remote server first')
+      const result = await services.workspace.save(dataRef.current)
+      workspaceHydratedRef.current = true
+      setLastSavedAt(result.updatedAt)
+      setPersistenceStatus('synced')
+    },
     setTheme: (t) => patch((d) => { d.settings.theme = t; return d }),
     updateSettings: (s) => patch((d) => { d.settings = { ...d.settings, ...s, notifications: { ...d.settings.notifications, ...(s.notifications ?? {}) } }; return d }),
     setActiveProject: (id) => patch((d) => { d.activeProjectId = id; return d }),
@@ -479,6 +516,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         id: uid('wfr'),
         workflowId: wf.id,
         projectId: wf.projectId,
+        ownerId: data.currentUserId,
         agentId,
         status: 'running',
         startedAt: Date.now(),
@@ -565,7 +603,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     exportData: () => JSON.stringify(data, null, 2),
     services,
     runtimeModeLabel: modeLabel(detectRuntimeMode()),
-  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, lastSavedAt])
+  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, lastSavedAt, connection])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

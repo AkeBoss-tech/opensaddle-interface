@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 
@@ -11,10 +12,24 @@ export function SettingsPage() {
     services,
     persistenceStatus,
     lastSavedAt,
+    connection,
+    connectToServer,
+    switchToDemo,
+    initializeRemoteWorkspace,
+    toast,
   } = useStore()
   const s = data.settings
   const controlPlane = services?.controlPlane
   const isOpenRouter = controlPlane?.modelProvider === 'openrouter'
+  const [serverName, setServerName] = useState(connection.name)
+  const [serverUrl, setServerUrl] = useState(connection.mode === 'remote' ? connection.baseUrl : '')
+  const [serverToken, setServerToken] = useState(connection.token ?? '')
+  const [connecting, setConnecting] = useState(false)
+  useEffect(() => {
+    setServerName(connection.name)
+    setServerUrl(connection.mode === 'remote' ? connection.baseUrl : '')
+    setServerToken(connection.token ?? '')
+  }, [connection])
 
   const download = () => {
     const blob = new Blob([exportData()], { type: 'application/json' })
@@ -25,7 +40,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="content-page">
+    <div className="content-page settings-page">
       <div className="page-header">
         <div className="page-header-copy"><div className="eyebrow">Workspace control center</div><h1>Settings</h1><p>Connect models, verify local storage, and manage the preferences that shape every run.</p></div>
       </div>
@@ -57,6 +72,21 @@ export function SettingsPage() {
             <Icon name="refresh" className="icon sm" />
             <div><small>Sync</small><strong>{persistenceStatus === 'synced' ? 'Saved' : persistenceStatus}</strong></div>
           </div>
+        </div>
+      </section>
+
+      <section className="card connection-card">
+        <div className="card-header"><div><h3>OpenSaddle connection</h3><p>{connection.mode === 'remote' ? `${connection.name} · ${connection.baseUrl}` : 'Demo mode uses seeded data and simulated runs.'}</p></div><span className={`sync-badge ${controlPlane?.connected ? 'synced' : connection.mode === 'demo' ? 'local' : 'error'}`}>{connection.mode === 'remote' ? (controlPlane?.connected ? 'Connected' : 'Offline') : 'Demo'}</span></div>
+        <div className="card-body">
+          <div className="form-row"><label>Connection name</label><input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="My OpenSaddle server" /></div>
+          <div className="form-row"><label>Server URL</label><input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://opensaddle.example.com" /></div>
+          <div className="form-row"><label>Bearer token <span className="muted">(kept in this session only)</span></label><input type="password" value={serverToken} onChange={(e) => setServerToken(e.target.value)} placeholder="Optional for local servers" /></div>
+          <div className="setting-actions">
+            <button className="primary-btn" disabled={connecting || !serverUrl.trim()} onClick={() => { setConnecting(true); void connectToServer({ name: serverName, baseUrl: serverUrl, token: serverToken || undefined }).then(() => toast('Server connected', 'Remote workspace loading.')).catch((error: unknown) => toast('Connection failed', error instanceof Error ? error.message : String(error))).finally(() => setConnecting(false)) }}>{connecting ? 'Connecting…' : 'Connect server'}</button>
+            <button className="tiny-btn" onClick={switchToDemo}>Use demo mode</button>
+            {persistenceStatus === 'needs_setup' && <button className="tiny-btn" onClick={() => { void initializeRemoteWorkspace().then(() => toast('Remote workspace initialized', 'The current demo data was explicitly uploaded.')).catch((error: unknown) => toast('Initialization failed', error instanceof Error ? error.message : String(error))) }}>Initialize remote workspace</button>}
+          </div>
+          <p className="provider-note"><Icon name="shield" className="icon sm" />A remote server is authoritative. The browser will not upload demo data unless you explicitly initialize it.</p>
         </div>
       </section>
 

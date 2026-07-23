@@ -10,6 +10,7 @@ export type CodingProvider =
   | 'cursor'
   | 'gemini'
   | 'opencode'
+  | 'antigravity'
   | 'custom'
 export type RuntimeKind = 'local' | 'browser' | 'sandbox' | 'vm' | 'gpu' | 'restricted'
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
@@ -58,6 +59,8 @@ export interface RouteEstimate {
   harnessKey: Harness
   /** Coding/CLI provider selected for this route (opensaddle native or external CLI). */
   providerKey: Exclude<CodingProvider, 'auto'>
+  /** External CLIs use their own configured router when no model override was requested. */
+  nativeModelDefault?: boolean
   runtimeKey: RuntimeKind
   reasons: string[]
   cost: string
@@ -84,6 +87,7 @@ export type RunEventType =
   | 'diff.updated'
   | 'review.started'
   | 'review.completed'
+  | 'review.failed'
   | 'approval.requested'
   | 'tool.requested'
   | 'tool.completed'

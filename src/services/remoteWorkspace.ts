@@ -6,6 +6,7 @@ export class RemoteWorkspaceClient implements WorkspaceClient {
   private readonly getUserId: () => string
   private readonly token?: string
   private saveChain: Promise<void> = Promise.resolve()
+  private revision?: number
 
   constructor(baseUrl: string, getUserId: () => string, token?: string) {
     this.baseUrl = baseUrl.replace(/\/$/, '')
@@ -35,7 +36,8 @@ export class RemoteWorkspaceClient implements WorkspaceClient {
     })
     if (response.status === 404) return null
     if (!response.ok) throw await this.error(response)
-    const body = await response.json() as { workspace: AppData }
+    const body = await response.json() as { workspace: AppData; updatedAt?: number }
+    this.revision = body.updatedAt
     return body.workspace
   }
 
@@ -45,12 +47,16 @@ export class RemoteWorkspaceClient implements WorkspaceClient {
     const operation = this.saveChain.then(async () => {
       const response = await fetch(`${this.baseUrl}/api/workspace`, {
         method: 'PUT',
-        headers: this.headers(true),
+        headers: {
+          ...this.headers(true),
+          ...(this.revision ? { 'If-Unmodified-Since': String(this.revision) } : {}),
+        },
         body: JSON.stringify({ workspace: snapshot }),
       })
       if (!response.ok) throw await this.error(response)
       const body = await response.json() as { updatedAt: number; documents: number }
       result = { updatedAt: body.updatedAt, documents: body.documents }
+      this.revision = body.updatedAt
     })
     this.saveChain = operation.catch(() => undefined)
     await operation

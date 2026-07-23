@@ -35,6 +35,7 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
   const siteActiveFor = (siteId: string) => location.pathname === `/site/${siteId}`
   const [wsOpen, setWsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('opensaddle-sidebar-collapsed') === 'true')
   const pinned = data.pinnedArtifacts ?? []
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
@@ -45,6 +46,11 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
     }
   })
   const unread = data.notifications.filter((n) => !n.read).length
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--sidebar-w', sidebarCollapsed ? '76px' : '292px')
+    localStorage.setItem('opensaddle-sidebar-collapsed', String(sidebarCollapsed))
+  }, [sidebarCollapsed])
 
   useEffect(() => {
     if (data.pinnedArtifacts) return
@@ -230,7 +236,7 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
     .filter((row): row is NonNullable<typeof row> => row !== null)
 
   return (
-    <aside className="sidebar" id="sidebar">
+    <aside className={`sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`} id="sidebar">
       <div className="sidebar-top" style={{ position: 'relative' }}>
         <button className="workspace-switcher" onClick={() => setWsOpen((v) => !v)}>
           <span className="workspace-logo"><Icon name="saddle" className="icon sm" /></span>
@@ -240,6 +246,7 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
           </span>
           <Icon name="chevron" className="icon sm" />
         </button>
+        <button className="sidebar-collapse-btn" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Minimize sidebar'} title={sidebarCollapsed ? 'Expand sidebar' : 'Minimize sidebar'} onClick={() => setSidebarCollapsed((value) => !value)}><Icon name="panel" className="icon sm" /></button>
         {wsOpen && (
           <div className="menu-dropdown" style={{ left: 12, right: 12, top: 52 }}>
             <button className="menu-item" onClick={() => { setWsOpen(false); nav('/admin') }}><Icon name="users" className="icon sm" /> Organization admin</button>

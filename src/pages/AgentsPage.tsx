@@ -9,28 +9,31 @@ export function AgentsPage() {
   const { data, createChat, toast, services } = useStore()
   const nav = useNavigate()
   const [filter, setFilter] = useState('')
+  const [directoryOnly, setDirectoryOnly] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
 
   const agents = useMemo(() => {
     let list = data.agents
     if (projectId) list = list.filter((a) => a.projectId === projectId)
+    if (directoryOnly) list = list.filter((a) => a.visibility === 'shared')
     if (filter.trim()) {
       const q = filter.toLowerCase()
       list = list.filter((a) => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q))
     }
     return list
-  }, [data.agents, projectId, filter])
+  }, [data.agents, projectId, filter, directoryOnly])
 
   return (
     <div className="content-page">
       <div className="page-header">
         <div className="page-header-copy">
-          <div className="eyebrow">Separate from chats</div>
-          <h1>Agents</h1>
-          <p>Harness definitions, live sessions, effective permissions, and assigned workflows — managed independently from conversations.</p>
+          <div className="eyebrow">Shared agent directory</div>
+          <h1>Agent library</h1>
+          <p>Discover reusable agents, open a chat with one, or inspect the permissions and tools it uses.</p>
         </div>
         <div className="page-header-actions">
           <input placeholder="Filter agents" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <button className={`secondary-btn ${directoryOnly ? 'active' : ''}`} onClick={() => setDirectoryOnly((value) => !value)}><Icon name="globe" className="icon sm" />{directoryOnly ? 'All agents' : 'Shared agents'}</button>
           <Link className="secondary-btn" to="/workflows">Workflows</Link>
           <Link className="secondary-btn" to="/permissions">Permissions</Link>
         </div>

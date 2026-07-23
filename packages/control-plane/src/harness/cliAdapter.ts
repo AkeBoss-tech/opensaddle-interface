@@ -20,7 +20,9 @@ export class CliHarnessAdapter implements HarnessAdapter {
       throw new Error(`CLI harness "${this.profile.id}" has no command configured`)
     }
 
-    const modelId = resolveCliModel(this.profile, input.route.modelKey)
+    const modelId = input.route.nativeModelDefault
+      ? undefined
+      : resolveCliModel(this.profile, input.route.modelKey, input.route.modelId)
     const args = buildArgs(this.profile, input.task, input.workspacePath, modelId)
     const sessionRoot = join(input.workspacePath, '.opensaddle-harness', input.runId)
 

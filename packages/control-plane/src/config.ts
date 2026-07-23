@@ -131,9 +131,9 @@ export function loadConfig(): ControlPlaneConfig {
     throw new Error('OPENSADDLE_RUNTIME_PROVIDER must be local or docker')
   }
 
-  const defaultCodingProvider = (process.env.OPENSADDLE_DEFAULT_CODING_PROVIDER ?? 'opensaddle') as Exclude<CodingProvider, 'auto'>
+  const defaultCodingProvider = (process.env.OPENSADDLE_DEFAULT_CODING_PROVIDER ?? 'codex') as Exclude<CodingProvider, 'auto'>
   const codingProviders = (process.env.OPENSADDLE_CODING_PROVIDERS
-    ?? 'opensaddle,codex,claude,cursor,gemini,opencode')
+    ?? 'opensaddle,codex,claude,cursor,gemini,opencode,antigravity')
     .split(',')
     .map((p) => p.trim())
     .filter(Boolean)
