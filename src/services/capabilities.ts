@@ -1,5 +1,13 @@
 export type RuntimeMode = 'mock' | 'browser' | 'desktop'
 
+export type DaemonAuthorityState = 'available' | 'unavailable' | 'not-configured'
+
+export interface DaemonAuthority {
+  state: DaemonAuthorityState
+  source: 'opensaddle-daemon' | 'demo-mock'
+  reason?: string
+}
+
 export type Capability =
   | 'chat.simulate'
   | 'files.opfs'
@@ -80,4 +88,10 @@ export function modeLabel(mode = detectRuntimeMode()): string {
   if (mode === 'desktop') return 'Desktop harness'
   if (mode === 'browser') return 'Browser workspace'
   return 'Mock demo'
+}
+
+/** Local capability labels never imply daemon authority. The daemon must report execution capabilities itself. */
+export function daemonAuthority(mode = detectRuntimeMode()): DaemonAuthority {
+  if (mode === 'mock') return { state: 'not-configured', source: 'demo-mock', reason: 'Demo/mock mode is explicitly selected' }
+  return { state: 'unavailable', source: 'opensaddle-daemon', reason: 'Daemon capabilities have not been confirmed' }
 }
