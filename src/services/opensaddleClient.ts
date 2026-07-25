@@ -14,9 +14,29 @@ export interface DaemonRunRequest {
   agent: { id: string }
   project: { id: string }
   runner: { id: string }
-  action: Record<string, unknown>
+  action: DaemonAction
   permission: { action: string; resource?: string; command?: string; path?: string }
   approval_id?: string
+}
+
+/** Admission input is intentionally a small, non-content-bearing action descriptor. */
+export interface DaemonAction {
+  operation: string
+  input_ref?: string
+  resource_selector?: string
+}
+
+const ACTION_KEYS = new Set<keyof DaemonAction>(['operation', 'input_ref', 'resource_selector'])
+
+export function validateDaemonAction(action: DaemonAction): DaemonAction {
+  if (!action || typeof action !== 'object' || typeof action.operation !== 'string' || action.operation.length === 0) {
+    throw new Error('OpenSaddle action requires a non-empty operation')
+  }
+  for (const key of Object.keys(action)) {
+    if (!ACTION_KEYS.has(key as keyof DaemonAction)) throw new Error(`OpenSaddle action field is not allowed: ${key}`)
+    if (typeof action[key as keyof DaemonAction] !== 'string') throw new Error(`OpenSaddle action field must be a string: ${key}`)
+  }
+  return action
 }
 
 export interface DaemonRun {
@@ -91,7 +111,10 @@ export function createHttpDaemonTransport(endpoint: string, token?: string, fetc
   }
   return {
     capabilities: () => request<DaemonCapabilities>('/api/v1/capabilities'),
-    createRun: (body) => request<DaemonRun>('/api/v1/runs', { method: 'POST', body: JSON.stringify(body) }),
+    createRun: (body) => {
+      validateDaemonAction(body.action)
+      return request<DaemonRun>('/api/v1/runs', { method: 'POST', body: JSON.stringify(body) })
+    },
     getRun: (id) => request<DaemonRun>(`/api/v1/runs/${encodeURIComponent(id)}`),
     cancelRun: (id) => request<DaemonRun>(`/api/v1/runs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
     listEvents: async (id, after) => (await request<{ events: DaemonEvent[] }>(`/api/v1/runs/${encodeURIComponent(id)}/events?after_sequence=${after}`)).events,
@@ -133,7 +156,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       agent: { id: input.agentId ?? 'opensaddle-interface' },
       project: { id: input.projectId },
       runner: { id: input.providerKey ?? input.harnessKey ?? 'opensaddle' },
-      action: { task: input.task, repo: input.repo, model_id: input.modelId, model_key: input.modelKey },
+      // The v1 daemon is non-dispatching: pass only an opaque reference, never prompt content.
+      action: { operation: 'run', input_ref: 'client-input:opaque', ...(input.repo ? { resource_selector: input.repo } : {}) },
       permission: { action: 'execute', resource: input.projectId },
       approval_id: input.approvalId,
     })

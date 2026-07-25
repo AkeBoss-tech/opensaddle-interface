@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 // @ts-expect-error Node test types are intentionally not part of the browser app type surface.
 import test from 'node:test'
-import { DaemonUnavailableError, OpenSaddleRuntimeClient, createHttpDaemonTransport, validateDaemonEndpoint } from './opensaddleClient.ts'
+import { DaemonUnavailableError, OpenSaddleRuntimeClient, createHttpDaemonTransport, validateDaemonAction, validateDaemonEndpoint } from './opensaddleClient.ts'
 
 test('daemon endpoint is versioned and rejects unsafe endpoints', () => {
   assert.equal(validateDaemonEndpoint('http://127.0.0.1:8765/'), 'http://127.0.0.1:8765')
@@ -17,11 +17,28 @@ test('HTTP transport maps v1 responses and keeps token out of request payload', 
     calls.push({ url: String(input), init })
     return new Response(JSON.stringify({ run_id: 'run-1', status: 'accepted' }), { status: 201 })
   })
-  const run = await transport.createRun({ agent: { id: 'a' }, project: { id: 'p' }, runner: { id: 'r' }, action: { task: 'x' }, permission: { action: 'execute' } })
+  const run = await transport.createRun({ agent: { id: 'a' }, project: { id: 'p' }, runner: { id: 'r' }, action: { operation: 'run', input_ref: 'client-input:opaque' }, permission: { action: 'execute' } })
   assert.deepEqual(run, { run_id: 'run-1', status: 'accepted' })
   assert.match(String(calls[0].init.headers && (calls[0].init.headers as Record<string, string>).Authorization), /Bearer install-secret/)
   assert.equal(String(calls[0].init.body).includes('install-secret'), false)
   assert.equal(calls[0].url, 'http://127.0.0.1:8765/api/v1/runs')
+  const serialized = String(calls[0].init.body)
+  assert.equal(serialized.includes('task'), false)
+  assert.equal(serialized.includes('prompt'), false)
+  assert.equal(serialized.includes('raw user task'), false)
+  const client = new OpenSaddleRuntimeClient('http://127.0.0.1:8765', undefined, { transport })
+  await client.startRun({ projectId: 'p', task: 'raw user task should never cross the boundary', repo: '/repo' })
+  const startSerialized = String(calls[1].init.body)
+  assert.equal(startSerialized.includes('raw user task'), false)
+  assert.equal(startSerialized.includes('prompt'), false)
+  assert.equal(startSerialized.includes('client-input:opaque'), true)
+})
+
+test('typed daemon actions reject prompt/content-bearing fields', () => {
+  assert.deepEqual(validateDaemonAction({ operation: 'run', input_ref: 'client-input:opaque' }), { operation: 'run', input_ref: 'client-input:opaque' })
+  assert.throws(() => validateDaemonAction({ operation: 'run', task: 'raw user task' } as never), /not allowed: task/)
+  assert.throws(() => validateDaemonAction({ operation: 'run', prompt: 'secret prompt' } as never), /not allowed: prompt/)
+  assert.throws(() => validateDaemonAction({ operation: 'run', content: 'secret content' } as never), /not allowed: content/)
 })
 
 test('daemon unavailable is explicit and never silently becomes local authority', async () => {
