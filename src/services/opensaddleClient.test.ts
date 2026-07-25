@@ -17,7 +17,7 @@ test('HTTP transport maps v1 responses and keeps token out of request payload', 
     calls.push({ url: String(input), init })
     return new Response(JSON.stringify({ run_id: 'run-1', status: 'accepted' }), { status: 201 })
   })
-  const run = await transport.createRun({ agent: { id: 'a' }, project: { id: 'p' }, runner: { id: 'r' }, action: { operation: 'run', input_ref: 'client-input:opaque' }, permission: { action: 'execute' } })
+  const run = await transport.createRun({ agent: { id: 'a' }, project: { id: 'p' }, runner: { id: 'r' }, action: { operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: [] }, permission: { action: 'execute' } })
   assert.deepEqual(run, { run_id: 'run-1', status: 'accepted' })
   assert.match(String(calls[0].init.headers && (calls[0].init.headers as Record<string, string>).Authorization), /Bearer install-secret/)
   assert.equal(String(calls[0].init.body).includes('install-secret'), false)
@@ -32,13 +32,15 @@ test('HTTP transport maps v1 responses and keeps token out of request payload', 
   assert.equal(startSerialized.includes('raw user task'), false)
   assert.equal(startSerialized.includes('prompt'), false)
   assert.equal(startSerialized.includes('client-input:opaque'), true)
+  assert.deepEqual(JSON.parse(startSerialized).action, { operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: ['/repo'] })
 })
 
 test('typed daemon actions reject prompt/content-bearing fields', () => {
-  assert.deepEqual(validateDaemonAction({ operation: 'run', input_ref: 'client-input:opaque' }), { operation: 'run', input_ref: 'client-input:opaque' })
-  assert.throws(() => validateDaemonAction({ operation: 'run', task: 'raw user task' } as never), /not allowed: task/)
-  assert.throws(() => validateDaemonAction({ operation: 'run', prompt: 'secret prompt' } as never), /not allowed: prompt/)
-  assert.throws(() => validateDaemonAction({ operation: 'run', content: 'secret content' } as never), /not allowed: content/)
+  assert.deepEqual(validateDaemonAction({ operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: [] }), { operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: [] })
+  assert.throws(() => validateDaemonAction({ operation_id: 'run', task: 'raw user task', resource_selectors: [] } as never), /not allowed: task/)
+  assert.throws(() => validateDaemonAction({ operation_id: 'run', prompt: 'secret prompt', resource_selectors: [] } as never), /not allowed: prompt/)
+  assert.throws(() => validateDaemonAction({ operation_id: 'run', content: 'secret content', resource_selectors: [] } as never), /not allowed: content/)
+  assert.throws(() => validateDaemonAction({ operation_id: 'run', input_ref: 'opaque', resource_selectors: ['/repo'], operation: 'legacy' } as never), /not allowed: operation/)
 })
 
 test('daemon unavailable is explicit and never silently becomes local authority', async () => {

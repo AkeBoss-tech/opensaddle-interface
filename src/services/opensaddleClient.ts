@@ -21,20 +21,20 @@ export interface DaemonRunRequest {
 
 /** Admission input is intentionally a small, non-content-bearing action descriptor. */
 export interface DaemonAction {
-  operation: string
+  operation_id: string
   input_ref?: string
-  resource_selector?: string
+  resource_selectors: string[]
 }
 
-const ACTION_KEYS = new Set<keyof DaemonAction>(['operation', 'input_ref', 'resource_selector'])
+const ACTION_KEYS = new Set<keyof DaemonAction>(['operation_id', 'input_ref', 'resource_selectors'])
 
 export function validateDaemonAction(action: DaemonAction): DaemonAction {
-  if (!action || typeof action !== 'object' || typeof action.operation !== 'string' || action.operation.length === 0) {
-    throw new Error('OpenSaddle action requires a non-empty operation')
+  if (!action || typeof action !== 'object' || typeof action.operation_id !== 'string' || action.operation_id.length === 0 || !Array.isArray(action.resource_selectors) || action.resource_selectors.some((selector) => typeof selector !== 'string')) {
+    throw new Error('OpenSaddle action requires operation_id and string resource_selectors')
   }
   for (const key of Object.keys(action)) {
     if (!ACTION_KEYS.has(key as keyof DaemonAction)) throw new Error(`OpenSaddle action field is not allowed: ${key}`)
-    if (typeof action[key as keyof DaemonAction] !== 'string') throw new Error(`OpenSaddle action field must be a string: ${key}`)
+    if (key !== 'resource_selectors' && typeof action[key as keyof DaemonAction] !== 'string') throw new Error(`OpenSaddle action field must be a string: ${key}`)
   }
   return action
 }
@@ -157,7 +157,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       project: { id: input.projectId },
       runner: { id: input.providerKey ?? input.harnessKey ?? 'opensaddle' },
       // The v1 daemon is non-dispatching: pass only an opaque reference, never prompt content.
-      action: { operation: 'run', input_ref: 'client-input:opaque', ...(input.repo ? { resource_selector: input.repo } : {}) },
+      action: { operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: input.repo ? [input.repo] : [] },
       permission: { action: 'execute', resource: input.projectId },
       approval_id: input.approvalId,
     })
