@@ -1,6 +1,7 @@
 import type { AgentRunBlock, AppData, CodingProvider, Harness, ModelKey, RuntimeKind, SitePage } from '../types'
 
 export type RunEventType =
+  | 'daemon.status'
   | 'session.created'
   | 'session.attached'
   | 'agent.started'

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 // @ts-expect-error Node test types are intentionally not part of the browser app type surface.
 import test from 'node:test'
-import { DaemonUnavailableError, OpenSaddleRuntimeClient, createHttpDaemonTransport, validateDaemonAction, validateDaemonEndpoint } from './opensaddleClient.ts'
+import { DaemonUnavailableError, OpenSaddleRuntimeClient, createHttpDaemonTransport, createIpcDaemonTransport, validateDaemonAction, validateDaemonEndpoint } from './opensaddleClient.ts'
 
 test('daemon endpoint is versioned and rejects unsafe endpoints', () => {
   assert.equal(validateDaemonEndpoint('http://127.0.0.1:8765/'), 'http://127.0.0.1:8765')
@@ -32,10 +32,11 @@ test('HTTP transport maps v1 responses and keeps token out of request payload', 
   assert.equal(startSerialized.includes('raw user task'), false)
   assert.equal(startSerialized.includes('prompt'), false)
   assert.equal(startSerialized.includes('client-input:opaque'), true)
-  assert.deepEqual(JSON.parse(startSerialized).action, { operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: ['/repo'] })
+  assert.deepEqual(JSON.parse(startSerialized).action, { operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: ['repo'] })
 })
 
 test('typed daemon actions reject prompt/content-bearing fields', () => {
+  assert.deepEqual(validateDaemonAction({ operation_id: 'run' }), { operation_id: 'run', resource_selectors: [] })
   assert.deepEqual(validateDaemonAction({ operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: [] }), { operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: [] })
   assert.throws(() => validateDaemonAction({ operation_id: 'run', task: 'raw user task', resource_selectors: [] } as never), /not allowed: task/)
   assert.throws(() => validateDaemonAction({ operation_id: 'run', prompt: 'secret prompt', resource_selectors: [] } as never), /not allowed: prompt/)
@@ -52,6 +53,33 @@ test('daemon unavailable is explicit and never silently becomes local authority'
     listEvents: async () => { throw new DaemonUnavailableError() },
   } })
   await assert.rejects(() => client.startRun({ projectId: 'p', task: 'x' }), DaemonUnavailableError)
+})
+
+test('HTTP 503 is a terminal daemon-unavailable result', async () => {
+  const transport = createHttpDaemonTransport('http://127.0.0.1:8765', undefined, async () => new Response('{}', { status: 503 }))
+  await assert.rejects(() => transport.capabilities(), DaemonUnavailableError)
+})
+
+test('IPC bridge maps admission, durable events, and cancellation without renderer credentials', async () => {
+  const calls: string[] = []
+  const transport = createIpcDaemonTransport({
+    capabilities: async () => ({ service: 'opensaddle-daemon', capabilities: ['runs'] }),
+    createRun: async (request) => { calls.push(JSON.stringify(request)); return { run_id: 'r', status: 'admitted' } },
+    getRun: async () => ({ run_id: 'r', status: 'cancelled' }),
+    cancelRun: async () => { calls.push('cancel'); return { run_id: 'r', status: 'cancelled' } },
+    listEvents: async () => ({ events: [{ event_id: 'e', sequence: 1, kind: 'run.admitted', payload: {}, created_at: '2026-01-01T00:00:00Z' }] }),
+  })
+  const client = new OpenSaddleRuntimeClient('http://127.0.0.1:8765', undefined, { transport })
+  const admission = await client.startRun({ projectId: 'p', task: 'private prompt' })
+  assert.equal(admission.mode, 'admitted')
+  const received: string[] = []
+  const stop = client.subscribe('r', (event) => received.push(`${event.type}:${String(event.payload.status ?? '')}`))
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  stop()
+  await client.cancel('r')
+  assert.deepEqual(received, ['daemon.status:admitted'])
+  assert.equal(calls.some((value) => value.includes('private prompt')), false)
+  assert.equal(calls.at(-1), 'cancel')
 })
 
 test('cursor replay maps durable daemon events in order and suppresses duplicates', async () => {

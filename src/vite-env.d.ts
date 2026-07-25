@@ -35,6 +35,11 @@ interface Navigator {
 interface Window {
   opensaddleDesktop?: boolean
   opensaddle?: {
+    capabilities: () => Promise<unknown>
+    createRun: (request: unknown) => Promise<unknown>
+    getRun: (runId: string) => Promise<unknown>
+    cancelRun: (runId: string) => Promise<unknown>
+    listEvents: (runId: string, afterSequence: number) => Promise<unknown>
     getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; krailUrl: string; clis: string[] }>
     pickRepository: () => Promise<string | null>
     openPath: (path: string) => Promise<void>

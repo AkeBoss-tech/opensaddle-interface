@@ -23,20 +23,30 @@ export interface DaemonRunRequest {
 export interface DaemonAction {
   operation_id: string
   input_ref?: string
-  resource_selectors: string[]
+  resource_selectors?: string[]
 }
 
 const ACTION_KEYS = new Set<keyof DaemonAction>(['operation_id', 'input_ref', 'resource_selectors'])
+const OPERATION_REF = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]*$/
+const SELECTOR_REF = /^[A-Za-z0-9][A-Za-z0-9_.:@/*-]*$/
 
 export function validateDaemonAction(action: DaemonAction): DaemonAction {
-  if (!action || typeof action !== 'object' || typeof action.operation_id !== 'string' || action.operation_id.length === 0 || !Array.isArray(action.resource_selectors) || action.resource_selectors.some((selector) => typeof selector !== 'string')) {
-    throw new Error('OpenSaddle action requires operation_id and string resource_selectors')
-  }
+  if (!action || typeof action !== 'object') throw new Error('OpenSaddle action manifest is required')
   for (const key of Object.keys(action)) {
     if (!ACTION_KEYS.has(key as keyof DaemonAction)) throw new Error(`OpenSaddle action field is not allowed: ${key}`)
-    if (key !== 'resource_selectors' && typeof action[key as keyof DaemonAction] !== 'string') throw new Error(`OpenSaddle action field must be a string: ${key}`)
   }
-  return action
+  if (typeof action.operation_id !== 'string' || action.operation_id.length < 1 || action.operation_id.length > 128 || !OPERATION_REF.test(action.operation_id)) {
+    throw new Error('OpenSaddle operation_id must be a bounded opaque reference')
+  }
+  if (action.input_ref !== undefined && (typeof action.input_ref !== 'string' || action.input_ref.length < 1 || action.input_ref.length > 256 || !OPERATION_REF.test(action.input_ref))) {
+    throw new Error('OpenSaddle input_ref must be a bounded opaque reference')
+  }
+  const selectors = action.resource_selectors ?? []
+  if (!Array.isArray(selectors) || selectors.length > 32 || selectors.some((selector) => typeof selector !== 'string' || selector.length < 1 || selector.length > 256 || !SELECTOR_REF.test(selector))) {
+    throw new Error('OpenSaddle resource_selectors must be bounded opaque references')
+  }
+  if (action.input_ref !== undefined && typeof action.input_ref !== 'string') throw new Error('OpenSaddle action field must be a string: input_ref')
+  return { ...action, resource_selectors: selectors }
 }
 
 export interface DaemonRun {
@@ -61,6 +71,14 @@ export class DaemonUnavailableError extends Error {
   }
 }
 
+export interface DaemonBridge {
+  capabilities(): Promise<unknown>
+  createRun(request: unknown): Promise<unknown>
+  getRun(runId: string): Promise<unknown>
+  cancelRun(runId: string): Promise<unknown>
+  listEvents(runId: string, afterSequence: number): Promise<unknown>
+}
+
 export function validateDaemonEndpoint(raw: string): string {
   let url: URL
   try { url = new URL(raw) } catch { throw new Error('OpenSaddle endpoint must be a valid loopback URL') }
@@ -74,14 +92,15 @@ export function validateDaemonEndpoint(raw: string): string {
 }
 
 function eventToSessionEvent(event: DaemonEvent, runId: string): SessionEvent {
+  const knownTypes: SessionEvent['type'][] = ['session.created', 'session.attached', 'agent.started', 'agent.output.delta', 'agent.input.requested', 'user.input.submitted', 'tool.requested', 'tool.completed', 'approval.requested', 'approval.resolved', 'file.changed', 'diff.updated', 'review.started', 'review.completed', 'review.failed', 'verification.started', 'verification.completed', 'agent.paused', 'agent.resumed', 'agent.completed', 'agent.failed', 'session.closed']
   return {
     event_id: event.event_id,
     session_id: runId,
     run_id: runId,
     sequence: event.sequence,
     timestamp: event.created_at,
-    type: event.kind as SessionEvent['type'],
-    payload: event.payload,
+    type: knownTypes.includes(event.kind as SessionEvent['type']) ? event.kind as SessionEvent['type'] : 'daemon.status',
+    payload: event.kind === 'run.admitted' ? { ...event.payload, status: 'admitted' } : event.payload,
   }
 }
 
@@ -102,7 +121,10 @@ export function createHttpDaemonTransport(endpoint: string, token?: string, fetc
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     try {
       const response = await fetcher(`${baseUrl}${path}`, { ...init, headers: { ...headers(Boolean(init.body)), ...init.headers } })
-      if (!response.ok) throw new Error(`OpenSaddle daemon HTTP ${response.status}`)
+      if (!response.ok) {
+        if (response.status === 503) throw new DaemonUnavailableError('OpenSaddle daemon unavailable (HTTP 503)')
+        throw new Error(`OpenSaddle daemon HTTP ${response.status}`)
+      }
       return await response.json() as T
     } catch (error) {
       if (error instanceof TypeError || (error instanceof Error && error.message.includes('Failed to fetch'))) throw new DaemonUnavailableError()
@@ -121,13 +143,27 @@ export function createHttpDaemonTransport(endpoint: string, token?: string, fetc
   }
 }
 
+/** Adapts the already-authenticated Electron IPC bridge; credentials stay in main. */
+export function createIpcDaemonTransport(bridge: DaemonBridge): DaemonTransport {
+  return {
+    capabilities: () => bridge.capabilities() as Promise<DaemonCapabilities>,
+    createRun: (request) => { validateDaemonAction(request.action); return bridge.createRun(request) as Promise<DaemonRun> },
+    getRun: (runId) => bridge.getRun(runId) as Promise<DaemonRun>,
+    cancelRun: (runId) => bridge.cancelRun(runId) as Promise<DaemonRun>,
+    listEvents: async (runId, after) => (await bridge.listEvents(runId, after) as { events: DaemonEvent[] }).events,
+  }
+}
+
+export function unavailableDaemonTransport(): DaemonTransport {
+  const unavailable = async (): Promise<never> => { throw new DaemonUnavailableError() }
+  return { capabilities: unavailable, createRun: unavailable, getRun: unavailable, cancelRun: unavailable, listEvents: unavailable }
+}
+
 /** Presentation-only client. In daemon mode, every execution operation goes through the daemon. */
 export class OpenSaddleRuntimeClient implements RuntimeClient {
-  private readonly fallback?: RuntimeClient
-  private readonly allowFallback: boolean
   private readonly transport: DaemonTransport
 
-  constructor(endpoint: string, fallback?: RuntimeClient, options: {
+  constructor(endpoint: string, _fallback?: RuntimeClient, options: {
     token?: string
     allowFallback?: boolean
     /** Retained for source compatibility; daemon identity is token-bound. */
@@ -135,19 +171,13 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     transport?: DaemonTransport
   } = {}) {
     this.transport = options.transport ?? createHttpDaemonTransport(endpoint, options.token)
-    this.fallback = fallback
-    this.allowFallback = options.allowFallback ?? false
-  }
-
-  private unavailable<T>(fallback: () => Promise<T>): Promise<T> {
-    return this.allowFallback && this.fallback ? fallback() : Promise.reject(new DaemonUnavailableError())
   }
 
   async capabilities(): Promise<DaemonCapabilities> { return this.transport.capabilities() }
 
   async estimate(task: string, prefs?: { projectId?: string; routingPref?: string; modelKey?: ModelKey; modelId?: string; harnessKey?: Harness; providerKey?: CodingProvider; runtimeKey?: RuntimeKind }): Promise<RouteEstimate> {
     void task; void prefs
-    return this.unavailable(() => this.fallback!.estimate(task, prefs))
+    throw new DaemonUnavailableError('OpenSaddle daemon does not expose client-side route estimation')
   }
 
   async startRun(input: { projectId: string; task: string; agentId?: string; modelKey?: ModelKey; modelId?: string; harnessKey?: Harness; providerKey?: CodingProvider; runtimeKey?: RuntimeKind; repo?: string; approvalId?: string; reviewProviderKey?: CodingProvider }): Promise<{ runId: string; sessionId: string; mode?: string }> {
@@ -157,7 +187,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       project: { id: input.projectId },
       runner: { id: input.providerKey ?? input.harnessKey ?? 'opensaddle' },
       // The v1 daemon is non-dispatching: pass only an opaque reference, never prompt content.
-      action: { operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: input.repo ? [input.repo] : [] },
+      action: { operation_id: 'run', input_ref: 'client-input:opaque', resource_selectors: input.repo ? [input.repo.replace(/^\/+/, '')] : [] },
       permission: { action: 'execute', resource: input.projectId },
       approval_id: input.approvalId,
     })
@@ -181,7 +211,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
           await new Promise((resolve) => setTimeout(resolve, 350))
         }
       } catch (error) {
-        if (!stopped && this.allowFallback && this.fallback && error instanceof DaemonUnavailableError) this.fallback.subscribe(runId, onEvent)
+        if (!stopped) onEvent({ event_id: `daemon-error:${runId}`, session_id: runId, run_id: runId, sequence: cursor + 1, timestamp: new Date().toISOString(), type: 'daemon.status', payload: { status: 'unavailable', error: error instanceof Error ? error.message : String(error) } })
       }
     }
     void replay()
@@ -189,7 +219,6 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
   }
 
   async cancel(runId: string): Promise<void> {
-    try { await this.transport.cancelRun(runId) }
-    catch (error) { if (!(this.allowFallback && this.fallback && error instanceof DaemonUnavailableError)) throw error; await this.fallback.cancel(runId) }
+    await this.transport.cancelRun(runId)
   }
 }
