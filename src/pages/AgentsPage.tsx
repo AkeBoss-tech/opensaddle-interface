@@ -8,6 +8,7 @@ export function AgentsPage() {
   const { projectId } = useParams()
   const { data, createChat, toast, services } = useStore()
   const nav = useNavigate()
+  const project = projectId ? data.projects.find((item) => item.id === projectId) : undefined
   const [filter, setFilter] = useState('')
   const [directoryOnly, setDirectoryOnly] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
@@ -27,14 +28,14 @@ export function AgentsPage() {
     <div className="content-page">
       <div className="page-header">
         <div className="page-header-copy">
-          <div className="eyebrow">Shared agent directory</div>
-          <h1>Agent library</h1>
-          <p>Discover reusable agents, open a chat with one, or inspect the permissions and tools it uses.</p>
+          <div className="eyebrow">{project ? 'Project artifact' : 'Shared agent directory'}</div>
+          <h1>{project ? 'Coding agents' : 'Agent library'}</h1>
+          <p>{project ? `Focused agents for ${project.name}. Open a chat or inspect the tools and permissions each agent uses.` : 'Discover reusable agents, open a chat with one, or inspect the permissions and tools it uses.'}</p>
         </div>
         <div className="page-header-actions">
           <input placeholder="Filter agents" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <button className={`secondary-btn ${directoryOnly ? 'active' : ''}`} onClick={() => setDirectoryOnly((value) => !value)}><Icon name="globe" className="icon sm" />{directoryOnly ? 'All agents' : 'Shared agents'}</button>
-          <Link className="secondary-btn" to="/workflows">Workflows</Link>
+          <Link className="secondary-btn" to={projectId ? `/project/${projectId}/workflows` : '/workflows'}>Workflows</Link>
           <Link className="secondary-btn" to="/permissions">Permissions</Link>
         </div>
       </div>

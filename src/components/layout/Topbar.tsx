@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../../data/store'
 import { Icon } from '../common/Icon'
 
-export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalette: () => void }) {
+export function Topbar({ onPalette }: { onPalette: () => void }) {
   const { data, setTheme, markNotificationsRead, toast, runtimeModeLabel, services, runtimeStatus } = useStore()
   const [notifOpen, setNotifOpen] = useState(false)
   const nav = useNavigate()
@@ -27,7 +27,6 @@ export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalet
   return (
     <header className="topbar" style={{ position: 'relative' }}>
       <button className="icon-btn mobile-menu" onClick={() => document.getElementById('sidebar')?.classList.toggle('mobile-open')}><Icon name="menu" /></button>
-      <div className="crumbs">{crumbs}</div>
       <div className="topbar-actions">
         <Link to="/settings" className="crumb-pill system-pill" title="Open system settings">
           <span className={`pulse ${runtimeStatus.connection === 'offline-cache' ? 'offline' : ''}`} />

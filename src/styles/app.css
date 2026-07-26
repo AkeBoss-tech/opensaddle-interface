@@ -122,6 +122,9 @@
     .tree-row .row-hover-btn.pinned { color:var(--accent-2); opacity:.85; }
     .tree-row .resource-icon.site { color:var(--accent-2); }
     .tree-row .resource-icon.wiki { color:var(--green); }
+    .tree-row .resource-icon.agent { color:var(--accent); }
+    .tree-row .resource-icon.runs { color:var(--orange); }
+    .tree-row.artifact-row { min-height:31px; font-size:12px; }
     .tree-row .resource-tag { font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:#8d8e87; border:1px solid #3d3e39; border-radius:5px; padding:1px 5px; flex:0 0 auto; }
     .tree-row.resource-row:hover .resource-tag { display:none; }
     .tree-row.pinned-row { padding-left:9px; }
@@ -968,6 +971,13 @@ a.nav-item { text-decoration: none; color: inherit; }
 .proj-hero-icon { width:56px; height:56px; margin:0 auto 16px; border-radius:16px; border:1px solid; display:grid; place-items:center; }
 .proj-hero h1 { margin:0; font-size:26px; letter-spacing:-.035em; font-weight:640; }
 .proj-hero p { margin:9px auto 0; color:var(--muted); font-size:12.5px; line-height:1.55; max-width:560px; }
+.project-artifact-strip { display:flex; justify-content:center; flex-wrap:wrap; gap:8px; max-width:720px; margin:22px auto 0; }
+.project-artifact-card { min-width:116px; display:flex; align-items:center; gap:8px; padding:9px 11px; border:1px solid var(--border); border-radius:10px; color:var(--text); background:var(--card); text-decoration:none; font-size:11px; font-weight:600; }
+.project-artifact-card:hover { background:var(--card-hover); border-color:var(--border-strong); }
+.project-artifact-card .agent { color:var(--accent); }
+.project-artifact-card .wiki { color:var(--green); }
+.project-artifact-card .site { color:var(--accent-2); }
+.project-artifact-card .runs { color:var(--orange); }
 .proj-composer {
   display:flex; align-items:center; gap:8px; max-width:640px; margin:22px auto 26px; padding:7px 8px 7px 10px;
   border:1px solid var(--border-strong); background:var(--surface); border-radius:999px; box-shadow:0 10px 34px rgba(0,0,0,.18);

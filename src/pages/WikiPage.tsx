@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 
@@ -20,6 +20,7 @@ function relativeTime(timestamp: number) {
 }
 
 export function WikiPage() {
+  const { projectId } = useParams()
   const {
     data,
     updateWikiSettings,
@@ -27,15 +28,21 @@ export function WikiPage() {
     createChat,
     appendMessage,
     toast,
+    setActiveProject,
   } = useStore()
   const navigate = useNavigate()
   const [tab, setTab] = useState<WikiTab>('overview')
   const [perspective, setPerspective] = useState<WikiPerspective>('engineering')
   const [refreshing, setRefreshing] = useState(false)
-  const selectedProjectId = data.wikiSettings.selectedProjectId
+  const selectedProjectId = projectId ?? data.wikiSettings.selectedProjectId
   const project = data.projects.find((item) => item.id === selectedProjectId) ?? data.projects[0]
   const teamSummary = data.wikiSummaries.find((item) => item.projectId === project.id && item.scope === 'team')
   const peopleSummaries = data.wikiSummaries.filter((item) => item.projectId === project.id && item.scope === 'member')
+
+  useEffect(() => {
+    if (projectId && projectId !== data.wikiSettings.selectedProjectId) updateWikiSettings({ selectedProjectId: projectId })
+    if (projectId && projectId !== data.activeProjectId) setActiveProject(projectId)
+  }, [data.activeProjectId, data.wikiSettings.selectedProjectId, projectId, setActiveProject, updateWikiSettings])
 
   const sources = useMemo(() => {
     const sourceIds = new Set(data.wikiSummaries.filter((item) => item.projectId === project.id).flatMap((item) => item.sourceIds))
@@ -82,7 +89,7 @@ export function WikiPage() {
     <div className="content-page">
       <div className="page-header">
         <div className="page-header-copy">
-          <div className="eyebrow">OpenSaddle knowledge base</div>
+          <div className="eyebrow">Project knowledge</div>
           <h1>Team wiki</h1>
           <p>A source-grounded reference for this team’s priorities, decisions, risks, and connected systems.</p>
         </div>
@@ -90,7 +97,10 @@ export function WikiPage() {
           <select
             aria-label="Team wiki project"
             value={project.id}
-            onChange={(event) => updateWikiSettings({ selectedProjectId: event.target.value })}
+            onChange={(event) => {
+              updateWikiSettings({ selectedProjectId: event.target.value })
+              navigate(`/project/${event.target.value}/wiki`)
+            }}
           >
             {data.projects.filter((item) => data.wikiSummaries.some((summary) => summary.projectId === item.id && summary.scope === 'team')).map((item) => (
               <option key={item.id} value={item.id}>{item.name}</option>

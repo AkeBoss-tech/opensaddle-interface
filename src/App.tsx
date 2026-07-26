@@ -22,6 +22,7 @@ import { WorkflowsPage } from './pages/WorkflowsPage'
 import { PermissionsPage } from './pages/PermissionsPage'
 import { HarnessPage } from './pages/HarnessPage'
 import { BrowserRuntimePage } from './pages/BrowserRuntimePage'
+import { projectHref } from './navigation/projectArtifacts'
 import './styles/app.css'
 
 function Shell() {
@@ -51,14 +52,6 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey)
   }, [createChat, data.activeProjectId, nav])
 
-  const crumbs = useMemo(() => {
-    const parts = loc.pathname.split('/').filter(Boolean)
-    const label = parts[0] === 'chat' ? (data.chats.find((c) => c.id === parts[1])?.title ?? 'Chat')
-      : parts[0] === 'project' ? (data.projects.find((p) => p.id === parts[1])?.name ?? 'Project')
-      : parts[0] ?? 'Home'
-    return <><span>OpenSaddle</span><span>/</span><strong>{label}</strong></>
-  }, [loc.pathname, data.chats, data.projects])
-
   const cycleTheme = useCallback(() => {
     const order = ['dark', 'light', 'hc'] as const
     setTheme(order[(order.indexOf(data.settings.theme) + 1) % 3])
@@ -66,11 +59,6 @@ function Shell() {
 
   const items: PaletteItem[] = useMemo(() => [
     { id: 'new', group: 'Go to', label: 'New chat', icon: 'plus', run: () => { const c = createChat(data.activeProjectId); nav(`/chat/${c.id}`) } },
-    { id: 'runs', group: 'Go to', label: 'Runs & automations', icon: 'clock', run: () => nav('/runs') },
-    { id: 'wiki', group: 'Go to', label: 'Team wiki', icon: 'review', run: () => nav('/wiki') },
-    { id: 'agents', group: 'Go to', label: 'Agents', icon: 'spark', run: () => nav('/agents') },
-    { id: 'workflows', group: 'Go to', label: 'Workflows', icon: 'clock', run: () => nav('/workflows') },
-    { id: 'sites', group: 'Go to', label: 'Sites', icon: 'globe', run: () => nav('/sites') },
     { id: 'harness', group: 'Go to', label: 'Desktop harness', icon: 'vm', run: () => nav('/harness') },
     { id: 'browser-runtime', group: 'Go to', label: 'Browser agent runtime', icon: 'globe', run: () => nav('/browser-runtime') },
     { id: 'files', group: 'Go to', label: 'Files', icon: 'file', run: () => nav('/files') },
@@ -80,7 +68,7 @@ function Shell() {
     { id: 'usage', group: 'Go to', label: 'Usage & budgets', icon: 'chart', run: () => nav('/usage') },
     { id: 'set', group: 'Go to', label: 'Settings', icon: 'settings', run: () => nav('/settings') },
     { id: 'admin', group: 'Go to', label: 'Organization admin', icon: 'users', run: () => nav('/admin') },
-    ...data.projects.slice(0, 8).map((p) => ({ id: p.id, group: 'Projects', label: p.name, icon: 'folder', run: () => { setActiveProject(p.id); nav(`/project/${p.id}`) } })),
+    ...data.projects.slice(0, 8).map((p) => ({ id: p.id, group: 'Projects', label: p.name, icon: 'folder', run: () => { setActiveProject(p.id); nav(projectHref(p.id)) } })),
     { id: 'cproj', group: 'Actions', label: 'Create project', icon: 'plus', run: () => setProjectModal(true) },
     { id: 'theme', group: 'Actions', label: 'Toggle theme', icon: 'sun', run: cycleTheme },
     { id: 'reset', group: 'Actions', label: 'Reset demo data', icon: 'refresh', run: () => { if (confirm('Reset demo data?')) resetData() } },
@@ -95,13 +83,17 @@ function Shell() {
       <Sidebar onCreateProject={() => { setProjParent(data.activeProjectId); setProjectModal(true) }} />
       <main className="main">
         <DemoBanner />
-        <Topbar crumbs={crumbs} onPalette={() => setPalette(true)} />
+        <Topbar onPalette={() => setPalette(true)} />
         <div className="page-wrap">
           <Routes>
-            <Route path="/" element={<Navigate to={data.activeChatId ? `/chat/${data.activeChatId}` : '/chat'} replace />} />
+            <Route path="/" element={<Navigate to={projectHref(data.activeProjectId)} replace />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:chatId" element={<ChatPage />} />
             <Route path="/project/:projectId" element={<ProjectPage />} />
+            <Route path="/project/:projectId/agents" element={<AgentsPage />} />
+            <Route path="/project/:projectId/wiki" element={<WikiPage />} />
+            <Route path="/project/:projectId/runs" element={<RunsPage />} />
+            <Route path="/project/:projectId/workflows" element={<WorkflowsPage />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/wiki" element={<WikiPage />} />
             <Route path="/agents" element={<AgentsPage />} />

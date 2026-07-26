@@ -1,8 +1,9 @@
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../../data/store'
 import { Icon } from '../common/Icon'
 import type { PinnedArtifact, Project } from '../../types'
+import { artifactIsActive, projectArtifacts, projectHref } from '../../navigation/projectArtifacts'
 
 function relativeTime(ts: number) {
   const diff = Date.now() - ts
@@ -30,9 +31,6 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
   const nav = useNavigate()
   const location = useLocation()
   const tree = useMemo(() => projectTree(data.projects), [data.projects])
-  const wikiActiveFor = (projectId: string) =>
-    location.pathname.startsWith('/wiki') && data.wikiSettings.selectedProjectId === projectId
-  const siteActiveFor = (siteId: string) => location.pathname === `/site/${siteId}`
   const [wsOpen, setWsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('opensaddle-sidebar-collapsed') === 'true')
@@ -45,7 +43,6 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
       return new Set()
     }
   })
-  const unread = data.notifications.filter((n) => !n.read).length
 
   useEffect(() => {
     document.documentElement.style.setProperty('--sidebar-w', sidebarCollapsed ? '76px' : '292px')
@@ -86,38 +83,20 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
     })
   }
 
-  // Leaf projects represent agents: clicking one drops you into a chat with
-  // that agent; the gear (hover) opens the project settings page instead.
-  const openAgentChat = (p: Project) => {
-    setActiveProject(p.id)
-    const agent = data.agents.find((a) => a.projectId === p.id)
-    const draft = data.chats.find((c) =>
-      c.projectId === p.id && !c.archived
-      && (agent ? c.agentId === agent.id : true)
-      && !data.messages.some((m) => m.chatId === c.id),
-    )
-    const chat = draft ?? createChat(p.id, agent ? `Chat with ${agent.name}` : `${p.name} chat`, agent?.id)
-    setActiveChat(chat.id)
-    nav(`/chat/${chat.id}`)
-    if (!draft) toast('New chat', agent ? `Talking to ${agent.name}` : p.name)
-  }
-
   const renderBranch = (parentId: string | null, depth: number) =>
     (tree.get(parentId) ?? []).map((p) => {
       const childProjects = tree.get(p.id) ?? []
-      const sites = data.sites.filter((s) => s.projectId === p.id)
-      const hasWiki = data.wikiSummaries.some((w) => w.projectId === p.id && w.scope === 'team')
-      const hasChildren = childProjects.length > 0 || sites.length > 0 || hasWiki
+      const artifacts = projectArtifacts(data, p)
+      const hasChildren = childProjects.length > 0 || artifacts.length > 0
       const isCollapsed = collapsed.has(p.id)
-      const isLeafAgent = childProjects.length === 0
       const childDepth = Math.min(depth + 1, 2)
       return (
         <div key={p.id}>
           <button
             className={`tree-row depth-${Math.min(depth, 2)} ${data.activeProjectId === p.id ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`}
             onClick={() => {
-              if (isLeafAgent) openAgentChat(p)
-              else { setActiveProject(p.id); nav(`/project/${p.id}`) }
+              setActiveProject(p.id)
+              nav(projectHref(p.id))
             }}
           >
             {depth < 2 && (hasChildren
@@ -156,45 +135,33 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
           </button>
           {hasChildren && !isCollapsed && (
             <>
-              {hasWiki && (
+              {artifacts.map((artifact) => (
                 <button
-                  key={`wiki-${p.id}`}
-                  className={`tree-row depth-${childDepth} resource-row ${wikiActiveFor(p.id) ? 'active' : ''}`}
-                  title={`${p.name} wiki`}
-                  onClick={() => openWiki(p.id)}
+                  key={`${artifact.kind}-${artifact.id}`}
+                  className={`tree-row depth-${childDepth} resource-row artifact-row ${artifact.kind} ${artifactIsActive(location.pathname, artifact) ? 'active' : ''}`}
+                  title={`${artifact.label} in ${p.name}`}
+                  onClick={() => {
+                    setActiveProject(p.id)
+                    if (artifact.kind === 'wiki') updateWikiSettings({ selectedProjectId: p.id })
+                    nav(artifact.href)
+                  }}
                 >
                   <span style={{ width: 13 }} />
-                  <Icon name="book" className="icon sm resource-icon wiki" />
-                  <span className="tree-title">Team wiki</span>
+                  <Icon name={artifact.icon} className={`icon sm resource-icon ${artifact.kind}`} />
+                  <span className="tree-title">{artifact.label}</span>
                   <span
-                    className={`row-hover-btn ${isPinned('wiki', p.id) ? 'pinned' : ''}`}
+                    className={`row-hover-btn ${isPinned(artifact.kind === 'site' ? 'site' : artifact.kind === 'wiki' ? 'wiki' : 'project', artifact.kind === 'site' ? artifact.id : p.id) ? 'pinned' : ''}`}
                     role="button"
-                    title={isPinned('wiki', p.id) ? 'Unpin' : 'Pin'}
-                    onClick={(e) => { e.stopPropagation(); togglePin('wiki', p.id, `${p.name} wiki`) }}
+                    title="Pin"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const kind = artifact.kind === 'site' ? 'site' : artifact.kind === 'wiki' ? 'wiki' : 'project'
+                      togglePin(kind, artifact.kind === 'site' ? artifact.id : p.id, artifact.label)
+                    }}
                   >
                     <Icon name="pin" className="icon sm" />
                   </span>
-                </button>
-              )}
-              {sites.map((s) => (
-                <button
-                  key={s.id}
-                  className={`tree-row depth-${childDepth} resource-row ${siteActiveFor(s.id) ? 'active' : ''}`}
-                  title={`${s.name} — site`}
-                  onClick={() => { setActiveProject(p.id); nav(`/site/${s.id}`) }}
-                >
-                  <span style={{ width: 13 }} />
-                  <Icon name="globe" className="icon sm resource-icon site" />
-                  <span className="tree-title">{s.name}</span>
-                  <span
-                    className={`row-hover-btn ${isPinned('site', s.id) ? 'pinned' : ''}`}
-                    role="button"
-                    title={isPinned('site', s.id) ? 'Unpin' : 'Pin'}
-                    onClick={(e) => { e.stopPropagation(); togglePin('site', s.id, s.name) }}
-                  >
-                    <Icon name="pin" className="icon sm" />
-                  </span>
-                  <span className="resource-tag">Site</span>
+                  <span className="resource-tag">{artifact.kind}</span>
                 </button>
               ))}
               {renderBranch(p.id, depth + 1)}
@@ -209,11 +176,10 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
       if (item.kind === 'project') {
         const p = data.projects.find((x) => x.id === item.id)
         if (!p) return null
-        const isLeafAgent = !(tree.get(p.id)?.length)
         return {
           key: `project:${p.id}`, item, icon: 'folder', iconClass: 'folder', label: p.name,
-          active: location.pathname === `/project/${p.id}`,
-          go: () => { if (isLeafAgent) openAgentChat(p); else { setActiveProject(p.id); nav(`/project/${p.id}`) } },
+          active: location.pathname === projectHref(p.id),
+          go: () => { setActiveProject(p.id); nav(projectHref(p.id)) },
         }
       }
       if (item.kind === 'site') {
@@ -221,7 +187,7 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
         if (!s) return null
         return {
           key: `site:${s.id}`, item, icon: 'globe', iconClass: 'resource-icon site', label: s.name,
-          active: siteActiveFor(s.id),
+          active: location.pathname === `/site/${s.id}`,
           go: () => { setActiveProject(s.projectId); nav(`/site/${s.id}`) },
         }
       }
@@ -229,7 +195,7 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
       if (!p) return null
       return {
         key: `wiki:${p.id}`, item, icon: 'book', iconClass: 'resource-icon wiki', label: `${p.name} wiki`,
-        active: wikiActiveFor(p.id),
+        active: location.pathname === `/project/${p.id}/wiki`,
         go: () => openWiki(p.id),
       }
     })
@@ -264,15 +230,6 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
             nav(`/chat/${c.id}`)
           }}><Icon name="plus" />New chat</button>
           <button className="nav-item" onClick={() => window.dispatchEvent(new CustomEvent('opensaddle:palette'))}><Icon name="search" />Search<span className="nav-count">⌘ K</span></button>
-        </div>
-
-        <div className="nav-group">
-          <div className="nav-label">Workspace</div>
-          <NavLink to="/runs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="clock" />Runs & automations{unread ? <span className="status-dot" /> : null}</NavLink>
-          <NavLink to="/wiki" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="review" />Team wiki</NavLink>
-          <NavLink to="/agents" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="spark" />Agents<span className="nav-count">{data.agentSessions.filter((s) => s.status === 'running').length}</span></NavLink>
-          <NavLink to="/workflows" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="activity" />Workflows</NavLink>
-          <NavLink to="/sites" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="globe" />Sites<span className="nav-count">{data.sites.length}</span></NavLink>
         </div>
 
         {pinnedRows.length > 0 && (

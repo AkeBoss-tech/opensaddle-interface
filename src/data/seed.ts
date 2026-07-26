@@ -39,7 +39,7 @@ export function createSeedData(): AppData {
       { id: claims, name: 'Claims Assistant', parentId: cust, description: 'Drafts claim responses with human approval on writes.', iconColor: '#8f78de', knowledgeCount: 4, serviceCount: 3, childCount: 0, autoConfidence: 91, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Claims Assistant'] },
       { id: cold, name: 'Cold Emailer', parentId: cust, description: 'Outreach drafts with send gated by approval.', iconColor: '#d6af63', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 84, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Cold Emailer'] },
       { id: eng, name: 'Engineering', parentId: corp, description: 'Repositories, CI systems, and coding agents.', iconColor: '#73a8dd', knowledgeCount: 9, serviceCount: 5, childCount: 3, autoConfidence: 95, lineage: ['Organization', 'Corporate Base Agent', 'Engineering'] },
-      { id: coding, name: 'Coding Agent', parentId: eng, description: 'Repository-aware planning, patches, tests, and PRs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 0, autoConfidence: 96, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Coding Agent'], routingDefaults: { providerKey: 'codex', modelKey: 'auto', runtimeKey: 'sandbox', reviewProviderKey: 'claude' } },
+      { id: coding, name: 'Scarlet Sync', parentId: eng, description: 'The focused delivery project for repository work, status communication, and automated runs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 1, autoConfidence: 96, lineage: ['Scarlet Sync'], routingDefaults: { providerKey: 'codex', modelKey: 'auto', runtimeKey: 'sandbox', reviewProviderKey: 'claude' } },
       { id: router, name: 'Model Router', parentId: eng, description: 'Routing policy, cost controls, and harness selection.', iconColor: '#73a8dd', knowledgeCount: 5, serviceCount: 2, childCount: 0, autoConfidence: 90, lineage: ['Organization', 'Engineering', 'Model Router'] },
       { id: audit, name: 'Degree Audit', parentId: coding, description: 'Nested project that inherits GitHub but denies production DB writes.', iconColor: '#65c78b', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 89, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Degree Audit'] },
     ],
@@ -194,7 +194,7 @@ export function createSeedData(): AppData {
       },
     ],
     agents: [
-      { id: 'agent-coder', projectId: coding, name: 'Secure Coding Agent', description: 'Plans, edits, tests, and opens PRs in managed sandboxes.', systemPrompt: 'You are a careful coding agent. Prefer smallest diffs. Never deploy without approval.', modelPolicy: 'claude', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub', 'Terminal', 'VM'], knowledgeSourceIds: ['kn-github'], interfaceId: 'iface-chat-diff', visibility: 'shared', createdAt: now - 10 * day },
+      { id: 'agent-coder', projectId: coding, name: 'Coding Agent', description: 'Plans, edits, tests, and opens PRs in managed sandboxes.', systemPrompt: 'You are a careful coding agent. Prefer smallest diffs. Never deploy without approval.', modelPolicy: 'claude', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub', 'Terminal', 'VM'], knowledgeSourceIds: ['kn-github'], interfaceId: 'iface-chat-diff', visibility: 'shared', createdAt: now - 10 * day },
       { id: 'agent-research', projectId: corp, name: 'Research Analyst', description: 'Searches knowledge and produces cited reports.', systemPrompt: 'Cite sources. Prefer internal knowledge over web.', modelPolicy: 'gpt', harness: 'research', runtime: 'sandbox', tools: ['Knowledge', 'Web'], knowledgeSourceIds: ['kn-sharepoint', 'kn-drive'], interfaceId: 'iface-doc', visibility: 'project', createdAt: now - 8 * day },
       { id: 'agent-claims', projectId: claims, name: 'Claims Copilot', description: 'Drafts claim responses; writes require approval.', systemPrompt: 'Never invent policy. Escalate ambiguous cases.', modelPolicy: 'sonnet', harness: 'browser', runtime: 'local', tools: ['Salesforce', 'Files'], knowledgeSourceIds: ['kn-claims'], interfaceId: 'iface-form', visibility: 'shared', createdAt: now - 6 * day },
       { id: 'agent-cold', projectId: cold, name: 'Cold Email Drafter', description: 'Writes outreach drafts; sending is gated by human approval.', systemPrompt: 'Draft concise, personalized outreach. Never send without approval.', modelPolicy: 'sonnet', harness: 'chat', runtime: 'browser', tools: ['Files', 'Email'], knowledgeSourceIds: [], visibility: 'project', createdAt: now - 6 * day },
@@ -219,7 +219,7 @@ export function createSeedData(): AppData {
         publishedVersionId: 'sv-claims-2',
       },
       {
-        id: 'site-status', projectId: eng, name: 'Engineering status page', description: 'Internal status page with coding-agent Q&A on incidents.',
+        id: 'site-status', projectId: coding, name: 'Status site', description: 'Internal status page with coding-agent Q&A on incidents.',
         slug: 'eng-status', accent: '#73a8dd',
         agentId: 'agent-coder', agentPlacement: 'rail', visibility: 'project', createdAt: now - 4 * day, updatedAt: now - day,
         pages: [
@@ -423,7 +423,7 @@ export function createSeedData(): AppData {
     wikiSummaries: [
       {
         id: 'wiki-eng-team',
-        projectId: eng,
+        projectId: coding,
         scope: 'team',
         headline: 'Engineering is focused on secure runtimes and PR throughput',
         overview: 'The team is converging on the secure VM background-work milestone while keeping review latency low. Jira delivery signals, GitHub pull requests, and Slack incident threads agree that the runtime approval path is the critical dependency this week.',
@@ -456,7 +456,7 @@ export function createSeedData(): AppData {
       },
       {
         id: 'wiki-member-ad',
-        projectId: eng,
+        projectId: coding,
         scope: 'member',
         memberId: 'user-ad',
         headline: 'Driving secure runtime delivery',
@@ -468,7 +468,7 @@ export function createSeedData(): AppData {
       },
       {
         id: 'wiki-member-maya',
-        projectId: eng,
+        projectId: coding,
         scope: 'member',
         memberId: 'user-maya',
         headline: 'Improving workflow UX and documentation',
@@ -480,7 +480,7 @@ export function createSeedData(): AppData {
       },
       {
         id: 'wiki-member-jordan',
-        projectId: eng,
+        projectId: coding,
         scope: 'member',
         memberId: 'user-jordan',
         headline: 'Reviewing automation quality and policy',

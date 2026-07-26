@@ -67,7 +67,7 @@ export function WorkflowsPage() {
 
       <div className="grid-2">
         <div className="card">
-          <div className="card-header"><div><h3>Definitions</h3></div><Link className="tiny-btn right" to="/agents">Agents</Link></div>
+          <div className="card-header"><div><h3>Definitions</h3></div><Link className="tiny-btn right" to={projectId ? `/project/${projectId}/agents` : '/agents'}>Agents</Link></div>
           <div className="card-body row-list">
             {workflows.map((wf) => {
               const agents = data.agents.filter((a) => wf.agentIds.includes(a.id))

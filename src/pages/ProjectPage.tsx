@@ -4,6 +4,7 @@ import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 import { evaluatePermissions } from '../services/permissions'
 import type { CodingProvider, ModelKey, RuntimeKind, Visibility } from '../types'
+import { projectArtifacts } from '../navigation/projectArtifacts'
 
 const TABS = ['chats', 'library', 'sites', 'context', 'access'] as const
 const TAB_LABEL: Record<(typeof TABS)[number], string> = {
@@ -57,6 +58,7 @@ export function ProjectPage() {
   const services = data.services.filter((s) => s.projectId === project.id || s.projectId === 'proj-corp')
   const projectWorkflows = data.workflows.filter((workflow) => workflow.projectId === project.id)
   const projectWorkflowRuns = data.workflowRuns.filter((run) => run.projectId === project.id).slice(0, 3)
+  const artifacts = useMemo(() => projectArtifacts(data, project), [data, project])
 
   const canWrite = evaluatePermissions(data.permissionGrants, {
     userId: data.currentUserId,
@@ -89,7 +91,7 @@ export function ProjectPage() {
   return (
     <div className="content-page project-page">
       <div className="proj-topline">
-        <div className="eyebrow">{project.lineage.join(' / ')}</div>
+        <div className="eyebrow">Project</div>
         <div className="proj-topline-actions">
           <button className="secondary-btn" onClick={() => toast('Share', `Invite link for ${project.name} copied (mock).`)}><Icon name="globe" className="icon sm" />Share</button>
           <button className="icon-btn" title="Project settings" onClick={() => setTab('access')}><Icon name="settings" /></button>
@@ -103,6 +105,17 @@ export function ProjectPage() {
         <h1>{project.name}</h1>
         <p>{project.description}</p>
       </div>
+
+      {artifacts.length > 0 && (
+        <div className="project-artifact-strip" aria-label={`${project.name} artifacts`}>
+          {artifacts.map((artifact) => (
+            <Link key={`${artifact.kind}-${artifact.id}`} to={artifact.href} className="project-artifact-card">
+              <Icon name={artifact.icon} className={`icon ${artifact.kind}`} />
+              <span>{artifact.label}</span>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="proj-composer">
         <button className="proj-composer-plus" title="Attach" onClick={() => toast('Attach', 'Add files or sources to this chat (mock).')}><Icon name="plus" className="icon sm" /></button>
@@ -150,10 +163,10 @@ export function ProjectPage() {
             </>
           )}
           <div className="project-work-clues">
-            <div className="project-work-clues-head"><div><h3 className="proj-section-title">Workflows</h3><p>Recent work and automations for this project.</p></div><Link className="tiny-btn" to={`/workflows/${project.id}`}>View all</Link></div>
+            <div className="project-work-clues-head"><div><h3 className="proj-section-title">Workflows</h3><p>Recent work and automations for this project.</p></div><Link className="tiny-btn" to={`/project/${project.id}/workflows`}>View all</Link></div>
             <div className="project-work-clues-grid">
-              {projectWorkflows.slice(0, 3).map((workflow) => <Link key={workflow.id} className="project-work-clue" to={`/workflows/${project.id}`}><Icon name="clock" className="icon sm" /><span><strong>{workflow.name}</strong><small>{workflow.status} · {workflow.trigger}</small></span></Link>)}
-              {projectWorkflowRuns.map((run) => { const workflow = projectWorkflows.find((item) => item.id === run.workflowId) ?? data.workflows.find((item) => item.id === run.workflowId); return <Link key={run.id} className="project-work-clue" to={`/workflows/${project.id}`}><Icon name="activity" className="icon sm" /><span><strong>{workflow?.name ?? 'Workflow run'}</strong><small>{run.summary}</small></span></Link> })}
+              {projectWorkflows.slice(0, 3).map((workflow) => <Link key={workflow.id} className="project-work-clue" to={`/project/${project.id}/workflows`}><Icon name="clock" className="icon sm" /><span><strong>{workflow.name}</strong><small>{workflow.status} · {workflow.trigger}</small></span></Link>)}
+              {projectWorkflowRuns.map((run) => { const workflow = projectWorkflows.find((item) => item.id === run.workflowId) ?? data.workflows.find((item) => item.id === run.workflowId); return <Link key={run.id} className="project-work-clue" to={`/project/${project.id}/workflows`}><Icon name="activity" className="icon sm" /><span><strong>{workflow?.name ?? 'Workflow run'}</strong><small>{run.summary}</small></span></Link> })}
               {!projectWorkflows.length && !projectWorkflowRuns.length && <span className="row-sub">No workflows are attached to this project yet.</span>}
             </div>
           </div>

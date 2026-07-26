@@ -1,20 +1,24 @@
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 
 export function RunsPage() {
+  const { projectId } = useParams()
   const { data, updateTaskStatus, toast } = useStore()
   const [tab, setTab] = useState<'scheduled' | 'background' | 'monitors' | 'cloud'>('scheduled')
   const [showCreate, setShowCreate] = useState(false)
 
-  const scheduled = data.tasks.filter((t) => t.type === 'scheduled')
-  const background = data.tasks.filter((t) => t.type === 'background')
-  const monitors = data.tasks.filter((t) => t.type === 'monitor')
+  const tasks = data.tasks.filter((task) => !projectId || task.projectId === projectId)
+  const project = projectId ? data.projects.find((item) => item.id === projectId) : undefined
+  const scheduled = tasks.filter((t) => t.type === 'scheduled')
+  const background = tasks.filter((t) => t.type === 'background')
+  const monitors = tasks.filter((t) => t.type === 'monitor')
 
   return (
     <div className="content-page">
       <div className="page-header">
-        <div className="page-header-copy"><div className="eyebrow">Automation</div><h1>Runs & automations</h1><p>Run now, background jobs, schedules, and condition-based monitors — each with trigger, policy, budget, and audit timeline.</p></div>
+          <div className="page-header-copy"><div className="eyebrow">{project ? 'Project runs' : 'Automation'}</div><h1>Runs & automations</h1><p>{project ? `Work happening in ${project.name}, including schedules, background jobs, and monitors.` : 'Run now, background jobs, schedules, and condition-based monitors — each with trigger, policy, budget, and audit timeline.'}</p></div>
         <div className="page-header-actions"><button className="primary-btn" onClick={() => setShowCreate(true)}><Icon name="plus" className="icon sm" />Create task</button></div>
       </div>
       <div className="tabs">
