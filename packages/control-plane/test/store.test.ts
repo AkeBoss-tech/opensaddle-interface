@@ -64,6 +64,37 @@ test('persists workspace documents and grants across store instances', async () 
     assert.equal((workspace?.pinnedArtifacts as Array<{ id: string }>)[0]?.id, 'project-1')
     assert.equal(second.routeTelemetry('project-1')[0]?.durationMs, 900)
     assert.equal(second.grants().some((grant) => grant.id === 'bootstrap-admin'), true)
+    assert.equal(second.projectStates()[0]?.id, 'project-1')
+    assert.equal(second.artifactStates('project-1').some((artifact) => artifact.id === 'sources:source-1'), false)
+
+    await second.saveWorkspace({
+      version: 5,
+      projects: [{ id: 'project-1', name: 'Persistent project' }],
+      chats: [],
+      messages: [],
+      sources: [{ id: 'source-1', projectId: 'project-1', name: 'Authoritative source' }],
+    }, 'user-ad')
+    await second.saveWorker({
+      id: 'browser-worker-1',
+      ownerId: 'user-ad',
+      kind: 'browser-sandbox',
+      status: 'available',
+      capabilities: ['javascript'],
+      registeredAt: 100,
+      lastSeenAt: 200,
+    })
+    await second.appendAudit({
+      id: 'audit-1',
+      timestamp: 300,
+      actorId: 'user-ad',
+      type: 'workspace.saved',
+      targetType: 'workspace',
+      targetId: 'org-default',
+    })
+
+    assert.equal(second.artifactStates('project-1')[0]?.id, 'sources:source-1')
+    assert.equal(second.workers()[0]?.id, 'browser-worker-1')
+    assert.equal(second.auditEvents()[0]?.type, 'workspace.saved')
   } finally {
     await rm(dataDir, { recursive: true, force: true })
   }

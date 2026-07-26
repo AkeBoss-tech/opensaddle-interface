@@ -88,6 +88,16 @@ export class RunManager {
         : undefined,
     }
     await this.store.saveRun(run)
+    await this.store.appendAudit({
+      id: `audit_${randomUUID().slice(0, 12)}`,
+      timestamp: Date.now(),
+      actorId: input.principal.userId,
+      type: 'run.created',
+      targetType: 'run',
+      targetId: run.id,
+      projectId: run.projectId,
+      metadata: { harness: run.route.harnessKey, runtime: run.route.runtimeKey },
+    })
     await this.emit(run, 'session.created', { route })
 
     const controller = new AbortController()
@@ -140,6 +150,15 @@ export class RunManager {
     await this.emit(run, 'agent.failed', { reason: 'cancelled' })
     await this.emit(run, 'session.closed', { status: 'cancelled' })
     await this.store.saveRun(run)
+    await this.store.appendAudit({
+      id: `audit_${randomUUID().slice(0, 12)}`,
+      timestamp: Date.now(),
+      actorId: principal.userId,
+      type: 'run.cancelled',
+      targetType: 'run',
+      targetId: run.id,
+      projectId: run.projectId,
+    })
     return true
   }
 
@@ -269,6 +288,16 @@ export class RunManager {
       succeeded,
       durationMs: Math.max(0, run.updatedAt - run.createdAt),
       createdAt: Date.now(),
+    })
+    await this.store.appendAudit({
+      id: `audit_${randomUUID().slice(0, 12)}`,
+      timestamp: Date.now(),
+      actorId: run.ownerId,
+      type: succeeded ? 'run.completed' : 'run.failed',
+      targetType: 'run',
+      targetId: run.id,
+      projectId: run.projectId,
+      metadata: { duration_ms: Math.max(0, run.updatedAt - run.createdAt) },
     })
   }
 

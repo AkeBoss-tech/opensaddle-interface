@@ -83,7 +83,10 @@ GitHub Pages serves from `/opensaddle-interface/`.
 
 ## Demo data
 
-The browser keeps an offline cache in `localStorage` (`opensaddle-data-v5`) plus
-OPFS for files. When the control plane is connected, the workspace, chats,
-messages, projects, permissions, runs, runtimes, and approvals persist in
-`.opensaddle/opensaddle.sqlite`. Reset UI state from **Settings → Reset to seed**.
+The control plane is authoritative for workspace, project and artifact state,
+permissions, runs, runtimes, local-worker registrations, and audit events in
+`.opensaddle/opensaddle.sqlite`. The browser retains a `localStorage`
+(`opensaddle-data-v5`) and OPFS cache strictly as an offline fallback. The UI
+reports connected, syncing, offline-cache, and local-worker availability so a
+cached view is never presented as the source of truth. Reset UI state from
+**Settings → Reset to seed**.

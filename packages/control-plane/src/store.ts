@@ -2,7 +2,18 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { ControlPlaneConfig } from './config.js'
-import type { ApprovalRecord, PermissionGrant, PersistedState, ProvisionedRuntime, RouteTelemetry, RunRecord } from './types.js'
+import type {
+  ApprovalRecord,
+  AuditEvent,
+  LocalWorkerRecord,
+  PermissionGrant,
+  PersistedState,
+  ProvisionedRuntime,
+  RouteTelemetry,
+  RunRecord,
+  RuntimeArtifactState,
+  RuntimeProjectState,
+} from './types.js'
 
 const EMPTY_STATE: PersistedState = { grants: [], runs: [], runtimes: [], approvals: [] }
 
@@ -73,6 +84,36 @@ export class StateStore {
       );
       CREATE INDEX IF NOT EXISTS workspace_documents_collection_idx
         ON workspace_documents(workspace_id, collection, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS runtime_projects (
+        id TEXT PRIMARY KEY,
+        updated_at INTEGER NOT NULL,
+        data_json TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS runtime_artifacts (
+        id TEXT PRIMARY KEY,
+        project_id TEXT,
+        kind TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        data_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS runtime_artifacts_project_idx
+        ON runtime_artifacts(project_id, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS audit_events (
+        id TEXT PRIMARY KEY,
+        timestamp INTEGER NOT NULL,
+        actor_id TEXT NOT NULL,
+        project_id TEXT,
+        data_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS audit_events_timestamp_idx ON audit_events(timestamp DESC);
+      CREATE INDEX IF NOT EXISTS audit_events_actor_idx ON audit_events(actor_id, timestamp DESC);
+      CREATE TABLE IF NOT EXISTS local_workers (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        data_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS local_workers_owner_idx ON local_workers(owner_id, last_seen_at DESC);
       CREATE TABLE IF NOT EXISTS route_telemetry (
         id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL,
@@ -118,6 +159,48 @@ export class StateStore {
 
   async removeGrant(id: string): Promise<boolean> {
     return this.db.prepare('DELETE FROM grants WHERE id = ?').run(id).changes > 0
+  }
+
+  projectStates(): RuntimeProjectState[] {
+    return this.rows<RuntimeProjectState>('SELECT data_json FROM runtime_projects ORDER BY updated_at DESC')
+  }
+
+  artifactStates(projectId?: string): RuntimeArtifactState[] {
+    return projectId
+      ? this.rows<RuntimeArtifactState>(
+        'SELECT data_json FROM runtime_artifacts WHERE project_id = ? ORDER BY updated_at DESC',
+        projectId,
+      )
+      : this.rows<RuntimeArtifactState>('SELECT data_json FROM runtime_artifacts ORDER BY updated_at DESC')
+  }
+
+  auditEvents(limit = 100): AuditEvent[] {
+    return this.rows<AuditEvent>('SELECT data_json FROM audit_events ORDER BY timestamp DESC LIMIT ?', String(Math.min(Math.max(limit, 1), 1000)))
+  }
+
+  async appendAudit(event: AuditEvent): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO audit_events (id, timestamp, actor_id, project_id, data_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(event.id, event.timestamp, event.actorId, event.projectId ?? null, JSON.stringify(event))
+    this.db.exec(`DELETE FROM audit_events WHERE id NOT IN (
+      SELECT id FROM audit_events ORDER BY timestamp DESC LIMIT 10000
+    )`)
+  }
+
+  workers(): LocalWorkerRecord[] {
+    return this.rows<LocalWorkerRecord>('SELECT data_json FROM local_workers ORDER BY last_seen_at DESC LIMIT 500')
+  }
+
+  async saveWorker(worker: LocalWorkerRecord): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO local_workers (id, owner_id, last_seen_at, data_json)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        owner_id = excluded.owner_id,
+        last_seen_at = excluded.last_seen_at,
+        data_json = excluded.data_json
+    `).run(worker.id, worker.ownerId, worker.lastSeenAt, JSON.stringify(worker))
   }
 
   runs(): RunRecord[] {
@@ -235,11 +318,21 @@ export class StateStore {
       INSERT INTO workspace_documents (workspace_id, collection, document_id, updated_at, data_json)
       VALUES (?, ?, ?, ?, ?)
     `)
+    const insertProject = this.db.prepare(`
+      INSERT INTO runtime_projects (id, updated_at, data_json)
+      VALUES (?, ?, ?)
+    `)
+    const insertArtifact = this.db.prepare(`
+      INSERT INTO runtime_artifacts (id, project_id, kind, updated_at, data_json)
+      VALUES (?, ?, ?, ?, ?)
+    `)
 
     this.db.exec('BEGIN IMMEDIATE')
     try {
       upsertSnapshot.run('org-default', version, now, updatedBy, JSON.stringify(workspace))
       this.db.prepare('DELETE FROM workspace_documents WHERE workspace_id = ?').run('org-default')
+      this.db.exec('DELETE FROM runtime_projects')
+      this.db.exec('DELETE FROM runtime_artifacts')
       for (const [collection, value] of Object.entries(workspace)) {
         if (!Array.isArray(value)) continue
         value.forEach((document, index) => {
@@ -248,6 +341,23 @@ export class StateStore {
           const documentId = typeof record.id === 'string' ? record.id : `${collection}-${index}`
           const updatedAt = typeof record.updatedAt === 'number' ? record.updatedAt : now
           insertDocument.run('org-default', collection, documentId, updatedAt, JSON.stringify(record))
+          if (collection === 'projects') {
+            insertProject.run(documentId, updatedAt, JSON.stringify({ id: documentId, updatedAt, data: record }))
+          } else if (isRuntimeArtifact(collection, record)) {
+            insertArtifact.run(
+              `${collection}:${documentId}`,
+              typeof record.projectId === 'string' ? record.projectId : null,
+              collection,
+              updatedAt,
+              JSON.stringify({
+                id: `${collection}:${documentId}`,
+                projectId: typeof record.projectId === 'string' ? record.projectId : undefined,
+                kind: collection,
+                updatedAt,
+                data: record,
+              }),
+            )
+          }
         })
       }
       this.db.exec('COMMIT')
@@ -287,4 +397,11 @@ export class StateStore {
     for (const approval of state.approvals ?? []) await this.saveApproval(approval)
     this.db.prepare('INSERT INTO metadata (key, value) VALUES (?, ?)').run('legacy_json_migrated', new Date().toISOString())
   }
+}
+
+function isRuntimeArtifact(collection: string, record: Record<string, unknown>): boolean {
+  return typeof record.projectId === 'string' && [
+    'agents', 'sites', 'apis', 'dashboards', 'interfaces', 'knowledge',
+    'sources', 'workflows', 'workflowRuns', 'agentSessions',
+  ].includes(collection)
 }

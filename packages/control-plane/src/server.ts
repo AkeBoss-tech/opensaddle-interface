@@ -102,6 +102,26 @@ function permissionDenied(reply: FastifyReply, reason: string) {
   return reply.code(403).send({ error: 'permission_denied', reason })
 }
 
+async function audit(
+  request: FastifyRequest,
+  type: string,
+  targetType: 'workspace' | 'project' | 'artifact' | 'run' | 'permission' | 'worker' | 'runtime',
+  targetId?: string,
+  projectId?: string,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  await store.appendAudit({
+    id: `audit_${randomUUID().slice(0, 12)}`,
+    timestamp: Date.now(),
+    actorId: request.principal.userId,
+    type,
+    targetType,
+    targetId,
+    projectId,
+    metadata,
+  })
+}
+
 function projectRoutingDefaults(projectId: string): {
   modelKey?: ModelKey
   providerKey?: CodingProvider
@@ -222,6 +242,80 @@ app.get('/api/capabilities', async (request) => ({
   },
 }))
 
+/**
+ * Compact, authoritative runtime view for clients. Workspace documents remain
+ * available through /api/workspace; this endpoint deliberately exposes the
+ * operational state clients need to decide whether a local cache is stale.
+ */
+app.get('/api/runtime/status', async (request) => {
+  const admin = requireAdmin(store.grants(), request.principal)
+  const visibleRuns = runs.list(request.principal)
+  const visibleAudit = store.auditEvents(50).filter((event) => admin.allowed || event.actorId === request.principal.userId)
+  const visibleWorkers = store.workers().filter((worker) => admin.allowed || worker.ownerId === request.principal.userId)
+  const now = Date.now()
+  return {
+    authoritative: true,
+    generated_at: now,
+    connection: { status: 'connected' as const },
+    sync: { status: 'idle' as const, revision: store.workspaceInfo()?.updatedAt ?? null },
+    workspace: store.workspaceInfo() ?? null,
+    projects: store.projectStates().map((project) => ({ id: project.id, updated_at: project.updatedAt })),
+    artifacts: store.artifactStates().map((artifact) => ({
+      id: artifact.id,
+      project_id: artifact.projectId,
+      kind: artifact.kind,
+      updated_at: artifact.updatedAt,
+    })),
+    runs: {
+      total: visibleRuns.length,
+      active: visibleRuns.filter((run) => run.status === 'queued' || run.status === 'running').length,
+    },
+    access: {
+      grants: store.grants().filter((grant) => admin.allowed || grant.principalId === request.principal.userId).length,
+      administrator: admin.allowed,
+    },
+    audit_events: visibleAudit,
+    local_workers: visibleWorkers.map((worker) => ({
+      ...worker,
+      status: worker.lastSeenAt >= now - 60_000 ? worker.status : 'unavailable' as const,
+    })),
+  }
+})
+
+app.get<{ Querystring: { project_id?: string } }>('/api/runtime/state', async (request) => {
+  const projectId = request.query.project_id
+  return {
+    authoritative: true,
+    workspace: store.workspaceInfo() ?? null,
+    projects: projectId ? store.projectStates().filter((project) => project.id === projectId) : store.projectStates(),
+    artifacts: store.artifactStates(projectId),
+  }
+})
+
+app.post('/api/runtime/workers', async (request, reply) => {
+  const body = objectBody(request)
+  const id = requiredString(body, 'id', 200)
+  const kind = enumValue(body, 'kind', ['browser-sandbox', 'desktop-sidecar'] as const)
+  if (!kind) return reply.code(400).send({ error: 'worker_kind_required' })
+  const rawCapabilities = body.capabilities
+  if (!Array.isArray(rawCapabilities) || rawCapabilities.length > 32 || rawCapabilities.some((item) => typeof item !== 'string' || item.length > 100)) {
+    return reply.code(400).send({ error: 'worker_capabilities_must_be_a_small_string_array' })
+  }
+  const now = Date.now()
+  const worker = {
+    id,
+    ownerId: request.principal.userId,
+    kind,
+    status: 'available' as const,
+    capabilities: rawCapabilities,
+    registeredAt: store.workers().find((candidate) => candidate.id === id)?.registeredAt ?? now,
+    lastSeenAt: now,
+  }
+  await store.saveWorker(worker)
+  await audit(request, 'worker.registered', 'worker', worker.id, undefined, { kind: worker.kind, capabilities: worker.capabilities })
+  return reply.code(201).send(worker)
+})
+
 app.get('/api/workspace', async (_request, reply) => {
   const workspace = store.workspace()
   if (!workspace) return reply.code(404).send({ error: 'workspace_not_found' })
@@ -257,6 +351,11 @@ app.put('/api/workspace', async (request, reply) => {
     })
   }
   await store.saveWorkspace(record, request.principal.userId)
+  await audit(request, 'workspace.saved', 'workspace', 'org-default', undefined, {
+    version: record.version,
+    projects: Array.isArray(record.projects) ? record.projects.length : 0,
+    artifacts: store.artifactStates().length,
+  })
   return {
     ok: true,
     storage: store.storageInfo().engine,
@@ -601,6 +700,11 @@ app.put('/api/permissions/grants', async (request, reply) => {
     createdBy: request.principal.userId,
   }
   await store.replaceGrant(grant)
+  await audit(request, 'permission.grant_upserted', 'permission', grant.id, grant.resourceKind === 'project' ? grant.resourceId : undefined, {
+    action: grant.action,
+    effect: grant.effect,
+    principal_kind: grant.principalKind,
+  })
   return grant
 })
 
@@ -608,6 +712,7 @@ app.delete<{ Params: { grantId: string } }>('/api/permissions/grants/:grantId', 
   const admin = requireAdmin(store.grants(), request.principal)
   if (!admin.allowed) return permissionDenied(reply, admin.reason)
   const removed = await store.removeGrant(request.params.grantId)
+  if (removed) await audit(request, 'permission.grant_revoked', 'permission', request.params.grantId)
   return removed ? { ok: true } : reply.code(404).send({ error: 'grant_not_found' })
 })
 
@@ -683,11 +788,13 @@ app.post('/api/runtimes', async (request, reply) => {
     repo: optionalString(body, 'repo', 2_000),
     principal: request.principal,
   })
+  await audit(request, 'runtime.provisioned', 'runtime', runtime.id, projectId, { kind: runtime.kind })
   return reply.code(201).send(runtime)
 })
 
 app.delete<{ Params: { runtimeId: string } }>('/api/runtimes/:runtimeId', async (request, reply) => {
   const removed = await provisioner.release(request.params.runtimeId, request.principal)
+  if (removed) await audit(request, 'runtime.released', 'runtime', request.params.runtimeId)
   return removed ? { ok: true } : reply.code(404).send({ error: 'runtime_not_found' })
 })
 

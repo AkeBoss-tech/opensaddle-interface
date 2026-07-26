@@ -148,6 +148,43 @@ export interface ApprovalRecord {
   resolvedBy?: string
 }
 
+/** Durable record of a client-side worker that can execute local capabilities. */
+export interface LocalWorkerRecord {
+  id: string
+  ownerId: string
+  kind: 'browser-sandbox' | 'desktop-sidecar'
+  status: 'available' | 'unavailable'
+  capabilities: string[]
+  registeredAt: number
+  lastSeenAt: number
+}
+
+/** Append-only operational history for authoritative runtime changes. */
+export interface AuditEvent {
+  id: string
+  timestamp: number
+  actorId: string
+  type: string
+  targetType: 'workspace' | 'project' | 'artifact' | 'run' | 'permission' | 'worker' | 'runtime'
+  targetId?: string
+  projectId?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface RuntimeProjectState {
+  id: string
+  updatedAt: number
+  data: Record<string, unknown>
+}
+
+export interface RuntimeArtifactState {
+  id: string
+  projectId?: string
+  kind: string
+  updatedAt: number
+  data: Record<string, unknown>
+}
+
 export interface PersistedState {
   grants: PermissionGrant[]
   runs: RunRecord[]

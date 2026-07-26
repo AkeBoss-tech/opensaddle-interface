@@ -11,6 +11,7 @@ export function SettingsPage() {
     exportData,
     services,
     persistenceStatus,
+    runtimeStatus,
     lastSavedAt,
     connection,
     connectToServer,
@@ -48,11 +49,11 @@ export function SettingsPage() {
       <section className="settings-overview">
         <div className="settings-overview-copy">
           <div className="eyebrow">System status</div>
-          <h2>{controlPlane?.connected ? 'OpenSaddle is connected' : 'Running from browser cache'}</h2>
+          <h2>{runtimeStatus.connection === 'offline-cache' ? 'Offline cache fallback is active' : 'OpenSaddle is connected'}</h2>
           <p>
             {controlPlane?.connected
               ? `${controlPlane.mode === 'company' ? 'Company' : 'Local'} control plane · ${controlPlane.storage ?? 'server'} persistence`
-              : 'Start the control plane to enable durable chats, server permissions, and real model routing.'}
+              : 'Reconnect to restore the server-authoritative workspace, permissions, runs, and audit history.'}
           </p>
         </div>
         <div className="settings-status-grid">
@@ -66,11 +67,15 @@ export function SettingsPage() {
           </div>
           <div className="settings-status-card">
             <Icon name="db" className="icon sm" />
-            <div><small>Workspace data</small><strong>{controlPlane?.storage === 'sqlite' ? 'SQLite' : 'Browser cache'}</strong></div>
+            <div><small>Workspace data</small><strong>{controlPlane?.storage === 'sqlite' ? 'Authoritative SQLite' : 'Offline fallback'}</strong></div>
           </div>
           <div className="settings-status-card">
             <Icon name="refresh" className="icon sm" />
-            <div><small>Sync</small><strong>{persistenceStatus === 'synced' ? 'Saved' : persistenceStatus}</strong></div>
+            <div><small>Sync</small><strong>{runtimeStatus.connection === 'offline-cache' ? 'Offline cache' : runtimeStatus.connection}</strong></div>
+          </div>
+          <div className="settings-status-card">
+            <Icon name="vm" className="icon sm" />
+            <div><small>Local worker</small><strong>{runtimeStatus.localWorker === 'available' ? 'Available' : 'Unavailable'}</strong></div>
           </div>
         </div>
       </section>
@@ -136,7 +141,7 @@ export function SettingsPage() {
           ))}
         </div></div>
 
-        <div className="card"><div className="card-header"><div><h3>Data & retention</h3><p>{controlPlane?.storage === 'sqlite' ? 'Durable SQLite database' : 'Local browser cache'}</p></div></div><div className="card-body">
+        <div className="card"><div className="card-header"><div><h3>Data & retention</h3><p>{controlPlane?.storage === 'sqlite' ? 'Durable authoritative SQLite database' : 'Offline cache fallback; reconnect to sync changes.'}</p></div></div><div className="card-body">
           <div className="form-row"><label>Chat retention (days)</label><input type="number" value={s.retentionDays} onChange={(e) => updateSettings({ retentionDays: Number(e.target.value) })} /></div>
           <div className="form-row"><label>Tool output retention</label><input type="number" value={s.toolRetentionDays} onChange={(e) => updateSettings({ toolRetentionDays: Number(e.target.value) })} /></div>
           <div className="form-row"><label>Region</label><select value={s.region} onChange={(e) => updateSettings({ region: e.target.value })}><option>United States</option><option>EU</option></select></div>

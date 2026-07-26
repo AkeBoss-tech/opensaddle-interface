@@ -4,7 +4,7 @@ import { useStore } from '../../data/store'
 import { Icon } from '../common/Icon'
 
 export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalette: () => void }) {
-  const { data, setTheme, markNotificationsRead, toast, runtimeModeLabel, services, persistenceStatus } = useStore()
+  const { data, setTheme, markNotificationsRead, toast, runtimeModeLabel, services, runtimeStatus } = useStore()
   const [notifOpen, setNotifOpen] = useState(false)
   const nav = useNavigate()
   const unread = data.notifications.filter((n) => !n.read).length
@@ -30,11 +30,11 @@ export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalet
       <div className="crumbs">{crumbs}</div>
       <div className="topbar-actions">
         <Link to="/settings" className="crumb-pill system-pill" title="Open system settings">
-          <span className={`pulse ${services?.controlPlane.connected ? '' : 'offline'}`} />
-          {services?.controlPlane.connected
-            ? `Codex · ${services.controlPlane.modelProvider === 'unconfigured' ? 'connected · no model' : services.controlPlane.modelProvider} · ${services.controlPlane.storage ?? 'server'}`
-            : `Codex · ${runtimeModeLabel} · offline cache`}
-          {persistenceStatus === 'syncing' && <span className="system-pill-sync">Saving…</span>}
+          <span className={`pulse ${runtimeStatus.connection === 'offline-cache' ? 'offline' : ''}`} />
+          {runtimeStatus.connection === 'offline-cache'
+            ? `Codex · ${runtimeModeLabel} · offline cache fallback`
+            : `Codex · ${runtimeStatus.connection === 'syncing' ? 'syncing' : services?.controlPlane.modelProvider === 'unconfigured' ? 'connected · no model' : services?.controlPlane.modelProvider ?? 'connected'} · ${services?.controlPlane.storage ?? 'server'}`}
+          <span className="system-pill-sync">{runtimeStatus.localWorker === 'available' ? 'local worker ready' : 'no local worker'}</span>
         </Link>
         <button className="icon-btn" title="Command palette" onClick={onPalette}><Icon name="command" /></button>
         <button className="icon-btn" title="Toggle theme" onClick={cycleTheme}><Icon name="sun" /></button>
@@ -60,15 +60,15 @@ export function Topbar({ crumbs, onPalette }: { crumbs: React.ReactNode; onPalet
 }
 
 export function DemoBanner() {
-  const { data, updateSettings, toast, runtimeModeLabel, services } = useStore()
+  const { data, updateSettings, toast, runtimeModeLabel, services, runtimeStatus } = useStore()
   if (!data.settings.demoMode) return null
   return (
     <div className="demo-banner">
       <Icon name="saddle" className="icon sm" />
       <span>
-        {services?.controlPlane.connected
+        {runtimeStatus.connection !== 'offline-cache' && services?.controlPlane.connected
           ? `Codex connected · ${services.controlPlane.mode === 'company' ? 'company' : 'local'} control plane · ${services.controlPlane.modelProvider === 'unconfigured' ? 'configure a model in Settings' : services.controlPlane.modelProvider} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
-          : `${runtimeModeLabel} · Codex offline cache · start the control plane for durable chats`}
+          : `${runtimeModeLabel} · Offline cache fallback · reconnect to restore authoritative state`}
       </span>
       <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>
     </div>

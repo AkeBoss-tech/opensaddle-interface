@@ -6,6 +6,7 @@ import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
 import { defaultConnectionProfile, initServices, resetServices, type ConnectionProfile, type ServiceBundle } from '../services'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
+import type { ClientRuntimeStatus } from '../services/contracts'
 
 function normalizeWorkspace(data: AppData): AppData {
   data.pinnedArtifacts ??= []
@@ -86,6 +87,7 @@ interface StoreApi {
   services: ServiceBundle | null
   runtimeModeLabel: string
   persistenceStatus: 'local' | 'loading' | 'syncing' | 'synced' | 'needs_setup' | 'error'
+  runtimeStatus: ClientRuntimeStatus
   lastSavedAt: number | null
   connection: ConnectionProfile
   connectToServer: (profile: Pick<ConnectionProfile, 'name' | 'baseUrl' | 'token'>) => Promise<void>
@@ -102,6 +104,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [persistenceStatus, setPersistenceStatus] = useState<StoreApi['persistenceStatus']>('loading')
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [connection, setConnection] = useState<ConnectionProfile>(() => defaultConnectionProfile())
+  const [runtimeStatus, setRuntimeStatus] = useState<ClientRuntimeStatus>({ connection: 'offline-cache', localWorker: typeof Worker !== 'undefined' ? 'available' : 'unavailable' })
   const grantsRef = useRef(data.permissionGrants)
   const currentUserRef = useRef(data.currentUserId)
   const dataRef = useRef(data)
@@ -138,6 +141,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }).then(async (bundle) => {
       if (cancelled) return
       setServices(bundle)
+      setRuntimeStatus({
+        connection: bundle.controlPlane.connected ? 'connected' : 'offline-cache',
+        localWorker: bundle.controlPlane.localWorker.availability,
+      })
       if (!workspaceHydratedRef.current && bundle.workspace) {
         try {
           const remote = await bundle.workspace.load()
@@ -156,11 +163,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } catch (error) {
           workspaceHydratedRef.current = true
           setPersistenceStatus('error')
+          setRuntimeStatus((status) => ({ ...status, connection: 'offline-cache' }))
           toast('Database sync unavailable', error instanceof Error ? error.message : String(error))
         }
       } else if (!bundle.workspace) {
         workspaceHydratedRef.current = true
         setPersistenceStatus('local')
+        setRuntimeStatus((status) => ({ ...status, connection: 'offline-cache' }))
       }
     }).catch((error: unknown) => {
       if (!cancelled) {
@@ -176,14 +185,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!services?.workspace || !workspaceHydratedRef.current || persistenceStatus === 'needs_setup') return
     const sequence = ++saveSequenceRef.current
     setPersistenceStatus('syncing')
+    setRuntimeStatus((status) => ({ ...status, connection: 'syncing' }))
     const timer = window.setTimeout(() => {
       void services.workspace?.save(data).then((result) => {
         if (sequence !== saveSequenceRef.current) return
         setLastSavedAt(result.updatedAt)
         setPersistenceStatus('synced')
+        setRuntimeStatus((status) => ({ ...status, connection: 'connected' }))
       }).catch((error: unknown) => {
         if (sequence !== saveSequenceRef.current) return
         setPersistenceStatus('error')
+        setRuntimeStatus((status) => ({ ...status, connection: 'offline-cache' }))
         toast('Database save failed', error instanceof Error ? error.message : String(error))
       })
     }, 450)
@@ -200,6 +212,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dismissToast,
     toast,
     persistenceStatus,
+    runtimeStatus,
     lastSavedAt,
     connection,
     connectToServer: async (profile) => {
@@ -214,6 +227,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
       if (!response.ok) throw new Error(`OpenSaddle server returned HTTP ${response.status}`)
       setPersistenceStatus('loading')
+      setRuntimeStatus((status) => ({ ...status, connection: 'syncing' }))
       workspaceHydratedRef.current = false
       setServices(null)
       setConnection({ id: `remote-${baseUrl}`, name: profile.name.trim() || baseUrl, mode: 'remote', baseUrl, token: profile.token, allowMockFallback: false })
@@ -231,6 +245,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       workspaceHydratedRef.current = true
       setLastSavedAt(result.updatedAt)
       setPersistenceStatus('synced')
+      setRuntimeStatus((status) => ({ ...status, connection: 'connected' }))
     },
     setTheme: (t) => patch((d) => { d.settings.theme = t; return d }),
     updateSettings: (s) => patch((d) => { d.settings = { ...d.settings, ...s, notifications: { ...d.settings.notifications, ...(s.notifications ?? {}) } }; return d }),
@@ -603,7 +618,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     exportData: () => JSON.stringify(data, null, 2),
     services,
     runtimeModeLabel: modeLabel(detectRuntimeMode()),
-  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, lastSavedAt, connection])
+  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, runtimeStatus, lastSavedAt, connection])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

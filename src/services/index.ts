@@ -1,5 +1,5 @@
 import { detectRuntimeMode, type RuntimeMode } from './capabilities'
-import type { FileStore, PermissionClient, RuntimeClient, SandboxClient, ToolClient, WorkspaceClient } from './contracts'
+import type { FileStore, LocalWorkerAvailability, PermissionClient, RuntimeClient, SandboxClient, ToolClient, WorkspaceClient } from './contracts'
 import { createFileStore } from './fileStore'
 import { MockRuntimeClient } from './mockRuntime'
 import { OpenSaddleRuntimeClient } from './opensaddleClient'
@@ -26,6 +26,10 @@ export interface ServiceBundle {
     modelProvider?: string
     models: string[]
     storage?: string
+    localWorker: {
+      availability: LocalWorkerAvailability
+      registered: boolean
+    }
   }
 }
 
@@ -69,6 +73,8 @@ export function initServices(opts: {
       let modelProvider: string | undefined
       let configuredModels: string[] = []
       let storage: string | undefined
+      const localWorkerAvailable = typeof Worker !== 'undefined'
+      let localWorkerRegistered = false
       if (connection.mode === 'remote' && mode !== 'mock') {
         try {
           const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/health`, {
@@ -107,6 +113,30 @@ export function initServices(opts: {
         }
         opts.setGrants(serverGrants)
         permissions = remote
+
+        if (localWorkerAvailable) {
+          try {
+            const key = 'opensaddle-local-worker-id'
+            const workerId = sessionStorage.getItem(key) ?? `browser_${crypto.randomUUID()}`
+            sessionStorage.setItem(key, workerId)
+            const registration = await fetch(`${baseUrl.replace(/\/$/, '')}/api/runtime/workers`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                'X-OpenSaddle-User': getUserId(),
+              },
+              body: JSON.stringify({
+                id: workerId,
+                kind: 'browser-sandbox',
+                capabilities: ['javascript', 'typescript', 'in-memory-files'],
+              }),
+            })
+            localWorkerRegistered = registration.ok
+          } catch {
+            // Runtime connection remains usable when worker registration is unavailable.
+          }
+        }
       } else {
         permissions = new LocalPermissionClient(opts.getGrants, opts.setGrants)
       }
@@ -138,6 +168,10 @@ export function initServices(opts: {
           modelProvider,
           models: configuredModels,
           storage,
+          localWorker: {
+            availability: localWorkerAvailable ? 'available' : 'unavailable',
+            registered: localWorkerRegistered,
+          },
         },
       }
     })()

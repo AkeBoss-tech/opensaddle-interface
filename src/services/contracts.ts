@@ -94,6 +94,15 @@ export interface WorkspaceClient {
   save(workspace: AppData): Promise<{ updatedAt: number; documents: number }>
 }
 
+/** The client must show cache state as a fallback, never as the authority. */
+export type ClientConnectionStatus = 'connected' | 'syncing' | 'offline-cache'
+export type LocalWorkerAvailability = 'available' | 'unavailable'
+
+export interface ClientRuntimeStatus {
+  connection: ClientConnectionStatus
+  localWorker: LocalWorkerAvailability
+}
+
 export interface FileEntry {
   path: string
   name: string
