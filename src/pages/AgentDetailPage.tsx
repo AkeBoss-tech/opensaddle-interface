@@ -76,7 +76,7 @@ export function AgentDetailPage() {
   }
 
   return (
-    <div className="content-page" style={{ maxWidth: 1080 }}>
+    <div className="content-page agent-page">
       <div className="agent-hero">
         <div className="agent-avatar-lg"><Icon name="spark" className="icon lg" /></div>
         <div className="agent-hero-copy">
@@ -85,14 +85,28 @@ export function AgentDetailPage() {
           <p>{agent.description}</p>
           <div className="agent-hero-tags">
             <span className={`status-pill ${running ? 'green' : ''}`}>{running ? 'Session running' : 'Idle'}</span>
-            <span className={`status-pill ${exec.allowed ? 'green' : 'red'}`}>{exec.allowed ? (exec.approvalRequired ? 'Executable · approval on writes' : 'Executable') : 'Blocked for you'}</span>
-            <span className="vis-badge">{agent.visibility}</span>
+            {!exec.allowed && <span className="status-pill red">Blocked for you</span>}
+            {exec.allowed && exec.approvalRequired && <span className="status-pill yellow">Approval on writes</span>}
+            <span className="agent-hero-vis">{agent.visibility}</span>
           </div>
         </div>
         <div className="agent-hero-actions">
           <button className="primary-btn" onClick={openChat}><Icon name="message" className="icon sm" />Open chat</button>
           <button className="secondary-btn" disabled={testing} onClick={() => void testRun()}>{testing ? 'Testing…' : 'Test run'}</button>
           <Link className="secondary-btn" to={`/project/${agent.projectId}`}><Icon name="folder" className="icon sm" />Project</Link>
+        </div>
+      </div>
+
+      <div className="agent-spec-strip">
+        <div className="agent-spec"><span>Model policy</span><strong>{MODEL_NAME[agent.modelPolicy] ?? agent.modelPolicy}</strong></div>
+        <div className="agent-spec"><span>Harness</span><strong>{agent.harness}</strong></div>
+        <div className="agent-spec"><span>Runtime</span><strong>{agent.runtime}</strong></div>
+        <div className="agent-spec"><span>Created</span><strong>{new Date(agent.createdAt).toLocaleDateString()}</strong></div>
+        <div className="agent-spec-tools">
+          <span>Tools</span>
+          <div className="mini-tags" style={{ marginTop: 0 }}>
+            {agent.tools.map((t) => <span className="mini-tag" key={t}>{t}</span>)}
+          </div>
         </div>
       </div>
 
@@ -154,21 +168,6 @@ export function AgentDetailPage() {
         </div>
 
         <div className="agent-detail-side">
-          <div className="card">
-            <div className="card-header"><div><h3>Configuration</h3></div></div>
-            <div className="card-body">
-              <div className="kv"><span>Model policy</span><span>{MODEL_NAME[agent.modelPolicy] ?? agent.modelPolicy}</span></div>
-              <div className="kv"><span>Harness</span><span>{agent.harness}</span></div>
-              <div className="kv"><span>Runtime</span><span>{agent.runtime}</span></div>
-              <div className="kv"><span>Created</span><span>{new Date(agent.createdAt).toLocaleDateString()}</span></div>
-              <div className="divider" />
-              <h4 style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', margin: '0 0 8px' }}>Tools</h4>
-              <div className="mini-tags" style={{ marginTop: 0 }}>
-                {agent.tools.map((t) => <span className="mini-tag" key={t}>{t}</span>)}
-              </div>
-            </div>
-          </div>
-
           <div className="card">
             <div className="card-header"><div><h3>Knowledge</h3></div></div>
             <div className="card-body row-list">

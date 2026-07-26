@@ -161,7 +161,6 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
                   >
                     <Icon name="pin" className="icon sm" />
                   </span>
-                  <span className="resource-tag">{artifact.kind}</span>
                 </button>
               ))}
               {renderBranch(p.id, depth + 1)}

@@ -24,17 +24,26 @@ export function Topbar({ onPalette }: { onPalette: () => void }) {
     toast('Theme changed', next === 'dark' ? 'Dark' : next === 'light' ? 'Light' : 'High contrast')
   }
 
+  const offline = runtimeStatus.connection === 'offline-cache'
+  const shortState = offline
+    ? 'offline cache'
+    : runtimeStatus.connection === 'syncing' ? 'syncing'
+      : services?.controlPlane.modelProvider === 'unconfigured' ? 'no model'
+        : services?.controlPlane.modelProvider ?? 'connected'
+  const fullState = offline
+    ? `${runtimeModeLabel} · offline cache fallback · reconnect to restore authoritative state`
+    : `${runtimeModeLabel} · ${shortState} · ${services?.controlPlane.storage ?? 'server'} storage`
+  const workerLabel = runtimeStatus.localWorker === 'available' ? 'local worker ready' : 'no local worker'
+
   return (
     <header className="topbar" style={{ position: 'relative' }}>
       <button className="icon-btn mobile-menu" onClick={() => document.getElementById('sidebar')?.classList.toggle('mobile-open')}><Icon name="menu" /></button>
+      <Link to="/settings" className="crumb-pill system-pill" title={`${fullState} · ${workerLabel} — open system settings`}>
+        <span className={`pulse ${offline ? 'offline' : ''}`} />
+        Codex · {shortState}
+        <span className={`system-pill-worker ${runtimeStatus.localWorker === 'available' ? 'ok' : ''}`} aria-label={workerLabel} />
+      </Link>
       <div className="topbar-actions">
-        <Link to="/settings" className="crumb-pill system-pill" title="Open system settings">
-          <span className={`pulse ${runtimeStatus.connection === 'offline-cache' ? 'offline' : ''}`} />
-          {runtimeStatus.connection === 'offline-cache'
-            ? `Codex · ${runtimeModeLabel} · offline cache fallback`
-            : `Codex · ${runtimeStatus.connection === 'syncing' ? 'syncing' : services?.controlPlane.modelProvider === 'unconfigured' ? 'connected · no model' : services?.controlPlane.modelProvider ?? 'connected'} · ${services?.controlPlane.storage ?? 'server'}`}
-          <span className="system-pill-sync">{runtimeStatus.localWorker === 'available' ? 'local worker ready' : 'no local worker'}</span>
-        </Link>
         <button className="icon-btn" title="Command palette" onClick={onPalette}><Icon name="command" /></button>
         <button className="icon-btn" title="Toggle theme" onClick={cycleTheme}><Icon name="sun" /></button>
         <button className="icon-btn" title="Notifications" onClick={() => { setNotifOpen((v) => !v); if (!notifOpen) markNotificationsRead() }} style={{ position: 'relative' }}>
@@ -66,8 +75,8 @@ export function DemoBanner() {
       <Icon name="saddle" className="icon sm" />
       <span>
         {runtimeStatus.connection !== 'offline-cache' && services?.controlPlane.connected
-          ? `Codex connected · ${services.controlPlane.mode === 'company' ? 'company' : 'local'} control plane · ${services.controlPlane.modelProvider === 'unconfigured' ? 'configure a model in Settings' : services.controlPlane.modelProvider} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
-          : `${runtimeModeLabel} · Offline cache fallback · reconnect to restore authoritative state`}
+          ? `${services.controlPlane.mode === 'company' ? 'Company' : 'Local'} control plane connected${services.controlPlane.modelProvider === 'unconfigured' ? ' — configure a model in Settings' : ''}`
+          : `${runtimeModeLabel} — running on offline cache, reconnect to restore authoritative state`}
       </span>
       <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>
     </div>
