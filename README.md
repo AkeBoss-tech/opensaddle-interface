@@ -25,6 +25,28 @@ npm install
 npm run dev
 ```
 
+### Browser workspace
+
+The shared, read-only browser client is available at `/web/` (for example,
+`http://localhost:5173/opensaddle-interface/web/` in the default dev setup).
+It reads projects, run artifacts, and runtime status from the same control-plane
+workspace API that the Electron renderer uses; it does not persist a second
+workspace in browser storage.
+
+```bash
+npm install --prefix packages/control-plane
+npm run server
+npm run dev
+# Open /opensaddle-interface/web/
+```
+
+It defaults to `http://127.0.0.1:8765` and user `user-ad`. Set
+`VITE_OPENSADDLE_URL` and `VITE_OPENSADDLE_USER` at build time for another
+deployment, or use **Connection** in the web client. Company bearer tokens are
+kept only in that tab's memory. Browser tabs cannot access repositories or run
+local CLIs: local-machine work requires a connected OpenSaddle control
+plane/worker on that machine.
+
 Optional sidecars:
 
 ```bash
