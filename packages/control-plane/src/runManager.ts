@@ -14,6 +14,7 @@ import type {
   RunEvent,
   RunEventType,
   RunRecord,
+  RunDispatchTarget,
   RouteEstimate,
   RuntimeKind,
 } from './types.js'
@@ -62,6 +63,8 @@ export class RunManager {
     repo?: string
     principal: AuthPrincipal
     route?: RouteEstimate
+    dispatchTarget?: RunDispatchTarget
+    workerId?: string
   }): Promise<RunRecord> {
     if (this.activeCount() >= this.config.maxConcurrentRuns) {
       throw new Error(`Run capacity reached (${this.config.maxConcurrentRuns})`)
@@ -86,6 +89,8 @@ export class RunManager {
       reviewProviderKey: input.reviewProviderKey && input.reviewProviderKey !== 'auto'
         ? input.reviewProviderKey
         : undefined,
+      dispatchTarget: input.dispatchTarget ?? 'cloud',
+      workerId: input.workerId,
     }
     await this.store.saveRun(run)
     await this.store.appendAudit({
@@ -96,14 +101,83 @@ export class RunManager {
       targetType: 'run',
       targetId: run.id,
       projectId: run.projectId,
-      metadata: { harness: run.route.harnessKey, runtime: run.route.runtimeKey },
+      metadata: { harness: run.route.harnessKey, runtime: run.route.runtimeKey, dispatch_target: run.dispatchTarget, worker_id: run.workerId },
     })
-    await this.emit(run, 'session.created', { route })
+    await this.emit(run, 'session.created', { route, dispatch_target: run.dispatchTarget, worker_id: run.workerId })
+
+    if (run.dispatchTarget === 'local_worker') {
+      await this.store.appendAudit({
+        id: `audit_${randomUUID().slice(0, 12)}`,
+        timestamp: Date.now(),
+        actorId: input.principal.userId,
+        type: 'run.dispatched_to_worker',
+        targetType: 'run',
+        targetId: run.id,
+        projectId: run.projectId,
+        metadata: { worker_id: run.workerId },
+      })
+      return run
+    }
 
     const controller = new AbortController()
     this.aborters.set(run.id, controller)
     void this.execute(run, input.repo, input.principal, controller)
     return run
+  }
+
+  /** Claim queued browser-safe work for one connected local worker. */
+  async claimWorkerDispatches(workerId: string, principal: AuthPrincipal): Promise<RunRecord[]> {
+    const claimed = this.store.runs().filter((run) =>
+      run.ownerId === principal.userId
+      && run.dispatchTarget === 'local_worker'
+      && run.workerId === workerId
+      && run.status === 'queued',
+    )
+    for (const run of claimed) {
+      run.status = 'running'
+      run.updatedAt = Date.now()
+      await this.emit(run, 'agent.started', { runtime: 'local_worker', worker_id: workerId, provider: 'browser-safe' })
+      await this.store.saveRun(run)
+    }
+    return claimed
+  }
+
+  /** A worker reports only a bounded summary; durable run/audit state stays server-side. */
+  async completeWorkerDispatch(input: {
+    runId: string
+    workerId: string
+    principal: AuthPrincipal
+    summary: string
+    success: boolean
+  }): Promise<void> {
+    const run = this.store.run(input.runId)
+    if (!run) throw new Error('Run not found')
+    if (run.ownerId !== input.principal.userId || run.dispatchTarget !== 'local_worker' || run.workerId !== input.workerId) {
+      throw new Error('Run is not assigned to this local worker')
+    }
+    if (run.status !== 'running' && run.status !== 'queued') throw new Error('Run is no longer dispatchable')
+    if (run.status === 'queued') {
+      run.status = 'running'
+      await this.emit(run, 'agent.started', { runtime: 'local_worker', worker_id: input.workerId, provider: 'browser-safe' })
+    }
+    await this.emit(run, 'agent.output.delta', { text: input.summary.slice(0, 20_000), worker_id: input.workerId })
+    run.status = input.success ? 'completed' : 'failed'
+    run.error = input.success ? undefined : input.summary.slice(0, 20_000)
+    run.updatedAt = Date.now()
+    await this.emit(run, input.success ? 'agent.completed' : 'agent.failed', { worker_id: input.workerId, dispatch_target: 'local_worker' })
+    await this.emit(run, 'session.closed', { status: run.status })
+    await this.store.saveRun(run)
+    await this.recordTelemetry(run, input.success)
+    await this.store.appendAudit({
+      id: `audit_${randomUUID().slice(0, 12)}`,
+      timestamp: Date.now(),
+      actorId: input.principal.userId,
+      type: input.success ? 'worker.dispatch_completed' : 'worker.dispatch_failed',
+      targetType: 'run',
+      targetId: run.id,
+      projectId: run.projectId,
+      metadata: { worker_id: input.workerId },
+    })
   }
 
   async resolveDiff(

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
-import { authenticate, redactUrl } from './auth.js'
+import { authenticate, DemoSessionManager, redactUrl } from './auth.js'
 import { loadConfig } from './config.js'
 import { HarnessRegistry } from './harness/index.js'
 import { ModelGateway } from './modelGateway.js'
@@ -20,6 +20,7 @@ import type {
   PrincipalKind,
   ResourceKind,
   RuntimeKind,
+  RunDispatchTarget,
 } from './types.js'
 
 declare module 'fastify' {
@@ -35,6 +36,7 @@ const models = new ModelGateway(config)
 const provisioner = new RuntimeProvisioner(config, store)
 const harnesses = new HarnessRegistry(config, models)
 const runs = new RunManager(config, store, models, provisioner, harnesses)
+const sessions = new DemoSessionManager()
 const app = Fastify({
   logger: {
     level: process.env.OPENSADDLE_LOG_LEVEL ?? 'info',
@@ -50,12 +52,12 @@ await app.register(cors, {
     else callback(new Error('Origin not allowed'), false)
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-OpenSaddle-User', 'If-Unmodified-Since'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-OpenSaddle-User', 'X-OpenSaddle-Session', 'If-Unmodified-Since'],
 })
 
 app.addHook('preHandler', async (request, reply) => {
-  if (request.url === '/api/health' || request.url.startsWith('/api/public/sites/')) return
-  const principal = authenticate(request, config)
+  if (request.url === '/api/health' || request.url.startsWith('/api/public/sites/') || (request.method === 'POST' && request.url === '/api/session')) return
+  const principal = authenticate(request, config, sessions)
   if (!principal) {
     await reply.code(401).send({ error: 'authentication_required' })
     return reply
@@ -184,6 +186,36 @@ app.get('/api/health', async () => ({
     availability: h.availability,
   })),
 }))
+
+app.post('/api/session', async (request, reply) => {
+  if (config.mode !== 'local') return reply.code(403).send({ error: 'demo_sign_in_not_available' })
+  const body = objectBody(request)
+  const userId = requiredString(body, 'user_id', 80).toLowerCase()
+  if (!/^[a-z0-9][a-z0-9_-]{1,79}$/.test(userId)) return reply.code(400).send({ error: 'invalid_user_id' })
+  const displayName = optionalString(body, 'display_name', 120) ?? userId
+  const session = sessions.issue({ userId, displayName })
+  await store.appendAudit({
+    id: `audit_${randomUUID().slice(0, 12)}`,
+    timestamp: Date.now(),
+    actorId: userId,
+    type: 'account.signed_in',
+    targetType: 'workspace',
+    targetId: 'org-default',
+    metadata: { channel: 'web', display_name: displayName },
+  })
+  return reply.code(201).send({ token: session.token, expires_at: session.expiresAt, account: { id: userId, name: displayName, mode: 'local-demo' } })
+})
+
+app.get('/api/session', async (request) => ({
+  account: { id: request.principal.userId, name: request.principal.displayName, mode: request.principal.authType, roles: request.principal.roles },
+}))
+
+app.delete('/api/session', async (request) => {
+  const token = request.headers['x-opensaddle-session']
+  sessions.revoke(typeof token === 'string' ? token : undefined)
+  await audit(request, 'account.signed_out', 'workspace', 'org-default', undefined, { channel: 'web' })
+  return { ok: true }
+})
 
 app.get('/api/public/sites/:slug', async (request, reply) => {
   const { slug } = request.params as { slug: string }
@@ -314,6 +346,31 @@ app.post('/api/runtime/workers', async (request, reply) => {
   await store.saveWorker(worker)
   await audit(request, 'worker.registered', 'worker', worker.id, undefined, { kind: worker.kind, capabilities: worker.capabilities })
   return reply.code(201).send(worker)
+})
+
+app.get<{ Params: { workerId: string } }>('/api/runtime/workers/:workerId/dispatches', async (request, reply) => {
+  const worker = store.workers().find((candidate) => candidate.id === request.params.workerId)
+  if (!worker || worker.ownerId !== request.principal.userId || worker.status !== 'available') {
+    return reply.code(404).send({ error: 'local_worker_not_available' })
+  }
+  const claimed = await runs.claimWorkerDispatches(worker.id, request.principal)
+  return claimed.map((run) => ({ run_id: run.id, project_id: run.projectId, agent_id: run.agentId, task: run.task, route: run.route }))
+})
+
+app.post<{ Params: { workerId: string; runId: string } }>('/api/runtime/workers/:workerId/dispatches/:runId/complete', async (request, reply) => {
+  const worker = store.workers().find((candidate) => candidate.id === request.params.workerId)
+  if (!worker || worker.ownerId !== request.principal.userId || worker.status !== 'available') {
+    return reply.code(404).send({ error: 'local_worker_not_available' })
+  }
+  const body = objectBody(request)
+  await runs.completeWorkerDispatch({
+    runId: request.params.runId,
+    workerId: worker.id,
+    principal: request.principal,
+    summary: requiredString(body, 'summary', 20_000),
+    success: body.success !== false,
+  })
+  return { ok: true }
 })
 
 app.get('/api/workspace', async (_request, reply) => {
@@ -500,6 +557,8 @@ app.get('/api/runs', async (request) => runs.list(request.principal).map((run) =
   created_at: run.createdAt,
   updated_at: run.updatedAt,
   error: run.error,
+  dispatch_target: run.dispatchTarget,
+  worker_id: run.workerId,
 })))
 
 app.post('/api/runs', async (request, reply) => {
@@ -508,12 +567,20 @@ app.post('/api/runs', async (request, reply) => {
   const agentId = optionalString(body, 'agent_id', 200)
   const defaults = projectRoutingDefaults(projectId)
   const task = requiredString(body, 'task')
+  const dispatchTarget = enumValue<RunDispatchTarget>(body, 'dispatch_target', ['cloud', 'local_worker']) ?? 'cloud'
+  const requestedWorkerId = optionalString(body, 'worker_id', 200)
+  const worker = dispatchTarget === 'local_worker'
+    ? store.workers().find((candidate) => candidate.ownerId === request.principal.userId && candidate.status === 'available' && (!requestedWorkerId || candidate.id === requestedWorkerId))
+    : undefined
+  if (dispatchTarget === 'local_worker' && !worker) return reply.code(409).send({ error: 'local_worker_unavailable', reason: 'Connect an available local worker before dispatching local work.' })
   const route = estimateRoute(task, config, {
     modelKey: enumValue<ModelKey>(body, 'model_key', ['auto', 'gpt', 'claude', 'sonnet', 'gemini', 'llama']) ?? defaults.modelKey,
     modelId: openRouterModelId(body),
     harnessKey: enumValue<Harness>(body, 'harness_key', ['chat', 'research', 'coding', 'browser', 'vm']),
     providerKey: enumValue<CodingProvider>(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom']) ?? defaults.providerKey,
-    runtimeKey: enumValue<RuntimeKind>(body, 'runtime_key', ['local', 'browser', 'sandbox', 'vm', 'gpu', 'restricted']) ?? defaults.runtimeKey,
+    runtimeKey: dispatchTarget === 'local_worker'
+      ? 'browser'
+      : enumValue<RuntimeKind>(body, 'runtime_key', ['local', 'browser', 'sandbox', 'vm', 'gpu', 'restricted']) ?? defaults.runtimeKey,
     routingPref: optionalString(body, 'routing_pref', 50),
     telemetry: store.routeTelemetry(projectId),
   })
@@ -560,12 +627,16 @@ app.post('/api/runs', async (request, reply) => {
     reviewProviderKey: enumValue<CodingProvider>(body, 'review_provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom']) ?? defaults.reviewProviderKey,
     repo: optionalString(body, 'repo', 2_000),
     principal: request.principal,
+    dispatchTarget,
+    workerId: worker?.id,
   })
   return reply.code(202).send({
     run_id: run.id,
     session_id: run.sessionId,
     mode: config.mode,
     route: run.route,
+    dispatch_target: run.dispatchTarget,
+    worker_id: run.workerId,
   })
 })
 

@@ -21,7 +21,10 @@ export interface AuthPrincipal {
   userId: string
   roles: string[]
   authType: 'local' | 'bearer'
+  displayName?: string
 }
+
+export type RunDispatchTarget = 'cloud' | 'local_worker'
 
 export interface PermissionGrant {
   id: string
@@ -134,6 +137,10 @@ export interface RunRecord {
   events: RunEvent[]
   error?: string
   reviewProviderKey?: Exclude<CodingProvider, 'auto'>
+  /** The execution boundary selected by the requesting client. */
+  dispatchTarget?: RunDispatchTarget
+  /** Assigned connected worker for browser/local execution. */
+  workerId?: string
 }
 
 export interface ApprovalRecord {

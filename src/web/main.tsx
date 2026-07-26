@@ -1,129 +1,100 @@
 import { StrictMode, useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter, Link, Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom'
-import type { AppData, Artifact, Message, Project } from '../types'
-import { loadWorkspaceSnapshot, type WebConnection, type WorkspaceSnapshot } from './controlPlane'
+import type { AppData, Artifact, PermissionGrant, Project } from '../types'
+import { approveRun, completeDispatch, dispatches, loadWorkspaceSnapshot, registerBrowserWorker, signIn, signOut, startRun, type WebConnection, type WebRun, type WorkspaceSnapshot } from './controlPlane'
 import './web.css'
 
-const defaultConnection: WebConnection = {
-  baseUrl: (import.meta.env.VITE_OPENSADDLE_URL as string | undefined) ?? 'http://127.0.0.1:8765',
-  userId: (import.meta.env.VITE_OPENSADDLE_USER as string | undefined) ?? 'user-ad',
-}
+const defaultUrl = (import.meta.env.VITE_OPENSADDLE_URL as string | undefined) ?? 'http://127.0.0.1:8765'
+type ArtifactRecord = { artifact: Artifact; projectId: string; messageId: string; createdAt: number }
+const sessionKey = 'opensaddle-web-session-v1'
 
-type ArtifactRecord = { artifact: Artifact; projectId: string; message: Message }
-
-function artifactRecords(data: AppData): ArtifactRecord[] {
-  const chats = new Map(data.chats.map((chat) => [chat.id, chat]))
-  return data.messages.flatMap((message) => {
-    const projectId = chats.get(message.chatId)?.projectId
-    if (!projectId || !message.run?.artifacts) return []
-    return message.run.artifacts.map((artifact) => ({ artifact, projectId, message }))
-  }).sort((a, b) => b.message.createdAt - a.message.createdAt)
-}
-
-function relativeTime(timestamp?: number) {
-  if (!timestamp) return 'not yet synced'
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(timestamp)
-}
+function artifacts(data: AppData): ArtifactRecord[] { const chats = new Map(data.chats.map((chat) => [chat.id, chat])); return data.messages.flatMap((message) => { const projectId = chats.get(message.chatId)?.projectId; return projectId && message.run?.artifacts ? message.run.artifacts.map((artifact) => ({ artifact, projectId, messageId: message.id, createdAt: message.createdAt })) : [] }).sort((a, b) => b.createdAt - a.createdAt) }
+function stamp(value?: number) { return value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(value) : 'not yet' }
+function initials(name: string) { return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() }
 
 function App() {
-  const [connection, setConnection] = useState(defaultConnection)
+  const [connection, setConnection] = useState<WebConnection | null>(() => { try { return JSON.parse(sessionStorage.getItem(sessionKey) ?? 'null') as WebConnection | null } catch { return null } })
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null)
-  const [state, setState] = useState<'loading' | 'synced' | 'error'>('loading')
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [error, setError] = useState<string | null>(null)
-  const [connectOpen, setConnectOpen] = useState(false)
-
+  const [workerId, setWorkerId] = useState<string | null>(null)
   const refresh = useCallback(async () => {
-    setState((current) => current === 'synced' ? 'synced' : 'loading')
-    try {
-      const next = await loadWorkspaceSnapshot(connection)
-      setSnapshot(next)
-      setState('synced')
-      setError(null)
-    } catch (cause) {
-      setState('error')
-      setError(cause instanceof Error ? cause.message : String(cause))
-    }
+    if (!connection) return
+    try { const next = await loadWorkspaceSnapshot(connection); setSnapshot(next); setState('ready'); setError(null) }
+    catch (cause) { setState('error'); setError(cause instanceof Error ? cause.message : String(cause)) }
   }, [connection])
-
+  useEffect(() => { if (!connection) return; void refresh(); const timer = window.setInterval(() => void refresh(), 8_000); return () => window.clearInterval(timer) }, [connection, refresh])
   useEffect(() => {
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), 15_000)
-    return () => window.clearInterval(timer)
-  }, [refresh])
-
-  const data = snapshot?.workspace.workspace
-  const artifacts = useMemo(() => data ? artifactRecords(data) : [], [data])
-  const connectionText = state === 'synced'
-    ? `Synced ${relativeTime(snapshot?.workspace.updatedAt)}`
-    : state === 'error' ? 'Control plane unavailable' : 'Connecting to control plane…'
-
-  return (
-    <HashRouter>
-      <div className="web-app">
-        <aside className="web-sidebar">
-          <Link className="web-brand" to="/"><span>⌁</span><strong>OpenSaddle</strong><small>Web workspace</small></Link>
-          <nav>
-            <NavLink to="/" end>Workspace</NavLink>
-            <NavLink to="/projects">Projects <b>{data?.projects.length ?? '—'}</b></NavLink>
-            <NavLink to="/artifacts">Artifacts <b>{artifacts.length || '—'}</b></NavLink>
-          </nav>
-          <div className="web-sidebar-foot">
-            <span className={`web-dot ${state === 'synced' ? '' : 'offline'}`} />
-            <div><strong>{state === 'synced' ? 'Control plane connected' : 'Control plane disconnected'}</strong><small>{connection.baseUrl}</small></div>
-          </div>
-        </aside>
-        <main className="web-main">
-          <header className="web-topbar">
-            <div><span className={`web-status ${state}`} />{connectionText}</div>
-            <div className="web-topbar-actions"><button onClick={() => void refresh()}>Refresh</button><button onClick={() => setConnectOpen(true)}>Connection</button></div>
-          </header>
-          {state === 'error' && <ConnectionNotice error={error} onConnect={() => setConnectOpen(true)} />}
-          {data && snapshot ? <Routes>
-            <Route path="/" element={<Overview data={data} snapshot={snapshot} artifacts={artifacts} />} />
-            <Route path="/projects" element={<Projects projects={data.projects} artifacts={artifacts} />} />
-            <Route path="/projects/:projectId" element={<ProjectDetail projects={data.projects} artifacts={artifacts} />} />
-            <Route path="/artifacts" element={<Artifacts artifacts={artifacts} projects={data.projects} />} />
-            <Route path="/artifacts/:artifactId" element={<ArtifactDetail artifacts={artifacts} projects={data.projects} />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes> : state !== 'error' && <div className="web-loading">Loading the authoritative workspace…</div>}
-        </main>
-        {connectOpen && <ConnectionDialog connection={connection} onClose={() => setConnectOpen(false)} onSave={(next) => { setConnection(next); setConnectOpen(false) }} />}
-      </div>
-    </HashRouter>
-  )
+    if (!connection) return
+    let active = true
+    void registerBrowserWorker(connection).then((worker) => { if (active) setWorkerId(worker.id) }).catch(() => { if (active) setWorkerId(null) })
+    return () => { active = false }
+  }, [connection])
+  useEffect(() => {
+    if (!connection || !workerId) return
+    let busy = false
+    const poll = async () => {
+      if (busy) return
+      busy = true
+      try {
+        for (const job of await dispatches(connection, workerId)) {
+          const summary = await executeBrowserWorker(job.task, job.project_id)
+          await completeDispatch(connection, workerId, job.run_id, summary)
+          void refresh()
+        }
+      } catch { /* The status pill communicates worker availability; retry on the next heartbeat. */ }
+      finally { busy = false }
+    }
+    void poll(); const timer = window.setInterval(() => void poll(), 1_200); return () => window.clearInterval(timer)
+  }, [connection, workerId, refresh])
+  const onSignIn = async (input: { userId: string; displayName: string; baseUrl: string }) => { const next = await signIn(input.baseUrl, input); sessionStorage.setItem(sessionKey, JSON.stringify(next.connection)); setConnection(next.connection); setSnapshot(null); setState('loading') }
+  const onSignOut = async () => { if (connection) await signOut(connection).catch(() => undefined); sessionStorage.removeItem(sessionKey); setConnection(null); setSnapshot(null); setWorkerId(null); setState('loading') }
+  if (!connection) return <SignIn onSignIn={onSignIn} />
+  if (!snapshot && state !== 'error') return <div className="web-loading">Connecting to the authoritative OpenSaddle workspace…</div>
+  if (state === 'error' || !snapshot) return <SignIn onSignIn={onSignIn} error={error ?? 'Control plane unavailable'} initialUrl={connection.baseUrl} />
+  return <Workspace snapshot={snapshot} connection={connection} workerId={workerId} onRefresh={refresh} onSignOut={onSignOut} />
 }
 
-function ConnectionNotice({ error, onConnect }: { error: string | null; onConnect: () => void }) {
-  return <div className="web-notice"><div><strong>OpenSaddle needs a connected control plane</strong><p>{error ?? 'No control plane response.'} This web client does not keep a browser copy of projects or artifacts.</p></div><button onClick={onConnect}>Configure connection</button></div>
+function executeBrowserWorker(task: string, projectId: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const source = `self.onmessage = (event) => { const task = String(event.data.task).replace(/\\s+/g, ' ').trim(); self.postMessage('Local browser worker completed a browser-safe dispatch for project ' + event.data.project + ': ' + task.slice(0, 700) + '. No repository, shell, or external network access was granted.'); }`
+    const worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })))
+    worker.onmessage = (event) => { worker.terminate(); resolve(String(event.data)) }
+    worker.onerror = () => { worker.terminate(); reject(new Error('Local browser worker failed')) }
+    worker.postMessage({ task, project: projectId })
+  })
 }
 
-function Overview({ data, snapshot, artifacts }: { data: AppData; snapshot: WorkspaceSnapshot; artifacts: ArtifactRecord[] }) {
-  const running = snapshot.runtimes.filter((runtime) => runtime.status === 'running')
-  return <section className="web-page">
-    <div className="web-heading"><div><span>Shared workspace</span><h1>{data.workspaceName}</h1><p>Projects, run artifacts, and runtime records are read directly from the OpenSaddle control plane.</p></div></div>
-    <div className="web-local-worker"><div><strong>Local-machine work needs a connected local worker.</strong><p>A browser tab cannot read your repository or run local CLIs. Connect the OpenSaddle control plane/worker on that machine, then start work through the shared runtime API.</p></div><span>{snapshot.health.runtime_provider === 'local' ? 'Local runtime provider' : `${snapshot.health.runtime_provider} runtime provider`}</span></div>
-    <div className="web-stats"><Stat label="Projects" value={data.projects.length} /><Stat label="Selected artifacts" value={artifacts.length} /><Stat label="Live runtimes" value={running.length} /><Stat label="Workspace storage" value={snapshot.workspace.storage ?? snapshot.health.storage?.engine ?? 'server'} /></div>
-    <section className="web-section"><div className="web-section-head"><h2>Projects</h2><Link to="/projects">Browse all</Link></div><div className="web-cards">{data.projects.slice(0, 6).map((project) => <ProjectCard key={project.id} project={project} artifacts={artifacts} />)}</div></section>
-    <section className="web-section"><div className="web-section-head"><h2>Latest artifacts</h2><Link to="/artifacts">Browse all</Link></div><ArtifactTable artifacts={artifacts.slice(0, 5)} projects={data.projects} /></section>
-    <section className="web-section"><div className="web-section-head"><h2>Authoritative runtime status</h2><span>{snapshot.health.mode} control plane</span></div><RuntimeList runtimes={snapshot.runtimes} /></section>
-  </section>
+function SignIn({ onSignIn, error, initialUrl = defaultUrl }: { onSignIn: (input: { userId: string; displayName: string; baseUrl: string }) => Promise<void>; error?: string; initialUrl?: string }) {
+  const [userId, setUserId] = useState('user-ad'); const [name, setName] = useState('Akash Dubey'); const [url, setUrl] = useState(initialUrl); const [busy, setBusy] = useState(false); const [message, setMessage] = useState(error)
+  return <main className="web-signin"><section><div className="web-mark">⌁</div><span className="web-eyebrow">OpenSaddle workspace</span><h1>Continue to your projects.</h1><p>Sign in to the local demo account or connect to your company control plane. Your session is account-scoped and kept only for this browser tab.</p><form onSubmit={(event) => { event.preventDefault(); setBusy(true); setMessage(undefined); void onSignIn({ userId, displayName: name, baseUrl: url }).catch((cause) => setMessage(cause instanceof Error ? cause.message : String(cause))).finally(() => setBusy(false)) }}><label>Account ID<input value={userId} onChange={(event) => setUserId(event.target.value)} required /></label><label>Display name<input value={name} onChange={(event) => setName(event.target.value)} required /></label><label>Control plane URL<input value={url} onChange={(event) => setUrl(event.target.value)} required /></label>{message && <div className="web-error">{message}</div>}<button disabled={busy}>{busy ? 'Signing in…' : 'Sign in to workspace'}</button></form><small>Local/demo sign-in is available only on loopback control planes. Company deployments use their configured identity provider and bearer session.</small></section></main>
 }
 
+function Workspace({ snapshot, connection, workerId, onRefresh, onSignOut }: { snapshot: WorkspaceSnapshot; connection: WebConnection; workerId: string | null; onRefresh: () => Promise<void>; onSignOut: () => Promise<void> }) {
+  const data = snapshot.workspace.workspace; const projectArtifacts = useMemo(() => artifacts(data), [data]); const [composer, setComposer] = useState<{ projectId: string; agentId?: string } | null>(null)
+  return <HashRouter><div className="web-app"><aside className="web-sidebar"><Link className="web-brand" to="/"><span>⌁</span><strong>OpenSaddle</strong><small>{data.workspaceName}</small></Link><button className="web-new-run" onClick={() => setComposer({ projectId: data.activeProjectId })}>＋ New run</button><nav><NavLink to="/" end>Overview</NavLink><NavLink to="/projects">Projects <b>{data.projects.length}</b></NavLink><NavLink to="/agents">Agents <b>{data.agents.length}</b></NavLink><NavLink to="/sites">Sites <b>{data.sites.length}</b></NavLink><NavLink to="/wiki">Wiki <b>{data.wikiSummaries.length}</b></NavLink><NavLink to="/runs">Runs <b>{snapshot.runs.length}</b></NavLink><NavLink to="/artifacts">Artifacts <b>{projectArtifacts.length}</b></NavLink><NavLink to="/permissions">Permissions</NavLink><NavLink to="/settings">Settings</NavLink></nav><div className="web-project-tree"><span>Projects</span>{data.projects.filter((project) => !project.parentId || project.parentId === 'proj-corp').slice(0, 6).map((project) => <Link key={project.id} to={`/projects/${project.id}`}><i style={{ background: project.iconColor }} />{project.name}</Link>)}</div><div className="web-sidebar-foot"><span className={`web-dot ${workerId ? '' : 'offline'}`} /><div><strong>{workerId ? 'Local worker ready' : 'Local worker unavailable'}</strong><small>{snapshot.health.runtime_provider} runtime · {snapshot.workspace.storage ?? 'server'}</small></div></div></aside><main className="web-main"><header className="web-topbar"><div><span className="web-status" />Connected · {snapshot.health.mode} control plane · synced {stamp(snapshot.workspace.updatedAt)}</div><div className="web-account"><span>{initials(snapshot.account.name ?? snapshot.account.id)}</span><div><strong>{snapshot.account.name ?? snapshot.account.id}</strong><small>{snapshot.account.id}</small></div><button onClick={() => void onRefresh()}>Refresh</button><button onClick={() => void onSignOut()}>Sign out</button></div></header><Routes><Route path="/" element={<Overview data={data} snapshot={snapshot} artifacts={projectArtifacts} onRun={(projectId, agentId) => setComposer({ projectId, agentId })} />} /><Route path="/projects" element={<Projects projects={data.projects} artifacts={projectArtifacts} />} /><Route path="/projects/:projectId" element={<ProjectDetail data={data} artifacts={projectArtifacts} onRun={(projectId, agentId) => setComposer({ projectId, agentId })} />} /><Route path="/agents" element={<Agents data={data} onRun={(projectId, agentId) => setComposer({ projectId, agentId })} />} /><Route path="/sites" element={<Sites data={data} />} /><Route path="/wiki" element={<Wiki data={data} />} /><Route path="/runs" element={<Runs runs={snapshot.runs} />} /><Route path="/artifacts" element={<Artifacts artifacts={projectArtifacts} projects={data.projects} />} /><Route path="/artifacts/:artifactId" element={<ArtifactDetail artifacts={projectArtifacts} projects={data.projects} />} /><Route path="/permissions" element={<Permissions grants={snapshot.permissions} />} /><Route path="/settings" element={<Settings data={data} snapshot={snapshot} workerId={workerId} />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></main>{composer && <RunComposer data={data} connection={connection} workerId={workerId} initial={composer} onClose={() => setComposer(null)} onStarted={() => { setComposer(null); void onRefresh() }} />}</div></HashRouter>
+}
+
+function Overview({ data, snapshot, artifacts, onRun }: { data: AppData; snapshot: WorkspaceSnapshot; artifacts: ArtifactRecord[]; onRun: (projectId: string, agentId?: string) => void }) { const running = snapshot.runs.filter((run) => run.status === 'queued' || run.status === 'running').length; return <Page eyebrow="Shared runtime" title={data.workspaceName} text="The web workspace uses the same authoritative projects, artifacts, permissions, agents, sites, wikis, settings, and run records as Electron."><div className="web-worker-callout"><div><strong>Run an agent from this browser</strong><p>Choose a connected browser/local worker for browser-safe work, or a cloud runtime for provider-backed execution. Permission and approval rules are enforced by the control plane.</p></div><button onClick={() => onRun(data.activeProjectId)}>Start a run</button></div><div className="web-stats"><Stat label="Projects" value={data.projects.length} /><Stat label="Agents" value={data.agents.length} /><Stat label="Live work" value={running} /><Stat label="Artifacts" value={artifacts.length} /></div><Section title="Projects" to="/projects"><div className="web-cards">{data.projects.slice(0, 6).map((project) => <ProjectCard key={project.id} project={project} artifacts={artifacts} />)}</div></Section><Section title="Recent runs" to="/runs"><RunList runs={snapshot.runs.slice(0, 5)} /></Section></Page> }
+function Page({ eyebrow, title, text, children }: { eyebrow: string; title: string; text: string; children?: React.ReactNode }) { return <section className="web-page"><div className="web-heading"><span>{eyebrow}</span><h1>{title}</h1><p>{text}</p></div>{children}</section> }
+function Section({ title, to, children }: { title: string; to: string; children: React.ReactNode }) { return <section className="web-section"><div className="web-section-head"><h2>{title}</h2><Link to={to}>View all</Link></div>{children}</section> }
 function Stat({ label, value }: { label: string; value: string | number }) { return <div className="web-stat"><small>{label}</small><strong>{value}</strong></div> }
-function ProjectCard({ project, artifacts }: { project: Project; artifacts: ArtifactRecord[] }) { return <Link className="web-project-card" to={`/projects/${project.id}`}><span className="web-color" style={{ background: project.iconColor }} /><strong>{project.name}</strong><p>{project.description}</p><small>{artifacts.filter((item) => item.projectId === project.id).length} artifacts · {project.serviceCount} services</small></Link> }
+function ProjectCard({ project, artifacts }: { project: Project; artifacts: ArtifactRecord[] }) { return <Link className="web-project-card" to={`/projects/${project.id}`}><i style={{ background: project.iconColor }} /><strong>{project.name}</strong><p>{project.description}</p><small>{artifacts.filter((item) => item.projectId === project.id).length} artifacts · {project.serviceCount} services</small></Link> }
+function Projects({ projects, artifacts }: { projects: Project[]; artifacts: ArtifactRecord[] }) { return <Page eyebrow="Workspace" title="Projects" text="Project-first navigation, inherited scope, and durable runtime state."><div className="web-cards">{projects.map((project) => <ProjectCard key={project.id} project={project} artifacts={artifacts} />)}</div></Page> }
+function ProjectDetail({ data, artifacts, onRun }: { data: AppData; artifacts: ArtifactRecord[]; onRun: (projectId: string, agentId?: string) => void }) { const { projectId } = useParams(); const project = data.projects.find((item) => item.id === projectId); if (!project) return <Missing label="Project" />; const agents = data.agents.filter((agent) => agent.projectId === project.id); return <Page eyebrow="Project" title={project.name} text={project.description}><div className="web-project-actions"><button onClick={() => onRun(project.id)}>Run project agent</button><span>{project.knowledgeCount} knowledge · {project.serviceCount} services · {project.autoConfidence}% confidence</span></div><Section title="Agents" to="/agents"><div className="web-list">{agents.length ? agents.map((agent) => <div key={agent.id}><div><strong>{agent.name}</strong><small>{agent.description}</small></div><button onClick={() => onRun(project.id, agent.id)}>Run</button></div>) : <div className="web-empty">No dedicated agents are attached to this project.</div>}</div></Section><Section title="Artifacts" to="/artifacts"><ArtifactTable artifacts={artifacts.filter((item) => item.projectId === project.id)} projects={data.projects} /></Section></Page> }
+function Agents({ data, onRun }: { data: AppData; onRun: (projectId: string, agentId?: string) => void }) { return <Page eyebrow="Workspace agents" title="Agents" text="Agents retain their desktop project, tool, and runtime policy."><div className="web-list">{data.agents.map((agent) => <div key={agent.id}><div><strong>{agent.name}</strong><small>{agent.description} · {agent.harness} · {agent.runtime}</small></div><button onClick={() => onRun(agent.projectId, agent.id)}>Run agent</button></div>)}</div></Page> }
+function Sites({ data }: { data: AppData }) { return <Page eyebrow="Published experiences" title="Sites" text="Site records and versions are shared from the authoritative workspace."><div className="web-cards">{data.sites.map((site) => <article className="web-project-card" key={site.id}><i style={{ background: site.accent }} /><strong>{site.name}</strong><p>{site.description}</p><small>{site.visibility} · {site.versions.length} versions · /published/{site.slug}</small></article>)}</div></Page> }
+function Wiki({ data }: { data: AppData }) { return <Page eyebrow="Project knowledge" title="Wiki" text="Durable project and member summaries from the same workspace."><div className="web-list">{data.wikiSummaries.map((summary) => <div key={summary.id}><div><strong>{data.projects.find((project) => project.id === summary.projectId)?.name ?? summary.projectId}</strong><small>{summary.headline} · {summary.overview}</small></div><time>{stamp(summary.updatedAt)}</time></div>)}</div></Page> }
+function Runs({ runs }: { runs: WebRun[] }) { return <Page eyebrow="Runtime activity" title="Runs" text="All dispatches are owned by the signed-in account and tracked by the shared runtime."><RunList runs={runs} /></Page> }
+function RunList({ runs }: { runs: WebRun[] }) { return <div className="web-list">{runs.length ? runs.map((run) => <div key={run.run_id}><div><strong>{run.project_id} · {run.route.harnessKey} run</strong><small>{run.dispatch_target === 'local_worker' ? `Local worker ${run.worker_id ?? ''}` : `Cloud ${run.route.runtimeKey}`} · {run.route.providerKey} · {stamp(run.updated_at)}{run.error ? ` · ${run.error}` : ''}</small></div><span className={`web-run ${run.status}`}>{run.status}</span></div>) : <div className="web-empty">No runs have been dispatched for this account yet.</div>}</div> }
+function Artifacts({ artifacts, projects }: { artifacts: ArtifactRecord[]; projects: Project[] }) { return <Page eyebrow="Workspace output" title="Artifacts" text="Artifacts are derived from durable run messages stored by the control plane."><ArtifactTable artifacts={artifacts} projects={projects} /></Page> }
+function ArtifactTable({ artifacts, projects }: { artifacts: ArtifactRecord[]; projects: Project[] }) { if (!artifacts.length) return <div className="web-empty">No artifacts have been recorded yet.</div>; return <div className="web-table">{artifacts.map((item) => <Link key={`${item.messageId}-${item.artifact.id}`} to={`/artifacts/${encodeURIComponent(item.artifact.id)}`}><span>{item.artifact.type}</span><div><strong>{item.artifact.title}</strong><small>{projects.find((project) => project.id === item.projectId)?.name ?? item.projectId}</small></div><time>{stamp(item.createdAt)}</time></Link>)}</div> }
+function ArtifactDetail({ artifacts, projects }: { artifacts: ArtifactRecord[]; projects: Project[] }) { const { artifactId } = useParams(); const item = artifacts.find((record) => record.artifact.id === artifactId); if (!item) return <Missing label="Artifact" />; return <Page eyebrow={`${item.artifact.type} artifact`} title={item.artifact.title} text={item.artifact.subtitle ?? projects.find((project) => project.id === item.projectId)?.name ?? item.projectId}>{item.artifact.reportHtml && <article className="web-artifact-body" dangerouslySetInnerHTML={{ __html: item.artifact.reportHtml }} />}{item.artifact.table && <table className="web-data-table"><thead><tr>{item.artifact.table.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{item.artifact.table.rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table>}{item.artifact.diff && <pre className="web-diff">{item.artifact.diff.map((file) => `${file.path} +${file.add} −${file.del}\n${file.hunks.flatMap((hunk) => hunk.lines.map((line) => `${line.t === 'add' ? '+' : line.t === 'del' ? '-' : ' '} ${line.c}`)).join('\n')}`).join('\n\n')}</pre>}</Page> }
+function Permissions({ grants }: { grants: PermissionGrant[] }) { return <Page eyebrow="Access control" title="Permissions" text="The control plane evaluates user and agent grants before every protected run."><div className="web-list">{grants.map((grant) => <div key={grant.id}><div><strong>{grant.principalKind}: {grant.principalId}</strong><small>{grant.effect} {grant.action} on {grant.resourceKind} {grant.resourceId}{grant.approvalRequired ? ' · approval required' : ''}</small></div><span className={grant.effect === 'allow' ? 'web-run completed' : 'web-run failed'}>{grant.effect}</span></div>)}</div></Page> }
+function Settings({ data, snapshot, workerId }: { data: AppData; snapshot: WorkspaceSnapshot; workerId: string | null }) { return <Page eyebrow="Workspace control center" title="Settings" text="Account session, runtime status, and the settings shared with the Electron renderer."><div className="web-settings"><Stat label="Account" value={snapshot.account.id} /><Stat label="Control plane" value="Online" /><Stat label="Local worker" value={workerId ? 'Available' : 'Unavailable'} /><Stat label="Storage" value={snapshot.workspace.storage ?? 'server'} /></div><div className="web-list"><div><div><strong>Routing preference</strong><small>{data.settings.routingPref} · {data.settings.keepDataLocal ? 'keep data local' : 'cloud allowed'}</small></div></div><div><div><strong>Retention</strong><small>{data.settings.retentionDays} days · {data.settings.region}</small></div></div></div></Page> }
+function Missing({ label }: { label: string }) { return <Page eyebrow="Workspace" title={`${label} not found`} text="The selected record is not present in this authoritative workspace." /> }
 
-function Projects({ projects, artifacts }: { projects: Project[]; artifacts: ArtifactRecord[] }) { return <section className="web-page"><div className="web-heading"><span>Workspace</span><h1>Projects</h1><p>Project metadata comes from the same server workspace used by the desktop renderer.</p></div><div className="web-cards">{projects.map((project) => <ProjectCard key={project.id} project={project} artifacts={artifacts} />)}</div></section> }
-function ProjectDetail({ projects, artifacts }: { projects: Project[]; artifacts: ArtifactRecord[] }) { const { projectId } = useParams(); const project = projects.find((item) => item.id === projectId); if (!project) return <Missing label="Project" />; const selected = artifacts.filter((item) => item.projectId === project.id); return <section className="web-page"><Link className="web-back" to="/projects">← Projects</Link><div className="web-heading"><span>Project</span><h1>{project.name}</h1><p>{project.description}</p></div><div className="web-stats"><Stat label="Knowledge" value={project.knowledgeCount} /><Stat label="Services" value={project.serviceCount} /><Stat label="Children" value={project.childCount} /><Stat label="Auto confidence" value={`${project.autoConfidence}%`} /></div><section className="web-section"><div className="web-section-head"><h2>Artifacts</h2><span>{selected.length} server-backed</span></div><ArtifactTable artifacts={selected} projects={projects} /></section></section> }
-function Artifacts({ artifacts, projects }: { artifacts: ArtifactRecord[]; projects: Project[] }) { return <section className="web-page"><div className="web-heading"><span>Workspace output</span><h1>Artifacts</h1><p>Selected artifacts are derived from durable run messages in the server workspace.</p></div><ArtifactTable artifacts={artifacts} projects={projects} /></section> }
-function ArtifactTable({ artifacts, projects }: { artifacts: ArtifactRecord[]; projects: Project[] }) { if (!artifacts.length) return <div className="web-empty">No artifacts have been recorded by the control plane yet.</div>; return <div className="web-table">{artifacts.map(({ artifact, projectId, message }) => <Link key={`${message.id}-${artifact.id}`} to={`/artifacts/${encodeURIComponent(artifact.id)}`}><span className="web-artifact-type">{artifact.type}</span><div><strong>{artifact.title}</strong><small>{artifact.subtitle ?? 'Run artifact'} · {projects.find((project) => project.id === projectId)?.name ?? projectId}</small></div><time>{relativeTime(message.createdAt)}</time></Link>)}</div> }
-function ArtifactDetail({ artifacts, projects }: { artifacts: ArtifactRecord[]; projects: Project[] }) { const { artifactId } = useParams(); const item = artifacts.find((record) => record.artifact.id === artifactId); if (!item) return <Missing label="Artifact" />; const { artifact, message, projectId } = item; return <section className="web-page"><Link className="web-back" to="/artifacts">← Artifacts</Link><div className="web-heading"><span>{artifact.type} artifact</span><h1>{artifact.title}</h1><p>{artifact.subtitle ?? `Recorded in ${projects.find((project) => project.id === projectId)?.name ?? projectId}`}</p></div>{artifact.reportHtml && <article className="web-artifact-body" dangerouslySetInnerHTML={{ __html: artifact.reportHtml }} />}{artifact.table && <table className="web-data-table"><thead><tr>{artifact.table.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{artifact.table.rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table>}{artifact.diff && <div className="web-diff">{artifact.diff.map((file) => <div key={file.path}><strong>{file.path}</strong><small>+{file.add} −{file.del}</small>{file.hunks.map((hunk) => <pre key={hunk.id}>{hunk.lines.map((line) => `${line.t === 'add' ? '+' : line.t === 'del' ? '-' : ' '} ${line.c}`).join('\n')}</pre>)}</div>)}</div>}{!artifact.reportHtml && !artifact.table && !artifact.diff && <div className="web-empty">This artifact has no browser-renderable payload.</div>}<p className="web-recorded">Recorded {relativeTime(message.createdAt)} from the authoritative workspace.</p></section> }
-function RuntimeList({ runtimes }: { runtimes: WorkspaceSnapshot['runtimes'] }) { if (!runtimes.length) return <div className="web-empty">No control-plane runtimes are currently provisioned.</div>; return <div className="web-runtime-list">{runtimes.map((runtime) => <div key={runtime.id}><span className={`web-runtime-status ${runtime.status}`} /> <strong>{runtime.kind}</strong><small>{runtime.projectId} · expires {relativeTime(runtime.expiresAt)}</small><em>{runtime.status}</em></div>)}</div> }
-function Missing({ label }: { label: string }) { return <section className="web-page"><div className="web-empty">{label} not found in the current server workspace.</div></section> }
-
-function ConnectionDialog({ connection, onClose, onSave }: { connection: WebConnection; onClose: () => void; onSave: (connection: WebConnection) => void }) {
-  const [next, setNext] = useState(connection)
-  return <div className="web-dialog-backdrop" onMouseDown={onClose}><form className="web-dialog" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); onSave({ ...next, baseUrl: next.baseUrl.replace(/\/$/, '') }) }}><h2>Control plane connection</h2><p>Credentials stay only in this tab’s memory; no connection data is written to browser storage.</p><label>Control plane URL<input value={next.baseUrl} required onChange={(event) => setNext({ ...next, baseUrl: event.target.value })} /></label><label>User ID<input value={next.userId} required onChange={(event) => setNext({ ...next, userId: event.target.value })} /></label><label>Bearer token <small>(company deployments)</small><input type="password" value={next.token ?? ''} onChange={(event) => setNext({ ...next, token: event.target.value || undefined })} /></label><div><button type="button" onClick={onClose}>Cancel</button><button type="submit">Connect</button></div></form></div>
-}
+function RunComposer({ data, connection, workerId, initial, onClose, onStarted }: { data: AppData; connection: WebConnection; workerId: string | null; initial: { projectId: string; agentId?: string }; onClose: () => void; onStarted: () => void }) { const [projectId, setProjectId] = useState(initial.projectId); const [agentId, setAgentId] = useState(initial.agentId ?? ''); const [task, setTask] = useState(''); const [target, setTarget] = useState<'cloud' | 'local_worker'>(workerId ? 'local_worker' : 'cloud'); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); const submit = async () => { setBusy(true); setMessage(null); try { await startRun(connection, { projectId, agentId: agentId || undefined, task, dispatchTarget: target }); onStarted() } catch (cause) { const text = cause instanceof Error ? cause.message : String(cause); if (text === 'approval_required') { try { const approvalId = await approveRun(connection, { projectId, agentId: agentId || undefined, action: 'execute' }); await startRun(connection, { projectId, agentId: agentId || undefined, task, dispatchTarget: target, approvalId }); onStarted(); return } catch (approvalError) { setMessage(approvalError instanceof Error ? approvalError.message : String(approvalError)) } } else setMessage(text) } finally { setBusy(false) } }; return <div className="web-modal-backdrop"><section className="web-composer"><button className="web-close" onClick={onClose}>×</button><span className="web-eyebrow">Runtime dispatch</span><h2>Run an agent</h2><p>Approvals are requested and resolved through the control plane before dispatch.</p><label>Project<select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{data.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label>Agent<select value={agentId} onChange={(event) => setAgentId(event.target.value)}><option value="">Project default</option>{data.agents.filter((agent) => agent.projectId === projectId).map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label><label>Task<textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Describe the work to run…" /></label><div className="web-targets"><button className={target === 'local_worker' ? 'selected' : ''} disabled={!workerId} onClick={() => setTarget('local_worker')}><strong>Local worker</strong><small>{workerId ? 'Browser-safe, no shell or repo access' : 'No worker connected'}</small></button><button className={target === 'cloud' ? 'selected' : ''} onClick={() => setTarget('cloud')}><strong>Cloud runtime</strong><small>Provider-backed, audited execution</small></button></div>{message && <div className="web-error">{message}</div>}<button className="web-primary" disabled={busy || !task.trim()} onClick={() => void submit()}>{busy ? 'Dispatching…' : `Dispatch to ${target === 'cloud' ? 'cloud' : 'local worker'}`}</button></section></div> }
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
