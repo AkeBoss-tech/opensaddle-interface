@@ -108,11 +108,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const grantsRef = useRef(data.permissionGrants)
   const currentUserRef = useRef(data.currentUserId)
   const dataRef = useRef(data)
+  const persistenceStatusRef = useRef(persistenceStatus)
   const workspaceHydratedRef = useRef(false)
   const saveSequenceRef = useRef(0)
   grantsRef.current = data.permissionGrants
   currentUserRef.current = data.currentUserId
   dataRef.current = data
+  persistenceStatusRef.current = persistenceStatus
 
   const toast = useCallback((title: string, message: string) => {
     const id = uid('toast')
@@ -182,7 +184,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [connection, data.currentUserId, toast])
 
   useEffect(() => {
-    if (!services?.workspace || !workspaceHydratedRef.current || persistenceStatus === 'needs_setup') return
+    if (!services?.workspace || !workspaceHydratedRef.current || persistenceStatusRef.current === 'needs_setup') return
     const sequence = ++saveSequenceRef.current
     setPersistenceStatus('syncing')
     setRuntimeStatus((status) => ({ ...status, connection: 'syncing' }))
@@ -200,7 +202,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
     }, 450)
     return () => window.clearTimeout(timer)
-  }, [data, persistenceStatus, services, toast])
+  // Save only when the workspace data changes. Depending on persistenceStatus
+  // here would retrigger this effect after it sets "syncing" and "synced",
+  // causing an endless write loop and an inaccurate sync indicator.
+  }, [data, services, toast])
 
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), [])
 
