@@ -1,0 +1,33 @@
+{
+  "projectId": "3c88b3cf-601c-40d7-bca5-9ac1f42d517e",
+  "shape": "package",
+  "pkg": "opensaddle-interface",
+  "globalName": "OpenSaddleUI",
+  "srcDir": "src",
+  "entry": ".design-sync/entry.ts",
+  "tsconfig": "tsconfig.app.json",
+  "componentSrcMap": {
+    "Icon": "src/components/common/Icon.tsx",
+    "ProviderLogo": "src/components/common/ProviderLogo.tsx",
+    "CommandPalette": "src/components/common/CommandPalette.tsx",
+    "ToastStack": "src/components/common/ToastStack.tsx",
+    "Sidebar": "src/components/layout/Sidebar.tsx",
+    "Topbar": "src/components/layout/Topbar.tsx"
+  },
+  "extraEntries": ["react-router-dom", "./src/data/store.tsx"],
+  "provider": {
+    "component": "StoreProvider",
+    "inner": {
+      "component": "MemoryRouter"
+    }
+  },
+  "cssEntry": "src/styles/app.css",
+  "extraFonts": [".design-sync/fonts/inter.css"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "overrides": {
+    "CommandPalette": { "cardMode": "single", "viewport": "640x420" },
+    "Sidebar": { "cardMode": "column" },
+    "Topbar": { "cardMode": "column" },
+    "ToastStack": { "cardMode": "single", "primaryStory": "Default" }
+  }
+}
