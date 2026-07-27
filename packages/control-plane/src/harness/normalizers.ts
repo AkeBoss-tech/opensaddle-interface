@@ -10,8 +10,7 @@ export function normalizeCliLine(providerId: string, line: string): string | und
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
     try {
       const parsed = JSON.parse(trimmed) as Record<string, unknown>
-      const text = extractJsonText(providerId, parsed)
-      if (text) return text
+      return extractJsonText(providerId, parsed)
     } catch {
       // fall through to raw line
     }
@@ -19,7 +18,8 @@ export function normalizeCliLine(providerId: string, line: string): string | und
 
   // Drop noisy progress/spinner lines
   if (/^\s*[\|\/\-\\]\s*$/.test(trimmed)) return undefined
-  return trimmed
+  // Plain stdout is line-oriented; preserve that boundary in the transcript.
+  return `${trimmed}\n`
 }
 
 function extractJsonText(providerId: string, parsed: Record<string, unknown>): string | undefined {

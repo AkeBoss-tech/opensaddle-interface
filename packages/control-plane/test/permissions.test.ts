@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { evaluatePermissions } from '../src/permissions.js'
+import { canDelegateToAgent, evaluatePermissions } from '../src/permissions.js'
 import type { PermissionGrant } from '../src/types.js'
 
 const base = {
@@ -98,5 +98,24 @@ describe('server-side permission evaluation', () => {
     })
     assert.equal(result.allowed, false)
     assert.deepEqual(result.matchedGrantIds, ['deny'])
+  })
+
+  it('allows cross-thread delegation only to equal or lesser-privileged agents', () => {
+    const grants = [
+      grant({ id: 'caller-read', principalKind: 'agent', principalId: 'caller', resourceKind: 'repository', resourceId: 'repo-1', action: 'read', effect: 'allow' }),
+      grant({ id: 'target-read', principalKind: 'agent', principalId: 'target', resourceKind: 'repository', resourceId: 'repo-1', action: 'read', effect: 'allow' }),
+    ]
+    assert.equal(canDelegateToAgent(grants, 'caller', 'target').allowed, true)
+    grants.push(grant({ id: 'target-write', principalKind: 'agent', principalId: 'target', resourceKind: 'repository', resourceId: 'repo-1', action: 'write', effect: 'allow' }))
+    assert.equal(canDelegateToAgent(grants, 'caller', 'target').allowed, false)
+  })
+
+  it('does not let a caller delegate around its own explicit deny', () => {
+    const grants = [
+      grant({ id: 'caller-allow', principalKind: 'agent', principalId: 'caller', resourceKind: 'tool', resourceId: 'github', action: 'write', effect: 'allow' }),
+      grant({ id: 'caller-deny', principalKind: 'agent', principalId: 'caller', resourceKind: 'tool', resourceId: 'github', action: 'write', effect: 'deny' }),
+      grant({ id: 'target-allow', principalKind: 'agent', principalId: 'target', resourceKind: 'tool', resourceId: 'github', action: 'write', effect: 'allow' }),
+    ]
+    assert.equal(canDelegateToAgent(grants, 'caller', 'target').allowed, false)
   })
 })

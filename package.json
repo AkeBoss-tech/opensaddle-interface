@@ -18,7 +18,8 @@
     "krail": "npm run start --prefix packages/krail",
     "electron:build": "npm run build --prefix electron",
     "electron:dev": "npm run build && npm run build --prefix electron && npm run start --prefix electron",
-    "desktop": "npm run electron:dev"
+    "desktop": "npm run electron:dev",
+    "desktop:package": "VITE_APP_BASE=./ npm run build && npm run package:mac --prefix electron"
   },
   "dependencies": {
     "react": "^19.2.7",

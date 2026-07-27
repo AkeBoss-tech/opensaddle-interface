@@ -37,6 +37,25 @@ interface Window {
   opensaddle?: {
     getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; krailUrl: string; clis: string[] }>
     pickRepository: () => Promise<string | null>
+    inspectProject: (path: string) => Promise<{
+      rootPath: string
+      name: string
+      description: string
+      detectedConfigs: string[]
+      documents: Array<{ title: string; path: string }>
+      skills: Array<{ name: string; path: string; description: string }>
+      fileCount: number
+      languages: string[]
+    }>
     openPath: (path: string) => Promise<void>
+    openBrowser: (url: string) => Promise<void>
+    setBrowserBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>
+    closeBrowser: () => Promise<void>
+    browserCommand: (command: 'back' | 'forward' | 'reload' | 'zoom-in' | 'zoom-out' | 'zoom-reset') => Promise<{ zoomFactor: number; canGoBack?: boolean; canGoForward?: boolean }>
+    findInBrowser: (text: string) => Promise<unknown>
+    stopFindingInBrowser: () => Promise<void>
+    printBrowser: () => Promise<boolean>
+    screenshotBrowser: () => Promise<boolean>
+    clearBrowserData: () => Promise<boolean>
   }
 }

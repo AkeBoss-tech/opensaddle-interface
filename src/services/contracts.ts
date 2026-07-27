@@ -22,6 +22,14 @@ export type RunEventType =
   | 'agent.resumed'
   | 'agent.completed'
   | 'agent.failed'
+  | 'plan.updated'
+  | 'command.started'
+  | 'command.output.delta'
+  | 'command.completed'
+  | 'file.change.updated'
+  | 'usage.updated'
+  | 'input.requested'
+  | 'warning'
   | 'session.closed'
 
 export interface SessionEvent {
@@ -46,6 +54,41 @@ export interface RouteEstimate {
   alternatives?: Array<{ modelKey: ModelKey; harnessKey: Harness; score: number }>
 }
 
+export interface GitStatusResult {
+  repository: string
+  branch: string | null
+  detached: boolean
+  head: string | null
+  upstream: string | null
+  ahead: number
+  behind: number
+  clean: boolean
+  additions: number
+  deletions: number
+  files: Array<{
+    path: string
+    originalPath?: string
+    index: string
+    worktree: string
+    staged: boolean
+    modified: boolean
+    untracked: boolean
+  }>
+  diffFiles: Array<{ path: string; additions: number | null; deletions: number | null; binary: boolean }>
+}
+
+export interface GitComparisonResult {
+  repository: string
+  base: string
+  head: string
+  mergeBase: string
+  additions: number
+  deletions: number
+  files: GitStatusResult['diffFiles']
+  patch: string
+  truncated: boolean
+}
+
 export interface RuntimeClient {
   estimate(task: string, prefs?: {
     projectId?: string
@@ -60,6 +103,8 @@ export interface RuntimeClient {
     projectId: string
     task: string
     agentId?: string
+    parentRunId?: string
+    sourceIds?: string[]
     modelKey?: ModelKey
     modelId?: string
     harnessKey?: Harness
@@ -87,6 +132,23 @@ export interface RuntimeClient {
     accent: string
     pages: SitePage[]
   }>
+  gitStatus?(projectId: string, repo: string): Promise<GitStatusResult>
+  gitCompare?(projectId: string, repo: string, base: string, head?: string): Promise<GitComparisonResult>
+  gitCommit?(input: {
+    projectId: string
+    repo: string
+    message: string
+    paths?: string[]
+    includeAll?: boolean
+    approvalId?: string
+  }): Promise<{ repository: string; commit: string; summary: string }>
+  gitPush?(input: {
+    projectId: string
+    repo: string
+    remote?: string
+    branch?: string
+    approvalId: string
+  }): Promise<{ repository: string; remote: string; branch: string; summary: string }>
 }
 
 export interface WorkspaceClient {
@@ -154,7 +216,7 @@ export interface ToolClient {
 }
 
 export type PrincipalKind = 'user' | 'group' | 'agent'
-export type ResourceKind = 'organization' | 'project' | 'folder' | 'repository' | 'source' | 'tool' | 'workflow'
+export type ResourceKind = 'organization' | 'project' | 'folder' | 'repository' | 'source' | 'tool' | 'workflow' | 'thread' | 'agent'
 export type CapabilityAction = 'read' | 'write' | 'execute' | 'administer' | string
 
 export interface PermissionGrant {

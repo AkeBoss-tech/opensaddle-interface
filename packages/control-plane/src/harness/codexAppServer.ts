@@ -10,6 +10,21 @@ type RpcMessage = {
   params?: Record<string, unknown>
 }
 
+export function mergeCodexMessage(current: string, incoming: string): { output: string; delta: string } {
+  if (!incoming || current === incoming || current.endsWith(incoming)) return { output: current, delta: '' }
+  if (incoming.startsWith(current)) return { output: incoming, delta: incoming.slice(current.length) }
+  if (current.includes(incoming)) return { output: current, delta: '' }
+  const limit = Math.min(current.length, incoming.length)
+  for (let size = limit; size > 0; size--) {
+    if (current.slice(-size) === incoming.slice(0, size)) {
+      const delta = incoming.slice(size)
+      return { output: current + delta, delta }
+    }
+  }
+  const separator = current && !/\s$/.test(current) && !/^\s/.test(incoming) ? '\n\n' : ''
+  return { output: current + separator + incoming, delta: separator + incoming }
+}
+
 /**
  * Codex's documented rich-client transport. The app-server speaks newline-
  * delimited JSON-RPC over stdio and owns the model/account/session lifecycle.
@@ -62,7 +77,21 @@ export class CodexAppServerAdapter implements HarnessAdapter {
 
         if (message.id === 0) {
           send({ method: 'initialized', params: {} })
-          const params: Record<string, unknown> = { cwd: input.workspacePath }
+          const policy = input.executionPolicy
+          const params: Record<string, unknown> = {
+            cwd: input.workspacePath,
+            sandbox: policy?.sandbox === 'full-access'
+              ? 'danger-full-access'
+              : policy?.sandbox ?? 'workspace-write',
+            approvalPolicy: policy?.approvals === 'always'
+              ? 'untrusted'
+              : policy?.approvals === 'on-request'
+                ? 'on-request'
+                : 'never',
+            // Keep provider-native history so a later OpenSaddle session bridge
+            // can resume or fork the exact Codex thread.
+            ephemeral: false,
+          }
           // Auto/native routes deliberately omit model so Codex chooses the
           // model supported by the user's configured account/router.
           if (!input.route.nativeModelDefault && input.route.modelId) params.model = input.route.modelId
@@ -79,6 +108,11 @@ export class CodexAppServerAdapter implements HarnessAdapter {
             reject(new Error('Codex app-server did not return a thread id'))
             return
           }
+          void input.emit('tool.completed', {
+            tool: 'codex.thread.start',
+            thread_id: threadId,
+            persistent: true,
+          })
           send({
             method: 'turn/start',
             id: 2,
@@ -104,12 +138,33 @@ export class CodexAppServerAdapter implements HarnessAdapter {
           }
         } else if (message.method === 'item/completed') {
           const item = params.item
-          if (item && typeof item === 'object' && 'type' in item && item.type === 'agentMessage' && 'text' in item && typeof item.text === 'string' && !output) {
-            output = item.text
-            void input.emit('agent.output.delta', { text: item.text })
+          if (item && typeof item === 'object' && 'type' in item && item.type === 'agentMessage' && 'text' in item && typeof item.text === 'string') {
+            const merged = mergeCodexMessage(output, item.text)
+            output = merged.output
+            if (merged.delta) void input.emit('agent.output.delta', { text: merged.delta })
+          } else if (item && typeof item === 'object') {
+            const type = 'type' in item ? String(item.type) : 'item'
+            if (/command/i.test(type)) void input.emit('command.completed', { item })
+            else if (/fileChange/i.test(type)) void input.emit('file.change.updated', { item, status: 'completed' })
+            else void input.emit('tool.completed', { tool: type, item, status: 'completed' })
           }
-        } else if (message.method?.includes('command') || message.method?.includes('tool')) {
-          void input.emit('tool.completed', { tool: message.method, status: 'completed' })
+        } else if (message.method === 'item/started') {
+          const item = params.item
+          const type = item && typeof item === 'object' && 'type' in item ? String(item.type) : 'item'
+          if (/command/i.test(type)) void input.emit('command.started', { item })
+          else void input.emit('tool.requested', { tool: type, item })
+        } else if (/command.*(delta|output)/i.test(message.method ?? '')) {
+          void input.emit('command.output.delta', params)
+        } else if (/file.*(delta|change|patch)/i.test(message.method ?? '')) {
+          void input.emit('file.change.updated', params)
+        } else if (/plan/i.test(message.method ?? '')) {
+          void input.emit('plan.updated', params)
+        } else if (/tokenUsage|usage/i.test(message.method ?? '')) {
+          void input.emit('usage.updated', params)
+        } else if (/warning/i.test(message.method ?? '')) {
+          void input.emit('warning', params)
+        } else if (message.method?.includes('tool') || message.method?.includes('mcp')) {
+          void input.emit('tool.completed', { tool: message.method, ...params })
         }
       })
 
@@ -124,6 +179,7 @@ export class CodexAppServerAdapter implements HarnessAdapter {
         id: 0,
         params: {
           clientInfo: { name: 'opensaddle-interface', title: 'OpenSaddle', version: '0.1.0' },
+          experimentalApi: true,
         },
       })
     })

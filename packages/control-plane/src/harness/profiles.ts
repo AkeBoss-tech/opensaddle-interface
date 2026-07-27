@@ -48,7 +48,7 @@ export const BUILTIN_PROFILES: HarnessProfile[] = [
     description: 'Anthropic Claude Code CLI in print mode.',
     kind: 'cli',
     promptMode: 'final_arg',
-    baseArgs: ['-p', '--output-format', 'stream-json', '--verbose'],
+    baseArgs: ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages'],
     modelFlag: '--model',
     modelIds: {
       gpt: 'sonnet',

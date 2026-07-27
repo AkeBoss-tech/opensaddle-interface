@@ -1,4 +1,4 @@
-import type { AgentRunBlock, DiffFile, DiffHunk } from '../types'
+import type { AgentActivityEntry, AgentRunBlock, DiffFile, DiffHunk } from '../types'
 import type { SessionEvent } from '../services/contracts'
 
 interface RawDiffFile {
@@ -59,30 +59,163 @@ function toDiffFiles(files: RawDiffFile[]): DiffFile[] {
  * chat UI renders, so real runs get the same card as simulated ones.
  */
 export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRunBlock {
-  const next: AgentRunBlock = { ...run, plan: [...run.plan], tools: [...run.tools], artifacts: [...run.artifacts] }
+  const next: AgentRunBlock = {
+    ...run,
+    lastSequence: Math.max(run.lastSequence ?? -1, event.sequence),
+    plan: [...run.plan],
+    tools: [...run.tools],
+    artifacts: [...run.artifacts],
+    activity: [...(run.activity ?? [])],
+    sources: [...(run.sources ?? [])],
+  }
+  const addActivity = (
+    kind: AgentActivityEntry['kind'],
+    label: string,
+    detail?: string,
+  ) => {
+    if (next.activity?.some((item) => item.id === event.event_id)) return
+    next.activity = [...(next.activity ?? []), {
+      id: event.event_id,
+      kind,
+      label,
+      detail,
+      timestamp: event.timestamp,
+    }].slice(-80)
+  }
+  const addSource = (id: string, label: string, detail?: string) => {
+    if (next.sources?.some((source) => source.id === id)) return
+    next.sources = [...(next.sources ?? []), { id, kind: 'file' as const, label, detail }].slice(-50)
+  }
 
   switch (event.type) {
     case 'session.created': {
       const mode = typeof event.payload.mode === 'string' ? event.payload.mode : 'session'
       next.statusText = `Session ready · ${mode.replace('_', ' ')}`
+      addActivity('status', 'Session ready', mode.replace('_', ' '))
       break
     }
     case 'agent.started':
       next.statusText = 'Agent started'
       next.plan.push({ label: 'Agent started', status: 'active' })
+      addActivity('status', 'Agent started', typeof event.payload.provider === 'string' ? event.payload.provider : undefined)
       break
     case 'agent.output.delta': {
       const status = typeof event.payload.status === 'string' ? event.payload.status : null
       if (status) {
         next.statusText = status
-        for (const step of next.plan) if (step.status === 'active') step.status = 'done'
-        next.plan.push({ label: status, status: 'active' })
+        const current = [...next.plan].reverse().find((step) => step.status === 'active')
+        if (current?.label !== status) {
+          for (const step of next.plan) if (step.status === 'active') step.status = 'done'
+          if (next.plan.at(-1)?.label !== status) next.plan.push({ label: status, status: 'active' })
+        }
+        addActivity('status', status)
       }
       break
     }
+    case 'tool.requested': {
+      const tool = typeof event.payload.tool === 'string' ? event.payload.tool : 'Tool'
+      next.statusText = `Running ${tool}`
+      addActivity('tool', tool, 'Started')
+      break
+    }
+    case 'tool.completed': {
+      const tool = typeof event.payload.tool === 'string'
+        ? event.payload.tool
+        : event.payload.tool && typeof event.payload.tool === 'object' && 'name' in event.payload.tool
+          ? String(event.payload.tool.name)
+          : 'Tool'
+      addActivity('tool', tool, 'Completed')
+      break
+    }
+    case 'command.started': {
+      const item = event.payload.item
+      const command = item && typeof item === 'object' && 'command' in item
+        ? String(item.command)
+        : 'Command'
+      next.statusText = `Running ${command}`
+      addActivity('tool', command, 'Command started')
+      break
+    }
+    case 'command.output.delta':
+      addActivity('tool', 'Command output', typeof event.payload.delta === 'string' ? event.payload.delta.slice(-240) : undefined)
+      break
+    case 'command.completed':
+      addActivity('tool', 'Command completed')
+      break
+    case 'file.change.updated': {
+      const item = event.payload.item
+      const path = item && typeof item === 'object' && 'path' in item ? String(item.path) : undefined
+      if (path) addSource(`file:${path}`, path, 'Changed by this run')
+      addActivity('change', path ? `Changed ${path}` : 'File change updated')
+      break
+    }
+    case 'plan.updated': {
+      const plan = Array.isArray(event.payload.plan) ? event.payload.plan : []
+      if (plan.length) {
+        next.plan = plan.flatMap((item) => {
+          if (!item || typeof item !== 'object') return []
+          const row = item as Record<string, unknown>
+          return [{
+            label: typeof row.step === 'string' ? row.step : typeof row.label === 'string' ? row.label : 'Plan step',
+            status: row.status === 'completed' ? 'done' as const : row.status === 'inProgress' ? 'active' as const : 'pending' as const,
+          }]
+        })
+      }
+      addActivity('status', 'Plan updated')
+      break
+    }
+    case 'usage.updated':
+      addActivity('status', 'Context usage updated')
+      break
+    case 'input.requested':
+      next.statusText = 'Waiting for your answer'
+      next.inputRequest = {
+        kind: 'clarification',
+        prompt: typeof event.payload.prompt === 'string' ? event.payload.prompt : 'The agent needs input to continue.',
+      }
+      addActivity('status', 'Agent requested input', next.inputRequest.prompt)
+      break
+    case 'warning':
+      addActivity('error', 'Runtime warning', typeof event.payload.message === 'string' ? event.payload.message : undefined)
+      break
+    case 'approval.requested':
+      next.statusText = 'Waiting for approval'
+      next.inputRequest = {
+        kind: 'approval',
+        prompt: typeof event.payload.prompt === 'string' ? event.payload.prompt : 'This run needs approval before it can continue.',
+      }
+      addActivity('status', 'Approval requested')
+      break
+    case 'approval.resolved':
+      next.inputRequest = undefined
+      next.statusText = event.payload.allowed === false ? 'Approval denied' : 'Approval granted'
+      addActivity('status', next.statusText)
+      break
+    case 'agent.input.requested':
+      next.statusText = 'Waiting for your answer'
+      next.inputRequest = {
+        kind: 'clarification',
+        prompt: typeof event.payload.prompt === 'string' ? event.payload.prompt : 'The agent needs more information to continue.',
+      }
+      addActivity('status', 'Agent asked a question', next.inputRequest.prompt)
+      break
+    case 'user.input.submitted':
+      next.inputRequest = undefined
+      next.statusText = 'Continuing'
+      addActivity('status', 'Answer submitted')
+      break
+    case 'agent.paused':
+      next.statusText = 'Paused'
+      addActivity('status', 'Agent paused')
+      break
+    case 'agent.resumed':
+      next.statusText = 'Resumed'
+      addActivity('status', 'Agent resumed')
+      break
     case 'diff.updated': {
       const files = Array.isArray(event.payload.files) ? event.payload.files as RawDiffFile[] : []
       if (files.length) {
+        for (const file of files) addSource(`file:${file.path}`, file.path, 'Changed by this run')
         const diff = toDiffFiles(files)
         const existing = next.artifacts.findIndex((a) => a.type === 'diff')
         const artifact = {
@@ -95,20 +228,33 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
         if (existing >= 0) next.artifacts[existing] = artifact
         else next.artifacts.push(artifact)
         next.statusText = 'Diff ready'
+        addActivity('change', artifact.title, artifact.subtitle)
       }
+      break
+    }
+    case 'file.changed': {
+      const path = typeof event.payload.path === 'string' ? event.payload.path : ''
+      if (path) addSource(`file:${path}`, path, 'Read or changed by this run')
       break
     }
     case 'review.started':
       next.statusText = `Reviewing with ${typeof event.payload.provider === 'string' ? event.payload.provider : 'second agent'}`
       next.plan.push({ label: 'Independent review', status: 'active' })
+      addActivity('review', 'Independent review started', typeof event.payload.provider === 'string' ? event.payload.provider : undefined)
       break
     case 'review.completed':
       next.statusText = 'Independent review completed'
       for (const step of next.plan) if (step.status === 'active') step.status = 'done'
+      addActivity('review', 'Independent review completed', typeof event.payload.provider === 'string' ? event.payload.provider : undefined)
       break
     case 'review.failed':
       next.statusText = `Review unavailable · ${typeof event.payload.provider === 'string' ? event.payload.provider : 'reviewer'}`
       for (const step of next.plan) if (step.status === 'active') step.status = 'done'
+      addActivity('error', 'Independent review unavailable', typeof event.payload.error === 'string' ? event.payload.error : undefined)
+      break
+    case 'verification.started':
+      next.statusText = 'Running verification'
+      addActivity('check', 'Verification started')
       break
     case 'verification.completed': {
       const checks = Array.isArray(event.payload.checks) ? event.payload.checks as RawCheck[] : []
@@ -126,19 +272,26 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
         }
         if (existing >= 0) next.artifacts[existing] = artifact
         else next.artifacts.push(artifact)
+        addActivity('check', 'Verification completed', artifact.subtitle)
       }
       break
     }
     case 'agent.completed':
       next.done = true
+      next.inputRequest = undefined
       next.statusText = 'Completed'
       for (const step of next.plan) if (step.status !== 'done') step.status = 'done'
       if (typeof event.payload.cost === 'string') next.cost = event.payload.cost
+      addActivity('status', 'Agent completed')
       break
     case 'agent.failed': {
       next.done = true
-      const reason = typeof event.payload.reason === 'string' ? event.payload.reason : 'failed'
+      next.inputRequest = undefined
+      const reason = typeof event.payload.reason === 'string'
+        ? event.payload.reason
+        : typeof event.payload.error === 'string' ? event.payload.error : 'failed'
       next.statusText = `Failed · ${reason}`
+      addActivity('error', 'Agent failed', reason)
       break
     }
     case 'session.closed':
@@ -147,6 +300,7 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
         next.statusText = 'Completed'
         for (const step of next.plan) if (step.status !== 'done') step.status = 'done'
       }
+      addActivity(event.payload.status === 'failed' ? 'error' : 'status', 'Session closed', typeof event.payload.status === 'string' ? event.payload.status : undefined)
       break
     default:
       break

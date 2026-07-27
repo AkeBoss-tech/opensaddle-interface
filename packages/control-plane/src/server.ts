@@ -3,9 +3,11 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
 import { authenticate, redactUrl } from './auth.js'
 import { loadConfig } from './config.js'
+import { GitWorkspaceError, GitWorkspaceService } from './gitWorkspace.js'
 import { HarnessRegistry } from './harness/index.js'
+import type { HarnessProfile } from './harness/types.js'
 import { ModelGateway } from './modelGateway.js'
-import { evaluatePermissions, requireAdmin } from './permissions.js'
+import { canDelegateToAgent, evaluatePermissions, requireAdmin } from './permissions.js'
 import { RuntimeProvisioner } from './provisioner.js'
 import { estimateRoute } from './router.js'
 import { RunManager } from './runManager.js'
@@ -15,6 +17,7 @@ import type {
   AuthPrincipal,
   CodingProvider,
   Harness,
+  HarnessExecutionPolicy,
   ModelKey,
   PermissionGrant,
   PrincipalKind,
@@ -35,6 +38,19 @@ const models = new ModelGateway(config)
 const provisioner = new RuntimeProvisioner(config, store)
 const harnesses = new HarnessRegistry(config, models)
 const runs = new RunManager(config, store, models, provisioner, harnesses)
+await runs.recoverInterruptedRuns()
+const git = new GitWorkspaceService([...config.allowedRepoRoots, config.workspaceDir], () => {
+  if (config.mode !== 'local') return []
+  const projects = store.workspace()?.projects
+  if (!Array.isArray(projects)) return []
+  return projects.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return []
+    const local = (candidate as Record<string, unknown>).local
+    if (!local || typeof local !== 'object' || Array.isArray(local)) return []
+    const rootPath = (local as Record<string, unknown>).rootPath
+    return typeof rootPath === 'string' ? [rootPath] : []
+  })
+})
 const app = Fastify({
   logger: {
     level: process.env.OPENSADDLE_LOG_LEVEL ?? 'info',
@@ -125,6 +141,90 @@ function projectRoutingDefaults(projectId: string): {
     : {}
 }
 
+function workspaceDocument(collection: string, id: string): Record<string, unknown> | undefined {
+  const items = store.workspace()?.[collection]
+  if (!Array.isArray(items)) return undefined
+  return items.find((candidate): candidate is Record<string, unknown> =>
+    Boolean(candidate)
+    && typeof candidate === 'object'
+    && !Array.isArray(candidate)
+    && (candidate as Record<string, unknown>).id === id)
+}
+
+const BUILTIN_PROVIDER_IDS = new Set(['opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity'])
+
+function localRunSettings(projectId: string, agentId?: string): {
+  repo?: string
+  harnessId?: string
+  profile?: HarnessProfile
+  policy?: HarnessExecutionPolicy
+} {
+  if (config.mode !== 'local') return {}
+  const project = workspaceDocument('projects', projectId)
+  const local = project?.local
+  if (!local || typeof local !== 'object' || Array.isArray(local)) return {}
+  const localRecord = local as Record<string, unknown>
+  const agent = agentId ? workspaceDocument('agents', agentId) : undefined
+  const harnessId = typeof agent?.harnessId === 'string'
+    ? agent.harnessId
+    : typeof localRecord.defaultHarnessId === 'string'
+      ? localRecord.defaultHarnessId
+      : undefined
+  const configuredHarnesses = Array.isArray(localRecord.harnesses) ? localRecord.harnesses : []
+  const configured = configuredHarnesses.find((candidate) =>
+    candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+    && (candidate as Record<string, unknown>).id === harnessId) as Record<string, unknown> | undefined
+  let profile: HarnessProfile | undefined
+  if (configured && typeof configured.id === 'string' && typeof configured.label === 'string' && typeof configured.command === 'string') {
+    const promptMode = configured.promptMode
+    profile = {
+      id: configured.id,
+      label: configured.label,
+      command: configured.command,
+      description: typeof configured.description === 'string' ? configured.description : 'Project-local harness',
+      kind: 'cli',
+      promptMode: promptMode === 'flag' || promptMode === 'stdin' ? promptMode : 'final_arg',
+      promptFlag: typeof configured.promptFlag === 'string' ? configured.promptFlag : undefined,
+      baseArgs: Array.isArray(configured.args) ? configured.args.filter((value): value is string => typeof value === 'string').slice(0, 100) : [],
+      modelFlag: typeof configured.modelFlag === 'string' ? configured.modelFlag : undefined,
+      codingAffinity: 1,
+      supportsCancel: true,
+      supportsStreaming: configured.supportsStreaming !== false,
+    }
+  }
+  const preset = localRecord.permissionPreset
+  const agentPolicy = agent?.permissionPolicy
+  const candidatePolicy = agentPolicy && typeof agentPolicy === 'object' && !Array.isArray(agentPolicy)
+    ? agentPolicy as Record<string, unknown>
+    : {}
+  const sandbox = candidatePolicy.sandbox === 'read-only'
+    || candidatePolicy.sandbox === 'workspace-write'
+    || candidatePolicy.sandbox === 'full-access'
+    ? candidatePolicy.sandbox
+    : preset === 'read-only' || preset === 'full-access' ? preset : 'workspace-write'
+  const approvals = candidatePolicy.approvals === 'always'
+    || candidatePolicy.approvals === 'on-request'
+    || candidatePolicy.approvals === 'never'
+    ? candidatePolicy.approvals
+    : sandbox === 'full-access' ? 'never' : sandbox === 'read-only' ? 'always' : 'on-request'
+  return {
+    repo: typeof localRecord.rootPath === 'string' ? localRecord.rootPath : undefined,
+    harnessId,
+    profile,
+    policy: {
+      sandbox,
+      approvals,
+      network: typeof candidatePolicy.network === 'boolean' ? candidatePolicy.network : sandbox === 'full-access',
+      allowedTools: Array.isArray(candidatePolicy.allowedTools)
+        ? candidatePolicy.allowedTools.filter((value): value is string => typeof value === 'string').slice(0, 100)
+        : [],
+      deniedTools: Array.isArray(candidatePolicy.deniedTools)
+        ? candidatePolicy.deniedTools.filter((value): value is string => typeof value === 'string').slice(0, 100)
+        : [],
+    },
+  }
+}
+
 function openRouterModelId(body: Record<string, unknown>): string | undefined {
   const modelId = optionalString(body, 'model_id', 300)
   if (!modelId) return undefined
@@ -135,6 +235,14 @@ function openRouterModelId(body: Record<string, unknown>): string | undefined {
 
 app.setErrorHandler(async (error, request, reply) => {
   request.log.warn({ err: error }, 'request failed')
+  if (error instanceof GitWorkspaceError) {
+    await reply.code(error.statusCode).send({
+      error: error.code,
+      message: error.message,
+      detail: error.detail,
+    })
+    return
+  }
   const message = error instanceof Error ? error.message : 'Unknown server error'
   const status = message.includes('required')
     || message.includes('must be')
@@ -232,6 +340,26 @@ app.get('/api/workspace', async (_request, reply) => {
   }
 })
 
+app.get('/api/threads/available', async (request, reply) => {
+  const callerAgentId = optionalString(request.query as Record<string, unknown>, 'agent_id', 200)
+  if (!callerAgentId) return await reply.code(400).send({ error: 'agent_id is required' })
+  const workspace = store.workspace()
+  const chats = Array.isArray(workspace?.chats) ? workspace.chats : []
+  const agents = Array.isArray(workspace?.agents) ? workspace.agents : []
+  const available = chats.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return []
+    const thread = candidate as Record<string, unknown>
+    const id = typeof thread.id === 'string' ? thread.id : undefined
+    const targetAgentId = typeof thread.agentId === 'string' ? thread.agentId : undefined
+    if (!id || !targetAgentId || !agents.some((agent) => agent && typeof agent === 'object' && (agent as Record<string, unknown>).id === targetAgentId)) return []
+    const threadRead = evaluatePermissions(store.grants(), { userId: request.principal.userId, agentId: callerAgentId, resourceKind: 'thread', resourceId: id, action: 'read' })
+    const delegation = canDelegateToAgent(store.grants(), callerAgentId, targetAgentId)
+    if (!threadRead.allowed || !delegation.allowed) return []
+    return [{ id, title: typeof thread.title === 'string' ? thread.title : 'Untitled thread', project_id: thread.projectId, agent_id: targetAgentId }]
+  })
+  return { threads: available }
+})
+
 app.put('/api/workspace', async (request, reply) => {
   const body = objectBody(request)
   const workspace = body.workspace
@@ -249,7 +377,11 @@ app.put('/api/workspace', async (request, reply) => {
   }
   const expectedRevision = request.headers['if-unmodified-since']
   const currentRevision = store.workspaceInfo()?.updatedAt
-  if (expectedRevision && currentRevision && Number(expectedRevision) !== currentRevision) {
+  // Local mode is deliberately a single-user desktop convenience surface. A
+  // second local window may legitimately persist the same workspace while a
+  // first window is open, so use last-writer-wins there. Company mode retains
+  // strict optimistic concurrency and makes the caller resolve the conflict.
+  if (config.mode !== 'local' && expectedRevision && currentRevision && Number(expectedRevision) !== currentRevision) {
     return reply.code(409).send({
       error: 'workspace_conflict',
       message: 'The remote workspace changed since it was loaded. Reload it before saving.',
@@ -391,11 +523,124 @@ app.post('/api/routes/estimate', async (request) => {
   }
 })
 
+function gitPermission(request: FastifyRequest, projectId: string, action: 'read' | 'write' | 'push', repo: string) {
+  return evaluatePermissions(store.grants(), {
+    userId: request.principal.userId,
+    resourceKind: 'project',
+    resourceId: projectId,
+    action,
+    path: repo,
+  })
+}
+
+app.get('/api/git/status', async (request, reply) => {
+  const query = request.query as Record<string, unknown>
+  const projectId = requiredString(query, 'project_id', 200)
+  const repo = requiredString(query, 'repo', 2_000)
+  const repository = await git.resolveRepository(repo)
+  const permission = gitPermission(request, projectId, 'read', repository)
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  return await git.status(repository)
+})
+
+app.get('/api/git/compare', async (request, reply) => {
+  const query = request.query as Record<string, unknown>
+  const projectId = requiredString(query, 'project_id', 200)
+  const repo = requiredString(query, 'repo', 2_000)
+  const repository = await git.resolveRepository(repo)
+  const permission = gitPermission(request, projectId, 'read', repository)
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  return await git.compare(
+    repository,
+    requiredString(query, 'base', 200),
+    optionalString(query, 'head', 200),
+  )
+})
+
+app.post('/api/git/commit', async (request, reply) => {
+  const body = objectBody(request)
+  const projectId = requiredString(body, 'project_id', 200)
+  const repo = requiredString(body, 'repo', 2_000)
+  const repository = await git.resolveRepository(repo)
+  const permission = gitPermission(request, projectId, 'write', repository)
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  let approval: ApprovalRecord | undefined
+  if (permission.approvalRequired) {
+    const approvalId = optionalString(body, 'approval_id', 200)
+    approval = approvalId ? store.approval(approvalId) : undefined
+    const validApproval = approval
+      && approval.status === 'approved'
+      && approval.requestedBy === request.principal.userId
+      && approval.projectId === projectId
+      && approval.agentId === undefined
+      && approval.action === 'write'
+    if (!validApproval) {
+      return reply.code(409).send({
+        error: 'approval_required',
+        reason: permission.reason,
+        action: 'write',
+        matched_grant_ids: permission.matchedGrantIds,
+      })
+    }
+  }
+  const rawPaths = body.paths
+  if (rawPaths !== undefined && (!Array.isArray(rawPaths) || rawPaths.some((path) => typeof path !== 'string'))) {
+    return reply.code(400).send({ error: 'paths_must_be_string_array' })
+  }
+  if (body.include_all !== undefined && typeof body.include_all !== 'boolean') {
+    return reply.code(400).send({ error: 'include_all_must_be_boolean' })
+  }
+  const result = await git.commit(repository, requiredString(body, 'message', 10_000), {
+    paths: rawPaths as string[] | undefined,
+    includeAll: body.include_all === true,
+  })
+  if (approval) {
+    approval.status = 'consumed'
+    await store.saveApproval(approval)
+  }
+  return result
+})
+
+app.post('/api/git/push', async (request, reply) => {
+  const body = objectBody(request)
+  const projectId = requiredString(body, 'project_id', 200)
+  const repo = requiredString(body, 'repo', 2_000)
+  const repository = await git.resolveRepository(repo)
+  const permission = gitPermission(request, projectId, 'push', repository)
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  const approvalId = optionalString(body, 'approval_id', 200)
+  const approval = approvalId ? store.approval(approvalId) : undefined
+  const validApproval = approval
+    && approval.status === 'approved'
+    && approval.requestedBy === request.principal.userId
+    && approval.projectId === projectId
+    && approval.agentId === undefined
+    && approval.action === 'push'
+  if (!validApproval) {
+    return reply.code(409).send({
+      error: 'approval_required',
+      reason: 'Pushing repository changes requires explicit approval',
+      action: 'push',
+      matched_grant_ids: permission.matchedGrantIds,
+    })
+  }
+  const result = await git.push(
+    repository,
+    optionalString(body, 'remote', 100),
+    optionalString(body, 'branch', 200),
+  )
+  approval.status = 'consumed'
+  await store.saveApproval(approval)
+  return result
+})
+
 app.get('/api/runs', async (request) => runs.list(request.principal).map((run) => ({
   run_id: run.id,
   session_id: run.sessionId,
   project_id: run.projectId,
   agent_id: run.agentId,
+  parent_run_id: run.parentRunId,
+  source_ids: run.sourceIds,
   status: run.status,
   route: run.route,
   created_at: run.createdAt,
@@ -407,13 +652,21 @@ app.post('/api/runs', async (request, reply) => {
   const body = objectBody(request)
   const projectId = requiredString(body, 'project_id', 200)
   const agentId = optionalString(body, 'agent_id', 200)
+  const localSettings = localRunSettings(projectId, agentId)
+  const parentRunId = optionalString(body, 'parent_run_id', 200)
   const defaults = projectRoutingDefaults(projectId)
   const task = requiredString(body, 'task')
+  const requestedProvider = enumValue<CodingProvider>(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom'])
+  const localProvider = localSettings.harnessId
+    ? BUILTIN_PROVIDER_IDS.has(localSettings.harnessId)
+      ? localSettings.harnessId as CodingProvider
+      : 'custom'
+    : undefined
   const route = estimateRoute(task, config, {
     modelKey: enumValue<ModelKey>(body, 'model_key', ['auto', 'gpt', 'claude', 'sonnet', 'gemini', 'llama']) ?? defaults.modelKey,
     modelId: openRouterModelId(body),
     harnessKey: enumValue<Harness>(body, 'harness_key', ['chat', 'research', 'coding', 'browser', 'vm']),
-    providerKey: enumValue<CodingProvider>(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom']) ?? defaults.providerKey,
+    providerKey: requestedProvider ?? localProvider ?? defaults.providerKey,
     runtimeKey: enumValue<RuntimeKind>(body, 'runtime_key', ['local', 'browser', 'sandbox', 'vm', 'gpu', 'restricted']) ?? defaults.runtimeKey,
     routingPref: optionalString(body, 'routing_pref', 50),
     telemetry: store.routeTelemetry(projectId),
@@ -426,7 +679,24 @@ app.post('/api/runs', async (request, reply) => {
     action: 'execute',
   })
   if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  if (parentRunId) {
+    const parent = runs.get(parentRunId)
+    if (!parent) return reply.code(404).send({ error: 'parent_run_not_found' })
+    if (parent.projectId !== projectId) return reply.code(400).send({ error: 'parent_run_project_mismatch' })
+    if (parent.ownerId !== request.principal.userId && !request.principal.roles.includes('admin')) {
+      return permissionDenied(reply, 'Parent run belongs to another user')
+    }
+    if (parent.agentId && agentId && parent.agentId !== agentId) {
+      const delegation = canDelegateToAgent(store.grants(), parent.agentId, agentId)
+      if (!delegation.allowed) return permissionDenied(reply, delegation.reason)
+    }
+  }
+  const rawSourceIds = body.source_ids
+  if (rawSourceIds !== undefined && (!Array.isArray(rawSourceIds) || rawSourceIds.some((id) => typeof id !== 'string'))) {
+    return reply.code(400).send({ error: 'source_ids_must_be_string_array' })
+  }
   const harnessApprovalAction = route.harnessKey === 'coding'
+    && !(config.mode === 'local' && localSettings.policy?.approvals === 'never')
     ? harnesses.approvalAction(route.providerKey)
     : undefined
   const approvalAction = permission.approvalRequired ? 'execute' : harnessApprovalAction
@@ -457,9 +727,13 @@ app.post('/api/runs', async (request, reply) => {
     projectId,
     task,
     agentId,
+    parentRunId,
+    sourceIds: (rawSourceIds as string[] | undefined)?.slice(0, 100),
     route,
     reviewProviderKey: enumValue<CodingProvider>(body, 'review_provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom']) ?? defaults.reviewProviderKey,
-    repo: optionalString(body, 'repo', 2_000),
+    repo: optionalString(body, 'repo', 2_000) ?? localSettings.repo,
+    harnessProfile: route.providerKey === 'custom' ? localSettings.profile : undefined,
+    executionPolicy: localSettings.policy,
     principal: request.principal,
   })
   return reply.code(202).send({
@@ -631,7 +905,7 @@ app.post('/api/approvals', async (request, reply) => {
     action,
   })
   if (!permission.allowed) return permissionDenied(reply, permission.reason)
-  if (!permission.approvalRequired) {
+  if (!permission.approvalRequired && action !== 'push') {
     return reply.code(400).send({ error: 'approval_not_required' })
   }
   const approval: ApprovalRecord = {

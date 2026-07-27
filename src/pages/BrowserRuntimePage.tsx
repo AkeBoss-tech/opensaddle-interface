@@ -7,6 +7,7 @@ export function BrowserRuntimePage() {
   const [code, setCode] = useState("console.log('browser runtime ready'); return 2 + 2;")
   const [output, setOutput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState('https://example.com')
 
   const run = async (tool: 'javascript.execute' | 'filesystem.read' | 'filesystem.write' | 'http.fetch') => {
     if (!services?.browserRuntime) return
@@ -37,6 +38,17 @@ export function BrowserRuntimePage() {
         </div>
         <div className="page-header-actions"><span className="status-pill green">Local-first</span></div>
       </div>
+      {window.opensaddleDesktop && (
+        <section className="card" style={{ marginBottom: 18 }}>
+          <div className="card-header"><div><h3>Native desktop browser</h3><p>Opens pages in Electron web contents—not an iframe—so sites with frame restrictions can load normally.</p></div></div>
+          <div className="card-body">
+            <div className="form-row"><label>Website URL</label><input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com" /></div>
+            <button className="primary-btn" onClick={() => {
+              void window.opensaddle?.openBrowser(url).catch((error: unknown) => toast('Browser unavailable', error instanceof Error ? error.message : String(error)))
+            }}><Icon name="globe" className="icon sm" />Open native browser</button>
+          </div>
+        </section>
+      )}
       <div className="grid-2">
         <div className="card">
           <div className="card-header"><div><h3>Tool invocations</h3><p>Every call is scoped and emitted as an event.</p></div></div>

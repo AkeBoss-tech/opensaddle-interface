@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
+import { safeHref } from '../lib/sanitizeHtml'
 import { evaluatePermissions } from '../services/permissions'
 import type { Site, SiteVersion } from '../types'
 
@@ -24,6 +25,10 @@ function publishedVersion(site: Site): SiteVersion | undefined {
 export function SitesPage() {
   const { data, createSite, toast } = useStore()
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
+  const scopedProjectId = searchParams.get('project')
+  const scopedProject = data.projects.find((project) => project.id === scopedProjectId)
+  const visibleSites = scopedProject ? data.sites.filter((site) => site.projectId === scopedProject.id) : data.sites
   const [createOpen, setCreateOpen] = useState(false)
   const [name, setName] = useState('New site')
   const [description, setDescription] = useState('')
@@ -37,8 +42,10 @@ export function SitesPage() {
       <div className="page-header">
         <div className="page-header-copy">
           <div className="eyebrow">Agent-powered experiences</div>
-          <h1>Sites</h1>
-          <p>Published pages that live inside a project, ship with an embedded project agent, and are versioned like any other artifact.</p>
+          <h1>{scopedProject ? `${scopedProject.name} sites` : 'Sites'}</h1>
+          <p>{scopedProject
+            ? `Published experiences and drafts belonging to ${scopedProject.name}.`
+            : 'Published pages that live inside a project, ship with an embedded project agent, and are versioned like any other artifact.'}</p>
         </div>
         <div className="page-header-actions">
           <button className="primary-btn" onClick={() => { setProjectId(data.activeProjectId); setCreateOpen(true) }}><Icon name="plus" className="icon sm" />Create site</button>
@@ -46,7 +53,7 @@ export function SitesPage() {
       </div>
 
       <div className="sites-grid">
-        {data.sites.map((site) => {
+        {visibleSites.map((site) => {
           const project = data.projects.find((p) => p.id === site.projectId)
           const agent = data.agents.find((a) => a.id === site.agentId)
           const pub = publishedVersion(site)
@@ -78,7 +85,7 @@ export function SitesPage() {
             </button>
           )
         })}
-        {!data.sites.length && <div className="empty-state"><h3>No sites yet</h3><p>Create one to publish an agent-powered page.</p></div>}
+        {!visibleSites.length && <div className="empty-state"><h3>No sites yet</h3><p>Create one to publish an agent-powered page for {scopedProject?.name ?? 'this workspace'}.</p></div>}
       </div>
 
       {createOpen && (
@@ -253,8 +260,7 @@ export function SiteExperiencePage() {
         </div>
         <div className="page-header-actions">
           <button className="secondary-btn" onClick={() => {
-            void navigator.clipboard.writeText(shareUrl)
-            toast('Share link copied', shareUrl)
+            void navigator.clipboard.writeText(shareUrl).then(() => toast('Share link copied', shareUrl)).catch(() => toast('Copy failed', 'Open the preview link manually.'))
           }}><Icon name="globe" className="icon sm" />Share</button>
           <button className="secondary-btn" onClick={() => setSettingsPanel('versions')}><Icon name="clock" className="icon sm" />Versions</button>
           <button className="secondary-btn" onClick={() => setSettingsPanel('agent')}><Icon name="spark" className="icon sm" />Agent</button>
@@ -319,7 +325,7 @@ export function SiteExperiencePage() {
                 <h2>{page.title}</h2>
                 <p>{page.body}</p>
                 {page.ctaLabel && (
-                  <a className="site-cta" style={{ background: renderedSite.accent }} href={page.ctaUrl || '#'}>{page.ctaLabel}</a>
+                  <a className="site-cta" style={{ background: renderedSite.accent }} href={safeHref(page.ctaUrl || '#') ?? '#'}>{page.ctaLabel}</a>
                 )}
               </div>
               <div className="site-blocks">
@@ -539,7 +545,7 @@ export function PublishedSitePage() {
           {page.eyebrow && <span>{page.eyebrow}</span>}
           <h1>{page.title}</h1>
           <p>{page.body}</p>
-          {page.ctaLabel && <a href={page.ctaUrl || '#'} style={{ background: accent }}>{page.ctaLabel}</a>}
+          {page.ctaLabel && <a href={safeHref(page.ctaUrl || '#') ?? '#'} style={{ background: accent }}>{page.ctaLabel}</a>}
         </section>
         {(page.sections?.length ?? 0) > 0 && (
           <section className="published-site-sections">

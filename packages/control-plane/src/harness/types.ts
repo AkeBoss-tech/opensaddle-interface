@@ -1,4 +1,4 @@
-import type { RouteEstimate, RunEventType } from '../types.js'
+import type { HarnessExecutionPolicy, RouteEstimate, RunEventType } from '../types.js'
 
 /** Which implementation executes a coding (or CLI-backed) run. */
 export type CodingProvider =
@@ -73,6 +73,8 @@ export interface HarnessRunInput {
   route: RouteEstimate
   workspacePath: string
   providerId: string
+  profile?: HarnessProfile
+  executionPolicy?: HarnessExecutionPolicy
   signal: AbortSignal
   emit: HarnessEmit
 }

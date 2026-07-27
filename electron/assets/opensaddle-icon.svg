@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="OpenSaddle">
+  <defs>
+    <linearGradient id="ground" x1="120" y1="100" x2="900" y2="950" gradientUnits="userSpaceOnUse"><stop stop-color="#141A25"/><stop offset=".58" stop-color="#20203B"/><stop offset="1" stop-color="#17211E"/></linearGradient>
+    <linearGradient id="mark" x1="245" y1="240" x2="785" y2="765" gradientUnits="userSpaceOnUse"><stop stop-color="#B5A0FF"/><stop offset=".48" stop-color="#8AAEFF"/><stop offset="1" stop-color="#62E1B8"/></linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="23" result="blur"/><feColorMatrix in="blur" type="matrix" values="0 0 0 0 .45 0 0 0 0 .62 0 0 0 0 1 0 0 0 .4 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1024" height="1024" rx="232" fill="url(#ground)"/><rect x="36" y="36" width="952" height="952" rx="202" fill="none" stroke="#FFF" stroke-opacity=".12" stroke-width="10"/>
+  <path d="M255 398c0 173 115 278 257 278s257-105 257-278M255 398v-88M769 398v-88" fill="none" stroke="url(#mark)" stroke-linecap="round" stroke-linejoin="round" stroke-width="78" filter="url(#glow)"/>
+  <path d="M512 676v92M512 844a48 48 0 1 0 0-96 48 48 0 0 0 0 96Z" fill="none" stroke="url(#mark)" stroke-linecap="round" stroke-linejoin="round" stroke-width="62" filter="url(#glow)"/>
+  <path d="M340 250h344" stroke="#FFF" stroke-opacity=".16" stroke-linecap="round" stroke-width="22"/>
+</svg>

@@ -125,7 +125,7 @@ export function SettingsPage() {
               <option value="quality">Highest quality</option><option value="fast">Fastest</option><option value="cost">Lowest cost</option><option value="local">Keep data local</option><option value="enterprise">Enterprise models only</option>
             </select>
           </div>
-          <div className="form-row"><label>Ask before models over ($/run)</label><input type="number" step="0.1" value={s.askAboveCost} onChange={(e) => updateSettings({ askAboveCost: Number(e.target.value) })} /></div>
+          <div className="form-row"><label>Ask before models over ($/run)</label><input type="number" min="0" step="0.1" value={s.askAboveCost} onChange={(e) => updateSettings({ askAboveCost: Math.max(0, Number(e.target.value) || 0) })} /></div>
           <div className="setting-row"><div className="setting-copy"><strong>Enterprise models only</strong></div><button className={`switch ${s.enterpriseModelsOnly ? 'on' : ''}`} onClick={() => updateSettings({ enterpriseModelsOnly: !s.enterpriseModelsOnly })} /></div>
           <div className="setting-row"><div className="setting-copy"><strong>Prefer local runtime</strong></div><button className={`switch ${s.keepDataLocal ? 'on' : ''}`} onClick={() => updateSettings({ keepDataLocal: !s.keepDataLocal })} /></div>
         </div></div>
@@ -137,8 +137,8 @@ export function SettingsPage() {
         </div></div>
 
         <div className="card"><div className="card-header"><div><h3>Data & retention</h3><p>{controlPlane?.storage === 'sqlite' ? 'Durable SQLite database' : 'Local browser cache'}</p></div></div><div className="card-body">
-          <div className="form-row"><label>Chat retention (days)</label><input type="number" value={s.retentionDays} onChange={(e) => updateSettings({ retentionDays: Number(e.target.value) })} /></div>
-          <div className="form-row"><label>Tool output retention</label><input type="number" value={s.toolRetentionDays} onChange={(e) => updateSettings({ toolRetentionDays: Number(e.target.value) })} /></div>
+          <div className="form-row"><label>Chat retention (days)</label><input type="number" min="1" value={s.retentionDays} onChange={(e) => updateSettings({ retentionDays: Math.max(1, Number(e.target.value) || 1) })} /></div>
+          <div className="form-row"><label>Tool output retention</label><input type="number" min="1" value={s.toolRetentionDays} onChange={(e) => updateSettings({ toolRetentionDays: Math.max(1, Number(e.target.value) || 1) })} /></div>
           <div className="form-row"><label>Region</label><select value={s.region} onChange={(e) => updateSettings({ region: e.target.value })}><option>United States</option><option>EU</option></select></div>
           <div className="setting-row"><div className="setting-copy"><strong>Disable provider training</strong></div><button className={`switch ${s.trainingDisabled ? 'on' : ''}`} onClick={() => updateSettings({ trainingDisabled: !s.trainingDisabled })} /></div>
           <div className="setting-row"><div className="setting-copy"><strong>Last database save</strong><span>{lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString() : 'Waiting for first sync'}</span></div><span className={`sync-badge ${persistenceStatus}`}>{persistenceStatus}</span></div>

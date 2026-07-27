@@ -77,8 +77,13 @@ export class HarnessRegistry {
   }
 
   async run(input: Omit<HarnessRunInput, 'providerId'> & { providerId?: string }): Promise<HarnessRunResult> {
-    const providerId = this.resolveProvider(input.providerId)
-    const adapter = this.adapters.get(providerId)
+    const dynamicProfile = input.profile
+    const providerId = dynamicProfile?.id ?? this.resolveProvider(input.providerId)
+    const adapter = dynamicProfile
+      ? (dynamicProfile.protocol === 'codex-app-server'
+          ? new CodexAppServerAdapter()
+          : new CliHarnessAdapter(dynamicProfile))
+      : this.adapters.get(providerId)
     if (!adapter) throw new Error(`No adapter registered for harness "${providerId}"`)
     await input.emit('agent.started', {
       harness_provider: providerId,

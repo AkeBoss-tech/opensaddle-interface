@@ -42,6 +42,8 @@ export class MockRuntimeClient implements RuntimeClient {
     projectId: string
     task: string
     agentId?: string
+    parentRunId?: string
+    sourceIds?: string[]
     modelKey?: ModelKey
     harnessKey?: Harness
     runtimeKey?: RuntimeKind
@@ -89,6 +91,7 @@ export class MockRuntimeClient implements RuntimeClient {
     route: ReturnType<typeof deriveRoute>,
   ) {
     let seq = 0
+    let emittedOutput = ''
     const push = (type: SessionEvent['type'], payload: Record<string, unknown>) => {
       if (this.cancelled.has(runId)) return
       this.emit(runId, {
@@ -115,7 +118,10 @@ export class MockRuntimeClient implements RuntimeClient {
           push('diff.updated', { artifacts: partial.artifacts })
         }
         if (partial.plan) {
-          push('agent.output.delta', { plan: partial.plan, statusText: partial.statusText })
+          const output = partial.output ?? ''
+          const text = output.startsWith(emittedOutput) ? output.slice(emittedOutput.length) : output
+          emittedOutput = output
+          push('agent.output.delta', { plan: partial.plan, status: partial.statusText, text })
         }
         if (partial.done) {
           push('verification.completed', {

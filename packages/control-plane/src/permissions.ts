@@ -86,10 +86,48 @@ export function evaluatePermissions(grants: PermissionGrant[], input: Permission
 }
 
 export function requireAdmin(grants: PermissionGrant[], principal: AuthPrincipal): EffectivePermission {
+  if (principal.roles.includes('admin')) {
+    return {
+      allowed: true,
+      reason: 'Allowed by authenticated admin role',
+      matchedGrantIds: [],
+      approvalRequired: false,
+    }
+  }
   return evaluatePermissions(grants, {
     userId: principal.userId,
     resourceKind: 'organization',
     resourceId: 'org-default',
     action: 'administer',
   })
+}
+
+/**
+ * A delegating agent may not point at a more privileged agent.  Each active
+ * capability granted to the target must also be available to the caller, and
+ * a matching deny on the caller wins.  This is deliberately structural rather
+ * than rank-based: it remains correct as resource kinds/actions evolve.
+ */
+export function canDelegateToAgent(grants: PermissionGrant[], callerAgentId: string, targetAgentId: string): EffectivePermission {
+  const now = Date.now()
+  if (callerAgentId === targetAgentId) return { allowed: true, reason: 'Agent may reference its own threads', matchedGrantIds: [], approvalRequired: false }
+  const active = grants.filter((grant) => grant.principalKind === 'agent' && (grant.expiresAt === undefined || grant.expiresAt > now))
+  const caller = active.filter((grant) => grant.principalId === callerAgentId)
+  const targetAllows = active.filter((grant) => grant.principalId === targetAgentId && grant.effect === 'allow')
+  const matched: string[] = []
+  for (const target of targetAllows) {
+    const matchingCaller = caller.find((grant) => grant.effect === 'allow'
+      && grant.resourceKind === target.resourceKind
+      && grant.resourceId === target.resourceId
+      && (grant.action === target.action || grant.action === 'administer'))
+    const callerDeny = caller.find((grant) => grant.effect === 'deny'
+      && grant.resourceKind === target.resourceKind
+      && grant.resourceId === target.resourceId
+      && (grant.action === target.action || grant.action === 'administer'))
+    if (!matchingCaller || callerDeny) {
+      return { allowed: false, reason: `Target agent has capability ${target.resourceKind}:${target.resourceId}:${target.action} beyond caller`, matchedGrantIds: callerDeny ? [callerDeny.id, target.id] : [target.id], approvalRequired: false }
+    }
+    matched.push(matchingCaller.id, target.id)
+  }
+  return { allowed: true, reason: 'Target agent has equal or lesser active permissions', matchedGrantIds: [...new Set(matched)], approvalRequired: false }
 }

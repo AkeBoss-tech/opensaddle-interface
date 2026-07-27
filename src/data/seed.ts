@@ -59,7 +59,7 @@ export function createSeedData(): AppData {
       },
       {
         id: 'm2', chatId: chatCoding, role: 'assistant', createdAt: now - 2 * hour + 60_000,
-        text: '',
+        text: 'Implemented the secure background-VM flow in two files. Provisioning now requires budget approval and records an audit event; background tasks are queued with the allocated VM.\n\nVerification passed with 18 runtime tests and no failures. The proposed changes are ready for review below.',
         routingNote: 'Auto · Claude Opus · Coding · Local',
         run: {
           id: 'run-seed-coding',
@@ -123,7 +123,7 @@ export function createSeedData(): AppData {
       },
       {
         id: 'm4', chatId: chatResearch, role: 'assistant', createdAt: now - day + 120_000,
-        text: '',
+        text: 'I completed the architecture comparison and saved a cited report to the project. The clearest model is to keep routing, permissions, and runtime isolation as separate policy layers, with the thread as the durable record of the work.',
         routingNote: 'Auto · GPT-5.6 · Research · Cloud VM',
         run: {
           id: 'run-seed-research',

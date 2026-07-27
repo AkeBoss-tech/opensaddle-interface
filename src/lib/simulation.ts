@@ -1,4 +1,4 @@
-import type { AgentRunBlock, Artifact, Harness, ModelKey, RuntimeKind, ToolCall } from '../types'
+import type { AgentActivityEntry, AgentRunBlock, Artifact, Harness, ModelKey, RuntimeKind, ToolCall } from '../types'
 import { can } from '../services/capabilities'
 
 export const MODEL_LABEL: Record<ModelKey, string> = {
@@ -23,7 +23,7 @@ export type RouteDecision = {
 export function classify(text: string): RouteDecision['klass'] {
   const l = text.toLowerCase()
   if (/salesforce|deploy|production|email|claim/.test(l)) return /code|repo|pr|feature|build|test/.test(l) ? 'coding' : 'ops'
-  if (/code|repository|repo|pull request|\bpr\b|feature|build|refactor|test|debug|fix|vm/.test(l)) return 'coding'
+  if (/code|repository|repo|pull request|\bpr\b|feature|build|refactor|test|debug|fix|vm|file|folder|directory|workspace|readme|package\.json|\.(?:ts|tsx|js|jsx|py|go|rs|java|json|ya?ml|toml)\b/.test(l)) return 'coding'
   if (/research|compare|analy|summar|explore|report|architecture|investigate/.test(l)) return 'research'
   if (/website|chrome|browser|sharepoint|navigate|scrape/.test(l)) return 'browser'
   return 'chat'
@@ -114,10 +114,13 @@ export async function simulateAgentRun(
     harness: HARNESS_LABEL[route.harnessKey],
     runtime: RUNTIME_LABEL[route.runtimeKey],
     statusText: 'Planning',
+    output: '',
     done: false,
     tools: [],
     plan: planLabels.map((label) => ({ label, status: 'pending' as const })),
     artifacts: [],
+    activity: [],
+    sources: [],
   }
   onUpdate({ ...run })
 
@@ -126,6 +129,26 @@ export async function simulateAgentRun(
     if (klass === 'research') return ['Planning', 'Searching knowledge', 'Reading sources', 'Synthesizing', 'Validating citations'][i]
     return ['Planning', 'Opening session', 'Navigating', 'Extracting', 'Validating'][i]
   })
+  const narration =
+    klass === 'coding' ? [
+      'I’m mapping the repository and identifying the smallest safe implementation path.',
+      'I found the runtime boundary and the files that own provisioning and background work.',
+      'I’m adding the budget approval, audit capture, and queue handoff now.',
+      'The implementation is in place. I’m running the focused runtime tests and checking the diff.',
+      'All 18 runtime tests pass. I’m preparing the changed files for your review.',
+    ] : klass === 'research' ? [
+      'I’m framing the question and identifying the decisions the answer needs to support.',
+      'I found the relevant internal architecture and routing sources.',
+      'I’m reading the strongest sources and reconciling their terminology.',
+      'The evidence is consistent. I’m synthesizing the tradeoffs and recommendations.',
+      'The report is complete and the claims are linked to their sources.',
+    ] : [
+      'I’m confirming the task boundary and the access needed to complete it.',
+      'The isolated browser session is ready.',
+      'I’m navigating the target system and collecting the requested records.',
+      'The data is captured. I’m checking it for completeness and inconsistencies.',
+      'Validation is complete. I’m preparing the result for review.',
+    ]
 
   for (let step = 0; step < planLabels.length; step++) {
     run.plan = run.plan.map((p, i) => ({
@@ -133,6 +156,11 @@ export async function simulateAgentRun(
       status: i < step ? 'done' : i === step ? 'active' : 'pending',
     }))
     run.statusText = statuses[step] ?? 'Working'
+    run.output = narration.slice(0, step + 1).join('\n\n')
+    run.activity = [
+      ...(run.activity ?? []),
+      activityEntry(run.id, step, step === 3 ? 'check' : 'status', run.statusText),
+    ]
     onUpdate({ ...run, plan: [...run.plan], tools: [...run.tools], artifacts: [...run.artifacts] })
     await sleep(700)
 
@@ -144,6 +172,12 @@ export async function simulateAgentRun(
     }
     if (klass === 'coding' && step === 4) {
       run.artifacts.push(codingDiff())
+      run.sources = run.artifacts.flatMap((artifact) => artifact.diff ?? []).map((file) => ({
+        id: `file:${file.path}`,
+        kind: 'file' as const,
+        label: file.path,
+        detail: 'Changed by this run',
+      }))
     }
     if (klass === 'research' && step === 1) {
       run.tools.push(tool('Knowledge search', 'db', `query: "${text.slice(0, 40)}"`, '12 sources · top score 0.91', '1.1s', '$0.02'))
@@ -168,8 +202,34 @@ export async function simulateAgentRun(
   run.duration = `${(4 + Math.random() * 3).toFixed(1)}s`
   run.cost = `$${(0.18 + Math.random() * 0.2).toFixed(2)}`
   run.statusText = `Completed in ${run.duration}`
+  run.output = `${run.output}\n\n${klass === 'coding'
+    ? 'Implemented the secure background-VM flow in two files. Provisioning now requires budget approval and records an audit event; background tasks are queued with the allocated VM. Verification passed with 18 tests and no failures.'
+    : klass === 'research'
+      ? 'I completed the comparison and saved a cited report to the project. The main recommendation is to keep routing, permissions, and runtime isolation as separate policy layers.'
+      : 'I completed the requested operation and prepared the extracted results for review.'}`
+  run.activity = [
+    ...(run.activity ?? []),
+    ...(klass === 'coding' ? [activityEntry(run.id, 90, 'check', 'Verification completed', '18 passed, 0 failed')] : []),
+    activityEntry(run.id, 99, 'status', 'Agent completed', run.duration),
+  ]
   onUpdate({ ...run })
   return run
+}
+
+function activityEntry(
+  runId: string,
+  index: number,
+  kind: AgentActivityEntry['kind'],
+  label: string,
+  detail?: string,
+): AgentActivityEntry {
+  return {
+    id: `${runId}-activity-${index}`,
+    kind,
+    label,
+    detail,
+    timestamp: new Date(Date.now() + index).toISOString(),
+  }
 }
 
 function tool(name: string, icon: string, input: string, output: string, duration: string, cost: string): ToolCall {

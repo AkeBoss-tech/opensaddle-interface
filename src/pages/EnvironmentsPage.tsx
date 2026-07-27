@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 import { KrailClient } from '../services/krailClient'
 import { can, detectRuntimeMode } from '../services/capabilities'
 
 export function EnvironmentsPage() {
-  const { data, updateEnvironmentStatus, toast, services, runtimeModeLabel } = useStore()
+  const { data, updateEnvironmentStatus, requestSecureVm, toast, services, runtimeModeLabel } = useStore()
+  const nav = useNavigate()
   const [sheet, setSheet] = useState(false)
+  const [task, setTask] = useState('')
+  const [cpu, setCpu] = useState('8 vCPU · 32 GB')
+  const [network, setNetwork] = useState('GitHub + npm only')
+  const [idleTimeout, setIdleTimeout] = useState('60 min')
   const [krailSessions, setKrailSessions] = useState<Array<{ id: string; runId: string; kind: string; status: string }>>([])
   const [krailOk, setKrailOk] = useState(false)
   const mode = detectRuntimeMode()
@@ -90,7 +96,7 @@ export function EnvironmentsPage() {
             <div className="env-card-head">
               <div className="env-ico"><Icon name={e.kind === 'browser' ? 'globe' : e.kind === 'local' ? 'terminal' : 'vm'} className="icon lg" /></div>
               <div className="e-title"><strong>{e.name}</strong><span>{e.subtitle}</span></div>
-              <span className={`status-pill ${e.status === 'Running' ? 'green' : ''} right`}>{e.status === 'Running' && <span className="pulse" />}{e.status}</span>
+              <span className={`status-pill ${e.status === 'Running' ? 'green' : e.status === 'Provisioning' ? 'yellow' : ''} right`}>{(e.status === 'Running' || e.status === 'Provisioning') && <span className="pulse" />}{e.status}</span>
             </div>
             <div className="env-pkgs">{e.packages.map((p) => <span key={p} className="mini-tag">{p}</span>)}</div>
             <div className="env-specs">
@@ -117,20 +123,24 @@ export function EnvironmentsPage() {
         <>
           <div className="sheet-backdrop open" onClick={() => setSheet(false)} />
           <aside className="sheet open">
-            <div className="sheet-head"><div className="modal-icon" style={{ color: 'var(--accent)', borderColor: 'rgba(128,169,255,.3)', background: 'rgba(128,169,255,.08)' }}><Icon name="vm" /></div><div><h3>Configure runtime</h3><p>Choose browser WASM, local desktop, or cloud VM</p></div><button className="icon-btn" onClick={() => setSheet(false)}><Icon name="x" className="icon sm" /></button></div>
+            <div className="sheet-head"><div className="modal-icon" style={{ color: 'var(--accent)', borderColor: 'rgba(128,169,255,.3)', background: 'rgba(128,169,255,.08)' }}><Icon name="shield" /></div><div><h3>Request secure VM</h3><p>Start an isolated background task without keeping this page open.</p></div><button className="icon-btn" onClick={() => setSheet(false)}><Icon name="x" className="icon sm" /></button></div>
             <div className="sheet-body">
-              <div className="form-row"><label>Kind</label><div className="seg"><button className="active">Local</button><button>Browser</button><button>Cloud</button></div></div>
-              <div className="form-row"><label>CPU / GPU</label><select><option>Host default</option><option>8 vCPU · 32 GB</option><option>GPU · A10G</option></select></div>
-              <div className="form-row"><label>Network</label><select><option>Allowlist</option><option>No egress</option></select></div>
-              <div className="scope-box"><strong>Policy</strong><p>Browser mode uses OPFS + WASM. Desktop mode can attach Codex/Claude Code/Cursor CLIs through OpenSaddle + KRAIL.</p></div>
+              <div className="form-row"><label>Task to continue in the background</label><textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Run tests and prepare a pull request…" autoFocus /></div>
+              <div className="form-row"><label>Compute</label><select value={cpu} onChange={(event) => setCpu(event.target.value)}><option>4 vCPU · 16 GB</option><option>8 vCPU · 32 GB</option><option>16 vCPU · 64 GB</option></select></div>
+              <div className="form-row"><label>Network</label><select value={network} onChange={(event) => setNetwork(event.target.value)}><option>GitHub + npm only</option><option>Approved data APIs</option><option>No egress</option></select></div>
+              <div className="form-row"><label>Idle timeout</label><select value={idleTimeout} onChange={(event) => setIdleTimeout(event.target.value)}><option>30 min</option><option>60 min</option><option>2 hours</option></select></div>
+              <div className="scope-box"><Icon name="shield" className="icon sm" /><div><strong>Secure by default</strong><p>Ephemeral encrypted workspace, allowlisted egress, short-lived vault references, audit events, and an automatic idle shutdown.</p></div></div>
             </div>
             <div className="sheet-actions">
               <button className="ghost-btn" onClick={() => setSheet(false)}>Cancel</button>
-              <button className="primary-btn" onClick={() => {
+              <button className="primary-btn" disabled={!task.trim()} onClick={() => {
+                const request = requestSecureVm({ projectId: data.activeProjectId, task, cpu, network, idleTimeout })
                 setSheet(false)
-                if (services?.files) void services.files.mkdir('runtimes')
-                toast('Runtime configured', mode === 'desktop' ? 'Desktop harness ready.' : 'Browser sandbox ready.')
-              }}>Confirm</button>
+                setTask('')
+                if (services?.files) void services.files.mkdir(`runtimes/${request.environmentId}`)
+                toast('Secure VM requested', 'Provisioning started. Your task will continue in Runs & automations.')
+                nav('/runs')
+              }}><Icon name="clock" className="icon sm" />Continue in background</button>
             </div>
           </aside>
         </>

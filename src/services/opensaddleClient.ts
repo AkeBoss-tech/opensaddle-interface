@@ -1,6 +1,7 @@
 import { MockRuntimeClient } from './mockRuntime'
-import type { RuntimeClient, RouteEstimate, SessionEvent } from './contracts'
+import type { GitComparisonResult, GitStatusResult, RuntimeClient, RouteEstimate, SessionEvent } from './contracts'
 import type { CodingProvider, Harness, ModelKey, RuntimeKind } from '../types'
+import { createOrderedEventEmitter } from './orderedEvents'
 
 /**
  * Talks to a local OpenSaddle daemon when available; falls back to mock simulation.
@@ -122,6 +123,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     projectId: string
     task: string
     agentId?: string
+    parentRunId?: string
+    sourceIds?: string[]
     modelKey?: ModelKey
     modelId?: string
     harnessKey?: Harness
@@ -143,6 +146,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
           project_id: input.projectId,
           task: input.task,
           agent_id: input.agentId,
+          parent_run_id: input.parentRunId,
+          source_ids: input.sourceIds,
           model_key: input.modelKey,
           model_id: input.modelId,
           harness_key: input.harnessKey,
@@ -218,16 +223,75 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     return body.draft
   }
 
+  async gitStatus(projectId: string, repo: string): Promise<GitStatusResult> {
+    const query = new URLSearchParams({ project_id: projectId, repo })
+    const response = await fetch(`${this.baseUrl}/api/git/status?${query}`, { headers: this.headers() })
+    if (!response.ok) throw await this.responseError(response)
+    return await response.json() as GitStatusResult
+  }
+
+  async gitCompare(projectId: string, repo: string, base: string, head?: string): Promise<GitComparisonResult> {
+    const query = new URLSearchParams({ project_id: projectId, repo, base, ...(head ? { head } : {}) })
+    const response = await fetch(`${this.baseUrl}/api/git/compare?${query}`, { headers: this.headers() })
+    if (!response.ok) throw await this.responseError(response)
+    return await response.json() as GitComparisonResult
+  }
+
+  async gitCommit(input: {
+    projectId: string
+    repo: string
+    message: string
+    paths?: string[]
+    includeAll?: boolean
+    approvalId?: string
+  }): Promise<{ repository: string; commit: string; summary: string }> {
+    const response = await fetch(`${this.baseUrl}/api/git/commit`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify({
+        project_id: input.projectId,
+        repo: input.repo,
+        message: input.message,
+        paths: input.paths,
+        include_all: input.includeAll,
+        approval_id: input.approvalId,
+      }),
+    })
+    if (!response.ok) throw await this.responseError(response)
+    return await response.json() as { repository: string; commit: string; summary: string }
+  }
+
+  async gitPush(input: {
+    projectId: string
+    repo: string
+    remote?: string
+    branch?: string
+    approvalId: string
+  }): Promise<{ repository: string; remote: string; branch: string; summary: string }> {
+    const response = await fetch(`${this.baseUrl}/api/git/push`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify({
+        project_id: input.projectId,
+        repo: input.repo,
+        remote: input.remote,
+        branch: input.branch,
+        approval_id: input.approvalId,
+      }),
+    })
+    if (!response.ok) throw await this.responseError(response)
+    return await response.json() as { repository: string; remote: string; branch: string; summary: string }
+  }
+
   subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void {
     const url = `${this.baseUrl}/api/runs/${runId}/events`
     const controller = new AbortController()
     let fallbackStop: (() => void) | null = null
-    let lastSequence = -1
-    const emit = (event: SessionEvent) => {
-      if (event.sequence <= lastSequence) return
-      lastSequence = event.sequence
+    let receivedEvents = 0
+    const emit = createOrderedEventEmitter((event) => {
+      receivedEvents += 1
       onEvent(event)
-    }
+    })
 
     void (async () => {
       if (!(await this.healthy())) {
@@ -296,7 +360,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
           }
         }
       } catch (error) {
-        if (!controller.signal.aborted && lastSequence < 0 && this.allowFallback && error instanceof TypeError) {
+        if (!controller.signal.aborted && receivedEvents === 0 && this.allowFallback && error instanceof TypeError) {
           fallbackStop = this.fallback.subscribe(runId, onEvent)
         }
       }

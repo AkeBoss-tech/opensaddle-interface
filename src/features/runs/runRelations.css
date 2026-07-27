@@ -1,0 +1,162 @@
+.run-relations-panel {
+  display: grid;
+  gap: 2px;
+  color: var(--text);
+}
+
+.run-relations-heading,
+.run-relations-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.run-relations-heading {
+  min-height: 34px;
+  padding: 0 2px;
+}
+
+.run-relations-heading h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.run-relations-heading > span,
+.run-relations-section-title small {
+  color: var(--dim);
+  font-size: 9px;
+}
+
+.run-relations-section {
+  padding: 9px 0 11px;
+  border-top: 1px solid var(--border);
+}
+
+.run-relations-section-title {
+  padding: 0 2px 6px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 610;
+  letter-spacing: .02em;
+}
+
+.run-relations-list {
+  display: grid;
+  gap: 2px;
+}
+
+.run-relation-row {
+  width: 100%;
+  min-height: 39px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  gap: 7px;
+  align-items: center;
+  padding: 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.run-relation-row:not(:disabled) {
+  cursor: pointer;
+}
+
+.run-relation-row:not(:disabled):hover,
+.run-relation-row:not(:disabled):focus-visible {
+  background: var(--card-hover);
+}
+
+.run-relation-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.run-relation-row:disabled {
+  opacity: 1;
+}
+
+.run-relation-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.run-relation-copy strong,
+.run-relation-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-relation-copy strong {
+  font-size: 9.5px;
+  font-weight: 560;
+}
+
+.run-relation-copy small {
+  color: var(--dim);
+  font-size: 8px;
+}
+
+.run-relation-badge {
+  max-width: 76px;
+  overflow: hidden;
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 7.5px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-relation-status {
+  width: 7px;
+  height: 7px;
+  justify-self: center;
+  border-radius: 50%;
+  background: var(--dim);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dim) 12%, transparent);
+}
+
+.run-relation-status.running {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.run-relation-status.waiting,
+.run-relation-status.paused {
+  background: var(--yellow);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--yellow) 14%, transparent);
+}
+
+.run-relation-status.completed {
+  background: var(--green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 14%, transparent);
+}
+
+.run-relation-status.failed {
+  background: var(--red);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 14%, transparent);
+}
+
+.run-relation-icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.run-relations-empty {
+  margin: 0;
+  padding: 7px 6px;
+  color: var(--dim);
+  font-size: 8.5px;
+}

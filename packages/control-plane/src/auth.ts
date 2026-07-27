@@ -30,7 +30,7 @@ export function authenticate(request: FastifyRequest, config: ControlPlaneConfig
       userId: typeof requestedUser === 'string' && requestedUser.trim()
         ? requestedUser.trim()
         : config.bootstrapAdminId,
-      roles: ['local'],
+      roles: ['local', 'admin'],
       authType: 'local',
     }
   }

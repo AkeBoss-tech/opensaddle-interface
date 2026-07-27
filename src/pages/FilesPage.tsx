@@ -57,7 +57,12 @@ export function FilesPage() {
 
   const createFile = async () => {
     if (!services?.files || !checkWrite()) return
-    const full = path ? `${path}/${newName}` : newName
+    const cleanName = newName.trim().replaceAll('\\', '/')
+    if (!cleanName || cleanName.split('/').some((segment) => segment === '..' || segment === '.')) {
+      toast('Invalid filename', 'Use a filename inside the current folder.')
+      return
+    }
+    const full = path ? `${path}/${cleanName}` : cleanName
     await services.files.write(full, '')
     toast('Created', full)
     setSelected(full)

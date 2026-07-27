@@ -25,6 +25,7 @@ export function HarnessPage() {
   const [checks, setChecks] = useState<Array<{ name: string; ok: boolean; duration?: string }>>([])
   const [busy, setBusy] = useState(false)
   const unsub = useRef<(() => void) | null>(null)
+  const pollRef = useRef<number | null>(null)
   const mode = detectRuntimeMode()
 
   useEffect(() => {
@@ -34,7 +35,10 @@ export function HarnessPage() {
         setClis(info.clis)
       }
     })()
-    return () => unsub.current?.()
+    return () => {
+      unsub.current?.()
+      if (pollRef.current !== null) window.clearInterval(pollRef.current)
+    }
   }, [])
 
   const pickRepo = async () => {
@@ -68,6 +72,7 @@ export function HarnessPage() {
     setDiff([])
     setChecks([])
     unsub.current?.()
+    if (pollRef.current !== null) window.clearInterval(pollRef.current)
 
     try {
       const estimate = await services.runtime.estimate(task, { routingPref: data.settings.routingPref })
@@ -116,12 +121,15 @@ export function HarnessPage() {
               setRunMeta((m) => ({ ...m, status: st.status }))
               setBusy(false)
               window.clearInterval(poll)
+              pollRef.current = null
             }
           } catch {
             window.clearInterval(poll)
+            pollRef.current = null
             setBusy(false)
           }
         }, 400)
+        pollRef.current = poll
       }
     } catch (err) {
       toast('Harness error', String(err))

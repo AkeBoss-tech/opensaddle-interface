@@ -6,10 +6,12 @@ import { ModelGateway } from './modelGateway.js'
 import { RuntimeProvisioner } from './provisioner.js'
 import { estimateRoute } from './router.js'
 import { StateStore } from './store.js'
+import type { HarnessProfile } from './harness/types.js'
 import type {
   AuthPrincipal,
   CodingProvider,
   Harness,
+  HarnessExecutionPolicy,
   ModelKey,
   RunEvent,
   RunEventType,
@@ -32,6 +34,26 @@ export class RunManager {
     private readonly harnesses: HarnessRegistry,
   ) {}
 
+  async recoverInterruptedRuns(): Promise<number> {
+    const interrupted = this.store.runs().filter((run) => run.status === 'queued' || run.status === 'running')
+    for (const run of interrupted) {
+      run.status = 'failed'
+      run.error = 'Control plane restarted before the run completed'
+      run.updatedAt = Date.now()
+      await this.emit(run, 'agent.failed', { reason: 'interrupted', error: run.error })
+      await this.emit(run, 'session.closed', { status: 'interrupted' })
+      await this.store.saveRun(run)
+      if (run.runtimeId) {
+        await this.provisioner.release(
+          run.runtimeId,
+          { userId: 'system', roles: ['system'], authType: 'local' },
+          true,
+        ).catch(() => undefined)
+      }
+    }
+    return interrupted.length
+  }
+
   activeCount(): number {
     const staleBefore = Date.now() - this.config.runtimeTtlMs
     return this.store.runs().filter((run) =>
@@ -52,6 +74,8 @@ export class RunManager {
     projectId: string
     task: string
     agentId?: string
+    parentRunId?: string
+    sourceIds?: string[]
     modelKey?: ModelKey
     modelId?: string
     harnessKey?: Harness
@@ -62,6 +86,8 @@ export class RunManager {
     repo?: string
     principal: AuthPrincipal
     route?: RouteEstimate
+    harnessProfile?: HarnessProfile
+    executionPolicy?: HarnessExecutionPolicy
   }): Promise<RunRecord> {
     if (this.activeCount() >= this.config.maxConcurrentRuns) {
       throw new Error(`Run capacity reached (${this.config.maxConcurrentRuns})`)
@@ -77,6 +103,8 @@ export class RunManager {
       projectId: input.projectId,
       ownerId: input.principal.userId,
       agentId: input.agentId,
+      parentRunId: input.parentRunId,
+      sourceIds: input.sourceIds,
       task: input.task,
       route,
       status: 'queued',
@@ -86,9 +114,15 @@ export class RunManager {
       reviewProviderKey: input.reviewProviderKey && input.reviewProviderKey !== 'auto'
         ? input.reviewProviderKey
         : undefined,
+      harnessProfile: input.harnessProfile,
+      executionPolicy: input.executionPolicy,
     }
     await this.store.saveRun(run)
-    await this.emit(run, 'session.created', { route })
+    await this.emit(run, 'session.created', {
+      route,
+      parent_run_id: run.parentRunId,
+      source_ids: run.sourceIds,
+    })
 
     const controller = new AbortController()
     this.aborters.set(run.id, controller)
@@ -180,6 +214,8 @@ export class RunManager {
           route: run.route,
           workspacePath,
           providerId: run.route.providerKey,
+          profile: run.harnessProfile,
+          executionPolicy: run.executionPolicy,
           signal: controller.signal,
           emit,
         })
@@ -189,7 +225,7 @@ export class RunManager {
         const files = await captureDiff(workspacePath)
         if (files.length) await this.emit(run, 'diff.updated', { files })
 
-        if (run.reviewProviderKey && run.reviewProviderKey !== run.route.providerKey) {
+        if (files.length && run.reviewProviderKey && run.reviewProviderKey !== run.route.providerKey) {
           await this.emit(run, 'review.started', { provider: run.reviewProviderKey })
           try {
             const reviewRoute = { ...run.route, providerKey: run.reviewProviderKey }
@@ -202,6 +238,7 @@ export class RunManager {
               route: reviewRoute,
               workspacePath,
               providerId: run.reviewProviderKey,
+              executionPolicy: run.executionPolicy,
               signal: controller.signal,
               emit,
             })

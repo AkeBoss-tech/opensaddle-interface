@@ -18,6 +18,57 @@ export type InterfaceKind = 'chat' | 'form' | 'dashboard' | 'document' | 'custom
 export type TaskType = 'now' | 'scheduled' | 'background' | 'monitor'
 export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'failed' | 'paused'
 export type MessageRole = 'user' | 'assistant' | 'system'
+export type LocalSandboxMode = 'read-only' | 'workspace-write' | 'full-access'
+export type LocalApprovalMode = 'always' | 'on-request' | 'never'
+
+export interface AgentPermissionPolicy {
+  sandbox: LocalSandboxMode
+  approvals: LocalApprovalMode
+  network: boolean
+  allowedTools: string[]
+  deniedTools: string[]
+}
+
+export interface LocalHarnessDefinition {
+  id: string
+  label: string
+  command: string
+  description: string
+  promptMode: 'final_arg' | 'flag' | 'stdin'
+  promptFlag?: string
+  args: string[]
+  modelFlag?: string
+  supportsStreaming: boolean
+}
+
+export interface LocalSkillDefinition {
+  id: string
+  name: string
+  description: string
+  path: string
+  enabled: boolean
+}
+
+export interface LocalProjectDocument {
+  id: string
+  title: string
+  path: string
+  status: 'detected' | 'generated' | 'stale'
+  updatedAt: number
+}
+
+export interface LocalProjectSettings {
+  rootPath: string
+  importedFrom: 'folder' | 'codex' | 'claude' | 'cursor' | 'other'
+  importedAt: number
+  defaultHarnessId: string
+  permissionPreset: 'read-only' | 'workspace-write' | 'full-access' | 'custom'
+  adminAccess: true
+  detectedConfigs: string[]
+  harnesses: LocalHarnessDefinition[]
+  skills: LocalSkillDefinition[]
+  documents: LocalProjectDocument[]
+}
 
 export interface Member {
   id: string
@@ -38,6 +89,8 @@ export interface Project {
   childCount: number
   autoConfidence: number
   lineage: string[]
+  workspaceKind?: 'enterprise' | 'local'
+  local?: LocalProjectSettings
   routingDefaults?: {
     modelKey: ModelKey
     providerKey: CodingProvider
@@ -103,19 +156,48 @@ export interface AgentPlanStep {
   status: 'pending' | 'active' | 'done'
 }
 
+export interface AgentActivityEntry {
+  id: string
+  kind: 'status' | 'tool' | 'change' | 'check' | 'review' | 'error'
+  label: string
+  detail?: string
+  timestamp: string
+}
+
+export interface RunSourceRef {
+  id: string
+  kind: 'file' | 'repository' | 'attachment' | 'connector' | 'web'
+  label: string
+  detail?: string
+}
+
 export interface AgentRunBlock {
   id: string
+  parentRunId?: string
   kind: 'coding' | 'research' | 'browser' | 'ops'
   title: string
   model: string
   harness: string
   runtime: string
   statusText: string
+  /** Human-readable agent narration. This is kept alongside structured run
+   * state so mock, restored, and remote runs all have a visible transcript. */
+  output?: string
   done: boolean
   duration?: string
   tools: ToolCall[]
   plan: AgentPlanStep[]
   artifacts: Artifact[]
+  /** Bounded, persisted event history used by the conversation and state rail. */
+  activity?: AgentActivityEntry[]
+  /** Sources actually observed in this run, distinct from project availability. */
+  sources?: RunSourceRef[]
+  inputRequest?: {
+    kind: 'clarification' | 'approval'
+    prompt: string
+  }
+  /** Last durable runtime event folded into this run; used for safe reattach. */
+  lastSequence?: number
   cost?: string
 }
 
@@ -138,7 +220,12 @@ export interface CustomAgent {
   systemPrompt: string
   modelPolicy: ModelKey
   harness: Harness
+  /** Runtime provider/profile used by local coding agents. Built-ins use
+   * codex/claude/cursor/etc.; custom profiles use their project-local id. */
+  harnessId?: string
   runtime: RuntimeKind
+  permissionPolicy?: AgentPermissionPolicy
+  skillIds?: string[]
   tools: string[]
   knowledgeSourceIds: string[]
   interfaceId?: string
@@ -302,7 +389,7 @@ export interface Environment {
   name: string
   subtitle: string
   kind: RuntimeKind
-  status: 'Idle' | 'Running' | 'Stopped'
+  status: 'Idle' | 'Provisioning' | 'Running' | 'Stopped'
   os: string
   cpu: string
   network: string
@@ -312,6 +399,7 @@ export interface Environment {
   cost: string
   mounts?: string
   region?: string
+  taskId?: string
 }
 
 export interface Plugin {
@@ -370,7 +458,7 @@ export interface WikiSettings {
 }
 
 export type PrincipalKind = 'user' | 'group' | 'agent'
-export type ResourceKind = 'organization' | 'project' | 'folder' | 'repository' | 'source' | 'tool' | 'workflow'
+export type ResourceKind = 'organization' | 'project' | 'folder' | 'repository' | 'source' | 'tool' | 'workflow' | 'thread' | 'agent'
 export type CapabilityAction = 'read' | 'write' | 'execute' | 'administer' | string
 
 export interface PermissionGrant {

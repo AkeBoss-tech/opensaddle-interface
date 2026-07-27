@@ -15,7 +15,14 @@ export type CodingProvider =
 export type RuntimeKind = 'local' | 'browser' | 'sandbox' | 'vm' | 'gpu' | 'restricted'
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
 export type PrincipalKind = 'user' | 'group' | 'agent'
-export type ResourceKind = 'organization' | 'project' | 'folder' | 'repository' | 'source' | 'tool' | 'workflow'
+export type ResourceKind = 'organization' | 'project' | 'folder' | 'repository' | 'source' | 'tool' | 'workflow' | 'thread' | 'agent'
+export interface HarnessExecutionPolicy {
+  sandbox: 'read-only' | 'workspace-write' | 'full-access'
+  approvals: 'always' | 'on-request' | 'never'
+  network: boolean
+  allowedTools: string[]
+  deniedTools: string[]
+}
 
 export interface AuthPrincipal {
   userId: string
@@ -95,6 +102,14 @@ export type RunEventType =
   | 'verification.completed'
   | 'agent.completed'
   | 'agent.failed'
+  | 'plan.updated'
+  | 'command.started'
+  | 'command.output.delta'
+  | 'command.completed'
+  | 'file.change.updated'
+  | 'usage.updated'
+  | 'input.requested'
+  | 'warning'
   | 'session.closed'
 
 export interface RunEvent {
@@ -125,6 +140,8 @@ export interface RunRecord {
   projectId: string
   ownerId: string
   agentId?: string
+  parentRunId?: string
+  sourceIds?: string[]
   task: string
   route: RouteEstimate
   status: RunStatus
@@ -134,6 +151,10 @@ export interface RunRecord {
   events: RunEvent[]
   error?: string
   reviewProviderKey?: Exclude<CodingProvider, 'auto'>
+  /** Local-only dynamic harness snapshot. Stored with the run so retries and
+   * recovery never depend on mutable project configuration. */
+  harnessProfile?: import('./harness/types.js').HarnessProfile
+  executionPolicy?: HarnessExecutionPolicy
 }
 
 export interface ApprovalRecord {

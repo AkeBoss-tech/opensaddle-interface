@@ -23,6 +23,10 @@ function contentText(content: CompletionContent): string {
   return content.map((part) => part.text ?? '').join('')
 }
 
+export function containsUnsupportedToolCall(text: string): boolean {
+  return /<\|tool_call>|<tool_call\|>|(?:^|\n)\s*(?:TOOL|tool_call:)[\s:_-]/i.test(text)
+}
+
 export class ModelGateway {
   constructor(private readonly config: ControlPlaneConfig) {}
 
@@ -37,7 +41,7 @@ export class ModelGateway {
     agentId?: string
     signal: AbortSignal
   }): Promise<string> {
-    return this.completeMessages({
+    const text = await this.completeMessages({
       route: input.route,
       signal: input.signal,
       messages: [
@@ -49,11 +53,16 @@ export class ModelGateway {
             input.agentId ? `Agent: ${input.agentId}.` : '',
             `Harness: ${input.route.harnessKey}.`,
             'Follow least privilege. Never claim a tool action occurred unless the runtime reports it.',
+            'This route has no workspace or browser tool protocol. Never emit tool calls or control tokens; say when a coding or browser harness is required.',
           ].filter(Boolean).join(' '),
         },
         { role: 'user', content: input.task },
       ],
     })
+    if (containsUnsupportedToolCall(text)) {
+      throw new Error('The model requested workspace tools on a route without tools. Retry with the Coding harness.')
+    }
+    return text
   }
 
   async completeMessages(input: {

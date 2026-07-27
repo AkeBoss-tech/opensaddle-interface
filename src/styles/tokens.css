@@ -1,0 +1,132 @@
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --os-color-canvas: #111210;
+  --os-color-surface: #181916;
+  --os-color-surface-raised: #20211e;
+  --os-color-surface-hover: #272824;
+  --os-color-overlay: rgb(4 5 4 / 68%);
+  --os-color-border: #393a35;
+  --os-color-border-strong: #50514b;
+
+  /* Content */
+  --os-color-text: #f3f4ef;
+  --os-color-text-muted: #aaaca4;
+  --os-color-text-subtle: #81837b;
+  --os-color-text-inverse: #151714;
+
+  /* Accent and semantic states */
+  --os-color-accent: #91b4ff;
+  --os-color-accent-hover: #acc7ff;
+  --os-color-accent-soft: rgb(145 180 255 / 14%);
+  --os-color-info: #82b3f5;
+  --os-color-info-soft: rgb(130 179 245 / 14%);
+  --os-color-success: #6bca91;
+  --os-color-success-soft: rgb(107 202 145 / 14%);
+  --os-color-warning: #e8c76a;
+  --os-color-warning-soft: rgb(232 199 106 / 15%);
+  --os-color-danger: #f08a8a;
+  --os-color-danger-soft: rgb(240 138 138 / 14%);
+  --os-color-approval: #b69af8;
+  --os-color-approval-soft: rgb(182 154 248 / 15%);
+
+  /* Typography */
+  --os-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --os-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --os-font-size-xs: 0.6875rem;
+  --os-font-size-sm: 0.75rem;
+  --os-font-size-md: 0.8125rem;
+  --os-font-size-lg: 0.9375rem;
+  --os-font-size-xl: 1.125rem;
+  --os-line-tight: 1.25;
+  --os-line-normal: 1.5;
+  --os-weight-medium: 540;
+  --os-weight-semibold: 640;
+
+  /* Spacing and shape */
+  --os-space-1: 0.25rem;
+  --os-space-2: 0.5rem;
+  --os-space-3: 0.75rem;
+  --os-space-4: 1rem;
+  --os-space-5: 1.25rem;
+  --os-space-6: 1.5rem;
+  --os-space-8: 2rem;
+  --os-radius-sm: 0.375rem;
+  --os-radius-md: 0.5625rem;
+  --os-radius-lg: 0.875rem;
+  --os-radius-full: 999px;
+  --os-shadow-popover: 0 16px 44px rgb(0 0 0 / 38%), 0 2px 8px rgb(0 0 0 / 22%);
+  --os-shadow-dialog: 0 24px 80px rgb(0 0 0 / 48%);
+
+  /* Focus and motion */
+  --os-focus-ring: 0 0 0 2px var(--os-color-canvas), 0 0 0 4px var(--os-color-accent);
+  --os-motion-fast: 120ms;
+  --os-motion-normal: 200ms;
+  --os-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-theme="light"],
+[data-os-theme="light"] {
+  color-scheme: light;
+  --os-color-canvas: #f7f7f4;
+  --os-color-surface: #ffffff;
+  --os-color-surface-raised: #f0f1ed;
+  --os-color-surface-hover: #e8e9e4;
+  --os-color-overlay: rgb(26 29 25 / 38%);
+  --os-color-border: #d1d3cc;
+  --os-color-border-strong: #afb2a9;
+  --os-color-text: #1b1d19;
+  --os-color-text-muted: #5d6158;
+  --os-color-text-subtle: #747970;
+  --os-color-text-inverse: #ffffff;
+  --os-color-accent: #315fae;
+  --os-color-accent-hover: #244d91;
+  --os-color-accent-soft: rgb(49 95 174 / 11%);
+  --os-color-info: #2863a5;
+  --os-color-info-soft: rgb(40 99 165 / 11%);
+  --os-color-success: #237646;
+  --os-color-success-soft: rgb(35 118 70 / 11%);
+  --os-color-warning: #8b5c00;
+  --os-color-warning-soft: rgb(139 92 0 / 11%);
+  --os-color-danger: #a73535;
+  --os-color-danger-soft: rgb(167 53 53 / 10%);
+  --os-color-approval: #6642ad;
+  --os-color-approval-soft: rgb(102 66 173 / 11%);
+  --os-shadow-popover: 0 16px 44px rgb(28 31 27 / 16%), 0 2px 8px rgb(28 31 27 / 10%);
+  --os-shadow-dialog: 0 24px 80px rgb(28 31 27 / 22%);
+}
+
+:root[data-contrast="high"],
+[data-os-contrast="high"] {
+  --os-color-border: currentColor;
+  --os-color-border-strong: currentColor;
+  --os-color-text-muted: var(--os-color-text);
+  --os-color-text-subtle: var(--os-color-text);
+  --os-focus-ring: 0 0 0 3px var(--os-color-accent);
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --os-color-border: #777a72;
+    --os-color-border-strong: #c5c7c0;
+    --os-color-text-muted: #d6d8d1;
+    --os-color-text-subtle: #c0c2ba;
+    --os-focus-ring: 0 0 0 3px var(--os-color-accent);
+  }
+
+  :root[data-theme="light"] {
+    --os-color-border: #666a61;
+    --os-color-border-strong: #30342d;
+    --os-color-text-muted: #30342d;
+    --os-color-text-subtle: #3e433a;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --os-motion-fast: 0ms;
+    --os-motion-normal: 0ms;
+    --os-ease-out: linear;
+  }
+}

@@ -16,6 +16,8 @@ dist-electron
 .env.*
 !.env.example
 .opensaddle/
+.opensaddle-harness/
+.claude/worktrees/
 
 # Editor directories and files
 .vscode/*

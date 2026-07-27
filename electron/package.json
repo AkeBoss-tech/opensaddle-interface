@@ -1,16 +1,66 @@
 {
   "name": "opensaddle-desktop",
   "version": "0.1.0",
+  "description": "OpenSaddle enterprise agent workspace desktop app",
+  "author": "OpenSaddle",
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp preload.cjs dist-electron/preload.cjs",
     "dev": "npm run build && electron .",
-    "start": "electron ."
+    "start": "electron .",
+    "package:mac": "npm run build && npm run build --prefix ../packages/control-plane && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --publish never"
   },
   "devDependencies": {
     "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
     "typescript": "~6.0.2"
+  },
+  "build": {
+    "appId": "com.opensaddle.desktop",
+    "productName": "OpenSaddle",
+    "files": [
+      "dist-electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "renderer",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "assets/opensaddle-icon.png",
+        "to": "opensaddle-icon.png"
+      },
+      {
+        "from": "../packages/control-plane/dist",
+        "to": "control-plane/dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../packages/control-plane/node_modules",
+        "to": "control-plane/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../packages/control-plane/package.json",
+        "to": "control-plane/package.json"
+      }
+    ],
+    "mac": {
+      "icon": "assets/opensaddle-icon.icns",
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    }
   }
 }

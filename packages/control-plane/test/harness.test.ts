@@ -4,6 +4,8 @@ import { normalizeCliLine } from '../src/harness/normalizers.js'
 import { BUILTIN_PROFILES } from '../src/harness/profiles.js'
 import { which } from '../src/harness/index.js'
 import { estimateRoute } from '../src/router.js'
+import { containsUnsupportedToolCall } from '../src/modelGateway.js'
+import { mergeCodexMessage } from '../src/harness/codexAppServer.js'
 import type { ControlPlaneConfig } from '../src/config.js'
 
 function testConfig(overrides: Partial<ControlPlaneConfig> = {}): ControlPlaneConfig {
@@ -42,6 +44,12 @@ describe('coding harness routing', () => {
     assert.ok(route.reasons.some((r) => /Coding/.test(r)))
   })
 
+  it('routes file inspection through the coding harness', () => {
+    const route = estimateRoute('Inspect package.json and report the package name', testConfig())
+    assert.equal(route.harnessKey, 'coding')
+    assert.equal(estimateRoute('Inspect vite.config.ts and report the base path', testConfig()).harnessKey, 'coding')
+  })
+
   it('honors an explicit provider override', () => {
     const route = estimateRoute('fix a bug in the repo', testConfig(), { providerKey: 'codex', modelKey: 'sonnet' })
     assert.equal(route.harnessKey, 'coding')
@@ -76,6 +84,30 @@ describe('coding harness routing', () => {
     assert.equal(args[args.indexOf('--model') + 1], 'gpt-5.4')
   })
 
+  it('maps local Claude permissions into native CLI controls', async () => {
+    const { buildArgs } = await import('../src/harness/cliAdapter.js')
+    const claude = BUILTIN_PROFILES.find((profile) => profile.id === 'claude')!
+    const args = buildArgs(claude, 'fix the bug', '/tmp/ws', undefined, {
+      sandbox: 'full-access',
+      approvals: 'never',
+      network: true,
+      allowedTools: ['Bash', 'Edit'],
+      deniedTools: ['WebFetch'],
+    })
+    assert.equal(args[args.indexOf('--permission-mode') + 1], 'bypassPermissions')
+    assert.ok(args.includes('--dangerously-skip-permissions'))
+    assert.ok(args.includes('--allowedTools'))
+    assert.ok(args.includes('Bash,Edit'))
+    assert.ok(args.includes('--disallowedTools'))
+    assert.ok(args.includes('WebFetch'))
+  })
+
+  it('does not duplicate Claude partial output when the final message repeats it', async () => {
+    const { mergeCliText } = await import('../src/harness/cliAdapter.js')
+    assert.deepEqual(mergeCliText('hello', 'hello'), { output: 'hello', delta: '' })
+    assert.deepEqual(mergeCliText('hello', 'hello world'), { output: 'hello world', delta: ' world' })
+  })
+
   it('biases Auto toward routes with better observed outcomes', () => {
     const cfg = testConfig({
       modelRoutes: {
@@ -101,6 +133,27 @@ describe('coding harness routing', () => {
   })
 })
 
+describe('model response safety', () => {
+  it('detects unsupported provider tool-call control tokens', () => {
+    assert.equal(containsUnsupportedToolCall('<|tool_call>_call:research:list_files{}<tool_call|>'), true)
+    assert.equal(containsUnsupportedToolCall('A normal research answer.'), false)
+  })
+})
+
+describe('Codex app-server transcript merging', () => {
+  it('adds a final agent message after an earlier streaming preamble', () => {
+    const merged = mergeCodexMessage('I’ll inspect the file.', 'The package name is opensaddle-interface.')
+    assert.equal(merged.output, 'I’ll inspect the file.\n\nThe package name is opensaddle-interface.')
+    assert.equal(merged.delta, '\n\nThe package name is opensaddle-interface.')
+  })
+
+  it('does not duplicate a cumulative final snapshot', () => {
+    const merged = mergeCodexMessage('Hello', 'Hello world')
+    assert.equal(merged.output, 'Hello world')
+    assert.equal(merged.delta, ' world')
+  })
+})
+
 describe('CLI line normalizers', () => {
   it('extracts claude stream-json assistant text', () => {
     const line = JSON.stringify({
@@ -110,8 +163,26 @@ describe('CLI line normalizers', () => {
     assert.equal(normalizeCliLine('claude', line), 'Hello from Claude')
   })
 
+  it('drops claude lifecycle metadata instead of leaking JSON into the transcript', () => {
+    const line = JSON.stringify({
+      type: 'system',
+      subtype: 'init',
+      cwd: '/tmp/workspace',
+      tools: ['Read', 'Write'],
+    })
+    assert.equal(normalizeCliLine('claude', line), undefined)
+  })
+
   it('passes through plain stdout', () => {
-    assert.equal(normalizeCliLine('cursor', 'running tests...'), 'running tests...')
+    assert.equal(normalizeCliLine('cursor', 'running tests...'), 'running tests...\n')
+  })
+
+  it('preserves token deltas without inserting whitespace', () => {
+    const line = JSON.stringify({
+      type: 'content_block_delta',
+      delta: { text: ' next' },
+    })
+    assert.equal(normalizeCliLine('claude', line), ' next')
   })
 })
 

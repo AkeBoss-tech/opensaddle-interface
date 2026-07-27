@@ -25,7 +25,7 @@ function projectTree(projects: Project[]) {
   return byParent
 }
 
-export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
+export function Sidebar({ onCreateProject, collapsed: controlledCollapsed, onCollapsedChange }: { onCreateProject: () => void; collapsed?: boolean; onCollapsedChange?: (collapsed: boolean) => void }) {
   const { data, setActiveProject, createChat, setActiveChat, switchUser, toast, updateWikiSettings, setPinnedArtifacts } = useStore()
   const nav = useNavigate()
   const location = useLocation()
@@ -34,8 +34,11 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
     location.pathname.startsWith('/wiki') && data.wikiSettings.selectedProjectId === projectId
   const siteActiveFor = (siteId: string) => location.pathname === `/site/${siteId}`
   const [wsOpen, setWsOpen] = useState(false)
+  const [workspaceMoreOpen, setWorkspaceMoreOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('opensaddle-sidebar-collapsed') === 'true')
+  const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState(() => localStorage.getItem('opensaddle-sidebar-collapsed') === 'true')
+  const sidebarCollapsed = controlledCollapsed ?? uncontrolledCollapsed
+  const setSidebarCollapsed = onCollapsedChange ?? setUncontrolledCollapsed
   const pinned = data.pinnedArtifacts ?? []
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
@@ -246,7 +249,7 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
           </span>
           <Icon name="chevron" className="icon sm" />
         </button>
-        <button className="sidebar-collapse-btn" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Minimize sidebar'} title={sidebarCollapsed ? 'Expand sidebar' : 'Minimize sidebar'} onClick={() => setSidebarCollapsed((value) => !value)}><Icon name="panel" className="icon sm" /></button>
+        <button className="sidebar-collapse-btn" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Minimize sidebar'} title={sidebarCollapsed ? 'Expand sidebar' : 'Minimize sidebar'} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}><Icon name="panel" className="icon sm" /></button>
         {wsOpen && (
           <div className="menu-dropdown" style={{ left: 12, right: 12, top: 52 }}>
             <button className="menu-item" onClick={() => { setWsOpen(false); nav('/admin') }}><Icon name="users" className="icon sm" /> Organization admin</button>
@@ -268,11 +271,23 @@ export function Sidebar({ onCreateProject }: { onCreateProject: () => void }) {
 
         <div className="nav-group">
           <div className="nav-label">Workspace</div>
-          <NavLink to="/runs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="clock" />Runs & automations{unread ? <span className="status-dot" /> : null}</NavLink>
-          <NavLink to="/wiki" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="review" />Team wiki</NavLink>
+          <NavLink to="/runs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="clock" />Runs{unread ? <span className="status-dot" /> : null}</NavLink>
           <NavLink to="/agents" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="spark" />Agents<span className="nav-count">{data.agentSessions.filter((s) => s.status === 'running').length}</span></NavLink>
-          <NavLink to="/workflows" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="activity" />Workflows</NavLink>
           <NavLink to="/sites" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name="globe" />Sites<span className="nav-count">{data.sites.length}</span></NavLink>
+          <button className={`nav-item secondary-nav-trigger ${workspaceMoreOpen ? 'active' : ''}`} onClick={() => setWorkspaceMoreOpen((v) => !v)} aria-expanded={workspaceMoreOpen}>
+            <Icon name="menu" />More workspace tools<Icon name="chevron" className={`icon sm more-chevron ${workspaceMoreOpen ? 'open' : ''}`} />
+          </button>
+          {workspaceMoreOpen && (
+            <div className="sidebar-popover-list">
+              <NavLink to="/wiki" className="nav-item" onClick={() => setWorkspaceMoreOpen(false)}><Icon name="review" />Team wiki</NavLink>
+              <NavLink to="/workflows" className="nav-item" onClick={() => setWorkspaceMoreOpen(false)}><Icon name="activity" />Workflows</NavLink>
+              <NavLink to="/files" className="nav-item" onClick={() => setWorkspaceMoreOpen(false)}><Icon name="file" />Files</NavLink>
+              <NavLink to="/permissions" className="nav-item" onClick={() => setWorkspaceMoreOpen(false)}><Icon name="shield" />Permissions</NavLink>
+              <NavLink to="/environments" className="nav-item" onClick={() => setWorkspaceMoreOpen(false)}><Icon name="vm" />Environments</NavLink>
+              <NavLink to="/plugins" className="nav-item" onClick={() => setWorkspaceMoreOpen(false)}><Icon name="plugin" />Plugins</NavLink>
+              <NavLink to="/harness" className="nav-item" onClick={() => setWorkspaceMoreOpen(false)}><Icon name="tools" />Harness</NavLink>
+            </div>
+          )}
         </div>
 
         {pinnedRows.length > 0 && (

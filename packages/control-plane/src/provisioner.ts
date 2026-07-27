@@ -51,9 +51,11 @@ export class RuntimeProvisioner {
     await this.store.saveRuntime(runtime)
 
     try {
+      const sourceRepo = input.repo ? await this.validateRepository(input.repo) : undefined
       if (this.config.runtimeProvider === 'docker' && input.kind !== 'local') {
         const workspace = resolve(this.config.workspaceDir, id)
         await mkdir(workspace, { recursive: true, mode: 0o700 })
+        if (sourceRepo) await this.cloneRepository(sourceRepo, workspace)
         const result = await command('docker', [
           'create',
           '--name', `opensaddle-${id}`,
@@ -77,18 +79,8 @@ export class RuntimeProvisioner {
       } else {
         const workspace = resolve(this.config.workspaceDir, id)
         await mkdir(workspace, { recursive: true, mode: 0o700 })
+        if (sourceRepo) await this.cloneRepository(sourceRepo, workspace)
         runtime.workspacePath = workspace
-
-        if (input.repo) {
-          const repo = resolve(input.repo)
-          if (!this.config.allowedRepoRoots.some((root) => isWithin(repo, root))) {
-            throw new Error('Repository path is outside OPENSADDLE_ALLOWED_REPO_ROOTS')
-          }
-          const info = await stat(repo)
-          if (!info.isDirectory()) throw new Error('Repository path is not a directory')
-          // The validated source path is metadata for later tool mounts. It is
-          // intentionally not copied or made writable during provisioning.
-        }
       }
       runtime.status = 'running'
       await this.store.saveRuntime(runtime)
@@ -98,6 +90,33 @@ export class RuntimeProvisioner {
       await this.store.saveRuntime(runtime)
       throw error
     }
+  }
+
+  private async validateRepository(path: string): Promise<string> {
+    const repo = resolve(path)
+    const projects = this.store.workspace()?.projects
+    const localProjectRoots = this.config.mode === 'local' && Array.isArray(projects)
+      ? projects.flatMap((candidate) => {
+          if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return []
+          const local = (candidate as Record<string, unknown>).local
+          if (!local || typeof local !== 'object' || Array.isArray(local)) return []
+          const rootPath = (local as Record<string, unknown>).rootPath
+          return typeof rootPath === 'string' ? [resolve(rootPath)] : []
+        })
+      : []
+    if (![...this.config.allowedRepoRoots, ...localProjectRoots].some((root) => isWithin(repo, root))) {
+      throw new Error('Repository path is outside OPENSADDLE_ALLOWED_REPO_ROOTS')
+    }
+    const info = await stat(repo)
+    if (!info.isDirectory()) throw new Error('Repository path is not a directory')
+    await command('git', ['-C', repo, 'rev-parse', '--is-inside-work-tree'])
+    return repo
+  }
+
+  private async cloneRepository(repo: string, workspace: string): Promise<void> {
+    // A local clone gives every run an isolated, diffable checkout while
+    // avoiding hard links back into the source repository.
+    await command('git', ['clone', '--no-hardlinks', '--quiet', '--', repo, workspace])
   }
 
   async release(runtimeId: string, principal: AuthPrincipal, force = false): Promise<boolean> {

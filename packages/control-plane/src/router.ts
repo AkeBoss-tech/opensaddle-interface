@@ -1,7 +1,7 @@
 import type { ControlPlaneConfig } from './config.js'
 import type { CodingProvider, Harness, ModelKey, RouteEstimate, RouteTelemetry, RuntimeKind } from './types.js'
 
-const CODING = /\b(code|implement|refactor|repository|repo|pull request|bug|test|typescript|python|build|fix|debug)\b/i
+const CODING = /\b(code|implement|refactor|repository|repo|pull request|bug|test|typescript|python|build|fix|debug|file|folder|directory|workspace|readme)\b|package\.json|(?:^|\s)src\/|\.(?:ts|tsx|js|jsx|py|go|rs|java|json|ya?ml|toml)\b/i
 const RESEARCH = /\b(research|compare|sources|report|analy[sz]e|investigate|literature|cite)\b/i
 const BROWSER = /\b(browser|website|web page|click|navigate|scrape|form|salesforce)\b/i
 const RESTRICTED = /\b(pii|regulated|confidential|restricted|patient|customer data)\b/i

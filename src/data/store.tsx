@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
-  AgentInterface, AppData, Chat, CustomAgent, Dashboard, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
+  AgentInterface, AppData, Chat, CodingProvider, CustomAgent, Dashboard, LocalProjectSettings, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
 } from '../types'
 import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
 import { defaultConnectionProfile, initServices, resetServices, type ConnectionProfile, type ServiceBundle } from '../services'
@@ -9,6 +9,18 @@ import { evaluatePermissions } from '../services/permissions'
 
 function normalizeWorkspace(data: AppData): AppData {
   data.pinnedArtifacts ??= []
+  for (const project of data.projects) {
+    project.workspaceKind ??= project.local ? 'local' : 'enterprise'
+    if (project.local) {
+      project.local.harnesses ??= []
+      project.local.skills ??= []
+      project.local.documents ??= []
+      project.local.detectedConfigs ??= []
+      project.local.defaultHarnessId ??= 'codex'
+      project.local.permissionPreset ??= 'workspace-write'
+      project.local.adminAccess = true
+    }
+  }
   const codingProject = data.projects.find((project) => project.id === 'proj-coding')
   if (codingProject && !codingProject.routingDefaults) {
     codingProject.routingDefaults = {
@@ -48,13 +60,16 @@ interface StoreApi {
   deleteChat: (id: string) => void
   archiveChat: (id: string) => void
   setChatVisibility: (id: string, visibility: Visibility, sharedWith?: string[]) => void
-  branchChat: (id: string) => Chat
+  branchChat: (id: string) => Chat | null
+  branchChatFromMessage: (chatId: string, messageId: string) => Chat | null
   appendMessage: (msg: Omit<Message, 'id' | 'createdAt'> & { id?: string }) => Message
   updateMessage: (id: string, patch: Partial<Message>) => void
   createProject: (name: string, parentId: string | null, description: string) => string
-  updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description' | 'routingDefaults'>>) => void
+  importLocalProject: (input: { name: string; description: string; local: LocalProjectSettings }) => string
+  updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description' | 'routingDefaults' | 'workspaceKind' | 'local'>>) => void
   setPinnedArtifacts: (items: PinnedArtifact[]) => void
   createAgent: (input: Omit<CustomAgent, 'id' | 'createdAt'>) => CustomAgent
+  updateAgent: (id: string, patch: Partial<Omit<CustomAgent, 'id' | 'projectId' | 'createdAt'>>) => void
   createSite: (input: Omit<Site, 'id' | 'createdAt' | 'updatedAt' | 'slug' | 'accent' | 'versions' | 'agentPlacement'> & Partial<Pick<Site, 'slug' | 'accent' | 'agentPlacement'>>) => Site
   createSiteVersion: (siteId: string, label: string, summary: string) => SiteVersion | null
   publishSiteVersion: (siteId: string, versionId: string) => void
@@ -68,6 +83,7 @@ interface StoreApi {
   markNotificationsRead: () => void
   updateTaskStatus: (id: string, status: AppData['tasks'][0]['status']) => void
   updateEnvironmentStatus: (id: string, status: AppData['environments'][0]['status']) => void
+  requestSecureVm: (input: { projectId: string; task: string; cpu: string; network: string; idleTimeout: string }) => { environmentId: string; taskId: string }
   updateWikiSettings: (patch: Partial<WikiSettings>) => void
   refreshWikiSummaries: (projectId: string) => void
   setPermissionGrants: (grants: PermissionGrant[]) => void
@@ -77,6 +93,7 @@ interface StoreApi {
   updateWorkflowStatus: (id: string, status: WorkflowDef['status']) => void
   runWorkflow: (id: string) => Promise<WorkflowRun | null>
   attachSource: (input: Omit<ProjectSource, 'id' | 'lastSyncAt'>) => ProjectSource
+  updateSource: (id: string, patch: Partial<Pick<ProjectSource, 'name' | 'url' | 'status' | 'branch' | 'folderPath'>>) => void
   updateHunk: (messageId: string, hunkId: string, status: 'accepted' | 'rejected') => void
   resetData: () => void
   exportData: () => string
@@ -118,8 +135,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-  }, [data])
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    } catch {
+      toast('Local save unavailable', 'Browser storage is full or blocked. Your current session remains in memory.')
+    }
+  }, [data, toast])
 
   useEffect(() => {
     document.body.dataset.theme = data.settings.theme === 'dark' ? undefined : data.settings.theme
@@ -188,7 +209,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
     }, 450)
     return () => window.clearTimeout(timer)
-  }, [data, persistenceStatus, services, toast])
+    // `persistenceStatus` is intentionally not a dependency. Updating it to
+    // "syncing" or "synced" must not schedule another save of unchanged data.
+  }, [data, services, toast])
 
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), [])
 
@@ -260,16 +283,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return d
     }),
     branchChat: (id) => {
-      let created!: Chat
+      const src = dataRef.current.chats.find((c) => c.id === id)
+      if (!src) return null
+      const created: Chat = { ...src, id: uid('chat'), title: `${src.title} (fork)`, branchedFromId: id, createdAt: Date.now(), updatedAt: Date.now(), visibility: 'private', sharedWith: [] }
       patch((d) => {
-        const src = d.chats.find((c) => c.id === id)
-        if (!src) return d
-        created = { ...src, id: uid('chat'), title: `${src.title} (fork)`, branchedFromId: id, createdAt: Date.now(), updatedAt: Date.now(), visibility: 'private', sharedWith: [] }
         d.chats.unshift(created)
         const msgs = d.messages.filter((m) => m.chatId === id).map((m) => ({ ...m, id: uid('msg'), chatId: created.id }))
         d.messages.push(...msgs)
         d.activeChatId = created.id
         return d
+      })
+      return created
+    },
+    branchChatFromMessage: (chatId, messageId) => {
+      const src = dataRef.current.chats.find((chat) => chat.id === chatId)
+      const sourceMessages = dataRef.current.messages
+        .filter((message) => message.chatId === chatId)
+        .sort((left, right) => left.createdAt - right.createdAt)
+      const targetIndex = sourceMessages.findIndex((message) => message.id === messageId)
+      if (!src || targetIndex < 0) return null
+      const created: Chat = {
+        ...src,
+        id: uid('chat'),
+        title: `${src.title} (branch)`,
+        branchedFromId: chatId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        visibility: 'private',
+        sharedWith: [],
+      }
+      patch((data) => {
+        data.chats.unshift(created)
+        data.messages.push(...sourceMessages.slice(0, targetIndex + 1).map((message) => ({
+          ...message,
+          id: uid('msg'),
+          chatId: created.id,
+        })))
+        data.activeChatId = created.id
+        data.recentChatIds = [created.id, ...data.recentChatIds.filter((id) => id !== created.id)].slice(0, 12)
+        return data
       })
       return created
     },
@@ -297,9 +349,64 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const parent = d.projects.find((p) => p.id === parentId)
         d.projects.push({
           id, name, parentId, description, iconColor: '#80a9ff', knowledgeCount: 0, serviceCount: 0, childCount: 0, autoConfidence: 80,
-          lineage: parent ? [...parent.lineage, name] : ['Organization', name],
+          lineage: parent ? [...parent.lineage, name] : ['Organization', name], workspaceKind: 'enterprise',
         })
         if (parent) parent.childCount += 1
+        d.activeProjectId = id
+        return d
+      })
+      return id
+    },
+    importLocalProject: ({ name, description, local }) => {
+      const id = uid('local')
+      patch((d) => {
+        d.projects.push({
+          id,
+          name,
+          parentId: null,
+          description,
+          iconColor: '#d6af63',
+          knowledgeCount: local.documents.length,
+          serviceCount: local.harnesses.length,
+          childCount: 0,
+          autoConfidence: 100,
+          lineage: ['Local projects', name],
+          workspaceKind: 'local',
+          local,
+          routingDefaults: {
+            modelKey: 'auto',
+            providerKey: ['codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'opensaddle'].includes(local.defaultHarnessId)
+              ? local.defaultHarnessId as CodingProvider
+              : 'custom',
+            runtimeKey: 'local',
+          },
+        })
+        d.permissionGrants.push(
+          {
+            id: uid('grant'),
+            principalKind: 'user',
+            principalId: d.currentUserId,
+            resourceKind: 'project',
+            resourceId: id,
+            action: 'administer',
+            effect: 'allow',
+            inheritance: 'direct',
+            createdAt: Date.now(),
+            createdBy: d.currentUserId,
+          },
+          {
+            id: uid('grant'),
+            principalKind: 'user',
+            principalId: d.currentUserId,
+            resourceKind: 'project',
+            resourceId: id,
+            action: 'execute',
+            effect: 'allow',
+            inheritance: 'direct',
+            createdAt: Date.now(),
+            createdBy: d.currentUserId,
+          },
+        )
         d.activeProjectId = id
         return d
       })
@@ -319,6 +426,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       patch((d) => { d.agents.unshift(agent); return d })
       return agent
     },
+    updateAgent: (id, agentPatch) => patch((d) => {
+      const agent = d.agents.find((item) => item.id === id)
+      if (agent) Object.assign(agent, agentPatch)
+      return d
+    }),
     createSite: (input) => {
       const slug = input.slug ?? input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
       const site: Site = {
@@ -347,29 +459,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return site
     },
     createSiteVersion: (siteId, label, summary) => {
-      let version: SiteVersion | null = null
-      let ok = false
+      const s = dataRef.current.sites.find((x) => x.id === siteId)
+      if (!s) return null
+      const version: SiteVersion = {
+        id: uid('sv'), label, summary, status: 'draft', createdAt: Date.now(), createdBy: data.currentUserId,
+        snapshot: {
+          name: s.name,
+          description: s.description,
+          accent: s.accent,
+          pages: structuredClone(s.pages),
+          agentId: s.agentId,
+          agentPlacement: s.agentPlacement,
+        },
+      }
       patch((d) => {
-        const s = d.sites.find((x) => x.id === siteId)
-        if (s) {
-          version = {
-            id: uid('sv'), label, summary, status: 'draft', createdAt: Date.now(), createdBy: data.currentUserId,
-            snapshot: {
-              name: s.name,
-              description: s.description,
-              accent: s.accent,
-              pages: structuredClone(s.pages),
-              agentId: s.agentId,
-              agentPlacement: s.agentPlacement,
-            },
-          }
-          s.versions.unshift(version)
-          s.updatedAt = Date.now()
-          ok = true
-        }
+        const target = d.sites.find((x) => x.id === siteId)
+        if (!target) return d
+        target.versions.unshift(version)
+        target.updatedAt = Date.now()
         return d
       })
-      return ok ? version : null
+      return version
     },
     publishSiteVersion: (siteId, versionId) => patch((d) => {
       const s = d.sites.find((x) => x.id === siteId)
@@ -452,6 +562,59 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     markNotificationsRead: () => patch((d) => { d.notifications.forEach((n) => { n.read = true }); return d }),
     updateTaskStatus: (id, status) => patch((d) => { const t = d.tasks.find((x) => x.id === id); if (t) t.status = status; return d }),
     updateEnvironmentStatus: (id, status) => patch((d) => { const e = d.environments.find((x) => x.id === id); if (e) e.status = status; return d }),
+    requestSecureVm: (input) => {
+      const environmentId = uid('env')
+      const taskId = uid('task')
+      const shortTask = input.task.trim().replace(/\s+/g, ' ').slice(0, 56) || 'Background task'
+      const projectName = dataRef.current.projects.find((project) => project.id === input.projectId)?.name ?? 'Project'
+      patch((d) => {
+        d.environments.unshift({
+          id: environmentId,
+          name: `Secure VM · ${shortTask}`,
+          subtitle: `${projectName} · isolated ephemeral workspace`,
+          kind: 'sandbox',
+          status: 'Provisioning',
+          os: 'Hardened Ubuntu 22.04',
+          cpu: input.cpu,
+          network: input.network,
+          secrets: 'Short-lived vault refs',
+          packages: ['hardened image', 'node 20', 'git', 'audit agent'],
+          idleTimeout: input.idleTimeout,
+          cost: '$0.34 / hr · budget capped',
+          mounts: 'project workspace (ephemeral)',
+          region: 'us-east-1',
+          taskId,
+        })
+        d.tasks.unshift({
+          id: taskId,
+          projectId: input.projectId,
+          name: shortTask,
+          type: 'background',
+          schedule: 'Queued · provisioning secure VM',
+          harness: 'Secure VM agent',
+          status: 'queued',
+          progress: 0,
+          timeline: [
+            { time: 'now', title: 'Request accepted', detail: 'Policy, budget, and network controls applied', kind: 'info' },
+            { time: 'now', title: 'VM provisioning', detail: `${input.cpu} · ${input.network}` },
+          ],
+        })
+        return d
+      })
+      window.setTimeout(() => patch((d) => {
+        const environment = d.environments.find((item) => item.id === environmentId)
+        const task = d.tasks.find((item) => item.id === taskId)
+        if (environment?.status === 'Provisioning') environment.status = 'Running'
+        if (task?.status === 'queued') {
+          task.status = 'running'
+          task.progress = 12
+          task.schedule = 'Running in secure VM'
+          task.timeline?.push({ time: 'now', title: 'VM ready', detail: 'Ephemeral workspace encrypted and attached', kind: 'info' })
+        }
+        return d
+      }), 700)
+      return { environmentId, taskId }
+    },
     updateWikiSettings: (settings) => patch((d) => {
       d.wikiSettings = { ...d.wikiSettings, ...settings }
       return d
@@ -510,6 +673,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       if (wf.approvalRequired && check.approvalRequired) {
         toast('Approval required', `Confirm ${wf.name} before continuing`)
+        return null
       }
 
       const run: WorkflowRun = {
@@ -588,6 +752,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       patch((d) => { d.sources.unshift(source); return d })
       return source
     },
+    updateSource: (id, sourcePatch) => patch((data) => {
+      const source = data.sources.find((item) => item.id === id)
+      if (source) {
+        Object.assign(source, sourcePatch)
+        source.lastSyncAt = Date.now()
+      }
+      return data
+    }),
     updateHunk: (messageId, hunkId, status) => patch((d) => {
       const m = d.messages.find((x) => x.id === messageId)
       const files = m?.run?.artifacts?.flatMap((a) => a.diff ?? []) ?? []
