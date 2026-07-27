@@ -13,7 +13,7 @@ export type CodingProvider =
   | 'antigravity'
   | 'custom'
 export type RuntimeKind = 'local' | 'browser' | 'sandbox' | 'vm' | 'gpu' | 'restricted'
-export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type RunStatus = 'queued' | 'waiting' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
 export type PrincipalKind = 'user' | 'group' | 'agent'
 export type ResourceKind = 'organization' | 'project' | 'folder' | 'repository' | 'source' | 'tool' | 'workflow' | 'thread' | 'agent'
 export interface HarnessExecutionPolicy {
@@ -87,6 +87,54 @@ export interface RouteTelemetry {
   createdAt: number
 }
 
+/**
+ * Durable conversation metadata. This deliberately remains independent from
+ * the legacy workspace snapshot so clients can progressively adopt granular
+ * thread APIs without a flag-day migration.
+ */
+export interface ThreadRecord {
+  id: string
+  ownerId: string
+  projectId: string
+  title: string
+  visibility: 'private' | 'shared' | 'project'
+  sharedWith: string[]
+  agentId?: string
+  continuation?: {
+    provider: 'codex' | 'claude' | 'cursor' | 'gemini'
+    sessionId: string
+    sourcePath: string
+    authority: 'source_managed' | 'opensaddle_managed' | 'hybrid'
+    mode?: 'resume' | 'fork'
+    checkpointId?: string
+  }
+  branchedFromId?: string
+  pinned: boolean
+  archivedAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
+/** A durable transcript entry. `payload` preserves rich client-only fields
+ * (run blocks, rendered HTML, attachments) without coupling the daemon to UI
+ * presentation types. */
+export interface ThreadMessageRecord {
+  id: string
+  threadId: string
+  role: 'user' | 'assistant' | 'system'
+  text: string
+  createdAt: number
+  updatedAt: number
+  payload?: Record<string, unknown>
+}
+
+export interface ThreadSearchResult {
+  thread: ThreadRecord
+  messageId?: string
+  snippet: string
+  matchedIn: 'title' | 'message'
+}
+
 export type RunEventType =
   | 'session.created'
   | 'agent.started'
@@ -96,6 +144,7 @@ export type RunEventType =
   | 'review.completed'
   | 'review.failed'
   | 'approval.requested'
+  | 'approval.resolved'
   | 'tool.requested'
   | 'tool.completed'
   | 'verification.started'
@@ -109,6 +158,11 @@ export type RunEventType =
   | 'file.change.updated'
   | 'usage.updated'
   | 'input.requested'
+  | 'user.input.submitted'
+  | 'agent.queued'
+  | 'agent.dequeued'
+  | 'agent.paused'
+  | 'agent.resumed'
   | 'warning'
   | 'session.closed'
 
@@ -129,6 +183,9 @@ export interface ProvisionedRuntime {
   projectId: string
   ownerId: string
   workspacePath?: string
+  /** Original project folder that receives explicitly accepted review hunks. */
+  sourceWorkspacePath?: string
+  isolatedChanges?: boolean
   containerId?: string
   createdAt: number
   expiresAt: number
@@ -141,6 +198,8 @@ export interface RunRecord {
   ownerId: string
   agentId?: string
   parentRunId?: string
+  /** Immediate predecessor whose terminal state releases this queued turn. */
+  queuedAfterRunId?: string
   sourceIds?: string[]
   task: string
   route: RouteEstimate
@@ -154,7 +213,18 @@ export interface RunRecord {
   /** Local-only dynamic harness snapshot. Stored with the run so retries and
    * recovery never depend on mutable project configuration. */
   harnessProfile?: import('./harness/types.js').HarnessProfile
+  /** Existing provider-native session/thread selected for the first turn. */
+  providerSessionId?: string
+  /** Resume the source session or create a provider-native fork before the turn. */
+  providerSessionMode?: 'resume' | 'fork'
+  /** Provider turn checkpoint used to truncate a historical fork, inclusive. */
+  providerTurnId?: string
+  /** Git tree for the exact visible worktree before this run started. */
+  workspaceBaseline?: string
+  executionMode?: import('./executionModes.js').RunExecutionMode
   executionPolicy?: HarnessExecutionPolicy
+  /** Durable promotion target for changes prepared in Review mode. */
+  reviewTargetPath?: string
 }
 
 export interface ApprovalRecord {

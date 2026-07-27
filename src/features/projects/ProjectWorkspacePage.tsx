@@ -25,7 +25,7 @@ interface ResourceLink {
 function statusTone(status: ThreadStatus) {
   if (status === 'completed') return 'success' as const
   if (status === 'blocked' || status === 'failed') return 'danger' as const
-  if (status === 'needs_approval' || status === 'needs_input') return 'warning' as const
+  if (status === 'needs_approval' || status === 'needs_input' || status === 'paused') return 'warning' as const
   if (status === 'running' || status === 'planning' || status === 'reviewing') return 'info' as const
   return 'neutral' as const
 }

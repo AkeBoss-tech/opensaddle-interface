@@ -35,7 +35,7 @@
 .tf-project-children { margin-left: 12px; padding-left: 8px; border-left: 1px solid var(--border); }
 .tf-project-row, .tf-add-project { width: 100%; height: 28px; display: flex; align-items: center; gap: 7px; border: 0; border-radius: 6px; background: transparent; padding: 0 7px; color: var(--dim) !important; cursor: pointer; text-align: left; }
 .tf-project-row span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10.5px; }
-.tf-project-row:hover, .tf-project-row.active, .tf-add-project:hover { color: var(--text) !important; background: var(--card-hover); }
+.tf-project-row:hover, .tf-project-row.active, .tf-add-project:hover, .tf-add-project.active { color: var(--text) !important; background: var(--card-hover); }
 .tf-add-project { margin-top: 4px; color: var(--dim) !important; font-size: 10px; }
 .tf-project-row-wrap { min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; }
 .tf-project-disclosure { width: 18px; height: 27px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--dim) !important; cursor: pointer; }
@@ -60,6 +60,7 @@
 .tf-thread-state { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); }
 .tf-thread-state.running { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 12%, transparent); }
 .tf-thread-state.blocked { background: var(--orange); }
+.tf-thread-state.paused { background: #e6b768; box-shadow: 0 0 0 3px color-mix(in srgb, #e6b768 12%, transparent); }
 .tf-thread-state.ready { border: 1px solid var(--dim); background: transparent; }
 .tf-thread-copy { min-width: 0; display: grid; gap: 2px; }
 .tf-thread-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 540; }
@@ -100,6 +101,14 @@
 .tf-work-row { width: 100%; min-height: 57px; display: flex; align-items: center; gap: 11px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; text-align: left; }
 .tf-work-row:last-child { border-bottom: 0; }
 .tf-work-row:hover { background: var(--card-hover); }
+.tf-target-row {
+  background: color-mix(in srgb, var(--accent) 10%, transparent) !important;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.tf-target-card {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--border)) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .tf-work-icon { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--bg-elevated); }
 .tf-work-icon.approval { color: var(--orange); background: color-mix(in srgb, var(--orange) 8%, var(--bg-elevated)); }
 .tf-work-copy { min-width: 0; flex: 1; display: grid; gap: 3px; }
@@ -203,9 +212,133 @@ body[data-theme="light"] .chat-shell .scope-box p { color: #676961; }
   background: color-mix(in srgb, var(--orange) 7%, transparent);
   color: var(--orange);
 }
-.tf-inline-request > span { min-width: 0; display: grid; gap: 3px; }
+.tf-request-body { min-width: 0; display: grid; gap: 8px; }
+.tf-request-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tf-request-heading > span {
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--orange) 26%, var(--border));
+  border-radius: 999px;
+  color: var(--orange);
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
 .tf-inline-request strong { color: var(--text); font-size: 10px; }
 .tf-inline-request small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.tf-inline-request p { margin: 0; color: var(--muted); font-size: 9.5px; line-height: 1.5; white-space: pre-wrap; }
+
+.tf-run-failure {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 9px;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--red) 6%, transparent);
+  color: #e8a0a0;
+}
+
+.tf-run-failure > div { min-width: 0; }
+.tf-run-failure strong { display: block; color: var(--text); font-size: 10.5px; }
+.tf-run-failure p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font: 9.5px/1.45 var(--os-font-mono, ui-monospace, SFMono-Regular, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tf-run-failure small { display: block; margin-top: 5px; color: var(--dim); font-size: 9.5px; line-height: 1.45; }
+.tf-run-failure.authentication,
+.tf-run-failure.harness { background: color-mix(in srgb, var(--yellow) 6%, transparent); color: var(--yellow); }
+.tf-run-warnings {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 9px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--yellow) 5%, transparent);
+  color: var(--yellow);
+}
+.tf-run-warnings strong { display: block; color: var(--text); font-size: 10px; }
+.tf-run-warnings p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tf-request-detail {
+  max-height: 120px;
+  margin: 0;
+  padding: 7px 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 65%, transparent);
+  color: var(--text-secondary, var(--muted));
+  font: 8.5px/1.45 var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tf-request-question { display: grid; gap: 5px; }
+.tf-request-question > label { color: var(--text); font-size: 9px; font-weight: 650; }
+.tf-request-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(126px, 1fr)); gap: 5px; }
+.tf-request-options button {
+  display: grid;
+  gap: 2px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tf-request-options button:hover { border-color: color-mix(in srgb, var(--orange) 40%, var(--border)); color: var(--text); }
+.tf-request-options button.active {
+  border-color: color-mix(in srgb, var(--orange) 62%, var(--border));
+  background: color-mix(in srgb, var(--orange) 12%, var(--card));
+  color: var(--text);
+}
+.tf-request-options button > span { font-size: 9px; font-weight: 620; }
+.tf-request-options button > small { font-size: 8px; }
+.tf-request-input {
+  width: 100%;
+  min-height: 31px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 9.5px;
+}
+.tf-request-input:focus { border-color: color-mix(in srgb, var(--orange) 58%, var(--border)); }
+.tf-request-actions { display: flex; justify-content: flex-end; gap: 6px; padding-top: 2px; }
+.tf-request-actions button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--muted);
+  font: inherit;
+  font-size: 8.5px;
+  font-weight: 620;
+  cursor: pointer;
+}
+.tf-request-actions button:hover:not(:disabled) { color: var(--text); background: var(--card-hover); }
+.tf-request-actions button.primary {
+  border-color: color-mix(in srgb, var(--orange) 45%, var(--border));
+  background: color-mix(in srgb, var(--orange) 18%, var(--card));
+  color: var(--text);
+}
+.tf-request-actions button:disabled { opacity: .55; cursor: wait; }
+.tf-request-unavailable { color: var(--red, #e06c75) !important; }
 .tf-live-label {
   width: fit-content;
   display: flex;
@@ -302,6 +435,13 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
   background: var(--bg-elevated);
 }
 .tf-state-inline-form label { color: var(--muted); font-size: 8.5px; font-weight: 650; }
+.tf-state-inline-form > p {
+  margin: 0;
+  color: var(--dim);
+  font-size: 8px;
+  line-height: 1.45;
+}
+.tf-state-inline-form > p strong { color: var(--muted); font-weight: 600; }
 .tf-state-inline-form input,
 .tf-state-inline-form textarea {
   width: 100%;
@@ -330,6 +470,80 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
 }
 .tf-state-inline-form button[type="submit"] { background: var(--text); border-color: var(--text); color: var(--bg); }
 .tf-state-inline-form button:disabled { cursor: not-allowed; opacity: .5; }
+.tf-state-inline-form > .tf-git-file-actions { justify-content: flex-start; }
+.tf-state-inline-form > .tf-git-file-list {
+  max-height: 132px;
+  display: grid;
+  justify-content: stretch;
+  gap: 1px;
+  overflow: auto;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.tf-git-file-list label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 13px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 3px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tf-git-file-list label:hover { background: var(--card-hover); }
+.tf-state-inline-form .tf-git-file-list input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.tf-git-file-list span {
+  overflow: hidden;
+  color: var(--muted);
+  font: 8px/1.35 var(--font-mono, monospace);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tf-git-file-list small { color: var(--dim); font-size: 7px; }
+.tf-state-inline-form > .tf-git-ref-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.tf-git-ref-grid label { display: grid; gap: 4px; }
+.tf-state-inline-form > .tf-git-draft-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.tf-state-inline-form .tf-git-draft-option input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.tf-git-draft-option span { color: var(--muted); font-size: 8.5px; }
+.tf-pr-result { color: var(--green); }
+.tf-inspector-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.tf-inspector-section-head h4 { margin: 0 0 3px; }
+.tf-inspector-section-head p {
+  margin: 0;
+  color: var(--dim);
+  font-size: 8px;
+  line-height: 1.4;
+}
+.tf-inspector-section-head .tiny-btn { flex: 0 0 auto; }
 .tf-state-view-all {
   min-height: 27px;
   margin: 3px 7px 0;
@@ -451,13 +665,21 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
 .local-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
 .local-form-grid textarea { grid-column: 1 / -1; min-height: 72px; }
 .local-form-grid button { justify-self: start; }
+.local-form-actions { grid-column: 1 / -1; display: flex; gap: 7px; }
 .local-agent-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.local-agent-grid > button { min-height: 132px; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
-.local-agent-grid > button:hover { border-color: var(--border-strong); background: var(--hover); }
-.local-agent-grid > button > span { color: var(--accent); }
+.local-agent-card { overflow: hidden; border: 1px solid var(--border); border-radius: 9px; }
+.local-agent-open { width: 100%; min-height: 105px; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 12px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.local-agent-open:hover { background: var(--hover); }
+.local-agent-open > span { color: var(--accent); }
 .local-agent-grid strong { font-size: 10.5px; }
 .local-agent-grid p { flex: 1; margin: 0; color: var(--dim); font-size: 8.5px; line-height: 1.5; }
 .local-agent-grid small { color: var(--dim); font-size: 8px; }
+.local-card-actions { display: flex; gap: 4px; padding: 7px; border-top: 1px solid var(--border); }
+.local-card-actions button, .local-row-action { padding: 4px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--dim); font-size: 8px; cursor: pointer; }
+.local-card-actions button:hover, .local-row-action:hover { background: var(--hover); color: var(--text); }
+.local-card-actions button.danger:hover, .local-row-action.danger:hover { color: var(--danger); }
+.local-archive-section { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.local-archive-section h4 { margin: 0 0 8px; color: var(--dim); font-size: 9px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
 .local-harness-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .local-harness-item { position: relative; min-width: 0; }
 .local-harness-item > button:first-child { width: 100%; display: grid; grid-template-columns: 25px 1fr auto; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
@@ -470,7 +692,12 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
 .local-harness-grid small { color: var(--dim); font-size: 8px; }
 .local-custom-harness { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--border); }
 .local-custom-harness h4 { grid-column: 1 / -1; margin: 0; }
-.local-custom-harness input:nth-of-type(3) { grid-column: 1 / -1; }
+.local-custom-harness > label { display: grid; gap: 4px; color: var(--dim); font-size: 8px; }
+.local-custom-harness > label > input, .local-custom-harness > label > select { width: 100%; }
+.local-custom-harness .local-wide { grid-column: 1 / -1; }
+.local-custom-harness .local-toggle { display: flex; align-items: center; align-self: end; min-height: 31px; }
+.local-custom-harness .local-toggle input { width: auto; }
+.local-harness-note { margin: 0; color: var(--dim); font-size: 8.5px; line-height: 1.45; }
 .local-custom-harness button { justify-self: start; }
 .local-policy-default { max-width: 420px; display: grid; grid-template-columns: 1fr 180px; align-items: center; gap: 12px; margin-bottom: 14px; font-size: 9.5px; }
 .local-permission-list { display: grid; gap: 7px; }

@@ -2,7 +2,17 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { ControlPlaneConfig } from './config.js'
-import type { ApprovalRecord, PermissionGrant, PersistedState, ProvisionedRuntime, RouteTelemetry, RunRecord } from './types.js'
+import type {
+  ApprovalRecord,
+  PermissionGrant,
+  PersistedState,
+  ProvisionedRuntime,
+  RouteTelemetry,
+  RunRecord,
+  ThreadMessageRecord,
+  ThreadRecord,
+  ThreadSearchResult,
+} from './types.js'
 
 const EMPTY_STATE: PersistedState = { grants: [], runs: [], runtimes: [], approvals: [] }
 
@@ -73,6 +83,31 @@ export class StateStore {
       );
       CREATE INDEX IF NOT EXISTS workspace_documents_collection_idx
         ON workspace_documents(workspace_id, collection, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS threads (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        archived_at INTEGER,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        data_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS threads_project_updated_idx
+        ON threads(project_id, archived_at, pinned DESC, updated_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS threads_owner_updated_idx
+        ON threads(owner_id, updated_at DESC, id DESC);
+      CREATE TABLE IF NOT EXISTS thread_messages (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        text_value TEXT NOT NULL,
+        data_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS thread_messages_thread_created_idx
+        ON thread_messages(thread_id, created_at ASC, id ASC);
+      CREATE INDEX IF NOT EXISTS thread_messages_text_idx ON thread_messages(text_value);
       CREATE TABLE IF NOT EXISTS route_telemetry (
         id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL,
@@ -85,6 +120,7 @@ export class StateStore {
         ON route_telemetry(project_id, created_at DESC);
     `)
     await this.migrateLegacyJson()
+    this.seedThreadsFromWorkspace()
 
     if (!this.grants().some((grant) => grant.principalId === this.config.bootstrapAdminId)) {
       await this.replaceGrant({
@@ -250,6 +286,7 @@ export class StateStore {
           insertDocument.run('org-default', collection, documentId, updatedAt, JSON.stringify(record))
         })
       }
+      this.syncThreadsFromWorkspace(workspace, updatedBy, now)
       this.db.exec('COMMIT')
     } catch (error) {
       this.db.exec('ROLLBACK')
@@ -261,12 +298,156 @@ export class StateStore {
     return { engine: 'sqlite', path: this.path }
   }
 
-  private rows<T>(sql: string, ...params: string[]): T[] {
+  threads(options: {
+    projectId?: string
+    ownerId?: string
+    includeArchived?: boolean
+    limit?: number
+    cursor?: { pinned: boolean; updatedAt: number; id: string }
+  } = {}): ThreadRecord[] {
+    const where: string[] = []
+    const params: Array<string | number> = []
+    if (options.projectId) {
+      where.push('project_id = ?')
+      params.push(options.projectId)
+    }
+    if (options.ownerId) {
+      where.push('owner_id = ?')
+      params.push(options.ownerId)
+    }
+    if (!options.includeArchived) where.push('archived_at IS NULL')
+    if (options.cursor) {
+      where.push('(pinned < ? OR (pinned = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))))')
+      const pinned = options.cursor.pinned ? 1 : 0
+      params.push(pinned, pinned, options.cursor.updatedAt, options.cursor.updatedAt, options.cursor.id)
+    }
+    const limit = Math.max(1, Math.min(options.limit ?? 50, 100))
+    const sql = `SELECT data_json FROM threads${where.length ? ` WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY pinned DESC, updated_at DESC, id DESC LIMIT ?`
+    return this.rows<ThreadRecord>(sql, ...params, limit)
+  }
+
+  thread(id: string): ThreadRecord | undefined {
+    return this.row<ThreadRecord>('SELECT data_json FROM threads WHERE id = ?', id)
+  }
+
+  async saveThread(thread: ThreadRecord): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO threads (id, owner_id, project_id, title, archived_at, pinned, updated_at, data_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        owner_id = excluded.owner_id,
+        project_id = excluded.project_id,
+        title = excluded.title,
+        archived_at = excluded.archived_at,
+        pinned = excluded.pinned,
+        updated_at = excluded.updated_at,
+        data_json = excluded.data_json
+    `).run(
+      thread.id,
+      thread.ownerId,
+      thread.projectId,
+      thread.title,
+      thread.archivedAt ?? null,
+      thread.pinned ? 1 : 0,
+      thread.updatedAt,
+      JSON.stringify(thread),
+    )
+  }
+
+  async removeThread(id: string): Promise<boolean> {
+    return this.db.prepare('DELETE FROM threads WHERE id = ?').run(id).changes > 0
+  }
+
+  messages(threadId: string, options: {
+    limit?: number
+    cursor?: { createdAt: number; id: string }
+  } = {}): ThreadMessageRecord[] {
+    const params: Array<string | number> = [threadId]
+    let where = 'thread_id = ?'
+    if (options.cursor) {
+      where += ' AND (created_at > ? OR (created_at = ? AND id > ?))'
+      params.push(options.cursor.createdAt, options.cursor.createdAt, options.cursor.id)
+    }
+    const limit = Math.max(1, Math.min(options.limit ?? 100, 250))
+    params.push(limit)
+    return this.rows<ThreadMessageRecord>(
+      `SELECT data_json FROM thread_messages WHERE ${where} ORDER BY created_at ASC, id ASC LIMIT ?`,
+      ...params,
+    )
+  }
+
+  message(id: string): ThreadMessageRecord | undefined {
+    return this.row<ThreadMessageRecord>('SELECT data_json FROM thread_messages WHERE id = ?', id)
+  }
+
+  async appendMessage(message: ThreadMessageRecord): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO thread_messages (id, thread_id, created_at, updated_at, text_value, data_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      message.id,
+      message.threadId,
+      message.createdAt,
+      message.updatedAt,
+      message.text,
+      JSON.stringify(message),
+    )
+  }
+
+  async saveMessage(message: ThreadMessageRecord): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO thread_messages (id, thread_id, created_at, updated_at, text_value, data_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        thread_id = excluded.thread_id,
+        updated_at = excluded.updated_at,
+        text_value = excluded.text_value,
+        data_json = excluded.data_json
+    `).run(
+      message.id,
+      message.threadId,
+      message.createdAt,
+      message.updatedAt,
+      message.text,
+      JSON.stringify(message),
+    )
+  }
+
+  searchThreads(query: string, options: { projectId?: string; limit?: number } = {}): ThreadSearchResult[] {
+    const needle = `%${query.toLowerCase()}%`
+    const limit = Math.max(1, Math.min(options.limit ?? 50, 100))
+    const threadWhere = options.projectId ? 'AND t.project_id = ?' : ''
+    const params: Array<string | number> = [needle]
+    if (options.projectId) params.push(options.projectId)
+    params.push(needle)
+    if (options.projectId) params.push(options.projectId)
+    params.push(limit)
+    const rows = this.db.prepare(`
+      SELECT t.data_json AS thread_json, NULL AS message_id, t.title AS snippet, 'title' AS matched_in
+      FROM threads t
+      WHERE lower(t.title) LIKE ? ${threadWhere}
+      UNION ALL
+      SELECT t.data_json AS thread_json, m.id AS message_id, m.text_value AS snippet, 'message' AS matched_in
+      FROM thread_messages m JOIN threads t ON t.id = m.thread_id
+      WHERE lower(m.text_value) LIKE ? ${threadWhere}
+      ORDER BY matched_in ASC, snippet ASC
+      LIMIT ?
+    `).all(...params) as Array<{ thread_json: string; message_id: string | null; snippet: string; matched_in: 'title' | 'message' }>
+    return rows.map((row) => ({
+      thread: JSON.parse(row.thread_json) as ThreadRecord,
+      messageId: row.message_id ?? undefined,
+      snippet: row.snippet.slice(0, 320),
+      matchedIn: row.matched_in,
+    }))
+  }
+
+  private rows<T>(sql: string, ...params: Array<string | number>): T[] {
     const rows = this.db.prepare(sql).all(...params) as Array<{ data_json: string }>
     return rows.map((candidate) => JSON.parse(candidate.data_json) as T)
   }
 
-  private row<T>(sql: string, ...params: string[]): T | undefined {
+  private row<T>(sql: string, ...params: Array<string | number>): T | undefined {
     const candidate = this.db.prepare(sql).get(...params) as { data_json: string } | undefined
     return candidate ? JSON.parse(candidate.data_json) as T : undefined
   }
@@ -287,4 +468,114 @@ export class StateStore {
     for (const approval of state.approvals ?? []) await this.saveApproval(approval)
     this.db.prepare('INSERT INTO metadata (key, value) VALUES (?, ?)').run('legacy_json_migrated', new Date().toISOString())
   }
+
+  private seedThreadsFromWorkspace(): void {
+    const workspace = this.workspace()
+    if (!workspace) return
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      this.syncThreadsFromWorkspace(workspace, 'workspace-migration', Date.now())
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  /** Import legacy snapshot conversations without deleting newer granular data. */
+  private syncThreadsFromWorkspace(workspace: Record<string, unknown>, updatedBy: string, now: number): void {
+    const chats = Array.isArray(workspace.chats) ? workspace.chats : []
+    const messages = Array.isArray(workspace.messages) ? workspace.messages : []
+    const upsertThread = this.db.prepare(`
+      INSERT INTO threads (id, owner_id, project_id, title, archived_at, pinned, updated_at, data_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        owner_id = excluded.owner_id,
+        project_id = excluded.project_id,
+        title = excluded.title,
+        archived_at = excluded.archived_at,
+        pinned = excluded.pinned,
+        updated_at = excluded.updated_at,
+        data_json = excluded.data_json
+      WHERE excluded.updated_at >= threads.updated_at
+    `)
+    const insertMessage = this.db.prepare(`
+      INSERT OR IGNORE INTO thread_messages (id, thread_id, created_at, updated_at, text_value, data_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+    const knownThreadIds = new Set<string>()
+    for (const candidate of chats) {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+      const chat = candidate as Record<string, unknown>
+      const id = typeof chat.id === 'string' && chat.id ? chat.id : undefined
+      const projectId = typeof chat.projectId === 'string' && chat.projectId ? chat.projectId : undefined
+      if (!id || !projectId) continue
+      const createdAt = typeof chat.createdAt === 'number' ? chat.createdAt : now
+      const updatedAt = typeof chat.updatedAt === 'number' ? chat.updatedAt : Math.max(createdAt, now)
+      const visibility = chat.visibility === 'shared' || chat.visibility === 'project' ? chat.visibility : 'private'
+      const sharedWith = Array.isArray(chat.sharedWith)
+        ? chat.sharedWith.filter((value): value is string => typeof value === 'string').slice(0, 200)
+        : []
+      const record: ThreadRecord = {
+        id,
+        ownerId: typeof chat.ownerId === 'string' ? chat.ownerId : typeof workspace.currentUserId === 'string' ? workspace.currentUserId : updatedBy,
+        projectId,
+        title: typeof chat.title === 'string' && chat.title.trim() ? chat.title.trim().slice(0, 500) : 'Untitled thread',
+        visibility,
+        sharedWith,
+        agentId: typeof chat.agentId === 'string' ? chat.agentId : undefined,
+        continuation: legacyThreadContinuation(chat.continuation),
+        branchedFromId: typeof chat.branchedFromId === 'string' ? chat.branchedFromId : undefined,
+        pinned: chat.pinned === true,
+        archivedAt: chat.archived === true ? updatedAt : undefined,
+        createdAt,
+        updatedAt,
+      }
+      knownThreadIds.add(id)
+      upsertThread.run(record.id, record.ownerId, record.projectId, record.title, record.archivedAt ?? null, record.pinned ? 1 : 0, record.updatedAt, JSON.stringify(record))
+    }
+    for (const candidate of messages) {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+      const message = candidate as Record<string, unknown>
+      const id = typeof message.id === 'string' && message.id ? message.id : undefined
+      const threadId = typeof message.chatId === 'string' && message.chatId ? message.chatId : undefined
+      if (!id || !threadId || !knownThreadIds.has(threadId)) continue
+      const createdAt = typeof message.createdAt === 'number' ? message.createdAt : now
+      const record: ThreadMessageRecord = {
+        id,
+        threadId,
+        role: message.role === 'assistant' || message.role === 'system' ? message.role : 'user',
+        text: typeof message.text === 'string' ? message.text.slice(0, 200_000) : '',
+        createdAt,
+        updatedAt: typeof message.updatedAt === 'number' ? message.updatedAt : createdAt,
+        payload: Object.fromEntries(Object.entries(message).filter(([key]) => !['id', 'chatId', 'role', 'text', 'createdAt', 'updatedAt'].includes(key))),
+      }
+      insertMessage.run(record.id, record.threadId, record.createdAt, record.updatedAt, record.text, JSON.stringify(record))
+    }
+  }
+}
+
+function legacyThreadContinuation(value: unknown): ThreadRecord['continuation'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const input = value as Record<string, unknown>
+  const provider = input.provider === 'codex'
+    || input.provider === 'claude'
+    || input.provider === 'cursor'
+    || input.provider === 'gemini'
+    ? input.provider
+    : undefined
+  const authority = input.authority === 'source_managed'
+    || input.authority === 'opensaddle_managed'
+    || input.authority === 'hybrid'
+    ? input.authority
+    : undefined
+  const sessionId = typeof input.sessionId === 'string' && input.sessionId.trim()
+    ? input.sessionId.slice(0, 300)
+    : undefined
+  const sourcePath = typeof input.sourcePath === 'string' && input.sourcePath.trim()
+    ? input.sourcePath.slice(0, 2_000)
+    : undefined
+  return provider && authority && sessionId && sourcePath
+    ? { provider, authority, sessionId, sourcePath }
+    : undefined
 }

@@ -73,7 +73,6 @@ export function normalizeThreadStatus(messages: readonly Message[], runs: readon
   const latestRun = runs.at(-1)
   if (latestRun) {
     if (latestRun.status === 'queued') return 'ready_to_run'
-    if (latestRun.status === 'paused') return 'stopped'
     return latestRun.status
   }
 
@@ -356,7 +355,7 @@ export function adaptTaskAttention(task: Task, project: Project): AttentionItem 
     detail: task.schedule || task.action || task.harness,
     projectId: task.projectId,
     projectName: project.name,
-    href: '/runs',
+    href: `/runs?task=${encodeURIComponent(task.id)}`,
     progress: task.progress,
     source: { sourceType: 'task', sourceStatus: task.status, task },
   }
@@ -381,7 +380,7 @@ export function adaptWorkflowRunAttention(
     detail: run.summary,
     projectId: run.projectId,
     projectName: project.name,
-    href: '/workflows',
+    href: `/workflows/${encodeURIComponent(run.projectId)}?run=${encodeURIComponent(run.id)}`,
     updatedAt: run.finishedAt ?? run.startedAt,
     ownerId: run.ownerId,
     agentId: run.agentId,
@@ -400,7 +399,7 @@ export function adaptAgentSessionAttention(session: AgentSession, project: Proje
     detail: `${session.harness} · ${session.model}`,
     projectId: session.projectId,
     projectName: project.name,
-    href: `/agents/${encodeURIComponent(session.agentId)}`,
+    href: `/agents/${encodeURIComponent(session.projectId)}?agent=${encodeURIComponent(session.agentId)}&session=${encodeURIComponent(session.id)}`,
     updatedAt: session.startedAt,
     agentId: session.agentId,
     source: { sourceType: 'agent_session', sourceStatus: session.status, agentSession: session },

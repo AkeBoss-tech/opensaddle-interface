@@ -1,11 +1,13 @@
 import { detectRuntimeMode, type RuntimeMode } from './capabilities'
-import type { FileStore, PermissionClient, RuntimeClient, SandboxClient, ToolClient, WorkspaceClient } from './contracts'
+import type { FileStore, LocalProjectClient, PermissionClient, RuntimeClient, SandboxClient, ThreadClient, ToolClient, WorkspaceClient } from './contracts'
 import { createFileStore } from './fileStore'
 import { MockRuntimeClient } from './mockRuntime'
 import { OpenSaddleRuntimeClient } from './opensaddleClient'
 import { LocalPermissionClient } from './permissions'
 import { RemotePermissionClient } from './remotePermissions'
 import { RemoteWorkspaceClient } from './remoteWorkspace'
+import { RemoteThreadClient } from './remoteThreads'
+import { RemoteLocalProjectClient } from './remoteLocalProjects'
 import { WorkerSandboxClient } from './sandbox'
 import { MockOAuthToolClient } from './oauthTools'
 import { BrowserAgentRuntime } from './browserAgentRuntime'
@@ -20,6 +22,8 @@ export interface ServiceBundle {
   browserRuntime: BrowserAgentRuntime
   permissions: PermissionClient
   workspace?: WorkspaceClient
+  threads?: ThreadClient
+  localProjects?: LocalProjectClient
   controlPlane: {
     connected: boolean
     mode?: 'local' | 'company'
@@ -123,6 +127,12 @@ export function initServices(opts: {
       const workspace = backendAvailable
         ? new RemoteWorkspaceClient(baseUrl, getUserId, token)
         : undefined
+      const threads = backendAvailable
+        ? new RemoteThreadClient(baseUrl, getUserId, token)
+        : undefined
+      const localProjects = backendAvailable && backendMode === 'local'
+        ? new RemoteLocalProjectClient(baseUrl, getUserId, token)
+        : undefined
       return {
         mode,
         runtime,
@@ -132,6 +142,8 @@ export function initServices(opts: {
         browserRuntime,
         permissions,
         workspace,
+        threads,
+        localProjects,
         controlPlane: {
           connected: backendAvailable,
           mode: backendMode,

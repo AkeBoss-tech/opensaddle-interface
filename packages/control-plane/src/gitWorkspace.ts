@@ -66,6 +66,16 @@ export interface GitComparison {
   truncated: boolean
 }
 
+export interface GitPullRequest {
+  repository: string
+  number: number
+  url: string
+  title: string
+  state: string
+  base: string
+  head: string
+}
+
 function inside(candidate: string, root: string): boolean {
   const path = relative(root, candidate)
   return path === '' || (!path.startsWith('..') && !isAbsolute(path))
@@ -196,7 +206,8 @@ function parseStatus(output: string): Omit<GitStatus, 'repository' | 'additions'
   }
 }
 
-async function runGit(
+async function runProgram(
+  executable: string,
   cwd: string,
   args: string[],
   options: { timeoutMs?: number; maxOutputBytes?: number } = {},
@@ -204,7 +215,7 @@ async function runGit(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxOutputBytes = options.maxOutputBytes ?? MAX_OUTPUT_BYTES
   return await new Promise<GitResult>((resolveResult, reject) => {
-    const child = spawn('git', args, {
+    const child = spawn(executable, args, {
       cwd,
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -236,7 +247,7 @@ async function runGit(
     }
     child.stdout.on('data', (chunk: Buffer) => append(stdout, chunk))
     child.stderr.on('data', (chunk: Buffer) => append(stderr, chunk))
-    child.on('error', (error) => finish(new GitWorkspaceError('git_failed', 'Git could not be started', 500, error.message)))
+    child.on('error', (error) => finish(new GitWorkspaceError('git_failed', `${executable} could not be started`, 500, error.message)))
     child.on('close', (code) => {
       const result = {
         stdout: Buffer.concat(stdout).toString('utf8'),
@@ -258,10 +269,22 @@ async function runGit(
   })
 }
 
+async function runGit(
+  cwd: string,
+  args: string[],
+  options: { timeoutMs?: number; maxOutputBytes?: number } = {},
+): Promise<GitResult> {
+  return await runProgram('git', cwd, args, options)
+}
+
 export class GitWorkspaceService {
   private readonly roots: string[]
 
-  constructor(roots: string[], private readonly additionalRoots: () => string[] = () => []) {
+  constructor(
+    roots: string[],
+    private readonly additionalRoots: () => string[] = () => [],
+    private readonly githubCli = 'gh',
+  ) {
     this.roots = [...new Set(roots.map((root) => resolve(root)))]
   }
 
@@ -361,6 +384,23 @@ export class GitWorkspaceService {
     }
   }
 
+  async createBranch(
+    input: string,
+    branchInput: string,
+    startPointInput?: string,
+  ): Promise<{ repository: string; branch: string; startPoint: string; summary: string }> {
+    const repository = await this.resolveRepository(input)
+    const branch = validateRef(branchInput, 'branch')
+    const startPoint = validateRef(startPointInput ?? 'HEAD', 'start point')
+    const result = await runGit(repository, ['switch', '-c', branch, startPoint])
+    return {
+      repository,
+      branch,
+      startPoint,
+      summary: safeGitDetail([result.stdout.trim(), result.stderr.trim()].filter(Boolean).join('\n')),
+    }
+  }
+
   async commit(
     input: string,
     message: string,
@@ -410,6 +450,76 @@ export class GitWorkspaceService {
       remote,
       branch,
       summary: safeGitDetail([result.stdout.trim(), result.stderr.trim()].filter(Boolean).join('\n')),
+    }
+  }
+
+  async createPullRequest(
+    input: string,
+    options: { title: string; body: string; base: string; head?: string; draft?: boolean },
+  ): Promise<GitPullRequest> {
+    const repository = await this.resolveRepository(input)
+    const title = options.title.trim()
+    const body = options.body.trim()
+    if (!title || title.length > 500 || title.includes('\0')) {
+      throw new GitWorkspaceError('invalid_git_input', 'title must contain 1-500 characters', 400)
+    }
+    if (body.length > 50_000 || body.includes('\0')) {
+      throw new GitWorkspaceError('invalid_git_input', 'body must contain at most 50000 characters', 400)
+    }
+    const base = validateRef(options.base, 'base')
+    const currentBranch = (await runGit(repository, ['branch', '--show-current'])).stdout.trim()
+    const head = validateRef(options.head ?? currentBranch, 'head')
+    if (base === head) {
+      throw new GitWorkspaceError('invalid_git_input', 'head must differ from base', 400)
+    }
+    const createArgs = [
+      'pr', 'create',
+      '--base', base,
+      '--head', head,
+      '--title', title,
+      '--body', body,
+      ...(options.draft ? ['--draft'] : []),
+    ]
+    const created = await runProgram(this.githubCli, repository, createArgs, { timeoutMs: 120_000 })
+    const url = /https:\/\/[^\s]+\/pull\/\d+/.exec(`${created.stdout}\n${created.stderr}`)?.[0]
+    if (!url) {
+      throw new GitWorkspaceError('git_failed', 'GitHub CLI did not return a pull request URL', 502)
+    }
+    const viewed = await runProgram(this.githubCli, repository, [
+      'pr', 'view', url,
+      '--json', 'number,url,title,state,baseRefName,headRefName',
+    ], { timeoutMs: 30_000 })
+    let detail: {
+      number?: unknown
+      url?: unknown
+      title?: unknown
+      state?: unknown
+      baseRefName?: unknown
+      headRefName?: unknown
+    }
+    try {
+      detail = JSON.parse(viewed.stdout) as typeof detail
+    } catch {
+      throw new GitWorkspaceError('git_failed', 'GitHub CLI returned invalid pull request details', 502)
+    }
+    if (
+      typeof detail.number !== 'number'
+      || typeof detail.url !== 'string'
+      || typeof detail.title !== 'string'
+      || typeof detail.state !== 'string'
+      || typeof detail.baseRefName !== 'string'
+      || typeof detail.headRefName !== 'string'
+    ) {
+      throw new GitWorkspaceError('git_failed', 'GitHub CLI returned incomplete pull request details', 502)
+    }
+    return {
+      repository,
+      number: detail.number,
+      url: detail.url,
+      title: detail.title,
+      state: detail.state,
+      base: detail.baseRefName,
+      head: detail.headRefName,
     }
   }
 }

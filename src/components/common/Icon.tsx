@@ -44,6 +44,7 @@ const PATHS: Record<string, string> = {
   camera: 'M4 7h4l1.5-2h5L16 7h4v12H4V7ZM12 11m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0',
   print: 'M7 17h10v4H7zM6 7V3h12v4M6 17H4V9h16v8h-2',
   refresh: 'M4 12a8 8 0 0 1 13.6-5.6L20 8M20 4v4h-4',
+  archive: 'M4 7h16v13H4V7ZM3 3h18v4H3V3Zm6 8h6',
   command: 'M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6',
   git: 'm20.4 11-7.4-7.4-2 2',
   sun: 'M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 2v2M12 20v2M4 12H2M22 12h-2',

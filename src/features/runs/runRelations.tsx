@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Icon } from '../../components/common/Icon'
 import './runRelations.css'
 
-export type RelatedRunStatus = 'queued' | 'running' | 'waiting' | 'paused' | 'completed' | 'failed'
+export type RelatedRunStatus = 'queued' | 'running' | 'waiting' | 'paused' | 'completed' | 'failed' | 'stopped'
 
 /** Structural subset shared by SessionEvent and future remote event contracts. */
 export interface RunEventLike {
@@ -130,6 +130,7 @@ function statusFrom(run: RunRecordLike | undefined, event: RunEventLike | undefi
   const type = event?.type ?? ''
   const statusText = run?.run?.statusText?.toLowerCase() ?? ''
   if (type === 'agent.failed' || statusText.includes('fail') || statusText.includes('error')) return 'failed'
+  if (statusText.includes('stop') || statusText.includes('cancel')) return 'stopped'
   if (run?.run?.done || type === 'agent.completed' || type === 'session.closed') return 'completed'
   if (type === 'agent.paused' || statusText.includes('paused')) return 'paused'
   if (
@@ -215,7 +216,7 @@ export function selectRelatedRuns(input: RunRelationsInput): RelatedRun[] {
     .map((id) => explicit.get(id) ?? relationFrom(id, input.parentRunId, byId.get(id), latestEvent.get(id)))
     .sort((left, right) => {
       const rank: Record<RelatedRunStatus, number> = {
-        waiting: 0, running: 1, paused: 2, failed: 3, queued: 4, completed: 5,
+        waiting: 0, running: 1, paused: 2, failed: 3, stopped: 4, queued: 5, completed: 6,
       }
       return rank[left.status] - rank[right.status] || left.title.localeCompare(right.title)
     })

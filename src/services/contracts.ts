@@ -1,4 +1,4 @@
-import type { AgentRunBlock, AppData, CodingProvider, Harness, ModelKey, RuntimeKind, SitePage } from '../types'
+import type { AgentRunBlock, AppData, CodingProvider, Harness, ModelKey, RunExecutionMode, RuntimeKind, SitePage } from '../types'
 
 export type RunEventType =
   | 'session.created'
@@ -7,6 +7,8 @@ export type RunEventType =
   | 'agent.output.delta'
   | 'agent.input.requested'
   | 'user.input.submitted'
+  | 'agent.queued'
+  | 'agent.dequeued'
   | 'tool.requested'
   | 'tool.completed'
   | 'approval.requested'
@@ -52,6 +54,26 @@ export interface RouteEstimate {
   reasons: string[]
   cost: string
   alternatives?: Array<{ modelKey: ModelKey; harnessKey: Harness; score: number }>
+}
+
+export interface RuntimeRunSummary {
+  runId: string
+  sessionId: string
+  projectId: string
+  task: string
+  agentId?: string
+  parentRunId?: string
+  queuedAfterRunId?: string
+  status: 'queued' | 'provisioning' | 'running' | 'waiting' | 'paused' | 'completed' | 'failed' | 'cancelled'
+  route: RouteEstimate
+  providerSessionId?: string
+  providerSessionMode?: 'resume' | 'fork'
+  providerTurnId?: string
+  executionMode?: RunExecutionMode
+  createdAt: number
+  updatedAt: number
+  error?: string
+  lastEventType?: RunEventType
 }
 
 export interface GitStatusResult {
@@ -105,17 +127,40 @@ export interface RuntimeClient {
     agentId?: string
     parentRunId?: string
     sourceIds?: string[]
+    providerSessionId?: string
+    providerSessionMode?: 'resume' | 'fork'
+    providerTurnId?: string
     modelKey?: ModelKey
     modelId?: string
     harnessKey?: Harness
     providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
+    executionMode?: RunExecutionMode
     repo?: string
     approvalId?: string
     reviewProviderKey?: CodingProvider
   }): Promise<{ runId: string; sessionId: string; mode?: string; route?: RouteEstimate }>
+  listRuns?(): Promise<RuntimeRunSummary[]>
   subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void
   cancel(runId: string): Promise<void>
+  pause(runId: string): Promise<void>
+  resume(runId: string): Promise<void>
+  retry(runId: string): Promise<{ runId: string; sessionId: string; parentRunId?: string; route?: RouteEstimate }>
+  steer(runId: string, text: string): Promise<void>
+  queue(runId: string, text: string): Promise<{
+    runId: string
+    sessionId: string
+    parentRunId?: string
+    queuedAfterRunId?: string
+    route?: RouteEstimate
+  }>
+  respondToRequest(runId: string, requestId: string, response: {
+    approved?: boolean
+    scope?: 'once' | 'session'
+    text?: string
+    answers?: Record<string, string[]>
+    form?: Record<string, unknown>
+  }): Promise<void>
   requestApproval?(input: {
     projectId: string
     agentId?: string
@@ -134,6 +179,13 @@ export interface RuntimeClient {
   }>
   gitStatus?(projectId: string, repo: string): Promise<GitStatusResult>
   gitCompare?(projectId: string, repo: string, base: string, head?: string): Promise<GitComparisonResult>
+  gitCreateBranch?(input: {
+    projectId: string
+    repo: string
+    branch: string
+    startPoint?: string
+    approvalId?: string
+  }): Promise<{ repository: string; branch: string; startPoint: string; summary: string }>
   gitCommit?(input: {
     projectId: string
     repo: string
@@ -149,11 +201,227 @@ export interface RuntimeClient {
     branch?: string
     approvalId: string
   }): Promise<{ repository: string; remote: string; branch: string; summary: string }>
+  gitCreatePullRequest?(input: {
+    projectId: string
+    repo: string
+    title: string
+    body: string
+    base: string
+    head?: string
+    draft?: boolean
+    approvalId: string
+  }): Promise<{
+    repository: string
+    number: number
+    url: string
+    title: string
+    state: string
+    base: string
+    head: string
+  }>
 }
 
 export interface WorkspaceClient {
   load(): Promise<AppData | null>
   save(workspace: AppData): Promise<{ updatedAt: number; documents: number }>
+}
+
+/** Server-owned conversation metadata, deliberately separate from AppData's
+ * legacy snapshot collections. */
+export interface DurableThread {
+  id: string
+  ownerId: string
+  projectId: string
+  title: string
+  visibility: 'private' | 'shared' | 'project'
+  sharedWith: string[]
+  agentId?: string
+  continuation?: {
+    provider: 'codex' | 'claude' | 'cursor' | 'gemini'
+    sessionId: string
+    sourcePath: string
+    authority: 'source_managed' | 'opensaddle_managed' | 'hybrid'
+    mode?: 'resume' | 'fork'
+    checkpointId?: string
+  }
+  branchedFromId?: string
+  pinned: boolean
+  archivedAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DurableThreadMessage {
+  id: string
+  threadId: string
+  role: 'user' | 'assistant' | 'system'
+  text: string
+  createdAt: number
+  updatedAt: number
+  payload?: Record<string, unknown>
+}
+
+export interface ThreadClient {
+  list(input?: {
+    projectId?: string
+    includeArchived?: boolean
+    limit?: number
+    cursor?: string
+  }): Promise<{ threads: DurableThread[]; nextCursor?: string }>
+  get(threadId: string): Promise<DurableThread>
+  create(input: {
+    id?: string
+    projectId: string
+    title?: string
+    visibility?: DurableThread['visibility']
+    sharedWith?: string[]
+    agentId?: string
+    continuation?: DurableThread['continuation']
+    branchedFromId?: string
+    pinned?: boolean
+  }): Promise<DurableThread>
+  update(threadId: string, input: Partial<Pick<DurableThread, 'title' | 'visibility' | 'sharedWith' | 'agentId' | 'continuation' | 'pinned'>> & { archived?: boolean }): Promise<DurableThread>
+  remove(threadId: string): Promise<void>
+  messages(threadId: string, input?: { limit?: number; cursor?: string }): Promise<{
+    messages: DurableThreadMessage[]
+    nextCursor?: string
+  }>
+  appendMessage(threadId: string, input: {
+    id?: string
+    role: DurableThreadMessage['role']
+    text: string
+    payload?: Record<string, unknown>
+  }): Promise<DurableThreadMessage>
+  updateMessage(threadId: string, messageId: string, input: {
+    text?: string
+    payload?: Record<string, unknown>
+  }): Promise<DurableThreadMessage>
+  search(input: { q: string; projectId?: string; limit?: number }): Promise<Array<{
+    thread: DurableThread
+    messageId?: string
+    snippet: string
+    matchedIn: 'title' | 'message'
+  }>>
+}
+
+export interface HarnessCapability {
+  id: string
+  label: string
+  description: string
+  kind: 'native' | 'cli'
+  availability: 'available' | 'missing' | 'disabled'
+  readiness: 'ready' | 'needs_auth' | 'unknown' | 'unavailable'
+  command?: string
+  resolvedPath?: string
+  version?: string
+  unavailableReason?: string
+  auth: {
+    state: 'configured' | 'not_detected' | 'not_required' | 'unknown'
+    detectedBy?: 'environment' | 'cli'
+    message?: string
+    setupCommand?: string
+  }
+  models: Array<{ id: string; configured: boolean }>
+  capabilities: {
+    streaming: boolean
+    tools: boolean
+    mcp: boolean
+    skills: boolean
+    reasoningControls: boolean
+    contextMetadata: boolean
+    cancellation: boolean
+  }
+}
+
+export interface LocalSessionSummary {
+  provider: 'codex' | 'claude'
+  sessionId: string
+  path: string
+  cwd?: string
+  updatedAt: number
+  version?: string
+  originator?: string
+  branch?: string
+}
+
+export interface ProjectFileEntry {
+  path: string
+  name: string
+  kind: 'file' | 'directory' | 'symlink'
+  size: number | null
+  modifiedAt: number | null
+  symlinkTarget?: string
+}
+
+export interface ProjectArtifactManifest {
+  root: string
+  generatedAt: number
+  artifacts: Array<{
+    kind: 'instruction' | 'skill' | 'agent' | 'documentation' | 'site'
+    path: string
+    name: string
+    modifiedAt: number | null
+    location: string
+  }>
+  counts: Record<'instruction' | 'skill' | 'agent' | 'documentation' | 'site', number>
+  truncated: boolean
+}
+
+export interface ManagedArtifactArchive {
+  archivedPath: string
+  originalPath: string
+  kind: 'agent' | 'skill'
+  name: string
+  archivedAt: number
+  bytes: number
+}
+
+export interface LocalProjectClient {
+  harnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
+  refreshHarnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
+  localSessions(provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]>
+  listFiles(projectId: string, input?: { path?: string; limit?: number }): Promise<{
+    root: string
+    path: string
+    entries: ProjectFileEntry[]
+    truncated: boolean
+  }>
+  statFile(projectId: string, path: string): Promise<ProjectFileEntry & { root: string; readable: boolean }>
+  readFile(projectId: string, path: string): Promise<{
+    root: string
+    path: string
+    content: string
+    bytes: number
+    truncated: boolean
+  }>
+  writeManagedArtifact(projectId: string, input: { path: string; content: string }): Promise<{
+    root: string
+    path: string
+    bytes: number
+    modifiedAt: number
+  }>
+  archiveManagedArtifact(projectId: string, path: string): Promise<{
+    root: string
+    path: string
+    archivedPath: string
+    archivedAt: number
+  }>
+  listManagedArchives(projectId: string): Promise<ManagedArtifactArchive[]>
+  restoreManagedArtifact(projectId: string, archivedPath: string): Promise<{
+    root: string
+    path: string
+    archivedPath: string
+    restoredAt: number
+  }>
+  searchFiles(projectId: string, query: string, limit?: number): Promise<{
+    root: string
+    query: string
+    matches: Array<{ path: string; line: number; column: number; preview: string }>
+    scannedFiles: number
+    scannedBytes: number
+    truncated: boolean
+  }>
+  rescan(projectId: string): Promise<ProjectArtifactManifest>
 }
 
 export interface FileEntry {

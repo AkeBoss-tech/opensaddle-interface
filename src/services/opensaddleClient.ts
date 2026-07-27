@@ -1,6 +1,6 @@
 import { MockRuntimeClient } from './mockRuntime'
-import type { GitComparisonResult, GitStatusResult, RuntimeClient, RouteEstimate, SessionEvent } from './contracts'
-import type { CodingProvider, Harness, ModelKey, RuntimeKind } from '../types'
+import type { GitComparisonResult, GitStatusResult, RuntimeClient, RouteEstimate, RuntimeRunSummary, SessionEvent } from './contracts'
+import type { CodingProvider, Harness, ModelKey, RunExecutionMode, RuntimeKind } from '../types'
 import { createOrderedEventEmitter } from './orderedEvents'
 
 /**
@@ -125,11 +125,15 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     agentId?: string
     parentRunId?: string
     sourceIds?: string[]
+    providerSessionId?: string
+    providerSessionMode?: 'resume' | 'fork'
+    providerTurnId?: string
     modelKey?: ModelKey
     modelId?: string
     harnessKey?: Harness
     providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
+    executionMode?: RunExecutionMode
     repo?: string
     approvalId?: string
     reviewProviderKey?: CodingProvider
@@ -148,11 +152,15 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
           agent_id: input.agentId,
           parent_run_id: input.parentRunId,
           source_ids: input.sourceIds,
+          provider_session_id: input.providerSessionId,
+          provider_session_mode: input.providerSessionMode,
+          provider_turn_id: input.providerTurnId,
           model_key: input.modelKey,
           model_id: input.modelId,
           harness_key: input.harnessKey,
           provider_key: input.providerKey,
           runtime_key: input.runtimeKey,
+          execution_mode: input.executionMode,
           repo: input.repo,
           approval_id: input.approvalId,
           review_provider_key: input.reviewProviderKey,
@@ -170,6 +178,50 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       if (this.allowFallback && error instanceof TypeError) return this.fallback.startRun(input)
       throw error
     }
+  }
+
+  async listRuns(): Promise<RuntimeRunSummary[]> {
+    if (!(await this.healthy())) return []
+    const response = await fetch(`${this.baseUrl}/api/runs`, { headers: this.headers() })
+    if (!response.ok) throw await this.responseError(response)
+    const rows = await response.json() as Array<{
+      run_id: string
+      session_id: string
+      project_id: string
+      task: string
+      agent_id?: string
+      parent_run_id?: string
+      queued_after_run_id?: string
+      status: RuntimeRunSummary['status']
+      route: RouteEstimate
+      provider_session_id?: string
+      provider_session_mode?: 'resume' | 'fork'
+      provider_turn_id?: string
+      execution_mode?: RuntimeRunSummary['executionMode']
+      created_at: number
+      updated_at: number
+      error?: string
+      last_event_type?: RuntimeRunSummary['lastEventType']
+    }>
+    return rows.map((run) => ({
+      runId: run.run_id,
+      sessionId: run.session_id,
+      projectId: run.project_id,
+      task: run.task,
+      agentId: run.agent_id,
+      parentRunId: run.parent_run_id,
+      queuedAfterRunId: run.queued_after_run_id,
+      status: run.status,
+      route: run.route,
+      providerSessionId: run.provider_session_id,
+      providerSessionMode: run.provider_session_mode,
+      providerTurnId: run.provider_turn_id,
+      executionMode: run.execution_mode,
+      createdAt: run.created_at,
+      updatedAt: run.updated_at,
+      error: run.error,
+      lastEventType: run.last_event_type,
+    }))
   }
 
   async resolveDiff(
@@ -237,6 +289,28 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     return await response.json() as GitComparisonResult
   }
 
+  async gitCreateBranch(input: {
+    projectId: string
+    repo: string
+    branch: string
+    startPoint?: string
+    approvalId?: string
+  }): Promise<{ repository: string; branch: string; startPoint: string; summary: string }> {
+    const response = await fetch(`${this.baseUrl}/api/git/branch`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify({
+        project_id: input.projectId,
+        repo: input.repo,
+        branch: input.branch,
+        start_point: input.startPoint,
+        approval_id: input.approvalId,
+      }),
+    })
+    if (!response.ok) throw await this.responseError(response)
+    return await response.json() as { repository: string; branch: string; startPoint: string; summary: string }
+  }
+
   async gitCommit(input: {
     projectId: string
     repo: string
@@ -281,6 +355,50 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     })
     if (!response.ok) throw await this.responseError(response)
     return await response.json() as { repository: string; remote: string; branch: string; summary: string }
+  }
+
+  async gitCreatePullRequest(input: {
+    projectId: string
+    repo: string
+    title: string
+    body: string
+    base: string
+    head?: string
+    draft?: boolean
+    approvalId: string
+  }): Promise<{
+    repository: string
+    number: number
+    url: string
+    title: string
+    state: string
+    base: string
+    head: string
+  }> {
+    const response = await fetch(`${this.baseUrl}/api/git/pull-request`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify({
+        project_id: input.projectId,
+        repo: input.repo,
+        title: input.title,
+        body: input.body,
+        base: input.base,
+        head: input.head,
+        draft: input.draft,
+        approval_id: input.approvalId,
+      }),
+    })
+    if (!response.ok) throw await this.responseError(response)
+    return await response.json() as {
+      repository: string
+      number: number
+      url: string
+      title: string
+      state: string
+      base: string
+      head: string
+    }
   }
 
   subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void {
@@ -386,6 +504,104 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       }
     }
     return this.fallback.cancel(runId)
+  }
+
+  async pause(runId: string): Promise<void> {
+    if (!(await this.healthy())) return this.fallback.pause(runId)
+    const res = await fetch(`${this.baseUrl}/api/runs/${runId}/pause`, {
+      method: 'POST',
+      headers: this.headers(),
+    })
+    if (!res.ok) throw await this.responseError(res)
+  }
+
+  async resume(runId: string): Promise<void> {
+    if (!(await this.healthy())) return this.fallback.resume(runId)
+    const res = await fetch(`${this.baseUrl}/api/runs/${runId}/resume`, {
+      method: 'POST',
+      headers: this.headers(),
+    })
+    if (!res.ok) throw await this.responseError(res)
+  }
+
+  async retry(runId: string): Promise<{ runId: string; sessionId: string; parentRunId?: string; route?: RouteEstimate }> {
+    if (!(await this.healthy())) return this.fallback.retry(runId)
+    const res = await fetch(`${this.baseUrl}/api/runs/${runId}/retry`, {
+      method: 'POST',
+      headers: this.headers(),
+    })
+    if (!res.ok) throw await this.responseError(res)
+    const payload = await res.json() as {
+      run_id: string
+      session_id: string
+      parent_run_id?: string
+      route?: RouteEstimate
+    }
+    return {
+      runId: payload.run_id,
+      sessionId: payload.session_id,
+      parentRunId: payload.parent_run_id,
+      route: payload.route,
+    }
+  }
+
+  async steer(runId: string, text: string): Promise<void> {
+    if (!(await this.healthy())) return this.fallback.steer(runId, text)
+    const res = await fetch(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/steer`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify({ text }),
+    })
+    if (!res.ok) throw await this.responseError(res)
+  }
+
+  async queue(runId: string, text: string): Promise<{
+    runId: string
+    sessionId: string
+    parentRunId?: string
+    queuedAfterRunId?: string
+    route?: RouteEstimate
+  }> {
+    if (!(await this.healthy())) return this.fallback.queue(runId, text)
+    const res = await fetch(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/queue`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify({ text }),
+    })
+    if (!res.ok) throw await this.responseError(res)
+    const payload = await res.json() as {
+      run_id: string
+      session_id: string
+      parent_run_id?: string
+      queued_after_run_id?: string
+      route?: RouteEstimate
+    }
+    return {
+      runId: payload.run_id,
+      sessionId: payload.session_id,
+      parentRunId: payload.parent_run_id,
+      queuedAfterRunId: payload.queued_after_run_id,
+      route: payload.route,
+    }
+  }
+
+  async respondToRequest(runId: string, requestId: string, response: {
+    approved?: boolean
+    scope?: 'once' | 'session'
+    text?: string
+    answers?: Record<string, string[]>
+    form?: Record<string, unknown>
+  }): Promise<void> {
+    if (!(await this.healthy())) return this.fallback.respondToRequest(runId, requestId, response)
+    const res = await fetch(
+      `${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/requests/${encodeURIComponent(requestId)}/respond`,
+      {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify(response),
+      },
+    )
+    if (!res.ok) throw await this.responseError(res)
   }
 
   async requestApproval(input: {

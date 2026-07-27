@@ -79,7 +79,7 @@ function Shell() {
     const routeLabels: Record<string, string> = {
       work: 'Work',
       start: 'Start',
-      runs: 'Legacy runs',
+      runs: 'Runs',
       wiki: 'Wiki',
       agents: 'Agents',
       workflows: 'Automations',

@@ -1,6 +1,6 @@
 import { deriveRoute, simulateAgentRun } from '../lib/simulation'
 import type { RuntimeClient, RouteEstimate, SessionEvent } from './contracts'
-import type { CodingProvider, Harness, ModelKey, RuntimeKind } from '../types'
+import type { CodingProvider, Harness, ModelKey, RunExecutionMode, RuntimeKind } from '../types'
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
@@ -9,6 +9,7 @@ function uid(prefix: string) {
 export class MockRuntimeClient implements RuntimeClient {
   private listeners = new Map<string, Set<(e: SessionEvent) => void>>()
   private cancelled = new Set<string>()
+  private paused = new Set<string>()
 
   async estimate(task: string, prefs?: {
     routingPref?: string
@@ -44,9 +45,13 @@ export class MockRuntimeClient implements RuntimeClient {
     agentId?: string
     parentRunId?: string
     sourceIds?: string[]
+    providerSessionId?: string
+    providerSessionMode?: 'resume' | 'fork'
+    providerTurnId?: string
     modelKey?: ModelKey
     harnessKey?: Harness
     runtimeKey?: RuntimeKind
+    executionMode?: RunExecutionMode
     repo?: string
   }): Promise<{ runId: string; sessionId: string; mode?: string }> {
     const runId = uid('run')
@@ -80,6 +85,100 @@ export class MockRuntimeClient implements RuntimeClient {
     })
   }
 
+  async pause(runId: string): Promise<void> {
+    this.paused.add(runId)
+    this.emit(runId, {
+      event_id: uid('evt'),
+      session_id: 'local',
+      run_id: runId,
+      sequence: 9000,
+      timestamp: new Date().toISOString(),
+      type: 'agent.paused',
+      payload: { resumable: true },
+    })
+  }
+
+  async resume(runId: string): Promise<void> {
+    this.paused.delete(runId)
+    this.emit(runId, {
+      event_id: uid('evt'),
+      session_id: 'local',
+      run_id: runId,
+      sequence: 9001,
+      timestamp: new Date().toISOString(),
+      type: 'agent.resumed',
+      payload: {},
+    })
+  }
+
+  async retry(runId: string): Promise<{ runId: string; sessionId: string; parentRunId?: string }> {
+    return { runId: uid('run'), sessionId: uid('ses'), parentRunId: runId }
+  }
+
+  async steer(runId: string, text: string): Promise<void> {
+    this.emit(runId, {
+      event_id: uid('evt'),
+      session_id: 'local',
+      run_id: runId,
+      sequence: 9002,
+      timestamp: new Date().toISOString(),
+      type: 'user.input.submitted',
+      payload: { kind: 'steer', text },
+    })
+  }
+
+  async queue(runId: string, text: string): Promise<{
+    runId: string
+    sessionId: string
+    parentRunId?: string
+    queuedAfterRunId?: string
+  }> {
+    const queuedRunId = uid('run')
+    const sessionId = uid('ses')
+    const route = deriveRoute(text, 'quality')
+    queueMicrotask(() => {
+      this.emit(queuedRunId, {
+        event_id: uid('evt'),
+        session_id: sessionId,
+        run_id: queuedRunId,
+        sequence: 0,
+        timestamp: new Date().toISOString(),
+        type: 'agent.queued',
+        payload: { after_run_id: runId, parent_run_id: runId },
+      })
+      window.setTimeout(() => {
+        this.emit(queuedRunId, {
+          event_id: uid('evt'),
+          session_id: sessionId,
+          run_id: queuedRunId,
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          type: 'agent.dequeued',
+          payload: { after_run_id: runId },
+        })
+        void this.emitStream(queuedRunId, sessionId, text, route)
+      }, 750)
+    })
+    return { runId: queuedRunId, sessionId, parentRunId: runId, queuedAfterRunId: runId }
+  }
+
+  async respondToRequest(runId: string, requestId: string, response: {
+    approved?: boolean
+    scope?: 'once' | 'session'
+    text?: string
+    answers?: Record<string, string[]>
+  }): Promise<void> {
+    this.emit(runId, {
+      event_id: uid('evt'),
+      session_id: 'local',
+      run_id: runId,
+      sequence: 9002,
+      timestamp: new Date().toISOString(),
+      type: response.approved === undefined ? 'user.input.submitted' : 'approval.resolved',
+      payload: { request_id: requestId, allowed: response.approved, scope: response.scope },
+    })
+  }
+
   private emit(runId: string, event: SessionEvent) {
     this.listeners.get(runId)?.forEach((fn) => fn(event))
   }
@@ -93,7 +192,7 @@ export class MockRuntimeClient implements RuntimeClient {
     let seq = 0
     let emittedOutput = ''
     const push = (type: SessionEvent['type'], payload: Record<string, unknown>) => {
-      if (this.cancelled.has(runId)) return
+      if (this.cancelled.has(runId) || this.paused.has(runId)) return
       this.emit(runId, {
         event_id: uid('evt'),
         session_id: sessionId,

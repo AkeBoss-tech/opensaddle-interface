@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -72,6 +72,24 @@ test('compares commits using validated refs and returns a bounded patch', async 
   }
 })
 
+test('creates a validated local branch while preserving current worktree changes', async () => {
+  const fixture = await repository()
+  try {
+    await writeFile(join(fixture.repo, 'README.md'), 'one\nuncommitted\n')
+    const created = await fixture.service.createBranch(fixture.repo, 'feature/opensaddle-pr')
+    assert.equal(created.branch, 'feature/opensaddle-pr')
+    assert.equal(await git(fixture.repo, 'branch', '--show-current'), 'feature/opensaddle-pr')
+    const status = await fixture.service.status(fixture.repo)
+    assert.equal(status.files.some((file) => file.path === 'README.md' && file.modified), true)
+    await assert.rejects(
+      fixture.service.createBranch(fixture.repo, '--unsafe'),
+      (error: unknown) => error instanceof GitWorkspaceError && error.code === 'invalid_git_input',
+    )
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
 test('commits selected paths and pushes an explicit branch to a named remote', async () => {
   const fixture = await repository()
   const remote = join(fixture.root, 'remote.git')
@@ -90,6 +108,50 @@ test('commits selected paths and pushes an explicit branch to a named remote', a
     assert.equal(pushed.remote, 'origin')
     assert.equal(pushed.branch, 'main')
     assert.equal(await git(remote, 'rev-parse', 'refs/heads/main'), commit.commit)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('creates a pull request through the authenticated GitHub CLI without invoking a shell', async () => {
+  const fixture = await repository()
+  const fakeGh = join(fixture.root, 'fake-gh')
+  try {
+    await git(fixture.repo, 'checkout', '-b', 'feature/pr-handoff')
+    await writeFile(fakeGh, [
+      '#!/bin/sh',
+      'if [ "$1" = "pr" ] && [ "$2" = "create" ]; then',
+      '  printf "%s\\n" "https://github.com/example/repo/pull/42"',
+      '  exit 0',
+      'fi',
+      'if [ "$1" = "pr" ] && [ "$2" = "view" ]; then',
+      '  printf "%s\\n" \'{\"number\":42,\"url\":\"https://github.com/example/repo/pull/42\",\"title\":\"Ship PR handoff\",\"state\":\"OPEN\",\"baseRefName\":\"main\",\"headRefName\":\"feature/pr-handoff\"}\'',
+      '  exit 0',
+      'fi',
+      'exit 1',
+      '',
+    ].join('\n'))
+    await chmod(fakeGh, 0o755)
+    const service = new GitWorkspaceService([fixture.root], () => [], fakeGh)
+    const pullRequest = await service.createPullRequest(fixture.repo, {
+      title: 'Ship PR handoff',
+      body: 'Verified locally.',
+      base: 'main',
+      head: 'feature/pr-handoff',
+    })
+    assert.equal(pullRequest.number, 42)
+    assert.equal(pullRequest.url, 'https://github.com/example/repo/pull/42')
+    assert.equal(pullRequest.base, 'main')
+    assert.equal(pullRequest.head, 'feature/pr-handoff')
+    await assert.rejects(
+      service.createPullRequest(fixture.repo, {
+        title: 'Unsafe',
+        body: '',
+        base: 'feature/pr-handoff',
+        head: 'feature/pr-handoff',
+      }),
+      (error: unknown) => error instanceof GitWorkspaceError && error.code === 'invalid_git_input',
+    )
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }

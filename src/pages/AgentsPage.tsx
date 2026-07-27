@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 import { evaluatePermissions } from '../services/permissions'
 
 export function AgentsPage() {
   const { projectId } = useParams()
+  const [searchParams] = useSearchParams()
+  const selectedAgentId = searchParams.get('agent')
+  const selectedSessionId = searchParams.get('session')
   const { data, createChat, toast, services } = useStore()
   const nav = useNavigate()
   const [filter, setFilter] = useState('')
@@ -22,6 +25,13 @@ export function AgentsPage() {
     }
     return list
   }, [data.agents, projectId, filter, directoryOnly])
+
+  useEffect(() => {
+    if (!selectedAgentId) return
+    window.setTimeout(() => {
+      document.getElementById(`agent-${selectedAgentId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }, 0)
+  }, [selectedAgentId])
 
   return (
     <div className="content-page">
@@ -59,7 +69,7 @@ export function AgentsPage() {
             action: 'execute',
           })
           return (
-            <article className="card wiki-person" key={agent.id}>
+            <article id={`agent-${agent.id}`} className={`card wiki-person ${selectedAgentId === agent.id ? 'tf-target-card' : ''}`} key={agent.id}>
               <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => nav(`/agent/${agent.id}`)}>
                 <div>
                   <h3>{agent.name}</h3>
@@ -76,7 +86,7 @@ export function AgentsPage() {
                 <div className="wiki-section">
                   <h4>Sessions</h4>
                   {sessions.length ? sessions.map((s) => (
-                    <div className="wiki-bullet" key={s.id}><Icon name="activity" className="icon sm" /><span>{s.title} · {s.status} · {s.model}</span></div>
+                    <div className={`wiki-bullet ${selectedSessionId === s.id ? 'tf-target-row' : ''}`} key={s.id}><Icon name="activity" className="icon sm" /><span>{s.title} · {s.status} · {s.model}</span></div>
                   )) : <div className="row-sub">No active sessions</div>}
                 </div>
                 <div className="wiki-section">

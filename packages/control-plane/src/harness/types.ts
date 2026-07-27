@@ -21,7 +21,7 @@ export interface HarnessProfile {
   description: string
   kind: 'native' | 'cli'
   /** Optional provider protocol. Codex's rich-client integration uses app-server JSONL. */
-  protocol?: 'cli' | 'codex-app-server'
+  protocol?: 'cli' | 'codex-app-server' | 'acp'
   /** How the prompt is passed to the CLI. */
   promptMode: 'final_arg' | 'flag' | 'stdin' | 'native'
   promptFlag?: string
@@ -64,6 +64,34 @@ export interface HarnessEmit {
   (type: RunEventType, payload: Record<string, unknown>): Promise<void>
 }
 
+export interface HarnessInteractionQuestion {
+  id: string
+  header?: string
+  prompt: string
+  options?: Array<{ label: string; description?: string }>
+  allowOther?: boolean
+  secret?: boolean
+}
+
+export interface HarnessInteractionRequest {
+  id: string
+  kind: 'approval' | 'input'
+  method: string
+  prompt: string
+  detail?: string
+  questions?: HarnessInteractionQuestion[]
+  availableDecisions?: string[]
+  metadata?: Record<string, unknown>
+}
+
+export interface HarnessInteractionResponse {
+  approved?: boolean
+  scope?: 'once' | 'session'
+  text?: string
+  answers?: Record<string, string[]>
+  form?: Record<string, unknown>
+}
+
 export interface HarnessRunInput {
   runId: string
   sessionId: string
@@ -73,19 +101,28 @@ export interface HarnessRunInput {
   route: RouteEstimate
   workspacePath: string
   providerId: string
+  /** Provider-native durable conversation identifier used for exact resume. */
+  providerSessionId?: string
+  providerSessionMode?: 'resume' | 'fork'
+  providerTurnId?: string
   profile?: HarnessProfile
   executionPolicy?: HarnessExecutionPolicy
   signal: AbortSignal
   emit: HarnessEmit
+  requestInteraction?: (request: HarnessInteractionRequest) => Promise<HarnessInteractionResponse>
 }
 
 export interface HarnessRunResult {
   summary: string
   exitCode?: number
   providerId: string
+  /** The adapter already streamed this summary into agent.output.delta events. */
+  outputAlreadyEmitted?: boolean
 }
 
 export interface HarnessAdapter {
   readonly id: string
   run(input: HarnessRunInput): Promise<HarnessRunResult>
+  /** Inject user guidance into the currently active native turn when supported. */
+  steer?(runId: string, text: string): Promise<boolean>
 }

@@ -2,11 +2,18 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { normalizeCliLine } from '../src/harness/normalizers.js'
 import { BUILTIN_PROFILES } from '../src/harness/profiles.js'
+import { buildArgs, emitStructuredCliEvent } from '../src/harness/cliAdapter.js'
 import { which } from '../src/harness/index.js'
 import { estimateRoute } from '../src/router.js'
 import { containsUnsupportedToolCall } from '../src/modelGateway.js'
-import { mergeCodexMessage } from '../src/harness/codexAppServer.js'
+import {
+  codexForkCheckpoint,
+  codexInteractionRequest,
+  codexInteractionResult,
+  mergeCodexMessage,
+} from '../src/harness/codexAppServer.js'
 import type { ControlPlaneConfig } from '../src/config.js'
+import type { HarnessEmit } from '../src/harness/types.js'
 
 function testConfig(overrides: Partial<ControlPlaneConfig> = {}): ControlPlaneConfig {
   return {
@@ -102,6 +109,34 @@ describe('coding harness routing', () => {
     assert.ok(args.includes('WebFetch'))
   })
 
+  it('lets Claude prepare edits inside its review workspace without bypassing permissions', () => {
+    const claude = BUILTIN_PROFILES.find((profile) => profile.id === 'claude')!
+    const args = buildArgs(claude, 'fix the bug', '/tmp/ws', undefined, {
+      sandbox: 'workspace-write',
+      approvals: 'on-request',
+      network: false,
+      allowedTools: [],
+      deniedTools: [],
+    })
+    assert.equal(args[args.indexOf('--permission-mode') + 1], 'acceptEdits')
+    assert.equal(args.includes('--dangerously-skip-permissions'), false)
+  })
+
+  it('resumes a durable Claude session when one is available', async () => {
+    const { buildArgs } = await import('../src/harness/cliAdapter.js')
+    const claude = BUILTIN_PROFILES.find((profile) => profile.id === 'claude')!
+    const args = buildArgs(claude, 'continue', '/tmp/ws', 'opus', undefined, 'session-123')
+    assert.equal(args[args.indexOf('--resume') + 1], 'session-123')
+  })
+
+  it('forks a durable Claude session without mutating the source conversation', async () => {
+    const { buildArgs } = await import('../src/harness/cliAdapter.js')
+    const claude = BUILTIN_PROFILES.find((profile) => profile.id === 'claude')!
+    const args = buildArgs(claude, 'branch the work', '/tmp/ws', 'opus', undefined, 'session-123', 'fork')
+    assert.equal(args[args.indexOf('--resume') + 1], 'session-123')
+    assert.ok(args.includes('--fork-session'))
+  })
+
   it('does not duplicate Claude partial output when the final message repeats it', async () => {
     const { mergeCliText } = await import('../src/harness/cliAdapter.js')
     assert.deepEqual(mergeCliText('hello', 'hello'), { output: 'hello', delta: '' })
@@ -141,6 +176,15 @@ describe('model response safety', () => {
 })
 
 describe('Codex app-server transcript merging', () => {
+  it('selects native thread resume when a provider session is available', async () => {
+    const { codexThreadOpenMethod } = await import('../src/harness/codexAppServer.js')
+    assert.equal(codexThreadOpenMethod(), 'thread/start')
+    assert.equal(codexThreadOpenMethod('thread_123'), 'thread/resume')
+    assert.equal(codexThreadOpenMethod('thread_123', 'fork'), 'thread/fork')
+    assert.deepEqual(codexForkCheckpoint('fork', 'turn_123'), { lastTurnId: 'turn_123' })
+    assert.deepEqual(codexForkCheckpoint('resume', 'turn_123'), {})
+  })
+
   it('adds a final agent message after an earlier streaming preamble', () => {
     const merged = mergeCodexMessage('I’ll inspect the file.', 'The package name is opensaddle-interface.')
     assert.equal(merged.output, 'I’ll inspect the file.\n\nThe package name is opensaddle-interface.')
@@ -151,6 +195,66 @@ describe('Codex app-server transcript merging', () => {
     const merged = mergeCodexMessage('Hello', 'Hello world')
     assert.equal(merged.output, 'Hello world')
     assert.equal(merged.delta, ' world')
+  })
+
+  it('maps native command approval requests and session decisions', () => {
+    const request = codexInteractionRequest({
+      id: 17,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        command: 'npm test',
+        cwd: '/tmp/project',
+        reason: 'Run the verification suite',
+      },
+    })
+    assert.deepEqual(request, {
+      id: 'codex:17',
+      kind: 'approval',
+      method: 'item/commandExecution/requestApproval',
+      prompt: 'Run the verification suite',
+      detail: 'npm test\n/tmp/project',
+      availableDecisions: ['accept', 'acceptForSession', 'decline'],
+      metadata: { command: 'npm test', cwd: '/tmp/project' },
+    })
+    assert.deepEqual(
+      codexInteractionResult(request!.method, { approved: true, scope: 'session' }),
+      { decision: 'acceptForSession' },
+    )
+    assert.deepEqual(
+      codexInteractionResult(request!.method, { approved: false }),
+      { decision: 'decline' },
+    )
+  })
+
+  it('maps native user questions and structured answers', () => {
+    const params = {
+      questions: [{
+        id: 'release',
+        header: 'Release channel',
+        question: 'Where should I publish?',
+        options: [{ label: 'Preview', description: 'Safe test deployment' }],
+        isOther: true,
+        isSecret: false,
+      }],
+    }
+    const request = codexInteractionRequest({
+      id: 'question-1',
+      method: 'item/tool/requestUserInput',
+      params,
+    })
+    assert.equal(request?.id, 'codex:question-1')
+    assert.deepEqual(request?.questions, [{
+      id: 'release',
+      header: 'Release channel',
+      prompt: 'Where should I publish?',
+      options: [{ label: 'Preview', description: 'Safe test deployment' }],
+      allowOther: true,
+      secret: false,
+    }])
+    assert.deepEqual(
+      codexInteractionResult(request!.method, { answers: { release: ['Preview'] } }, params),
+      { answers: { release: { answers: ['Preview'] } } },
+    )
   })
 })
 
@@ -177,6 +281,18 @@ describe('CLI line normalizers', () => {
     assert.equal(normalizeCliLine('cursor', 'running tests...'), 'running tests...\n')
   })
 
+  it('extracts Cursor stream-json assistant and result text', () => {
+    assert.equal(normalizeCliLine('cursor', JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'Hello from Cursor' }] },
+    })), 'Hello from Cursor')
+    assert.equal(normalizeCliLine('cursor', JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      result: 'Cursor finished',
+    })), 'Cursor finished')
+  })
+
   it('preserves token deltas without inserting whitespace', () => {
     const line = JSON.stringify({
       type: 'content_block_delta',
@@ -200,6 +316,150 @@ describe('builtin harness profiles', () => {
 
   it('defines per-harness approval policies', () => {
     assert.equal(BUILTIN_PROFILES.find((profile) => profile.id === 'codex')?.approvalPolicy, 'none')
-    assert.equal(BUILTIN_PROFILES.find((profile) => profile.id === 'claude')?.approvalPolicy, 'shell')
+    assert.equal(BUILTIN_PROFILES.find((profile) => profile.id === 'claude')?.approvalPolicy, 'none')
+    assert.equal(BUILTIN_PROFILES.find((profile) => profile.id === 'gemini')?.approvalPolicy, 'none')
+  })
+
+  it('configures Cursor for structured headless streaming and policy-aware resume', () => {
+    const cursor = BUILTIN_PROFILES.find((profile) => profile.id === 'cursor')!
+    const args = buildArgs(cursor, 'Fix the test', '/tmp/workspace', undefined, {
+      sandbox: 'workspace-write',
+      approvals: 'on-request',
+      network: false,
+      allowedTools: [],
+      deniedTools: [],
+    }, 'cursor-session-1')
+
+    assert.deepEqual(args, [
+      '--print', '--output-format', 'stream-json', '--stream-partial-output', '--trust',
+      '--workspace', '/tmp/workspace',
+      '--resume', 'cursor-session-1',
+      'Fix the test',
+      '--sandbox', 'enabled',
+    ])
+  })
+
+  it('keeps stdin harness prompts out of argv', () => {
+    const stdinProfile = {
+      ...BUILTIN_PROFILES.find((profile) => profile.id === 'opencode')!,
+      id: 'custom-stdin',
+      promptMode: 'stdin' as const,
+      baseArgs: ['run'],
+    }
+    assert.deepEqual(buildArgs(stdinProfile, 'Secret prompt body', '/tmp/workspace'), ['run'])
+  })
+
+  it('does not force Gemini YOLO mode when a local project requires approvals', () => {
+    const gemini = BUILTIN_PROFILES.find((profile) => profile.id === 'gemini')!
+    const guarded = buildArgs(gemini, 'Inspect the repository', '/tmp/workspace', undefined, {
+      sandbox: 'workspace-write',
+      approvals: 'on-request',
+      network: false,
+      allowedTools: ['read_file'],
+      deniedTools: [],
+    })
+    const unrestricted = buildArgs(gemini, 'Implement the change', '/tmp/workspace', undefined, {
+      sandbox: 'full-access',
+      approvals: 'never',
+      network: true,
+      allowedTools: [],
+      deniedTools: [],
+    })
+
+    assert.ok(guarded.includes('default'))
+    assert.ok(!guarded.includes('yolo'))
+    assert.ok(guarded.includes('read_file'))
+    assert.ok(unrestricted.includes('yolo'))
+  })
+
+  it('maps Gemini native sessions, tools, warnings, and usage into durable activity', async () => {
+    const events: Array<{ type: string; payload: Record<string, unknown> }> = []
+    const emit: HarnessEmit = async (type, payload) => {
+      events.push({ type, payload })
+    }
+    const state = { toolNames: new Map<string, string>() }
+    await emitStructuredCliEvent('gemini', JSON.stringify({
+      type: 'init', session_id: 'gemini-session-1', model: 'gemini-2.5-pro',
+    }), emit, state)
+    await emitStructuredCliEvent('gemini', JSON.stringify({
+      type: 'tool_use', tool_name: 'run_shell_command', tool_id: 'tool-1', parameters: { command: 'npm test' },
+    }), emit, state)
+    await emitStructuredCliEvent('gemini', JSON.stringify({
+      type: 'tool_result', tool_id: 'tool-1', status: 'success', output: '57 passed',
+    }), emit, state)
+    await emitStructuredCliEvent('gemini', JSON.stringify({
+      type: 'error', severity: 'warning', message: 'Context was compacted',
+    }), emit, state)
+    await emitStructuredCliEvent('gemini', JSON.stringify({
+      type: 'result', status: 'success', stats: { input_tokens: 100, output_tokens: 20 },
+    }), emit, state)
+
+    assert.deepEqual(events.map((event) => event.type), [
+      'tool.completed',
+      'command.started',
+      'command.completed',
+      'warning',
+      'usage.updated',
+    ])
+    assert.equal(events[0]?.payload.session_id, 'gemini-session-1')
+    assert.equal(events[2]?.payload.tool, 'run_shell_command')
+    assert.deepEqual(events[4]?.payload.stats, { input_tokens: 100, output_tokens: 20 })
+  })
+
+  it('correlates Claude tool results with their native command type', async () => {
+    const events: Array<{ type: string; payload: Record<string, unknown> }> = []
+    const emit: HarnessEmit = async (type, payload) => {
+      events.push({ type, payload })
+    }
+    const state = { toolNames: new Map<string, string>() }
+    await emitStructuredCliEvent('claude', JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [{
+          type: 'tool_use',
+          id: 'tool-use-1',
+          name: 'Bash',
+          input: { command: 'npm test' },
+        }],
+      },
+    }), emit, state)
+    await emitStructuredCliEvent('claude', JSON.stringify({
+      type: 'user',
+      message: {
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'tool-use-1',
+          content: '72 tests passed',
+        }],
+      },
+    }), emit, state)
+
+    assert.deepEqual(events.map((event) => event.type), ['command.started', 'command.completed'])
+    assert.equal(events[1]?.payload.tool, 'Bash')
+    assert.equal(events[1]?.payload.tool_id, 'tool-use-1')
+    assert.equal(state.toolNames.size, 0)
+  })
+
+  it('resumes the exact Gemini session recorded by its stream', () => {
+    const gemini = BUILTIN_PROFILES.find((profile) => profile.id === 'gemini')!
+    const args = buildArgs(gemini, 'Continue the task', '/tmp/workspace', undefined, {
+      sandbox: 'workspace-write',
+      approvals: 'on-request',
+      network: false,
+      allowedTools: [],
+      deniedTools: [],
+    }, 'gemini-session-1')
+
+    assert.ok(args.includes('--resume'))
+    assert.equal(args[args.indexOf('--resume') + 1], 'gemini-session-1')
+  })
+
+  it('reports the native harness available for configured provider-backed gateways', async () => {
+    const { HarnessRegistry } = await import('../src/harness/index.js')
+    const registry = new HarnessRegistry(testConfig({
+      modelRoutes: {},
+      modelProvider: 'openai-compatible',
+    }), {} as never)
+    assert.equal(registry.list().find((status) => status.id === 'opensaddle')?.availability, 'available')
   })
 })

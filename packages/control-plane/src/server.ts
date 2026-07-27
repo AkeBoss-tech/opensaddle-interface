@@ -3,11 +3,16 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
 import { authenticate, redactUrl } from './auth.js'
 import { loadConfig } from './config.js'
+import { policyForExecutionMode, type RunExecutionMode } from './executionModes.js'
 import { GitWorkspaceError, GitWorkspaceService } from './gitWorkspace.js'
+import { HarnessCapabilityRegistry } from './harness/capabilityRegistry.js'
 import { HarnessRegistry } from './harness/index.js'
+import { mergeProfiles } from './harness/profiles.js'
 import type { HarnessProfile } from './harness/types.js'
+import { LocalSessionDiscovery, type LocalSessionProvider } from './localSessions.js'
 import { ModelGateway } from './modelGateway.js'
 import { canDelegateToAgent, evaluatePermissions, requireAdmin } from './permissions.js'
+import { ProjectFilesystemError, ProjectFilesystemService } from './projectFilesystem.js'
 import { RuntimeProvisioner } from './provisioner.js'
 import { estimateRoute } from './router.js'
 import { RunManager } from './runManager.js'
@@ -23,6 +28,8 @@ import type {
   PrincipalKind,
   ResourceKind,
   RuntimeKind,
+  ThreadMessageRecord,
+  ThreadRecord,
 } from './types.js'
 
 declare module 'fastify' {
@@ -39,6 +46,13 @@ const provisioner = new RuntimeProvisioner(config, store)
 const harnesses = new HarnessRegistry(config, models)
 const runs = new RunManager(config, store, models, provisioner, harnesses)
 await runs.recoverInterruptedRuns()
+const localSessions = new LocalSessionDiscovery()
+const harnessCapabilities = new HarnessCapabilityRegistry({
+  profiles: mergeProfiles(config.harnessProfiles),
+  enabledProviderIds: config.codingProviders,
+  nativeAvailable: harnesses.list().some((status) => status.id === 'opensaddle' && status.availability === 'available'),
+  nativeUnavailableReason: 'Configure a local model endpoint in Settings before using the OpenSaddle harness',
+})
 const git = new GitWorkspaceService([...config.allowedRepoRoots, config.workspaceDir], () => {
   if (config.mode !== 'local') return []
   const projects = store.workspace()?.projects
@@ -65,7 +79,7 @@ await app.register(cors, {
     if (!origin || config.corsOrigins.includes(origin)) callback(null, true)
     else callback(new Error('Origin not allowed'), false)
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-OpenSaddle-User', 'If-Unmodified-Since'],
 })
 
@@ -101,6 +115,22 @@ function optionalString(body: Record<string, unknown>, key: string, max = 2_000)
   return value.trim()
 }
 
+function threadContinuation(value: unknown): ThreadRecord['continuation'] {
+  if (value === undefined || value === null) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('continuation must be an object')
+  }
+  const input = value as Record<string, unknown>
+  const provider = enumValue(input, 'provider', ['codex', 'claude', 'cursor', 'gemini'] as const)
+  const authority = enumValue(input, 'authority', ['source_managed', 'opensaddle_managed', 'hybrid'] as const)
+  const mode = enumValue(input, 'mode', ['resume', 'fork'] as const)
+  const checkpointId = optionalString(input, 'checkpointId', 300)
+  const sessionId = requiredString(input, 'sessionId', 300)
+  const sourcePath = requiredString(input, 'sourcePath', 2_000)
+  if (!provider || !authority) throw new Error('continuation provider and authority are required')
+  return { provider, sessionId, sourcePath, authority, mode, checkpointId }
+}
+
 function enumValue<T extends string>(
   body: Record<string, unknown>,
   key: string,
@@ -116,6 +146,111 @@ function enumValue<T extends string>(
 
 function permissionDenied(reply: FastifyReply, reason: string) {
   return reply.code(403).send({ error: 'permission_denied', reason })
+}
+
+function optionalBoolean(body: Record<string, unknown>, key: string): boolean | undefined {
+  const value = body[key]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'boolean') throw new Error(`${key} must be a boolean`)
+  return value
+}
+
+function stringArray(body: Record<string, unknown>, key: string, maxItems = 200, maxItemLength = 200): string[] | undefined {
+  const value = body[key]
+  if (value === undefined || value === null) return undefined
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item.trim() || item.length > maxItemLength)) {
+    throw new Error(`${key} must be an array of strings`)
+  }
+  return [...new Set(value.map((item) => item.trim()))].slice(0, maxItems)
+}
+
+function boundedNumber(value: unknown, fallback: number, max: number): number {
+  if (value === undefined || value === null || value === '') return fallback
+  const parsed = typeof value === 'string' ? Number(value) : value
+  if (!Number.isInteger(parsed) || (parsed as number) < 1 || (parsed as number) > max) {
+    throw new Error(`limit must be an integer between 1 and ${max}`)
+  }
+  return parsed as number
+}
+
+function encodeCursor(cursor: { pinned?: boolean; updatedAt?: number; createdAt?: number; id: string }): string {
+  return Buffer.from(JSON.stringify(cursor)).toString('base64url')
+}
+
+function decodeCursor(value: unknown, kind: 'thread' | 'message'): {
+  pinned?: boolean
+  updatedAt?: number
+  createdAt?: number
+  id: string
+} | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (typeof value !== 'string' || value.length > 500) throw new Error('cursor is invalid')
+  try {
+    const cursor = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as Record<string, unknown>
+    const timestamp = kind === 'thread' ? cursor.updatedAt : cursor.createdAt
+    if (!Number.isInteger(timestamp) || typeof cursor.id !== 'string' || !cursor.id) throw new Error('invalid cursor')
+    if (kind === 'thread' && typeof cursor.pinned !== 'boolean') throw new Error('invalid cursor')
+    return kind === 'thread'
+      ? { pinned: cursor.pinned as boolean, updatedAt: timestamp as number, id: cursor.id }
+      : { createdAt: timestamp as number, id: cursor.id }
+  } catch {
+    throw new Error('cursor is invalid')
+  }
+}
+
+function apiThread(thread: ThreadRecord) {
+  return {
+    id: thread.id,
+    owner_id: thread.ownerId,
+    project_id: thread.projectId,
+    title: thread.title,
+    visibility: thread.visibility,
+    shared_with: thread.sharedWith,
+    agent_id: thread.agentId,
+    continuation: thread.continuation,
+    branched_from_id: thread.branchedFromId,
+    pinned: thread.pinned,
+    archived_at: thread.archivedAt,
+    created_at: thread.createdAt,
+    updated_at: thread.updatedAt,
+  }
+}
+
+function apiMessage(message: ThreadMessageRecord) {
+  return {
+    id: message.id,
+    thread_id: message.threadId,
+    role: message.role,
+    text: message.text,
+    created_at: message.createdAt,
+    updated_at: message.updatedAt,
+    payload: message.payload,
+  }
+}
+
+function threadPermission(request: FastifyRequest, thread: ThreadRecord, action: 'read' | 'write') {
+  const direct = evaluatePermissions(store.grants(), {
+    userId: request.principal.userId,
+    resourceKind: 'thread',
+    resourceId: thread.id,
+    action,
+  })
+  if (direct.allowed || direct.reason.startsWith('Denied')) return direct
+  if (thread.ownerId === request.principal.userId || request.principal.roles.includes('admin')) {
+    return { allowed: true, reason: 'Allowed as thread owner', matchedGrantIds: [], approvalRequired: false }
+  }
+  if (action === 'read' && thread.sharedWith.includes(request.principal.userId)) {
+    return { allowed: true, reason: 'Allowed through thread sharing', matchedGrantIds: [], approvalRequired: false }
+  }
+  if (thread.visibility === 'project') {
+    return evaluatePermissions(store.grants(), {
+      userId: request.principal.userId,
+      resourceKind: 'project',
+      resourceId: thread.projectId,
+      action,
+    })
+  }
+  return direct
 }
 
 function projectRoutingDefaults(projectId: string): {
@@ -151,7 +286,141 @@ function workspaceDocument(collection: string, id: string): Record<string, unkno
     && (candidate as Record<string, unknown>).id === id)
 }
 
+function localProjectRoot(projectId: string): string {
+  if (config.mode !== 'local') throw new Error('Local project files are only available in local mode')
+  const project = workspaceDocument('projects', projectId)
+  const local = project?.local
+  if (!local || typeof local !== 'object' || Array.isArray(local)) {
+    throw new Error('project_id must identify a configured local project')
+  }
+  const rootPath = (local as Record<string, unknown>).rootPath
+  if (typeof rootPath !== 'string' || !rootPath.trim()) {
+    throw new Error('project_id must identify a configured local project')
+  }
+  return rootPath
+}
+
+function projectReadPermission(request: FastifyRequest, reply: FastifyReply, projectId: string) {
+  const permission = evaluatePermissions(store.grants(), {
+    userId: request.principal.userId,
+    resourceKind: 'project',
+    resourceId: projectId,
+    action: 'read',
+  })
+  return permission.allowed ? null : permissionDenied(reply, permission.reason)
+}
+
+function projectWritePermission(request: FastifyRequest, reply: FastifyReply, projectId: string) {
+  const permission = evaluatePermissions(store.grants(), {
+    userId: request.principal.userId,
+    resourceKind: 'project',
+    resourceId: projectId,
+    action: 'write',
+  })
+  return permission.allowed ? null : permissionDenied(reply, permission.reason)
+}
+
+function projectFilesystem(projectId: string): { root: string; service: ProjectFilesystemService } {
+  const root = localProjectRoot(projectId)
+  return {
+    root,
+    // The project root comes from the authenticated workspace document rather
+    // than request input. The service still canonicalizes it and enforces
+    // containment for every target and symlink.
+    service: new ProjectFilesystemService([...config.allowedRepoRoots, root]),
+  }
+}
+
 const BUILTIN_PROVIDER_IDS = new Set(['opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity'])
+
+function configuredHarnessProfile(candidate: unknown): {
+  profile: HarnessProfile
+  models: string[]
+} | undefined {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return undefined
+  const configured = candidate as Record<string, unknown>
+  if (typeof configured.id !== 'string'
+    || typeof configured.label !== 'string'
+    || typeof configured.command !== 'string') return undefined
+  const protocol = configured.protocol === 'acp' ? 'acp' : 'cli'
+  const promptMode = configured.promptMode
+  return {
+    profile: {
+      id: configured.id,
+      label: configured.label,
+      command: configured.command,
+      description: typeof configured.description === 'string' ? configured.description : 'Project-local harness',
+      kind: 'cli',
+      protocol,
+      promptMode: protocol === 'acp'
+        ? 'native'
+        : promptMode === 'flag' || promptMode === 'stdin'
+          ? promptMode
+          : 'final_arg',
+      promptFlag: typeof configured.promptFlag === 'string' ? configured.promptFlag : undefined,
+      baseArgs: Array.isArray(configured.args)
+        ? configured.args.filter((value): value is string => typeof value === 'string').slice(0, 100)
+        : [],
+      modelFlag: typeof configured.modelFlag === 'string' ? configured.modelFlag : undefined,
+      codingAffinity: 1,
+      supportsCancel: true,
+      supportsStreaming: configured.supportsStreaming !== false,
+    },
+    models: Array.isArray(configured.models)
+      ? configured.models.filter((value): value is string => typeof value === 'string').slice(0, 100)
+      : [],
+  }
+}
+
+function configuredCustomHarnesses(): Array<{ profile: HarnessProfile; models: string[] }> {
+  if (config.mode !== 'local') return []
+  const projects = store.workspace()?.projects
+  if (!Array.isArray(projects)) return []
+  const byId = new Map<string, { profile: HarnessProfile; models: string[] }>()
+  for (const candidate of projects) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+    const local = (candidate as Record<string, unknown>).local
+    if (!local || typeof local !== 'object' || Array.isArray(local)) continue
+    const harnesses = (local as Record<string, unknown>).harnesses
+    if (!Array.isArray(harnesses)) continue
+    for (const harness of harnesses) {
+      const parsed = configuredHarnessProfile(harness)
+      if (parsed) byId.set(parsed.profile.id, parsed)
+    }
+  }
+  return [...byId.values()]
+}
+
+let customHarnessCapabilityCache: {
+  signature: string
+  registry: HarnessCapabilityRegistry
+} | undefined
+
+function customHarnessCapabilityRegistry(
+  definitions = configuredCustomHarnesses(),
+): HarnessCapabilityRegistry | undefined {
+  if (!definitions.length) return undefined
+  const signature = JSON.stringify(definitions)
+  if (customHarnessCapabilityCache?.signature === signature) return customHarnessCapabilityCache.registry
+  const configuredModels = Object.fromEntries(definitions.map(({ profile, models }) => [profile.id, models]))
+  const registry = new HarnessCapabilityRegistry({
+    profiles: definitions.map(({ profile }) => profile),
+    configuredModels,
+  })
+  customHarnessCapabilityCache = { signature, registry }
+  return registry
+}
+
+async function discoverHarnessCapabilities(forceRefresh = false) {
+  const builtin = await harnessCapabilities.discover(forceRefresh)
+  const customRegistry = customHarnessCapabilityRegistry()
+  if (!customRegistry) return builtin
+  const custom = await customRegistry.discover(forceRefresh)
+  return {
+    generatedAt: new Date().toISOString(),
+    harnesses: [...builtin.harnesses, ...custom.harnesses],
+  }
+}
 
 function localRunSettings(projectId: string, agentId?: string): {
   repo?: string
@@ -174,24 +443,7 @@ function localRunSettings(projectId: string, agentId?: string): {
   const configured = configuredHarnesses.find((candidate) =>
     candidate && typeof candidate === 'object' && !Array.isArray(candidate)
     && (candidate as Record<string, unknown>).id === harnessId) as Record<string, unknown> | undefined
-  let profile: HarnessProfile | undefined
-  if (configured && typeof configured.id === 'string' && typeof configured.label === 'string' && typeof configured.command === 'string') {
-    const promptMode = configured.promptMode
-    profile = {
-      id: configured.id,
-      label: configured.label,
-      command: configured.command,
-      description: typeof configured.description === 'string' ? configured.description : 'Project-local harness',
-      kind: 'cli',
-      promptMode: promptMode === 'flag' || promptMode === 'stdin' ? promptMode : 'final_arg',
-      promptFlag: typeof configured.promptFlag === 'string' ? configured.promptFlag : undefined,
-      baseArgs: Array.isArray(configured.args) ? configured.args.filter((value): value is string => typeof value === 'string').slice(0, 100) : [],
-      modelFlag: typeof configured.modelFlag === 'string' ? configured.modelFlag : undefined,
-      codingAffinity: 1,
-      supportsCancel: true,
-      supportsStreaming: configured.supportsStreaming !== false,
-    }
-  }
+  const profile = configuredHarnessProfile(configured)?.profile
   const preset = localRecord.permissionPreset
   const agentPolicy = agent?.permissionPolicy
   const candidatePolicy = agentPolicy && typeof agentPolicy === 'object' && !Array.isArray(agentPolicy)
@@ -225,9 +477,11 @@ function localRunSettings(projectId: string, agentId?: string): {
   }
 }
 
-function openRouterModelId(body: Record<string, unknown>): string | undefined {
+function requestedModelId(body: Record<string, unknown>): string | undefined {
   const modelId = optionalString(body, 'model_id', 300)
   if (!modelId) return undefined
+  const providerKey = optionalString(body, 'provider_key', 100)
+  if (providerKey && !['auto', 'opensaddle'].includes(providerKey)) return modelId
   if (config.modelProvider !== 'openrouter') throw new Error('model_id is only available with OpenRouter')
   if (!modelId.endsWith(':free')) throw new Error('model_id must be a free OpenRouter model')
   return modelId
@@ -243,6 +497,13 @@ app.setErrorHandler(async (error, request, reply) => {
     })
     return
   }
+  if (error instanceof ProjectFilesystemError) {
+    await reply.code(error.statusCode).send({
+      error: error.code,
+      message: error.message,
+    })
+    return
+  }
   const message = error instanceof Error ? error.message : 'Unknown server error'
   const status = message.includes('required')
     || message.includes('must be')
@@ -255,23 +516,37 @@ app.setErrorHandler(async (error, request, reply) => {
   })
 })
 
-app.get('/api/health', async () => ({
-  ok: true,
-  service: 'opensaddle-control-plane',
-  mode: config.mode,
-  runtime_provider: config.runtimeProvider,
-  configured_models: models.configuredKeys(),
-  model_provider: config.modelProvider,
-  default_model: config.defaultModel,
-  storage: {
-    engine: store.storageInfo().engine,
-    workspace_documents: store.workspaceInfo()?.documents ?? 0,
-  },
-  harnesses: harnesses.list().map((h) => ({
-    id: h.id,
-    availability: h.availability,
-  })),
-}))
+app.get('/api/health', async () => {
+  const latestCapabilities = harnessCapabilities.current()
+  return {
+    ok: true,
+    service: 'opensaddle-control-plane',
+    mode: config.mode,
+    runtime_provider: config.runtimeProvider,
+    configured_models: models.configuredKeys(),
+    model_provider: config.modelProvider,
+    default_model: config.defaultModel,
+    storage: {
+      engine: store.storageInfo().engine,
+      workspace_documents: store.workspaceInfo()?.documents ?? 0,
+    },
+    harness_status_scope: latestCapabilities ? 'discovered' : 'installation_only',
+    harnesses: harnesses.list().map((harness) => {
+      const capability = latestCapabilities?.harnesses.find((item) => item.id === harness.id)
+      const availability = capability?.availability ?? harness.availability
+      return {
+        id: harness.id,
+        availability,
+        installed: capability?.kind === 'native' || availability === 'available',
+        readiness: capability?.readiness ?? 'unknown',
+        auth_state: capability?.auth.state ?? 'unknown',
+        status_message: capability?.auth.message ?? capability?.unavailableReason,
+        setup_command: capability?.auth.setupCommand,
+        version: capability?.version,
+      }
+    }),
+  }
+})
 
 app.get('/api/public/sites/:slug', async (request, reply) => {
   const { slug } = request.params as { slug: string }
@@ -330,6 +605,101 @@ app.get('/api/capabilities', async (request) => ({
   },
 }))
 
+app.get('/api/harness-capabilities', async () => await discoverHarnessCapabilities())
+app.post('/api/harness-capabilities/refresh', async () => await discoverHarnessCapabilities(true))
+
+app.get('/api/local-sessions', async (request, reply) => {
+  if (config.mode !== 'local') {
+    return reply.code(404).send({ error: 'local_sessions_unavailable' })
+  }
+  const query = request.query as Record<string, unknown>
+  const provider = enumValue<LocalSessionProvider>(query, 'provider', ['codex', 'claude'])
+  const limit = boundedNumber(query.limit, 40, 100)
+  return {
+    sessions: await localSessions.list(provider, limit),
+  }
+})
+
+app.get<{ Params: { projectId: string } }>('/api/projects/:projectId/files', async (request, reply) => {
+  const denied = projectReadPermission(request, reply, request.params.projectId)
+  if (denied) return denied
+  const query = request.query as Record<string, unknown>
+  const { root, service } = projectFilesystem(request.params.projectId)
+  return await service.list(root, {
+    path: optionalString(query, 'path', 2_000),
+    limit: boundedNumber(query.limit, 200, 500),
+  })
+})
+
+app.get<{ Params: { projectId: string } }>('/api/projects/:projectId/file', async (request, reply) => {
+  const denied = projectReadPermission(request, reply, request.params.projectId)
+  if (denied) return denied
+  const query = request.query as Record<string, unknown>
+  const { root, service } = projectFilesystem(request.params.projectId)
+  return await service.read(root, requiredString(query, 'path', 2_000))
+})
+
+app.get<{ Params: { projectId: string } }>('/api/projects/:projectId/file/stat', async (request, reply) => {
+  const denied = projectReadPermission(request, reply, request.params.projectId)
+  if (denied) return denied
+  const query = request.query as Record<string, unknown>
+  const { root, service } = projectFilesystem(request.params.projectId)
+  return await service.stat(root, requiredString(query, 'path', 2_000))
+})
+
+app.post<{ Params: { projectId: string } }>('/api/projects/:projectId/managed-artifact', async (request, reply) => {
+  const denied = projectWritePermission(request, reply, request.params.projectId)
+  if (denied) return denied
+  const body = objectBody(request)
+  const { root, service } = projectFilesystem(request.params.projectId)
+  const written = await service.writeManagedArtifact(
+    root,
+    requiredString(body, 'path', 2_000),
+    requiredString(body, 'content', 100_000),
+  )
+  return reply.code(201).send(written)
+})
+
+app.post<{ Params: { projectId: string } }>('/api/projects/:projectId/managed-artifact/archive', async (request, reply) => {
+  const denied = projectWritePermission(request, reply, request.params.projectId)
+  if (denied) return denied
+  const body = objectBody(request)
+  const { root, service } = projectFilesystem(request.params.projectId)
+  return await service.archiveManagedArtifact(root, requiredString(body, 'path', 2_000))
+})
+
+app.get<{ Params: { projectId: string } }>('/api/projects/:projectId/managed-artifact/archive', async (request, reply) => {
+  const denied = projectReadPermission(request, reply, request.params.projectId)
+  if (denied) return denied
+  const { root, service } = projectFilesystem(request.params.projectId)
+  return { archives: await service.listManagedArchives(root) }
+})
+
+app.post<{ Params: { projectId: string } }>('/api/projects/:projectId/managed-artifact/restore', async (request, reply) => {
+  const denied = projectWritePermission(request, reply, request.params.projectId)
+  if (denied) return denied
+  const body = objectBody(request)
+  const { root, service } = projectFilesystem(request.params.projectId)
+  return await service.restoreManagedArtifact(root, requiredString(body, 'archived_path', 2_000))
+})
+
+app.get<{ Params: { projectId: string } }>('/api/projects/:projectId/search', async (request, reply) => {
+  const denied = projectReadPermission(request, reply, request.params.projectId)
+  if (denied) return denied
+  const query = request.query as Record<string, unknown>
+  const { root, service } = projectFilesystem(request.params.projectId)
+  return await service.search(root, requiredString(query, 'q', 500), {
+    limit: boundedNumber(query.limit, 100, 200),
+  })
+})
+
+app.post<{ Params: { projectId: string } }>('/api/projects/:projectId/rescan', async (request, reply) => {
+  const denied = projectReadPermission(request, reply, request.params.projectId)
+  if (denied) return denied
+  const { root, service } = projectFilesystem(request.params.projectId)
+  return await service.rescan(root)
+})
+
 app.get('/api/workspace', async (_request, reply) => {
   const workspace = store.workspace()
   if (!workspace) return reply.code(404).send({ error: 'workspace_not_found' })
@@ -337,6 +707,216 @@ app.get('/api/workspace', async (_request, reply) => {
     workspace,
     storage: store.storageInfo().engine,
     ...store.workspaceInfo(),
+  }
+})
+
+/**
+ * Granular, durable conversation API. The legacy /api/workspace snapshot is
+ * intentionally retained while clients transition; StateStore imports legacy
+ * chats/messages as new durable records whenever a snapshot is saved.
+ */
+app.get('/api/threads', async (request) => {
+  const query = request.query as Record<string, unknown>
+  const projectId = optionalString(query, 'project_id', 200)
+  const includeArchived = query.include_archived === true || query.include_archived === 'true'
+  const limit = boundedNumber(query.limit, 50, 100)
+  const cursor = decodeCursor(query.cursor, 'thread') as { pinned: boolean; updatedAt: number; id: string } | undefined
+  const candidates = store.threads({ projectId, includeArchived, limit: 100, cursor })
+  const visible = candidates.filter((thread) => threadPermission(request, thread, 'read').allowed)
+  const page = visible.slice(0, limit)
+  // If permission filtering hides a full storage page, continue from the
+  // last scanned record so a caller can still reach later permitted threads.
+  const next = page.length === limit
+    ? page.at(-1)
+    : candidates.length === 100
+      ? candidates.at(-1)
+      : undefined
+  return {
+    threads: page.map(apiThread),
+    next_cursor: next ? encodeCursor({ pinned: next.pinned, updatedAt: next.updatedAt, id: next.id }) : null,
+  }
+})
+
+app.post('/api/threads', async (request, reply) => {
+  const body = objectBody(request)
+  const projectId = requiredString(body, 'project_id', 200)
+  const permission = evaluatePermissions(store.grants(), {
+    userId: request.principal.userId,
+    resourceKind: 'project',
+    resourceId: projectId,
+    action: 'write',
+  })
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  const now = Date.now()
+  const id = optionalString(body, 'id', 200) ?? `thread_${randomUUID().slice(0, 12)}`
+  if (store.thread(id)) return reply.code(409).send({ error: 'thread_already_exists' })
+  const visibility = enumValue(body, 'visibility', ['private', 'shared', 'project'] as const) ?? 'private'
+  const thread: ThreadRecord = {
+    id,
+    ownerId: request.principal.userId,
+    projectId,
+    title: optionalString(body, 'title', 500) ?? 'Untitled thread',
+    visibility,
+    sharedWith: stringArray(body, 'shared_with') ?? [],
+    agentId: optionalString(body, 'agent_id', 200),
+    continuation: threadContinuation(body.continuation),
+    branchedFromId: optionalString(body, 'branched_from_id', 200),
+    pinned: optionalBoolean(body, 'pinned') ?? false,
+    archivedAt: optionalBoolean(body, 'archived') === true ? now : undefined,
+    createdAt: now,
+    updatedAt: now,
+  }
+  await store.saveThread(thread)
+  return reply.code(201).send({ thread: apiThread(thread) })
+})
+
+app.get<{ Params: { threadId: string } }>('/api/threads/:threadId', async (request, reply) => {
+  const thread = store.thread(request.params.threadId)
+  if (!thread) return reply.code(404).send({ error: 'thread_not_found' })
+  const permission = threadPermission(request, thread, 'read')
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  return { thread: apiThread(thread) }
+})
+
+app.patch<{ Params: { threadId: string } }>('/api/threads/:threadId', async (request, reply) => {
+  const thread = store.thread(request.params.threadId)
+  if (!thread) return reply.code(404).send({ error: 'thread_not_found' })
+  const permission = threadPermission(request, thread, 'write')
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  const body = objectBody(request)
+  const title = optionalString(body, 'title', 500)
+  const pinned = optionalBoolean(body, 'pinned')
+  const archived = optionalBoolean(body, 'archived')
+  const visibility = enumValue(body, 'visibility', ['private', 'shared', 'project'] as const)
+  const sharedWith = stringArray(body, 'shared_with')
+  const agentId = optionalString(body, 'agent_id', 200)
+  const hasAgentId = Object.hasOwn(body, 'agent_id')
+  const hasContinuation = Object.hasOwn(body, 'continuation')
+  const continuation = hasContinuation ? threadContinuation(body.continuation) : undefined
+  const updated: ThreadRecord = {
+    ...thread,
+    ...(title ? { title } : {}),
+    ...(pinned === undefined ? {} : { pinned }),
+    ...(archived === undefined ? {} : { archivedAt: archived ? Date.now() : undefined }),
+    ...(visibility ? { visibility } : {}),
+    ...(sharedWith ? { sharedWith } : {}),
+    ...(hasAgentId ? { agentId } : {}),
+    ...(hasContinuation ? { continuation } : {}),
+    updatedAt: Date.now(),
+  }
+  if (title === undefined && pinned === undefined && archived === undefined && !visibility && !sharedWith && !hasAgentId && !hasContinuation) {
+    return reply.code(400).send({ error: 'thread_update_required' })
+  }
+  await store.saveThread(updated)
+  return { thread: apiThread(updated) }
+})
+
+app.delete<{ Params: { threadId: string } }>('/api/threads/:threadId', async (request, reply) => {
+  const thread = store.thread(request.params.threadId)
+  if (!thread) return reply.code(404).send({ error: 'thread_not_found' })
+  const permission = threadPermission(request, thread, 'write')
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  await store.removeThread(thread.id)
+  return { ok: true }
+})
+
+app.get<{ Params: { threadId: string } }>('/api/threads/:threadId/messages', async (request, reply) => {
+  const thread = store.thread(request.params.threadId)
+  if (!thread) return reply.code(404).send({ error: 'thread_not_found' })
+  const permission = threadPermission(request, thread, 'read')
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  const query = request.query as Record<string, unknown>
+  const limit = boundedNumber(query.limit, 100, 250)
+  const cursor = decodeCursor(query.cursor, 'message') as { createdAt: number; id: string } | undefined
+  const items = store.messages(thread.id, { limit: limit + 1, cursor })
+  const page = items.slice(0, limit)
+  const next = items.length > limit ? page.at(-1) : undefined
+  return {
+    messages: page.map(apiMessage),
+    next_cursor: next ? encodeCursor({ createdAt: next.createdAt, id: next.id }) : null,
+  }
+})
+
+app.post<{ Params: { threadId: string } }>('/api/threads/:threadId/messages', async (request, reply) => {
+  const thread = store.thread(request.params.threadId)
+  if (!thread) return reply.code(404).send({ error: 'thread_not_found' })
+  const permission = threadPermission(request, thread, 'write')
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  const body = objectBody(request)
+  const text = body.text
+  if (typeof text !== 'string' || text.length > 200_000) throw new Error('text must be a string up to 200000 characters')
+  const role = enumValue(body, 'role', ['user', 'assistant', 'system'] as const)
+  if (!role) throw new Error('role is required')
+  const payload = body.payload
+  if (payload !== undefined && (!payload || typeof payload !== 'object' || Array.isArray(payload))) {
+    throw new Error('payload must be an object')
+  }
+  const now = Date.now()
+  const message: ThreadMessageRecord = {
+    id: optionalString(body, 'id', 200) ?? `message_${randomUUID().slice(0, 12)}`,
+    threadId: thread.id,
+    role,
+    text,
+    createdAt: now,
+    updatedAt: now,
+    payload: payload as Record<string, unknown> | undefined,
+  }
+  if (store.message(message.id)) return reply.code(409).send({ error: 'message_already_exists' })
+  await store.appendMessage(message)
+  thread.updatedAt = now
+  await store.saveThread(thread)
+  return reply.code(201).send({ message: apiMessage(message) })
+})
+
+app.patch<{ Params: { threadId: string; messageId: string } }>(
+  '/api/threads/:threadId/messages/:messageId',
+  async (request, reply) => {
+    const thread = store.thread(request.params.threadId)
+    if (!thread) return reply.code(404).send({ error: 'thread_not_found' })
+    const permission = threadPermission(request, thread, 'write')
+    if (!permission.allowed) return permissionDenied(reply, permission.reason)
+    const message = store.message(request.params.messageId)
+    if (!message || message.threadId !== thread.id) {
+      return reply.code(404).send({ error: 'message_not_found' })
+    }
+    const body = objectBody(request)
+    const hasText = Object.hasOwn(body, 'text')
+    const hasPayload = Object.hasOwn(body, 'payload')
+    if (!hasText && !hasPayload) return reply.code(400).send({ error: 'message_update_required' })
+    if (hasText && (typeof body.text !== 'string' || body.text.length > 200_000)) {
+      throw new Error('text must be a string up to 200000 characters')
+    }
+    if (hasPayload && (!body.payload || typeof body.payload !== 'object' || Array.isArray(body.payload))) {
+      throw new Error('payload must be an object')
+    }
+    const updated: ThreadMessageRecord = {
+      ...message,
+      ...(hasText ? { text: body.text as string } : {}),
+      ...(hasPayload ? { payload: body.payload as Record<string, unknown> } : {}),
+      updatedAt: Date.now(),
+    }
+    await store.saveMessage(updated)
+    thread.updatedAt = updated.updatedAt
+    await store.saveThread(thread)
+    return { message: apiMessage(updated) }
+  },
+)
+
+app.get('/api/threads/search', async (request) => {
+  const query = request.query as Record<string, unknown>
+  const q = requiredString(query, 'q', 500)
+  const projectId = optionalString(query, 'project_id', 200)
+  const limit = boundedNumber(query.limit, 50, 100)
+  const results = store.searchThreads(q, { projectId, limit: 100 })
+    .filter((result) => threadPermission(request, result.thread, 'read').allowed)
+    .slice(0, limit)
+  return {
+    results: results.map((result) => ({
+      thread: apiThread(result.thread),
+      message_id: result.messageId,
+      snippet: result.snippet,
+      matched_in: result.matchedIn,
+    })),
   }
 })
 
@@ -500,7 +1080,7 @@ app.post('/api/routes/estimate', async (request) => {
   const route = estimateRoute(requiredString(body, 'task'), config, {
     routingPref: optionalString(body, 'routing_pref', 50),
     modelKey: enumValue(body, 'model_key', ['auto', 'gpt', 'claude', 'sonnet', 'gemini', 'llama'] as const) ?? defaults.modelKey,
-    modelId: openRouterModelId(body),
+    modelId: requestedModelId(body),
     harnessKey: enumValue(body, 'harness_key', ['chat', 'research', 'coding', 'browser', 'vm'] as const),
     providerKey: enumValue(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom'] as const) ?? defaults.providerKey,
     runtimeKey: enumValue(body, 'runtime_key', ['local', 'browser', 'sandbox', 'vm', 'gpu', 'restricted'] as const) ?? defaults.runtimeKey,
@@ -555,6 +1135,44 @@ app.get('/api/git/compare', async (request, reply) => {
     requiredString(query, 'base', 200),
     optionalString(query, 'head', 200),
   )
+})
+
+app.post('/api/git/branch', async (request, reply) => {
+  const body = objectBody(request)
+  const projectId = requiredString(body, 'project_id', 200)
+  const repo = requiredString(body, 'repo', 2_000)
+  const repository = await git.resolveRepository(repo)
+  const permission = gitPermission(request, projectId, 'write', repository)
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  let approval: ApprovalRecord | undefined
+  if (permission.approvalRequired) {
+    const approvalId = optionalString(body, 'approval_id', 200)
+    approval = approvalId ? store.approval(approvalId) : undefined
+    const validApproval = approval
+      && approval.status === 'approved'
+      && approval.requestedBy === request.principal.userId
+      && approval.projectId === projectId
+      && approval.agentId === undefined
+      && approval.action === 'write'
+    if (!validApproval) {
+      return reply.code(409).send({
+        error: 'approval_required',
+        reason: permission.reason,
+        action: 'write',
+        matched_grant_ids: permission.matchedGrantIds,
+      })
+    }
+  }
+  const result = await git.createBranch(
+    repository,
+    requiredString(body, 'branch', 200),
+    optionalString(body, 'start_point', 200),
+  )
+  if (approval) {
+    approval.status = 'consumed'
+    await store.saveApproval(approval)
+  }
+  return result
 })
 
 app.post('/api/git/commit', async (request, reply) => {
@@ -634,18 +1252,64 @@ app.post('/api/git/push', async (request, reply) => {
   return result
 })
 
+app.post('/api/git/pull-request', async (request, reply) => {
+  const body = objectBody(request)
+  const projectId = requiredString(body, 'project_id', 200)
+  const repo = requiredString(body, 'repo', 2_000)
+  const repository = await git.resolveRepository(repo)
+  const permission = gitPermission(request, projectId, 'push', repository)
+  if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  const approvalId = optionalString(body, 'approval_id', 200)
+  const approval = approvalId ? store.approval(approvalId) : undefined
+  const validApproval = approval
+    && approval.status === 'approved'
+    && approval.requestedBy === request.principal.userId
+    && approval.projectId === projectId
+    && approval.agentId === undefined
+    && approval.action === 'push'
+  if (!validApproval) {
+    return reply.code(409).send({
+      error: 'approval_required',
+      reason: 'Creating a pull request requires explicit approval',
+      action: 'push',
+      matched_grant_ids: permission.matchedGrantIds,
+    })
+  }
+  if (body.draft !== undefined && typeof body.draft !== 'boolean') {
+    return reply.code(400).send({ error: 'draft_must_be_boolean' })
+  }
+  const result = await git.createPullRequest(repository, {
+    title: requiredString(body, 'title', 500),
+    body: optionalString(body, 'body', 50_000) ?? '',
+    base: requiredString(body, 'base', 200),
+    head: optionalString(body, 'head', 200),
+    draft: body.draft === true,
+  })
+  approval.status = 'consumed'
+  await store.saveApproval(approval)
+  return result
+})
+
 app.get('/api/runs', async (request) => runs.list(request.principal).map((run) => ({
   run_id: run.id,
   session_id: run.sessionId,
   project_id: run.projectId,
+  task: run.task,
   agent_id: run.agentId,
   parent_run_id: run.parentRunId,
+  queued_after_run_id: run.queuedAfterRunId,
   source_ids: run.sourceIds,
   status: run.status,
   route: run.route,
+  provider_session_id: run.providerSessionId,
+  provider_session_mode: run.providerSessionMode,
+  provider_turn_id: run.providerTurnId,
+  execution_mode: run.executionMode,
+  execution_policy: run.executionPolicy,
   created_at: run.createdAt,
   updated_at: run.updatedAt,
   error: run.error,
+  last_event_type: run.events.at(-1)?.type,
 })))
 
 app.post('/api/runs', async (request, reply) => {
@@ -656,21 +1320,97 @@ app.post('/api/runs', async (request, reply) => {
   const parentRunId = optionalString(body, 'parent_run_id', 200)
   const defaults = projectRoutingDefaults(projectId)
   const task = requiredString(body, 'task')
+  const providerSessionId = optionalString(body, 'provider_session_id', 300)
+  const providerSessionMode = enumValue(body, 'provider_session_mode', ['resume', 'fork'] as const)
+  const providerTurnId = optionalString(body, 'provider_turn_id', 300)
+  if (providerSessionMode && !providerSessionId) {
+    return reply.code(400).send({
+      error: 'provider_session_mode_requires_session',
+      reason: 'A native session mode requires provider_session_id.',
+    })
+  }
+  if (providerTurnId && (!providerSessionId || providerSessionMode !== 'fork')) {
+    return reply.code(400).send({
+      error: 'provider_turn_requires_fork',
+      reason: 'A provider turn checkpoint can be used only with a provider-native fork.',
+    })
+  }
+  const executionMode = enumValue<RunExecutionMode>(
+    body,
+    'execution_mode',
+    ['plan', 'review', 'project', 'full-access'],
+  ) ?? 'project'
   const requestedProvider = enumValue<CodingProvider>(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom'])
   const localProvider = localSettings.harnessId
     ? BUILTIN_PROVIDER_IDS.has(localSettings.harnessId)
       ? localSettings.harnessId as CodingProvider
       : 'custom'
     : undefined
-  const route = estimateRoute(task, config, {
+  const routeInput = {
     modelKey: enumValue<ModelKey>(body, 'model_key', ['auto', 'gpt', 'claude', 'sonnet', 'gemini', 'llama']) ?? defaults.modelKey,
-    modelId: openRouterModelId(body),
+    modelId: requestedModelId(body),
     harnessKey: enumValue<Harness>(body, 'harness_key', ['chat', 'research', 'coding', 'browser', 'vm']),
     providerKey: requestedProvider ?? localProvider ?? defaults.providerKey,
     runtimeKey: enumValue<RuntimeKind>(body, 'runtime_key', ['local', 'browser', 'sandbox', 'vm', 'gpu', 'restricted']) ?? defaults.runtimeKey,
     routingPref: optionalString(body, 'routing_pref', 50),
     telemetry: store.routeTelemetry(projectId),
-  })
+  }
+  let route = estimateRoute(task, config, routeInput)
+  if (providerSessionId) {
+    if (config.mode !== 'local') {
+      return reply.code(400).send({
+        error: 'provider_session_local_only',
+        reason: 'Provider-native session continuation is available only in local mode.',
+      })
+    }
+    if (route.harnessKey !== 'coding'
+      || !['codex', 'claude', 'cursor', 'gemini', 'custom'].includes(route.providerKey)) {
+      return reply.code(400).send({
+        error: 'provider_session_harness_mismatch',
+        reason: 'The selected provider does not support native session continuation.',
+      })
+    }
+  }
+  if (route.harnessKey === 'coding') {
+    const snapshot = await discoverHarnessCapabilities()
+    const capabilityId = route.providerKey === 'custom' ? localSettings.profile?.id : route.providerKey
+    if (!capabilityId) {
+      return reply.code(409).send({
+        error: 'harness_not_ready',
+        reason: 'The selected project-local harness is no longer configured.',
+        provider_key: route.providerKey,
+      })
+    }
+    const selected = snapshot.harnesses.find((capability) => capability.id === capabilityId)
+    if (!selected || selected.availability !== 'available' || selected.readiness !== 'ready') {
+      const explicitlyPinned = requestedProvider !== undefined && requestedProvider !== 'auto'
+      if (explicitlyPinned || route.providerKey === 'custom') {
+        const setup = selected?.auth.setupCommand ? ` Run ${selected.auth.setupCommand}.` : ''
+        return reply.code(409).send({
+          error: 'harness_not_ready',
+          reason: `${selected?.unavailableReason ?? selected?.auth.message ?? `${capabilityId} is not ready.`}${setup}`,
+          provider_key: route.providerKey,
+          setup_command: selected?.auth.setupCommand,
+        })
+      }
+      const fallback = snapshot.harnesses.find((capability) =>
+        capability.availability === 'available'
+        && capability.readiness === 'ready'
+        && config.codingProviders.includes(capability.id),
+      )
+      if (!fallback) {
+        return reply.code(409).send({
+          error: 'no_ready_coding_harness',
+          reason: 'No authenticated local coding harness or configured OpenSaddle model endpoint is ready.',
+        })
+      }
+      route = estimateRoute(task, config, {
+        ...routeInput,
+        providerKey: fallback.id as CodingProvider,
+      })
+      route.reasons.push(`Selected ${fallback.label} because ${selected?.label ?? route.providerKey} is not ready`)
+    }
+  }
   const permission = evaluatePermissions(store.grants(), {
     userId: request.principal.userId,
     agentId,
@@ -679,6 +1419,22 @@ app.post('/api/runs', async (request, reply) => {
     action: 'execute',
   })
   if (!permission.allowed) return permissionDenied(reply, permission.reason)
+  if (executionMode === 'full-access') {
+    if (config.mode !== 'local' || !localSettings.repo) {
+      return reply.code(400).send({
+        error: 'full_access_local_only',
+        reason: 'Full access is available only for configured local projects.',
+      })
+    }
+    const administer = evaluatePermissions(store.grants(), {
+      userId: request.principal.userId,
+      resourceKind: 'project',
+      resourceId: projectId,
+      action: 'administer',
+    })
+    if (!administer.allowed) return permissionDenied(reply, administer.reason)
+  }
+  const executionPolicy = policyForExecutionMode(executionMode, localSettings.policy)
   if (parentRunId) {
     const parent = runs.get(parentRunId)
     if (!parent) return reply.code(404).send({ error: 'parent_run_not_found' })
@@ -696,7 +1452,7 @@ app.post('/api/runs', async (request, reply) => {
     return reply.code(400).send({ error: 'source_ids_must_be_string_array' })
   }
   const harnessApprovalAction = route.harnessKey === 'coding'
-    && !(config.mode === 'local' && localSettings.policy?.approvals === 'never')
+    && executionPolicy.approvals !== 'never'
     ? harnesses.approvalAction(route.providerKey)
     : undefined
   const approvalAction = permission.approvalRequired ? 'execute' : harnessApprovalAction
@@ -733,13 +1489,22 @@ app.post('/api/runs', async (request, reply) => {
     reviewProviderKey: enumValue<CodingProvider>(body, 'review_provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom']) ?? defaults.reviewProviderKey,
     repo: optionalString(body, 'repo', 2_000) ?? localSettings.repo,
     harnessProfile: route.providerKey === 'custom' ? localSettings.profile : undefined,
-    executionPolicy: localSettings.policy,
+    providerSessionId,
+    providerSessionMode,
+    providerTurnId,
+    executionMode,
+    executionPolicy,
     principal: request.principal,
   })
   return reply.code(202).send({
     run_id: run.id,
     session_id: run.sessionId,
     mode: config.mode,
+    provider_session_id: run.providerSessionId,
+    provider_session_mode: run.providerSessionMode,
+    provider_turn_id: run.providerTurnId,
+    execution_mode: run.executionMode,
+    execution_policy: run.executionPolicy,
     route: run.route,
   })
 })
@@ -817,6 +1582,106 @@ app.post<{ Params: { runId: string } }>('/api/runs/:runId/cancel', async (reques
   const cancelled = await runs.cancel(request.params.runId, request.principal)
   return cancelled ? { ok: true } : reply.code(404).send({ error: 'run_not_found' })
 })
+
+app.post<{ Params: { runId: string } }>('/api/runs/:runId/pause', async (request, reply) => {
+  const paused = await runs.pause(request.params.runId, request.principal)
+  return paused ? { ok: true } : reply.code(404).send({ error: 'run_not_found' })
+})
+
+app.post<{ Params: { runId: string } }>('/api/runs/:runId/resume', async (request, reply) => {
+  const run = await runs.resume(request.params.runId, request.principal)
+  return run
+    ? {
+      ok: true,
+      run_id: run.id,
+      session_id: run.sessionId,
+      status: run.status,
+    }
+    : reply.code(404).send({ error: 'run_not_found' })
+})
+
+app.post<{ Params: { runId: string } }>('/api/runs/:runId/retry', async (request, reply) => {
+  const run = await runs.retry(request.params.runId, request.principal)
+  return run
+    ? reply.code(201).send({
+      run_id: run.id,
+      session_id: run.sessionId,
+      parent_run_id: run.parentRunId,
+      status: run.status,
+      route: run.route,
+    })
+    : reply.code(404).send({ error: 'run_not_found' })
+})
+
+app.post<{ Params: { runId: string } }>('/api/runs/:runId/steer', async (request, reply) => {
+  const body = objectBody(request)
+  const accepted = await runs.steer(
+    request.params.runId,
+    request.principal,
+    requiredString(body, 'text', 20_000),
+  )
+  if (accepted === undefined) return reply.code(404).send({ error: 'run_not_found' })
+  if (!accepted) {
+    return reply.code(409).send({
+      error: 'steering_unavailable',
+      reason: 'This harness or active turn does not support same-turn steering.',
+    })
+  }
+  return { ok: true }
+})
+
+app.post<{ Params: { runId: string } }>('/api/runs/:runId/queue', async (request, reply) => {
+  const body = objectBody(request)
+  const queued = await runs.queue(
+    request.params.runId,
+    request.principal,
+    requiredString(body, 'text', 20_000),
+  )
+  if (!queued) return reply.code(404).send({ error: 'run_not_found' })
+  return reply.code(201).send({
+    run_id: queued.id,
+    session_id: queued.sessionId,
+    parent_run_id: queued.parentRunId,
+    queued_after_run_id: queued.queuedAfterRunId,
+    status: queued.status,
+    route: queued.route,
+  })
+})
+
+app.post<{ Params: { runId: string; requestId: string } }>(
+  '/api/runs/:runId/requests/:requestId/respond',
+  async (request, reply) => {
+    const body = objectBody(request)
+    const rawAnswers = body.answers
+    if (rawAnswers !== undefined && (
+      !rawAnswers
+      || typeof rawAnswers !== 'object'
+      || Array.isArray(rawAnswers)
+      || Object.values(rawAnswers).some((value) =>
+        !Array.isArray(value) || value.some((answer) => typeof answer !== 'string'),
+      )
+    )) {
+      return reply.code(400).send({ error: 'answers_must_be_string_arrays' })
+    }
+    const rawForm = body.form
+    if (rawForm !== undefined && (!rawForm || typeof rawForm !== 'object' || Array.isArray(rawForm))) {
+      return reply.code(400).send({ error: 'form_must_be_object' })
+    }
+    const responded = await runs.respondInteraction(
+      request.params.runId,
+      request.params.requestId,
+      request.principal,
+      {
+        approved: typeof body.approved === 'boolean' ? body.approved : undefined,
+        scope: enumValue(body, 'scope', ['once', 'session']),
+        text: optionalString(body, 'text', 20_000),
+        answers: rawAnswers as Record<string, string[]> | undefined,
+        form: rawForm as Record<string, unknown> | undefined,
+      },
+    )
+    return responded ? { ok: true } : reply.code(404).send({ error: 'pending_request_not_found' })
+  },
+)
 
 app.get<{ Querystring: { project_id?: string } }>('/api/permissions', async (request) => {
   const all = store.grants()

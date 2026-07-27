@@ -4,6 +4,7 @@ import type { ControlPlaneConfig } from '../config.js'
 import type { ModelGateway } from '../modelGateway.js'
 import { CliHarnessAdapter } from './cliAdapter.js'
 import { CodexAppServerAdapter } from './codexAppServer.js'
+import { AcpHarnessAdapter } from './geminiAcp.js'
 import { OpenSaddleCodingHarness } from './opensaddleCoding.js'
 import { BUILTIN_PROFILES, mergeProfiles } from './profiles.js'
 import type {
@@ -31,9 +32,13 @@ export class HarnessRegistry {
     this.adapters.set('opensaddle', new OpenSaddleCodingHarness(models))
     for (const profile of this.profiles) {
       if (profile.kind === 'cli') {
-        this.adapters.set(profile.id, profile.protocol === 'codex-app-server'
-          ? new CodexAppServerAdapter()
-          : new CliHarnessAdapter(profile))
+        this.adapters.set(profile.id,
+          profile.protocol === 'codex-app-server'
+            ? new CodexAppServerAdapter()
+            : profile.protocol === 'acp'
+              ? new AcpHarnessAdapter(profile)
+              : new CliHarnessAdapter(profile),
+        )
       }
     }
   }
@@ -82,7 +87,9 @@ export class HarnessRegistry {
     const adapter = dynamicProfile
       ? (dynamicProfile.protocol === 'codex-app-server'
           ? new CodexAppServerAdapter()
-          : new CliHarnessAdapter(dynamicProfile))
+          : dynamicProfile.protocol === 'acp'
+            ? new AcpHarnessAdapter(dynamicProfile)
+            : new CliHarnessAdapter(dynamicProfile))
       : this.adapters.get(providerId)
     if (!adapter) throw new Error(`No adapter registered for harness "${providerId}"`)
     await input.emit('agent.started', {
@@ -91,6 +98,12 @@ export class HarnessRegistry {
       harness: input.route.harnessKey,
     })
     return await adapter.run({ ...input, providerId })
+  }
+
+  async steer(providerId: string, runId: string, text: string): Promise<boolean> {
+    const adapter = this.adapters.get(providerId)
+    if (!adapter?.steer) return false
+    return await adapter.steer(runId, text)
   }
 
   private statusForId(id: string): HarnessStatus {
@@ -111,7 +124,8 @@ export class HarnessRegistry {
 
   private statusFor(profile: HarnessProfile): HarnessStatus {
     if (profile.kind === 'native') {
-      const hasModel = Object.keys(this.config.modelRoutes).length > 0
+      const hasModel = this.config.modelProvider !== 'unconfigured'
+        || Object.keys(this.config.modelRoutes).length > 0
       return {
         id: profile.id,
         label: profile.label,

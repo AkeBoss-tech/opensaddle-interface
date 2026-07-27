@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
 import { Button } from '../../ui'
+import type { RuntimeRunSummary } from '../../services/contracts'
 import { selectAttentionItems, type AttentionItem } from '../thread/domain'
 
 type WorkFilter = 'attention' | 'running' | 'scheduled' | 'completed'
@@ -15,7 +16,7 @@ interface WorkRow {
   status: string
   progress?: number
   href?: string
-  kind: 'thread' | 'task' | 'workflow' | 'approval'
+  kind: 'thread' | 'task' | 'workflow' | 'approval' | 'run'
 }
 
 function statusLabel(status: AttentionItem['status']) {
@@ -61,7 +62,7 @@ function Section({
       <div className="tf-work-list">
         {rows.map((row) => (
           <button key={row.id} className="tf-work-row" onClick={() => onOpen(row)}>
-            <span className={`tf-work-icon ${row.kind}`}><Icon name={row.kind === 'approval' ? 'shield' : row.kind === 'workflow' ? 'activity' : row.kind === 'task' ? 'clock' : 'message'} className="icon sm" /></span>
+            <span className={`tf-work-icon ${row.kind}`}><Icon name={row.kind === 'approval' ? 'shield' : row.kind === 'workflow' ? 'activity' : row.kind === 'task' ? 'clock' : row.kind === 'run' ? 'terminal' : 'message'} className="icon sm" /></span>
             <span className="tf-work-copy"><strong>{row.title}</strong><small>{row.subtitle}</small></span>
             {row.progress !== undefined && <span className="tf-progress"><i style={{ width: `${row.progress}%` }} /></span>}
             <span className={`tf-work-status ${row.status.toLowerCase().replaceAll(' ', '-')}`}>{row.status}</span>
@@ -75,13 +76,59 @@ function Section({
 }
 
 export function WorkPage() {
-  const { data, createChat, setActiveChat } = useStore()
+  const { data, createChat, setActiveChat, services } = useStore()
   const navigate = useNavigate()
   const [filter, setFilter] = useState<WorkFilter | 'all'>('all')
+  const [durableRuns, setDurableRuns] = useState<RuntimeRunSummary[]>([])
+
+  useEffect(() => {
+    if (!services?.runtime.listRuns) {
+      setDurableRuns([])
+      return
+    }
+    let cancelled = false
+    const refresh = async () => {
+      const runs = await services.runtime.listRuns!()
+      if (!cancelled) setDurableRuns(runs)
+    }
+    void refresh().catch(() => undefined)
+    const timer = window.setInterval(() => void refresh().catch(() => undefined), 2_500)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [services])
 
   const rows = useMemo(() => {
+    const localMode = services?.mode === 'desktop' || services?.controlPlane.mode === 'local'
+    const localProjectIds = new Set(
+      data.projects
+        .filter((project) => project.workspaceKind === 'local' || Boolean(project.local))
+        .map((project) => project.id),
+    )
     const items = selectAttentionItems(data, { includeCompleted: true, includeScheduled: true })
-    const attention: WorkRow[] = data.notifications
+      .filter((item) => !localMode || localProjectIds.has(item.projectId))
+    const threadRunIds = new Set(data.messages.flatMap((message) => message.run ? [message.run.id] : []))
+    const standaloneRuns: WorkRow[] = durableRuns
+      .filter((run) => !threadRunIds.has(run.runId))
+      .map((run) => {
+        const project = data.projects.find((candidate) => candidate.id === run.projectId)
+        const provider = run.route.providerKey && run.route.providerKey !== 'auto'
+          ? run.route.providerKey
+          : run.route.harnessKey
+        return {
+          id: `run-${run.runId}`,
+          title: run.task,
+          subtitle: `${project?.name ?? run.projectId} · ${provider} · ${run.executionMode ?? 'project'} access`,
+          projectId: run.projectId,
+          status: run.status === 'waiting'
+            ? 'Needs input'
+            : run.status[0]!.toUpperCase() + run.status.slice(1),
+          href: `/runs?run=${encodeURIComponent(run.runId)}`,
+          kind: 'run' as const,
+        }
+      })
+    const attention: WorkRow[] = (localMode ? [] : data.notifications)
       .filter((notification) => !notification.read)
       .map((notification) => ({
         id: `notification-${notification.id}`,
@@ -96,6 +143,7 @@ export function WorkPage() {
     attention.push(...items
       .filter((item) => ['needs_input', 'needs_approval', 'blocked', 'failed'].includes(item.status))
       .map(toWorkRow))
+    attention.push(...standaloneRuns.filter((run) => run.status === 'Needs input' || run.status === 'Failed'))
 
     const scheduledIds = new Set(items
       .filter((item) => item.source.sourceType === 'task'
@@ -105,6 +153,7 @@ export function WorkPage() {
     const running = items
       .filter((item) => !scheduledIds.has(item.id) && (item.status === 'running' || item.status === 'ready'))
       .map(toWorkRow)
+    running.push(...standaloneRuns.filter((run) => ['Queued', 'Provisioning', 'Running', 'Paused'].includes(run.status)))
 
     const scheduled = items
       .filter((item) => scheduledIds.has(item.id) && !['needs_input', 'needs_approval', 'blocked', 'failed'].includes(item.status))
@@ -114,9 +163,10 @@ export function WorkPage() {
       .filter((item) => item.status === 'completed')
       .slice(0, 12)
       .map(toWorkRow)
+    completed.push(...standaloneRuns.filter((run) => ['Completed', 'Cancelled'].includes(run.status)).slice(0, 12))
 
     return { attention, running, scheduled, completed }
-  }, [data])
+  }, [data, durableRuns, services?.controlPlane.mode, services?.mode])
 
   const open = (row: WorkRow) => navigate(row.href ?? `/project/${row.projectId}`)
   const sections = [

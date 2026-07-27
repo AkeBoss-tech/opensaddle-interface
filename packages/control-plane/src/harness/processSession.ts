@@ -11,6 +11,8 @@ export interface ProcessSessionInput {
   signal: AbortSignal
   sessionRoot: string
   emit: HarnessEmit
+  /** Optional prompt or protocol input written once before stdin is closed. */
+  stdinText?: string
   /** Optional line parser — return text to stream as agent.output.delta. */
   onStdoutLine?: (line: string) => Promise<string | undefined> | string | undefined
   maxOutputBytes?: number
@@ -58,7 +60,7 @@ export async function runProcessSession(input: ProcessSessionInput): Promise<Pro
         cwd: input.cwd,
         env: { ...process.env, ...input.env },
         shell: false,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [input.stdinText === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       })
     } catch (error) {
       reject(error)
@@ -66,6 +68,9 @@ export async function runProcessSession(input: ProcessSessionInput): Promise<Pro
     }
 
     writeFileSync(join(runnerDir, 'pid.txt'), String(child.pid ?? ''))
+    if (input.stdinText !== undefined) {
+      child.stdin?.end(input.stdinText)
+    }
     const stdoutStream = createWriteStream(stdoutPath, { flags: 'a' })
     const stderrStream = createWriteStream(stderrPath, { flags: 'a' })
 

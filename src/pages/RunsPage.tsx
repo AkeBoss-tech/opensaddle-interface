@@ -1,27 +1,153 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
+import type { RuntimeRunSummary } from '../services/contracts'
 
 export function RunsPage() {
-  const { data, updateTaskStatus, toast } = useStore()
-  const [tab, setTab] = useState<'scheduled' | 'background' | 'monitors' | 'cloud'>('scheduled')
-  const [showCreate, setShowCreate] = useState(false)
+  const { data, updateTaskStatus, toast, services, createChat, setActiveChat } = useStore()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const selectedTaskId = searchParams.get('task')
+  const selectedRunId = searchParams.get('run')
+  const [tab, setTab] = useState<'local' | 'scheduled' | 'background' | 'monitors' | 'cloud'>(
+    selectedRunId || services?.mode === 'desktop' || services?.controlPlane.mode === 'local' ? 'local' : 'scheduled',
+  )
+  const [localRuns, setLocalRuns] = useState<RuntimeRunSummary[]>([])
+  const [runBusy, setRunBusy] = useState<string | null>(null)
 
   const scheduled = data.tasks.filter((t) => t.type === 'scheduled')
   const background = data.tasks.filter((t) => t.type === 'background')
   const monitors = data.tasks.filter((t) => t.type === 'monitor')
 
+  useEffect(() => {
+    const selected = data.tasks.find((task) => task.id === selectedTaskId)
+    if (!selected) return
+    setTab(selected.type === 'background' ? 'background' : selected.type === 'monitor' ? 'monitors' : 'scheduled')
+    window.setTimeout(() => {
+      document.getElementById(`task-${selected.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }, 0)
+  }, [data.tasks, selectedTaskId])
+
+  useEffect(() => {
+    if (selectedRunId) setTab('local')
+  }, [selectedRunId])
+
+  useEffect(() => {
+    if (services?.mode === 'desktop' || services?.controlPlane.mode === 'local') setTab('local')
+  }, [services?.controlPlane.mode, services?.mode])
+
+  useEffect(() => {
+    if (!services?.runtime.listRuns) {
+      setLocalRuns([])
+      return
+    }
+    let cancelled = false
+    const refresh = async () => {
+      const runs = await services.runtime.listRuns!()
+      if (cancelled) return
+      setLocalRuns(runs)
+      if (selectedRunId) {
+        window.setTimeout(() => {
+          document.getElementById(`local-run-${selectedRunId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        }, 0)
+      }
+    }
+    void refresh().catch((error: unknown) => toast('Could not load local runs', error instanceof Error ? error.message : String(error)))
+    const timer = window.setInterval(() => void refresh().catch(() => undefined), 2_500)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [selectedRunId, services, toast])
+
+  const runAction = async (run: RuntimeRunSummary, action: 'pause' | 'resume' | 'retry' | 'stop') => {
+    setRunBusy(`${run.runId}:${action}`)
+    try {
+      if (action === 'pause') await services?.runtime.pause(run.runId)
+      if (action === 'resume') await services?.runtime.resume(run.runId)
+      if (action === 'stop') await services?.runtime.cancel(run.runId)
+      if (action === 'retry') {
+        const retried = await services?.runtime.retry(run.runId)
+        if (retried) navigate(`/runs?run=${encodeURIComponent(retried.runId)}`)
+      }
+      setLocalRuns(await services?.runtime.listRuns?.() ?? [])
+      toast(
+        action === 'retry' ? 'Retry started' : action === 'stop' ? 'Run stopped' : action === 'pause' ? 'Run paused' : 'Run resumed',
+        run.task,
+      )
+    } catch (error) {
+      toast('Run action failed', error instanceof Error ? error.message : String(error))
+    } finally {
+      setRunBusy(null)
+    }
+  }
+
   return (
     <div className="content-page">
       <div className="page-header">
         <div className="page-header-copy"><div className="eyebrow">Automation</div><h1>Runs & automations</h1><p>Run now, background jobs, schedules, and condition-based monitors — each with trigger, policy, budget, and audit timeline.</p></div>
-        <div className="page-header-actions"><button className="primary-btn" onClick={() => setShowCreate(true)}><Icon name="plus" className="icon sm" />Create task</button></div>
+        <div className="page-header-actions"><button className="primary-btn" onClick={() => {
+          const chat = createChat(data.activeProjectId, 'New task')
+          setActiveChat(chat.id)
+          navigate(`/chat/${chat.id}`)
+        }}><Icon name="plus" className="icon sm" />New task</button></div>
       </div>
       <div className="tabs">
-        {(['scheduled', 'background', 'monitors', 'cloud'] as const).map((t) => (
-          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t[0]!.toUpperCase() + t.slice(1)}</button>
+        {(services?.mode === 'desktop' || services?.controlPlane.mode === 'local'
+          ? ['local'] as const
+          : ['local', 'scheduled', 'background', 'monitors', 'cloud'] as const
+        ).map((t) => (
+          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t === 'local' ? 'Local runs' : t[0]!.toUpperCase() + t.slice(1)}</button>
         ))}
       </div>
+
+      {tab === 'local' && (
+        <div className="card">
+          <div className="card-header">
+            <div><h3>Durable local activity</h3><p>Server-owned runs survive navigation, reloads, and desktop restarts.</p></div>
+            <span className={`status-pill ${services?.controlPlane.connected ? 'green' : 'yellow'} right`}>
+              {services?.controlPlane.connected ? 'Local server connected' : 'Local server unavailable'}
+            </span>
+          </div>
+          <div className="card-body row-list">
+            {localRuns.map((run) => {
+              const project = data.projects.find((candidate) => candidate.id === run.projectId)
+              const active = ['queued', 'provisioning', 'running', 'waiting', 'paused'].includes(run.status)
+              const provider = run.route.providerKey && run.route.providerKey !== 'auto' ? run.route.providerKey : run.route.harnessKey
+              return (
+                <div id={`local-run-${run.runId}`} className={`row-item local-run-row ${selectedRunId === run.runId ? 'tf-target-row' : ''}`} key={run.runId}>
+                  <div className="row-icon"><Icon name="terminal" className="icon sm" /></div>
+                  <div className="row-copy">
+                    <div className="row-title">{run.task}</div>
+                    <div className="row-sub">
+                      {project?.name ?? run.projectId} · {provider} · {run.route.modelId ?? run.route.modelKey} · {run.executionMode ?? 'project'} access
+                    </div>
+                    <div className="mini-tags">
+                      <span className="mini-tag">{run.runId.slice(0, 12)}</span>
+                      <span className="mini-tag">{new Date(run.updatedAt).toLocaleString()}</span>
+                      {run.parentRunId && <span className="mini-tag">Retry of {run.parentRunId.slice(0, 8)}</span>}
+                      {run.error && <span className="mini-tag">{run.error}</span>}
+                    </div>
+                  </div>
+                  <div className="row-actions">
+                    <span className={`status-pill ${run.status === 'completed' ? 'green' : run.status === 'failed' || run.status === 'cancelled' ? 'red' : run.status === 'paused' || run.status === 'waiting' ? 'yellow' : ''}`}>
+                      {run.status}
+                    </span>
+                    {active && run.status !== 'paused' && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={() => void runAction(run, 'pause')}>Pause</button>}
+                    {run.status === 'paused' && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={() => void runAction(run, 'resume')}>Resume</button>}
+                    {active && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={() => void runAction(run, 'stop')}>Stop</button>}
+                    {!active && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={() => void runAction(run, 'retry')}>Retry</button>}
+                  </div>
+                </div>
+              )
+            })}
+            {!localRuns.length && (
+              <div className="tf-work-empty"><Icon name="terminal" /><strong>No local runs yet</strong><span>Start a task to see its durable activity here.</span></div>
+            )}
+          </div>
+        </div>
+      )}
 
       {tab === 'scheduled' && (
         <>
@@ -34,7 +160,7 @@ export function RunsPage() {
           <div className="card"><div className="card-body" style={{ padding: 0, overflow: 'auto' }}>
             <table className="task-table"><thead><tr><th>Task</th><th>Schedule</th><th>Harness</th><th>Status</th><th /></tr></thead>
               <tbody>{scheduled.map((t) => (
-                <tr key={t.id}>
+                <tr id={`task-${t.id}`} key={t.id} className={selectedTaskId === t.id ? 'tf-target-row' : ''}>
                   <td><div className="task-name"><Icon name="clock" className="icon sm" />{t.name}</div></td>
                   <td>{t.schedule}</td><td>{t.harness}</td>
                   <td><span className={`status-pill ${t.status === 'active' ? 'green' : 'yellow'}`}>{t.status}</span></td>
@@ -49,7 +175,7 @@ export function RunsPage() {
       {tab === 'background' && (
         <div className="grid-2">
           {background.map((t) => (
-            <div key={t.id} className="card">
+            <div id={`task-${t.id}`} key={t.id} className={`card ${selectedTaskId === t.id ? 'tf-target-card' : ''}`}>
               <div className="card-header"><div><h3>{t.name}</h3><p>{t.schedule}</p></div><span className={`status-pill ${t.status === 'running' ? 'green' : ''} right`}>{t.status === 'running' && <span className="pulse" />}{t.status}</span></div>
               <div className="card-body">
                 {t.progress != null && <><div className="progress"><span style={{ width: `${t.progress}%` }} /></div><div className="kv"><span>Progress</span><span>{t.progress}%</span></div></>}
@@ -69,7 +195,7 @@ export function RunsPage() {
           <div className="card"><div className="card-body" style={{ padding: 0, overflow: 'auto' }}>
             <table className="task-table"><thead><tr><th>Monitor</th><th>Trigger</th><th>Action</th><th>Approval</th><th>Status</th></tr></thead>
               <tbody>{monitors.map((t) => (
-                <tr key={t.id}>
+                <tr id={`task-${t.id}`} key={t.id} className={selectedTaskId === t.id ? 'tf-target-row' : ''}>
                   <td><div className="task-name"><Icon name="activity" className="icon sm" />{t.name}</div></td>
                   <td>{t.trigger}</td><td>{t.action}</td><td>{t.approval}</td>
                   <td><span className={`status-pill ${t.status === 'armed' ? 'green' : 'yellow'}`}>{t.status}</span></td>
@@ -115,21 +241,6 @@ export function RunsPage() {
         </>
       )}
 
-      {showCreate && (
-        <div className="modal-backdrop open" onClick={(e) => { if (e.target === e.currentTarget) setShowCreate(false) }}>
-          <div className="modal">
-            <div className="modal-head"><div className="modal-icon" style={{ color: 'var(--green)', borderColor: 'rgba(101,199,139,.3)', background: 'rgba(101,199,139,.08)' }}><Icon name="clock" /></div><div><h3>Create a task</h3><p>Mock create — adds a scheduled row.</p></div></div>
-            <div className="modal-body">
-              <div className="form-row"><label>Name</label><input id="taskName" defaultValue="Weekly project summary" /></div>
-              <div className="form-row"><label>Schedule</label><input id="taskSched" defaultValue="Mondays at 9:00 AM" /></div>
-            </div>
-            <div className="modal-actions">
-              <button className="ghost-btn" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="primary-btn" onClick={() => { toast('Task created', 'Scheduled task is active (mock).'); setShowCreate(false) }}>Create</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

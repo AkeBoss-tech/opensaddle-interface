@@ -4,6 +4,7 @@ import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
 import { selectThreadSummaries, type ThreadSummary } from '../thread/domain'
 import type { AppData, Project } from '../../types'
+import type { ProjectArtifactManifest } from '../../services/contracts'
 
 function relativeTime(timestamp: number) {
   const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000))
@@ -16,6 +17,7 @@ function relativeTime(timestamp: number) {
 
 function threadTone(status: ThreadSummary['status']) {
   if (status === 'running' || status === 'planning' || status === 'reviewing') return 'running'
+  if (status === 'paused') return 'paused'
   if (status === 'blocked' || status === 'failed' || status === 'needs_approval' || status === 'needs_input') return 'blocked'
   return 'ready'
 }
@@ -25,6 +27,7 @@ function ProjectTree({
   parentId,
   activeProjectId,
   data,
+  manifests,
   expanded,
   locationPath,
   onOpen,
@@ -38,6 +41,7 @@ function ProjectTree({
   parentId: string | null
   activeProjectId: string
   data: AppData
+  manifests: Record<string, ProjectArtifactManifest>
   expanded: Set<string>
   locationPath: string
   onOpen: (project: Project) => void
@@ -57,6 +61,7 @@ function ProjectTree({
         const agents = data.agents.filter((agent) => agent.projectId === project.id)
         const documents = project.local?.documents ?? []
         const skills = project.local?.skills ?? []
+        const manifest = manifests[project.id]
         const isOpen = expanded.has(project.id)
         return (
           <div key={project.id} className="tf-project-node">
@@ -86,12 +91,12 @@ function ProjectTree({
                 >
                   <Icon name="book" className="icon sm tf-artifact-icon wiki" />
                   <span>Wiki</span>
-                  <small>{wikiCount || '—'}</small>
+                  <small>{wikiCount || manifest?.artifacts.filter((artifact) => artifact.path.toLowerCase().includes('wiki')).length || '—'}</small>
                 </button>
                 <button className={`tf-artifact-row ${locationPath === '/sites' && activeProjectId === project.id ? 'active' : ''}`} onClick={() => onOpenSites(project)}>
                   <Icon name="globe" className="icon sm tf-artifact-icon site" />
                   <span>Sites</span>
-                  <small>{sites.length}</small>
+                  <small>{sites.length + (manifest?.counts.site ?? 0)}</small>
                 </button>
                 {sites.map((site) => (
                   <button
@@ -109,17 +114,17 @@ function ProjectTree({
                     <button className="tf-artifact-row" onClick={() => onOpenLocalArtifact(project, 'documentation')}>
                       <Icon name="file" className="icon sm tf-artifact-icon docs" />
                       <span>Documentation</span>
-                      <small>{documents.length}</small>
+                      <small>{manifest?.counts.documentation ?? documents.length}</small>
                     </button>
                     <button className="tf-artifact-row" onClick={() => onOpenLocalArtifact(project, 'agents')}>
                       <Icon name="spark" className="icon sm tf-artifact-icon agents" />
                       <span>Agents</span>
-                      <small>{agents.length}</small>
+                      <small>{agents.length + (manifest?.counts.agent ?? 0)}</small>
                     </button>
                     <button className="tf-artifact-row" onClick={() => onOpenLocalArtifact(project, 'skills')}>
                       <Icon name="plugin" className="icon sm tf-artifact-icon skills" />
                       <span>Skills</span>
-                      <small>{skills.length}</small>
+                      <small>{manifest?.counts.skill ?? skills.length}</small>
                     </button>
                   </>
                 )}
@@ -128,6 +133,7 @@ function ProjectTree({
                   parentId={project.id}
                   activeProjectId={activeProjectId}
                   data={data}
+                  manifests={manifests}
                   expanded={expanded}
                   locationPath={locationPath}
                   onOpen={onOpen}
@@ -156,7 +162,7 @@ export function ThreadFirstSidebar({
   onCreateProject: () => void
 }) {
   const store = useStore()
-  const { data, createChat, setActiveChat, setActiveProject, services } = store
+  const { data, createChat, setActiveChat, setActiveProject, services, localProjectManifests } = store
   const navigate = useNavigate()
   const location = useLocation()
   const [projectsOpen, setProjectsOpen] = useState(true)
@@ -224,7 +230,7 @@ export function ThreadFirstSidebar({
       <div className="tf-sidebar-head">
         <button className="tf-workspace" onClick={() => navigate('/work')} title="OpenSaddle workspace">
           <span className="tf-workspace-logo"><Icon name="saddle" className="icon sm" /></span>
-          {!collapsed && <span><strong>OpenSaddle</strong><small>{data.workspaceName}</small></span>}
+          {!collapsed && <span><strong>OpenSaddle</strong><small>{services?.mode === 'desktop' || services?.controlPlane.mode === 'local' ? 'Local desktop workspace' : data.workspaceName}</small></span>}
         </button>
         <button className="tf-icon-button" onClick={() => onCollapsedChange(!collapsed)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           <Icon name="panel" className="icon sm" />
@@ -244,7 +250,7 @@ export function ThreadFirstSidebar({
         <nav className="tf-nav-block" aria-label="Primary">
           <NavLink to="/work" className={({ isActive }) => `tf-nav-row ${isActive ? 'active' : ''}`}>
             <Icon name="clock" className="icon sm" /><span>Work</span>
-            {!collapsed && data.notifications.some((item) => !item.read) && <span className="tf-attention-dot" />}
+            {!collapsed && services?.mode !== 'desktop' && services?.controlPlane.mode !== 'local' && data.notifications.some((item) => !item.read) && <span className="tf-attention-dot" />}
           </NavLink>
           {(window.opensaddleDesktop || services?.controlPlane.mode === 'local' || localProjects.length > 0) && (
             <>
@@ -260,6 +266,7 @@ export function ThreadFirstSidebar({
                     parentId={null}
                     activeProjectId={data.activeProjectId}
                     data={data}
+                    manifests={localProjectManifests}
                     expanded={expandedProjects}
                     locationPath={location.pathname}
                     onOpen={openProject}
@@ -271,6 +278,9 @@ export function ThreadFirstSidebar({
                   />
                   <button className="tf-add-project" onClick={() => navigate('/local')}>
                     <Icon name="plus" className="icon xs" /> Add folder
+                  </button>
+                  <button className={`tf-add-project ${location.pathname === '/sessions' ? 'active' : ''}`} onClick={() => navigate('/sessions')}>
+                    <Icon name="terminal" className="icon xs" /> Codex / Claude sessions
                   </button>
                 </div>
               )}
@@ -287,6 +297,7 @@ export function ThreadFirstSidebar({
                 parentId={null}
                 activeProjectId={data.activeProjectId}
                 data={data}
+                manifests={localProjectManifests}
                 expanded={expandedProjects}
                 locationPath={location.pathname}
                 onOpen={openProject}

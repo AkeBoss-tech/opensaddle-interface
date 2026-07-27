@@ -14,6 +14,8 @@ let krailProc: ChildProcess | null = null
 let embeddedBrowser: WebContentsView | null = null
 let sidecarsShuttingDown = false
 let controlPlaneRestartTimer: NodeJS.Timeout | null = null
+let controlPlaneHealthTimer: NodeJS.Timeout | null = null
+let controlPlaneEnsurePromise: Promise<boolean> | null = null
 
 const OPENSADDLE_URL = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
 const KRAIL_URL = process.env.KRAIL_URL ?? 'http://127.0.0.1:8787'
@@ -239,13 +241,25 @@ function launchControlPlane(): void {
 }
 
 async function ensureControlPlane(): Promise<boolean> {
-  if (await controlPlaneHealthy()) return true
-  launchControlPlane()
-  return waitForControlPlane()
+  if (controlPlaneEnsurePromise) return controlPlaneEnsurePromise
+  const pending = (async () => {
+    if (await controlPlaneHealthy()) return true
+    launchControlPlane()
+    return waitForControlPlane()
+  })()
+  controlPlaneEnsurePromise = pending
+  try {
+    return await pending
+  } finally {
+    if (controlPlaneEnsurePromise === pending) controlPlaneEnsurePromise = null
+  }
 }
 
 async function startSidecars(): Promise<void> {
   await ensureControlPlane()
+  controlPlaneHealthTimer = setInterval(() => {
+    if (!sidecarsShuttingDown) void ensureControlPlane()
+  }, 3_000)
   if (!isDev) return
   const krailEntry = path.resolve(__dirname, '../../packages/krail/src/server.ts')
   if (existsSync(krailEntry)) {
@@ -261,6 +275,8 @@ function stopSidecars(): void {
   sidecarsShuttingDown = true
   if (controlPlaneRestartTimer) clearTimeout(controlPlaneRestartTimer)
   controlPlaneRestartTimer = null
+  if (controlPlaneHealthTimer) clearInterval(controlPlaneHealthTimer)
+  controlPlaneHealthTimer = null
   controlPlaneProc?.kill()
   controlPlaneProc = null
   krailProc?.kill()

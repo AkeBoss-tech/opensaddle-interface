@@ -1,13 +1,31 @@
 import { createInterface } from 'node:readline'
 import { spawn } from 'node:child_process'
-import type { HarnessAdapter, HarnessRunInput, HarnessRunResult } from './types.js'
+import type {
+  HarnessAdapter,
+  HarnessInteractionRequest,
+  HarnessInteractionResponse,
+  HarnessRunInput,
+  HarnessRunResult,
+} from './types.js'
 
 type RpcMessage = {
-  id?: number
+  id?: string | number
   method?: string
   result?: Record<string, unknown>
   error?: { message?: string }
   params?: Record<string, unknown>
+}
+
+type ActiveCodexRun = {
+  send: (message: Record<string, unknown>) => void
+  threadId?: string
+  turnId?: string
+  nextRequestId: number
+  pending: Map<number, {
+    resolve: (accepted: boolean) => void
+    reject: (error: Error) => void
+    timer: NodeJS.Timeout
+  }>
 }
 
 export function mergeCodexMessage(current: string, incoming: string): { output: string; delta: string } {
@@ -25,12 +43,190 @@ export function mergeCodexMessage(current: string, incoming: string): { output: 
   return { output: current + separator + incoming, delta: separator + incoming }
 }
 
+export function codexThreadOpenMethod(
+  providerSessionId?: string,
+  providerSessionMode: 'resume' | 'fork' = 'resume',
+): 'thread/start' | 'thread/resume' | 'thread/fork' {
+  if (!providerSessionId) return 'thread/start'
+  return providerSessionMode === 'fork' ? 'thread/fork' : 'thread/resume'
+}
+
+export function codexForkCheckpoint(
+  providerSessionMode?: 'resume' | 'fork',
+  providerTurnId?: string,
+): { lastTurnId?: string } {
+  return providerSessionMode === 'fork' && providerTurnId
+    ? { lastTurnId: providerTurnId }
+    : {}
+}
+
+function strings(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const items = value.flatMap((item) => typeof item === 'string' ? [item] : [])
+  return items.length ? items : undefined
+}
+
+export function codexInteractionRequest(message: RpcMessage): HarnessInteractionRequest | undefined {
+  if (message.id === undefined || !message.method) return undefined
+  const params = message.params ?? {}
+  const id = `codex:${String(message.id)}`
+  const reason = typeof params.reason === 'string' ? params.reason : undefined
+  const command = typeof params.command === 'string' ? params.command : undefined
+  const cwd = typeof params.cwd === 'string' ? params.cwd : undefined
+  const grantRoot = typeof params.grantRoot === 'string' ? params.grantRoot : undefined
+
+  if (message.method === 'item/commandExecution/requestApproval' || message.method === 'execCommandApproval') {
+    return {
+      id,
+      kind: 'approval',
+      method: message.method,
+      prompt: reason ?? (command ? `Allow this command?\n${command}` : 'Allow Codex to run this command?'),
+      detail: [command, cwd].filter(Boolean).join('\n'),
+      availableDecisions: strings(params.availableDecisions) ?? ['accept', 'acceptForSession', 'decline'],
+      metadata: { command, cwd },
+    }
+  }
+  if (message.method === 'item/fileChange/requestApproval' || message.method === 'applyPatchApproval') {
+    return {
+      id,
+      kind: 'approval',
+      method: message.method,
+      prompt: reason ?? (grantRoot ? `Allow Codex to modify files under ${grantRoot}?` : 'Allow Codex to apply these file changes?'),
+      detail: grantRoot,
+      availableDecisions: ['accept', 'acceptForSession', 'decline'],
+      metadata: { grantRoot },
+    }
+  }
+  if (message.method === 'item/permissions/requestApproval') {
+    return {
+      id,
+      kind: 'approval',
+      method: message.method,
+      prompt: reason ?? 'Allow the additional permissions requested by Codex?',
+      detail: cwd,
+      availableDecisions: ['accept', 'acceptForSession', 'decline'],
+      metadata: { cwd, permissions: params.permissions },
+    }
+  }
+  if (message.method === 'item/tool/requestUserInput') {
+    const questions = Array.isArray(params.questions) ? params.questions.flatMap((candidate) => {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return []
+      const question = candidate as Record<string, unknown>
+      if (typeof question.id !== 'string' || typeof question.question !== 'string') return []
+      const options = Array.isArray(question.options) ? question.options.flatMap((option) => {
+        if (!option || typeof option !== 'object' || Array.isArray(option)) return []
+        const row = option as Record<string, unknown>
+        return typeof row.label === 'string'
+          ? [{ label: row.label, description: typeof row.description === 'string' ? row.description : undefined }]
+          : []
+      }) : undefined
+      return [{
+        id: question.id,
+        header: typeof question.header === 'string' ? question.header : undefined,
+        prompt: question.question,
+        options,
+        allowOther: question.isOther === true,
+        secret: question.isSecret === true,
+      }]
+    }) : []
+    return {
+      id,
+      kind: 'input',
+      method: message.method,
+      prompt: questions[0]?.prompt ?? 'Codex needs more information to continue.',
+      questions,
+    }
+  }
+  if (message.method === 'mcpServer/elicitation/request') {
+    const prompt = typeof params.message === 'string' ? params.message : 'A connected tool needs information to continue.'
+    return {
+      id,
+      kind: 'input',
+      method: message.method,
+      prompt,
+      detail: typeof params.serverName === 'string' ? params.serverName : undefined,
+      questions: [{ id: 'response', prompt, allowOther: true }],
+      metadata: { mode: params.mode, serverName: params.serverName },
+    }
+  }
+  return undefined
+}
+
+export function codexInteractionResult(
+  method: string,
+  response: HarnessInteractionResponse,
+  params: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const approved = response.approved === true
+  const session = response.scope === 'session'
+  if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') {
+    return { decision: approved ? session ? 'acceptForSession' : 'accept' : 'decline' }
+  }
+  if (method === 'execCommandApproval' || method === 'applyPatchApproval') {
+    return { decision: approved ? session ? 'approved_for_session' : 'approved' : 'denied' }
+  }
+  if (method === 'item/permissions/requestApproval') {
+    const requested = params.permissions && typeof params.permissions === 'object' && !Array.isArray(params.permissions)
+      ? params.permissions as Record<string, unknown>
+      : {}
+    return {
+      permissions: approved
+        ? Object.fromEntries(Object.entries(requested).filter(([, value]) => value != null))
+        : {},
+      scope: session ? 'session' : 'turn',
+    }
+  }
+  if (method === 'item/tool/requestUserInput') {
+    const questions = Array.isArray(params.questions) ? params.questions : []
+    const firstId = questions.find((question) =>
+      question && typeof question === 'object' && !Array.isArray(question) && typeof (question as Record<string, unknown>).id === 'string',
+    )
+    const fallbackId = firstId && typeof firstId === 'object' && !Array.isArray(firstId)
+      ? String((firstId as Record<string, unknown>).id)
+      : 'response'
+    const answers = response.answers ?? (response.text ? { [fallbackId]: [response.text] } : {})
+    return { answers: Object.fromEntries(Object.entries(answers).map(([id, values]) => [id, { answers: values }])) }
+  }
+  if (method === 'mcpServer/elicitation/request') {
+    return {
+      action: response.approved === false ? 'decline' : 'accept',
+      content: response.form ?? response.answers ?? (response.text ? { response: response.text } : {}),
+      _meta: null,
+    }
+  }
+  return {}
+}
+
 /**
  * Codex's documented rich-client transport. The app-server speaks newline-
  * delimited JSON-RPC over stdio and owns the model/account/session lifecycle.
  */
 export class CodexAppServerAdapter implements HarnessAdapter {
   readonly id = 'codex'
+  private readonly activeRuns = new Map<string, ActiveCodexRun>()
+
+  async steer(runId: string, text: string): Promise<boolean> {
+    const active = this.activeRuns.get(runId)
+    const guidance = text.trim()
+    if (!active?.threadId || !active.turnId || !guidance) return false
+    const id = active.nextRequestId++
+    return await new Promise<boolean>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        active.pending.delete(id)
+        reject(new Error('Codex did not acknowledge steering in time'))
+      }, 10_000)
+      active.pending.set(id, { resolve, reject, timer })
+      active.send({
+        method: 'turn/steer',
+        id,
+        params: {
+          threadId: active.threadId,
+          expectedTurnId: active.turnId,
+          input: [{ type: 'text', text: guidance }],
+        },
+      })
+    })
+  }
 
   async run(input: HarnessRunInput): Promise<HarnessRunResult> {
     const child = spawn('codex', ['app-server'], {
@@ -47,7 +243,15 @@ export class CodexAppServerAdapter implements HarnessAdapter {
     const send = (message: Record<string, unknown>) => {
       if (!child.stdin.destroyed) child.stdin.write(`${JSON.stringify(message)}\n`)
     }
-    const result = await new Promise<{ summary: string }>((resolve, reject) => {
+    const active: ActiveCodexRun = {
+      send,
+      nextRequestId: 100,
+      pending: new Map(),
+    }
+    this.activeRuns.set(input.runId, active)
+    let result: { summary: string }
+    try {
+      result = await new Promise<{ summary: string }>((resolve, reject) => {
       const finish = (summary: string) => {
         if (settled) return
         settled = true
@@ -65,6 +269,38 @@ export class CodexAppServerAdapter implements HarnessAdapter {
         try {
           message = JSON.parse(line) as RpcMessage
         } catch {
+          return
+        }
+
+        if (message.id !== undefined && !message.method && typeof message.id === 'number') {
+          const pending = active.pending.get(message.id)
+          if (pending) {
+            active.pending.delete(message.id)
+            clearTimeout(pending.timer)
+            if (message.error) pending.reject(new Error(message.error.message ?? 'Codex rejected steering'))
+            else pending.resolve(true)
+            return
+          }
+        }
+
+        if (message.method && message.id !== undefined) {
+          const interaction = codexInteractionRequest(message)
+          if (interaction && input.requestInteraction) {
+            void input.requestInteraction(interaction)
+              .then((response) => send({
+                id: message.id,
+                result: codexInteractionResult(message.method!, response, message.params),
+              }))
+              .catch(() => send({
+                id: message.id,
+                result: codexInteractionResult(message.method!, { approved: false }, message.params),
+              }))
+          } else {
+            send({
+              id: message.id,
+              error: { code: -32601, message: `OpenSaddle does not handle ${message.method}` },
+            })
+          }
           return
         }
 
@@ -95,7 +331,13 @@ export class CodexAppServerAdapter implements HarnessAdapter {
           // Auto/native routes deliberately omit model so Codex chooses the
           // model supported by the user's configured account/router.
           if (!input.route.nativeModelDefault && input.route.modelId) params.model = input.route.modelId
-          send({ method: 'thread/start', id: 1, params })
+          if (input.providerSessionId) params.threadId = input.providerSessionId
+          Object.assign(params, codexForkCheckpoint(input.providerSessionMode, input.providerTurnId))
+          send({
+            method: codexThreadOpenMethod(input.providerSessionId, input.providerSessionMode),
+            id: 1,
+            params,
+          })
           return
         }
 
@@ -108,10 +350,13 @@ export class CodexAppServerAdapter implements HarnessAdapter {
             reject(new Error('Codex app-server did not return a thread id'))
             return
           }
+          active.threadId = threadId
+          const openMethod = codexThreadOpenMethod(input.providerSessionId, input.providerSessionMode)
           void input.emit('tool.completed', {
-            tool: 'codex.thread.start',
+            tool: `codex.${openMethod.replace('/', '.')}`,
             thread_id: threadId,
             persistent: true,
+            source_thread_id: input.providerSessionMode === 'fork' ? input.providerSessionId : undefined,
           })
           send({
             method: 'turn/start',
@@ -122,7 +367,18 @@ export class CodexAppServerAdapter implements HarnessAdapter {
         }
 
         const params = message.params ?? {}
-        if (message.method === 'item/agentMessage/delta') {
+        if (message.id === 2) {
+          const turn = message.result?.turn
+          if (turn && typeof turn === 'object' && 'id' in turn && typeof turn.id === 'string') {
+            active.turnId = turn.id
+          }
+        }
+        if (message.method === 'turn/started') {
+          const turn = params.turn
+          if (turn && typeof turn === 'object' && 'id' in turn && typeof turn.id === 'string') {
+            active.turnId = turn.id
+          }
+        } else if (message.method === 'item/agentMessage/delta') {
           const delta = typeof params.delta === 'string' ? params.delta : ''
           if (delta) {
             output += delta
@@ -131,6 +387,18 @@ export class CodexAppServerAdapter implements HarnessAdapter {
         } else if (message.method === 'turn/completed') {
           const turn = params.turn
           const status = turn && typeof turn === 'object' && 'status' in turn ? turn.status : undefined
+          const completedTurnId = turn && typeof turn === 'object' && 'id' in turn && typeof turn.id === 'string'
+            ? turn.id
+            : active.turnId
+          if (completedTurnId) {
+            active.turnId = completedTurnId
+            void input.emit('tool.completed', {
+              tool: 'codex.turn.completed',
+              thread_id: active.threadId,
+              turn_id: completedTurnId,
+              persistent: true,
+            })
+          }
           if (status && status !== 'completed') {
             reject(new Error(`Codex turn ${String(status)}`))
           } else {
@@ -182,10 +450,17 @@ export class CodexAppServerAdapter implements HarnessAdapter {
           experimentalApi: true,
         },
       })
-    })
-
-    rl.close()
-    child.kill('SIGTERM')
-    return { summary: result.summary, providerId: this.id }
+      })
+    } finally {
+      this.activeRuns.delete(input.runId)
+      for (const pending of active.pending.values()) {
+        clearTimeout(pending.timer)
+        pending.reject(new Error('Codex turn ended before steering completed'))
+      }
+      active.pending.clear()
+      rl.close()
+      child.kill('SIGTERM')
+    }
+    return { summary: result.summary, providerId: this.id, outputAlreadyEmitted: true }
   }
 }

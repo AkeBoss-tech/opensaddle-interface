@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
+import type { HarnessCapability, ManagedArtifactArchive, ProjectArtifactManifest } from '../services/contracts'
 import type {
   AgentPermissionPolicy,
   CodingProvider,
@@ -11,6 +12,53 @@ import type {
 } from '../types'
 
 type LocalTab = 'overview' | 'documentation' | 'agents' | 'skills' | 'harnesses' | 'permissions'
+type HarnessDraft = {
+  label: string
+  command: string
+  args: string
+  protocol: 'cli' | 'acp'
+  promptMode: LocalHarnessDefinition['promptMode']
+  promptFlag: string
+  modelFlag: string
+  models: string
+  supportsStreaming: boolean
+}
+
+const EMPTY_HARNESS_DRAFT: HarnessDraft = {
+  label: '',
+  command: '',
+  args: '',
+  protocol: 'cli',
+  promptMode: 'final_arg',
+  promptFlag: '--prompt',
+  modelFlag: '--model',
+  models: '',
+  supportsStreaming: true,
+}
+
+function harnessStatus(capability: HarnessCapability | undefined, available: boolean) {
+  if (!capability) return available
+    ? { label: 'Installed', tone: 'yellow', detail: 'Run a readiness check before using this harness.' }
+    : { label: 'Missing', tone: 'red', detail: 'The executable was not found on this machine.' }
+  if (capability.availability !== 'available') {
+    return {
+      label: capability.availability === 'missing' ? 'Missing' : 'Disabled',
+      tone: 'red',
+      detail: capability.unavailableReason ?? 'This harness is unavailable.',
+    }
+  }
+  if (capability.readiness === 'ready') {
+    return { label: 'Ready', tone: 'green', detail: capability.version ?? 'Authenticated and ready to run.' }
+  }
+  return {
+    label: capability.readiness === 'needs_auth' ? 'Needs setup' : 'Check login',
+    tone: 'yellow',
+    detail: [
+      capability.auth.message ?? 'The executable is installed but not ready to run.',
+      capability.auth.setupCommand ? `Run ${capability.auth.setupCommand}.` : '',
+    ].filter(Boolean).join(' '),
+  }
+}
 
 const BUILTIN_HARNESSES = [
   { id: 'codex', label: 'Codex App Server', command: 'codex' },
@@ -34,6 +82,59 @@ function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+function artifactSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 80)
+}
+
+function yamlString(value: string) {
+  return JSON.stringify(value)
+}
+
+function frontmatterValue(content: string, key: string): string | undefined {
+  const match = content.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'))
+  if (!match?.[1]) return undefined
+  const raw = match[1].trim()
+  try {
+    const parsed = JSON.parse(raw)
+    return typeof parsed === 'string' ? parsed : raw
+  } catch {
+    return raw.replace(/^['"]|['"]$/g, '')
+  }
+}
+
+function agentFileDefinition(path: string, content: string, defaultHarnessId: string) {
+  const fallbackName = path.split('/').at(-1)?.replace(/\.(md|agent)$/i, '').replace(/[-_]+/g, ' ') ?? 'Project agent'
+  const name = frontmatterValue(content, 'name') ?? fallbackName.replace(/\b\w/g, (letter) => letter.toUpperCase())
+  const description = frontmatterValue(content, 'description') ?? `Project agent discovered in ${path}`
+  const harnessId = frontmatterValue(content, 'harness')
+    ?? (path.startsWith('.claude/') ? 'claude' : path.startsWith('.codex/') ? 'codex' : defaultHarnessId)
+  const withoutFrontmatter = content.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, '').trim()
+  const instructions = withoutFrontmatter.split(/\n## Instructions\s*\n/i)[1]?.trim() ?? withoutFrontmatter
+  return { name, description, harnessId, instructions: instructions || 'Work carefully in this project and explain material changes.' }
+}
+
+function agentArtifactContent(name: string, description: string, harnessId: string, instructions: string) {
+  return [
+    '---',
+    `name: ${yamlString(name)}`,
+    `description: ${yamlString(description)}`,
+    `harness: ${yamlString(harnessId)}`,
+    '---',
+    '',
+    `# ${name}`,
+    '',
+    '## Instructions',
+    '',
+    instructions,
+    '',
+  ].join('\n')
+}
+
 function inferredSource(configs: string[]): LocalProjectSettings['importedFrom'] {
   if (configs.some((item) => item === 'AGENTS.md' || item.startsWith('.codex/'))) return 'codex'
   if (configs.some((item) => item === 'CLAUDE.md' || item.startsWith('.claude/'))) return 'claude'
@@ -48,12 +149,16 @@ export function LocalProjectsPage() {
     updateProject,
     createAgent,
     updateAgent,
+    deleteAgent,
     createChat,
     setActiveChat,
     setActiveProject,
     upsertPermissionGrant,
     toast,
     services,
+    harnessCapabilities,
+    localProjectManifests,
+    rescanLocalProject,
   } = useStore()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -68,15 +173,35 @@ export function LocalProjectsPage() {
   const [clis, setClis] = useState<string[]>([])
   const [importing, setImporting] = useState(false)
   const [manualPath, setManualPath] = useState('')
-  const [harnessDraft, setHarnessDraft] = useState({ label: '', command: '', args: '' })
+  const [harnessDraft, setHarnessDraft] = useState<HarnessDraft>(EMPTY_HARNESS_DRAFT)
   const [agentDraft, setAgentDraft] = useState({ name: '', description: '', prompt: '', harnessId: '' })
+  const [skillDraft, setSkillDraft] = useState({ name: '', description: '', instructions: '' })
+  const [savingAgent, setSavingAgent] = useState(false)
+  const [savingSkill, setSavingSkill] = useState(false)
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null)
+  const [editingSkillId, setEditingSkillId] = useState<string | null>(null)
+  const [managedArchives, setManagedArchives] = useState<ManagedArtifactArchive[]>([])
+  const [restoringArchive, setRestoringArchive] = useState<string | null>(null)
   const project = projects.find((item) => item.id === selectedId) ?? projects[0]
   const local = project?.local
+  const manifest = project ? localProjectManifests[project.id] : undefined
   const agents = project ? data.agents.filter((agent) => agent.projectId === project.id) : []
 
   useEffect(() => {
     void window.opensaddle?.getRuntimeInfo().then((info) => setClis(info.clis)).catch(() => setClis([]))
   }, [])
+
+  useEffect(() => {
+    if (!project?.id || !services?.localProjects) {
+      setManagedArchives([])
+      return
+    }
+    let active = true
+    void services.localProjects.listManagedArchives(project.id)
+      .then((archives) => { if (active) setManagedArchives(archives) })
+      .catch(() => { if (active) setManagedArchives([]) })
+    return () => { active = false }
+  }, [project?.id, services?.localProjects])
 
   useEffect(() => {
     if (!selectedId && projects[0]) setSelectedId(projects[0].id)
@@ -103,21 +228,26 @@ export function LocalProjectsPage() {
   const availableHarnesses = useMemo(() => [
     ...BUILTIN_HARNESSES.map((harness) => ({
       ...harness,
-      available: harness.id === 'opensaddle' || clis.includes(harness.command)
-        || (harness.id === 'cursor' && clis.includes('agent')),
+      capability: harnessCapabilities.find((item) => item.id === harness.id),
+      available: harnessCapabilities.length
+        ? harnessCapabilities.some((item) =>
+          item.id === harness.id
+          && item.availability === 'available'
+          && item.readiness === 'ready')
+        : harness.id === 'opensaddle' || clis.includes(harness.command)
+          || (harness.id === 'cursor' && clis.includes('agent')),
     })),
-    ...(local?.harnesses ?? []).map((harness) => ({ ...harness, available: true })),
-  ], [clis, local?.harnesses])
-
-  if (services?.controlPlane.mode === 'company' && !window.opensaddleDesktop) {
-    return (
-      <div className="local-project-empty">
-        <Icon name="shield" />
-        <h2>Local administration is a Desktop feature</h2>
-        <p>This workspace is connected to an enterprise control plane. Organization policy remains authoritative here; open OpenSaddle Desktop with the local control plane to administer machine-local folders and harnesses.</p>
-      </div>
-    )
-  }
+    ...(local?.harnesses ?? []).map((harness) => {
+      const capability = harnessCapabilities.find((item) => item.id === harness.id)
+      return {
+        ...harness,
+        capability,
+        available: capability
+          ? capability.availability === 'available' && capability.readiness === 'ready'
+          : true,
+      }
+    }),
+  ], [clis, harnessCapabilities, local?.harnesses])
 
   const patchLocal = (patch: Partial<LocalProjectSettings>) => {
     if (!project?.local) return
@@ -125,15 +255,25 @@ export function LocalProjectsPage() {
   }
 
   const importPath = async (path: string) => {
-    if (!path.trim()) return
+    const requestedPath = path.trim().replace(/[\\/]+$/, '')
+    if (!requestedPath) return
+    const existing = projects.find((candidate) =>
+      candidate.local?.rootPath.replace(/[\\/]+$/, '') === requestedPath)
+    if (existing) {
+      setSelectedId(existing.id)
+      setActiveProject(existing.id)
+      setSearchParams({ project: existing.id })
+      toast('Local project ready', `${existing.name} is already available in OpenSaddle.`)
+      return
+    }
     setImporting(true)
     try {
       const inspection = window.opensaddle?.inspectProject
-        ? await window.opensaddle.inspectProject(path.trim())
+        ? await window.opensaddle.inspectProject(requestedPath)
         : {
-            rootPath: path.trim(),
-            name: path.trim().split(/[\\/]/).filter(Boolean).at(-1) ?? 'Local project',
-            description: `Local code project at ${path.trim()}`,
+            rootPath: requestedPath,
+            name: requestedPath.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Local project',
+            description: `Local code project at ${requestedPath}`,
             detectedConfigs: [],
             documents: [],
             skills: [],
@@ -148,33 +288,34 @@ export function LocalProjectsPage() {
             ? 'cursor'
             : 'opensaddle'
       const now = Date.now()
+      let importedLocal: LocalProjectSettings = {
+        rootPath: inspection.rootPath,
+        importedFrom: inferredSource(inspection.detectedConfigs),
+        importedAt: now,
+        defaultHarnessId: discoveredDefault,
+        permissionPreset: 'workspace-write',
+        adminAccess: true,
+        detectedConfigs: inspection.detectedConfigs,
+        harnesses: [],
+        skills: inspection.skills.map((skill) => ({
+          id: uid('skill'),
+          name: skill.name,
+          description: skill.description,
+          path: skill.path,
+          enabled: true,
+        })),
+        documents: inspection.documents.map((document) => ({
+          id: uid('doc'),
+          title: document.title,
+          path: document.path,
+          status: 'detected',
+          updatedAt: now,
+        })),
+      }
       const id = importLocalProject({
         name: inspection.name,
         description: inspection.description,
-        local: {
-          rootPath: inspection.rootPath,
-          importedFrom: inferredSource(inspection.detectedConfigs),
-          importedAt: now,
-          defaultHarnessId: discoveredDefault,
-          permissionPreset: 'workspace-write',
-          adminAccess: true,
-          detectedConfigs: inspection.detectedConfigs,
-          harnesses: [],
-          skills: inspection.skills.map((skill) => ({
-            id: uid('skill'),
-            name: skill.name,
-            description: skill.description,
-            path: skill.path,
-            enabled: true,
-          })),
-          documents: inspection.documents.map((document) => ({
-            id: uid('doc'),
-            title: document.title,
-            path: document.path,
-            status: 'detected',
-            updatedAt: now,
-          })),
-        },
+        local: importedLocal,
       })
       await Promise.all(['read', 'write', 'execute', 'administer'].map((action) => upsertPermissionGrant({
         principalKind: 'user',
@@ -186,15 +327,85 @@ export function LocalProjectsPage() {
         inheritance: 'direct',
         createdBy: data.currentUserId,
       })))
+      let serverManifest: ProjectArtifactManifest | null = null
+      if (services?.localProjects) {
+        for (let attempt = 0; attempt < 8 && !serverManifest; attempt += 1) {
+          try {
+            serverManifest = await rescanLocalProject(id)
+          } catch {
+            if (attempt < 7) await new Promise((resolve) => window.setTimeout(resolve, 250))
+          }
+        }
+      }
+      if (serverManifest) {
+        const detectedConfigs = serverManifest.artifacts
+          .filter((artifact) => artifact.kind === 'instruction')
+          .map((artifact) => artifact.path)
+        const documents = serverManifest.artifacts
+          .filter((artifact) => artifact.kind === 'documentation')
+          .map((artifact) => ({
+            id: uid('doc'),
+            title: artifact.name,
+            path: artifact.path,
+            status: 'detected' as const,
+            updatedAt: artifact.modifiedAt ?? now,
+          }))
+        const skills = serverManifest.artifacts
+          .filter((artifact) => artifact.kind === 'skill')
+          .map((artifact) => ({
+            id: uid('skill'),
+            name: artifact.name,
+            description: `Project skill discovered in ${artifact.location}`,
+            path: artifact.path,
+            enabled: true,
+          }))
+        importedLocal = {
+          ...importedLocal,
+          detectedConfigs,
+          importedFrom: inferredSource(detectedConfigs),
+          documents,
+          skills,
+        }
+        updateProject(id, { local: importedLocal })
+        await syncDiscoveredAgents(
+          id,
+          importedLocal,
+          serverManifest,
+          skills.map((skill) => skill.id),
+        )
+        await refreshManagedArchives(id)
+      }
       setSelectedId(id)
       setSearchParams({ project: id })
       setManualPath('')
-      toast('Local project added', `${inspection.name} · ${inspection.fileCount.toLocaleString()} files${inspection.languages.length ? ` · ${inspection.languages.join(', ')}` : ''}`)
+      toast(
+        'Local project added',
+        serverManifest
+          ? `${inspection.name} · ${serverManifest.artifacts.length} project artifacts discovered`
+          : `${inspection.name} · ${inspection.fileCount.toLocaleString()} files${inspection.languages.length ? ` · ${inspection.languages.join(', ')}` : ''}`,
+      )
     } catch (error) {
       toast('Could not add project', error instanceof Error ? error.message : String(error))
     } finally {
       setImporting(false)
     }
+  }
+
+  useEffect(() => {
+    const requestedPath = searchParams.get('import')
+    if (!requestedPath || importing) return
+    setSearchParams({})
+    void importPath(requestedPath)
+  }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (services?.controlPlane.mode === 'company' && !window.opensaddleDesktop) {
+    return (
+      <div className="local-project-empty">
+        <Icon name="shield" />
+        <h2>Local administration is a Desktop feature</h2>
+        <p>This workspace is connected to an enterprise control plane. Organization policy remains authoritative here; open OpenSaddle Desktop with the local control plane to administer machine-local folders and harnesses.</p>
+      </div>
+    )
   }
 
   const pickProject = async () => {
@@ -206,15 +417,136 @@ export function LocalProjectsPage() {
     if (path) await importPath(path)
   }
 
-  const rescanProject = async () => {
-    if (!project?.local || !window.opensaddle?.inspectProject) {
-      toast('Desktop inspection required', 'Open this project in OpenSaddle Desktop to rescan its instructions, docs, and skills.')
-      return
+  const syncDiscoveredAgents = async (
+    projectId: string,
+    projectLocal: LocalProjectSettings,
+    serverManifest: ProjectArtifactManifest,
+    enabledSkillIds: string[],
+  ) => {
+    if (!services?.localProjects) return 0
+    const artifacts = serverManifest.artifacts.filter((artifact) => artifact.kind === 'agent')
+    const definitions = await Promise.all(artifacts.map(async (artifact) => {
+      try {
+        const file = await services.localProjects!.readFile(projectId, artifact.path)
+        return { artifact, definition: agentFileDefinition(artifact.path, file.content, projectLocal.defaultHarnessId) }
+      } catch {
+        return null
+      }
+    }))
+    const knownNames = new Set(
+      data.agents
+        .filter((agent) => agent.projectId === projectId)
+        .map((agent) => agent.name.toLowerCase()),
+    )
+    let imported = 0
+    for (const item of definitions) {
+      if (!item) continue
+      const existing = data.agents.find((agent) =>
+        agent.projectId === projectId
+        && agent.name.toLowerCase() === item.definition.name.toLowerCase())
+      if (existing) {
+        if (item.artifact.path.startsWith('.opensaddle/agents/')) {
+          updateAgent(existing.id, {
+            description: item.definition.description,
+            systemPrompt: item.definition.instructions,
+            harnessId: item.definition.harnessId,
+            definitionPath: item.artifact.path,
+          })
+        } else if (!existing.definitionPath) {
+          updateAgent(existing.id, { definitionPath: item.artifact.path })
+        }
+        continue
+      }
+      if (knownNames.has(item.definition.name.toLowerCase())) continue
+      const agent = createAgent({
+        projectId,
+        name: item.definition.name,
+        description: item.definition.description,
+        systemPrompt: item.definition.instructions,
+        modelPolicy: 'auto',
+        harness: 'coding',
+        harnessId: item.definition.harnessId,
+        definitionPath: item.artifact.path,
+        runtime: 'local',
+        permissionPolicy: projectLocal.permissionPreset === 'full-access'
+          ? { ...DEFAULT_POLICY, sandbox: 'full-access', approvals: 'never', network: true }
+          : projectLocal.permissionPreset === 'read-only'
+            ? { ...DEFAULT_POLICY, sandbox: 'read-only', approvals: 'always' }
+            : { ...DEFAULT_POLICY },
+        skillIds: enabledSkillIds,
+        tools: ['Files', 'Shell', 'Git'],
+        knowledgeSourceIds: [],
+        visibility: 'private',
+      })
+      await Promise.all(['read', 'write', 'execute'].map((action) => upsertPermissionGrant({
+        principalKind: 'agent',
+        principalId: agent.id,
+        resourceKind: 'project',
+        resourceId: projectId,
+        action,
+        effect: 'allow',
+        inheritance: 'direct',
+        createdBy: data.currentUserId,
+      })))
+      knownNames.add(agent.name.toLowerCase())
+      imported += 1
     }
+    return imported
+  }
+
+  const rescanProject = async () => {
+    if (!project?.local) return
     setImporting(true)
     try {
-      const inspection = await window.opensaddle.inspectProject(project.local.rootPath)
       const now = Date.now()
+      const serverManifest = await rescanLocalProject(project.id)
+      if (serverManifest) {
+        const detectedConfigs = serverManifest.artifacts
+          .filter((artifact) => artifact.kind === 'instruction')
+          .map((artifact) => artifact.path)
+        const documents = serverManifest.artifacts
+          .filter((artifact) => artifact.kind === 'documentation')
+          .map((artifact) => {
+            const existing = project.local!.documents.find((item) => item.path === artifact.path)
+            return existing ?? {
+              id: uid('doc'),
+              title: artifact.name,
+              path: artifact.path,
+              status: 'detected' as const,
+              updatedAt: artifact.modifiedAt ?? now,
+            }
+          })
+        const skills = serverManifest.artifacts
+          .filter((artifact) => artifact.kind === 'skill')
+          .map((artifact) => {
+            const existing = project.local!.skills.find((item) => item.path === artifact.path)
+            return existing ?? {
+              id: uid('skill'),
+              name: artifact.name,
+              description: `Project skill discovered in ${artifact.location}`,
+              path: artifact.path,
+              enabled: true,
+            }
+          })
+        const importedAgents = await syncDiscoveredAgents(
+          project.id,
+          project.local,
+          serverManifest,
+          skills.filter((skill) => skill.enabled).map((skill) => skill.id),
+        )
+        patchLocal({
+          detectedConfigs,
+          importedFrom: inferredSource(detectedConfigs),
+          documents,
+          skills,
+        })
+        toast('Project rescanned', `${serverManifest.artifacts.length} artifacts · ${serverManifest.counts.documentation} docs · ${serverManifest.counts.skill} skills · ${importedAgents} new agents`)
+        return
+      }
+      if (!window.opensaddle?.inspectProject) {
+        throw new Error('The local control plane and Desktop folder inspector are unavailable.')
+      }
+      const inspection = await window.opensaddle.inspectProject(project.local.rootPath)
       patchLocal({
         detectedConfigs: inspection.detectedConfigs,
         importedFrom: inferredSource(inspection.detectedConfigs),
@@ -235,18 +567,39 @@ export function LocalProjectsPage() {
     }
   }
 
-  const generateDocumentation = () => {
+  const generateDocumentation = async () => {
     if (!project?.local) return
-    let agent = agents.find((item) => item.name === 'Documentation agent') ?? agents[0]
+    if (!services?.localProjects) {
+      toast('Local server required', 'Connect the OpenSaddle local server before creating the documentation agent.')
+      return
+    }
+    const name = 'Documentation agent'
+    const description = 'Maintains architecture, onboarding, and code reference documentation.'
+    const instructions = 'Inspect the repository deeply. Create accurate, source-linked documentation and keep existing human-authored guidance intact.'
+    const harnessId = project.local.defaultHarnessId
+    const path = '.opensaddle/agents/documentation-agent.md'
+    let agent = agents.find((item) => item.name === name)
+    if (!agent?.definitionPath?.startsWith('.opensaddle/agents/')) {
+      try {
+        await services.localProjects.writeManagedArtifact(project.id, {
+          path,
+          content: agentArtifactContent(name, description, harnessId, instructions),
+        })
+      } catch (error) {
+        toast('Could not prepare documentation agent', error instanceof Error ? error.message : String(error))
+        return
+      }
+    }
     if (!agent) {
       agent = createAgent({
         projectId: project.id,
-        name: 'Documentation agent',
-        description: 'Maintains architecture, onboarding, and code reference documentation.',
-        systemPrompt: 'Inspect the repository deeply. Create accurate, source-linked documentation and keep existing human-authored guidance intact.',
+        name,
+        description,
+        systemPrompt: instructions,
         modelPolicy: 'auto',
         harness: 'coding',
-        harnessId: project.local.defaultHarnessId,
+        harnessId,
+        definitionPath: path,
         runtime: 'local',
         permissionPolicy: { ...DEFAULT_POLICY },
         skillIds: project.local.skills.filter((skill) => skill.enabled).map((skill) => skill.id),
@@ -254,7 +607,7 @@ export function LocalProjectsPage() {
         knowledgeSourceIds: [],
         visibility: 'private',
       })
-      void Promise.all(['read', 'write', 'execute', 'administer'].map((action) => upsertPermissionGrant({
+      await Promise.all(['read', 'write', 'execute', 'administer'].map((action) => upsertPermissionGrant({
         principalKind: 'agent',
         principalId: agent!.id,
         resourceKind: 'project',
@@ -264,7 +617,10 @@ export function LocalProjectsPage() {
         inheritance: 'direct',
         createdBy: data.currentUserId,
       })))
+    } else if (agent.definitionPath !== path) {
+      updateAgent(agent.id, { description, systemPrompt: instructions, harnessId, definitionPath: path })
     }
+    await rescanLocalProject(project.id)
     const chat = createChat(project.id, 'Generate project documentation', agent.id)
     setActiveProject(project.id)
     setActiveChat(chat.id)
@@ -283,49 +639,265 @@ export function LocalProjectsPage() {
       label: harnessDraft.label.trim(),
       command: harnessDraft.command.trim(),
       description: 'Project-local CLI harness',
-      promptMode: 'final_arg',
+      protocol: harnessDraft.protocol,
+      promptMode: harnessDraft.promptMode,
+      promptFlag: harnessDraft.promptMode === 'flag' ? harnessDraft.promptFlag.trim() || '--prompt' : undefined,
       args: harnessDraft.args.trim() ? harnessDraft.args.trim().split(/\s+/) : [],
-      supportsStreaming: true,
+      modelFlag: harnessDraft.modelFlag.trim() || undefined,
+      models: harnessDraft.models.split(',').map((item) => item.trim()).filter(Boolean),
+      supportsStreaming: harnessDraft.supportsStreaming,
     }
     patchLocal({ harnesses: [...local.harnesses.filter((item) => item.id !== id), harness] })
-    setHarnessDraft({ label: '', command: '', args: '' })
+    setHarnessDraft(EMPTY_HARNESS_DRAFT)
     toast('Harness registered', `${harness.label} is available to this project’s agents.`)
   }
 
   const addAgent = async () => {
     if (!project?.local || !agentDraft.name.trim()) return
+    if (!services?.localProjects) {
+      toast('Local server required', 'Connect the OpenSaddle local server before creating project files.')
+      return
+    }
+    const name = agentDraft.name.trim()
+    if (agents.some((agent) => agent.id !== editingAgentId && agent.name.toLowerCase() === name.toLowerCase())) {
+      toast('Agent already exists', `Choose a different name from ${name}.`)
+      return
+    }
+    const slug = artifactSlug(name)
+    if (!slug) {
+      toast('Invalid agent name', 'Use at least one letter or number.')
+      return
+    }
     const harnessId = agentDraft.harnessId || project.local.defaultHarnessId
-    const agent = createAgent({
-      projectId: project.id,
-      name: agentDraft.name.trim(),
-      description: agentDraft.description.trim() || 'Project-local coding agent',
-      systemPrompt: agentDraft.prompt.trim() || 'Work carefully in this project and explain material changes.',
-      modelPolicy: 'auto',
-      harness: 'coding',
-      harnessId,
-      runtime: 'local',
-      permissionPolicy: project.local.permissionPreset === 'full-access'
-        ? { ...DEFAULT_POLICY, sandbox: 'full-access', approvals: 'never', network: true }
-        : project.local.permissionPreset === 'read-only'
-          ? { ...DEFAULT_POLICY, sandbox: 'read-only', approvals: 'always' }
-          : { ...DEFAULT_POLICY },
-      skillIds: project.local.skills.filter((skill) => skill.enabled).map((skill) => skill.id),
-      tools: ['Files', 'Shell', 'Git'],
-      knowledgeSourceIds: [],
-      visibility: 'private',
+    const description = agentDraft.description.trim() || 'Project-local coding agent'
+    const instructions = agentDraft.prompt.trim() || 'Work carefully in this project and explain material changes.'
+    const path = `.opensaddle/agents/${slug}.md`
+    setSavingAgent(true)
+    try {
+      await services.localProjects.writeManagedArtifact(project.id, {
+        path,
+        content: agentArtifactContent(name, description, harnessId, instructions),
+      })
+      let agent = editingAgentId ? agents.find((item) => item.id === editingAgentId) : undefined
+      if (agent) {
+        updateAgent(agent.id, { name, description, systemPrompt: instructions, harnessId, definitionPath: path })
+      } else {
+        agent = createAgent({
+          projectId: project.id,
+          name,
+          description,
+          systemPrompt: instructions,
+          modelPolicy: 'auto',
+          harness: 'coding',
+          harnessId,
+          definitionPath: path,
+          runtime: 'local',
+          permissionPolicy: project.local.permissionPreset === 'full-access'
+            ? { ...DEFAULT_POLICY, sandbox: 'full-access', approvals: 'never', network: true }
+            : project.local.permissionPreset === 'read-only'
+              ? { ...DEFAULT_POLICY, sandbox: 'read-only', approvals: 'always' }
+              : { ...DEFAULT_POLICY },
+          skillIds: project.local.skills.filter((skill) => skill.enabled).map((skill) => skill.id),
+          tools: ['Files', 'Shell', 'Git'],
+          knowledgeSourceIds: [],
+          visibility: 'private',
+        })
+        await Promise.all(['read', 'write', 'execute'].map((action) => upsertPermissionGrant({
+          principalKind: 'agent',
+          principalId: agent!.id,
+          resourceKind: 'project',
+          resourceId: project.id,
+          action,
+          effect: 'allow',
+          inheritance: 'direct',
+          createdBy: data.currentUserId,
+        })))
+      }
+      await rescanLocalProject(project.id)
+      setAgentDraft({ name: '', description: '', prompt: '', harnessId })
+      const action = editingAgentId ? 'updated' : 'created'
+      setEditingAgentId(null)
+      toast(`Agent ${action}`, `${agent.name} uses ${harnessId} · saved to ${path}`)
+    } catch (error) {
+      toast('Could not create agent', error instanceof Error ? error.message : String(error))
+    } finally {
+      setSavingAgent(false)
+    }
+  }
+
+  const addSkill = async () => {
+    if (!project?.local || !skillDraft.name.trim() || !skillDraft.instructions.trim()) return
+    if (!services?.localProjects) {
+      toast('Local server required', 'Connect the OpenSaddle local server before creating project files.')
+      return
+    }
+    const name = skillDraft.name.trim()
+    const slug = artifactSlug(name)
+    if (!slug) {
+      toast('Invalid skill name', 'Use at least one letter or number.')
+      return
+    }
+    const path = `.opensaddle/skills/${slug}/SKILL.md`
+    if (project.local.skills.some((skill) => skill.id !== editingSkillId
+      && (skill.name.toLowerCase() === name.toLowerCase() || skill.path === path))) {
+      toast('Skill already exists', `Choose a different name from ${name}.`)
+      return
+    }
+    const description = skillDraft.description.trim() || `Project-local guidance for ${name}.`
+    setSavingSkill(true)
+    try {
+      await services.localProjects.writeManagedArtifact(project.id, {
+        path,
+        content: [
+          '---',
+          `name: ${yamlString(name)}`,
+          `description: ${yamlString(description)}`,
+          '---',
+          '',
+          `# ${name}`,
+          '',
+          description,
+          '',
+          '## Instructions',
+          '',
+          skillDraft.instructions.trim(),
+          '',
+        ].join('\n'),
+      })
+      const existing = editingSkillId
+        ? project.local.skills.find((skill) => skill.id === editingSkillId)
+        : undefined
+      patchLocal({
+        skills: existing
+          ? project.local.skills.map((skill) => skill.id === existing.id
+            ? { ...skill, name, description, path }
+            : skill)
+          : [...project.local.skills, {
+            id: uid('skill'),
+            name,
+            description,
+            path,
+            enabled: true,
+          }],
+      })
+      await rescanLocalProject(project.id)
+      setSkillDraft({ name: '', description: '', instructions: '' })
+      const action = editingSkillId ? 'updated' : 'created'
+      setEditingSkillId(null)
+      toast(`Skill ${action}`, `${name} is enabled · saved to ${path}`)
+    } catch (error) {
+      toast('Could not create skill', error instanceof Error ? error.message : String(error))
+    } finally {
+      setSavingSkill(false)
+    }
+  }
+
+  const refreshManagedArchives = async (projectId = project?.id) => {
+    if (!projectId || !services?.localProjects) return
+    const archives = await services.localProjects.listManagedArchives(projectId)
+    setManagedArchives(archives)
+  }
+
+  const editAgent = (agent: typeof agents[number]) => {
+    setEditingAgentId(agent.id)
+    setAgentDraft({
+      name: agent.name,
+      description: agent.description,
+      prompt: agent.systemPrompt,
+      harnessId: agent.harnessId ?? project?.local?.defaultHarnessId ?? '',
     })
-    await Promise.all(['read', 'write', 'execute'].map((action) => upsertPermissionGrant({
-      principalKind: 'agent',
-      principalId: agent.id,
-      resourceKind: 'project',
-      resourceId: project.id,
-      action,
-      effect: 'allow',
-      inheritance: 'direct',
-      createdBy: data.currentUserId,
-    })))
-    setAgentDraft({ name: '', description: '', prompt: '', harnessId })
-    toast('Agent created', `${agent.name} uses ${harnessId}.`)
+  }
+
+  const editSkill = async (skill: LocalProjectSettings['skills'][number]) => {
+    if (!project || !services?.localProjects) return
+    setSavingSkill(true)
+    try {
+      const file = await services.localProjects.readFile(project.id, skill.path)
+      const instructions = file.content.split(/\n## Instructions\s*\n/i)[1]?.trim() ?? file.content
+      setEditingSkillId(skill.id)
+      setSkillDraft({ name: skill.name, description: skill.description, instructions })
+    } catch (error) {
+      toast('Could not open skill', error instanceof Error ? error.message : String(error))
+    } finally {
+      setSavingSkill(false)
+    }
+  }
+
+  const archiveSkill = async (skill: LocalProjectSettings['skills'][number]) => {
+    if (!project?.local || !services?.localProjects) return
+    if (!skill.path.startsWith('.opensaddle/skills/')) {
+      toast('External skill file', 'Edit and save this skill first to create an OpenSaddle-managed project copy.')
+      return
+    }
+    if (!window.confirm(`Archive ${skill.name}? The file remains recoverable under .opensaddle/archive.`)) return
+    setSavingSkill(true)
+    try {
+      const archived = await services.localProjects.archiveManagedArtifact(project.id, skill.path)
+      patchLocal({ skills: project.local.skills.filter((item) => item.id !== skill.id) })
+      agents.filter((agent) => agent.skillIds?.includes(skill.id)).forEach((agent) => {
+        updateAgent(agent.id, { skillIds: (agent.skillIds ?? []).filter((id) => id !== skill.id) })
+      })
+      await rescanLocalProject(project.id)
+      await refreshManagedArchives(project.id)
+      if (editingSkillId === skill.id) {
+        setEditingSkillId(null)
+        setSkillDraft({ name: '', description: '', instructions: '' })
+      }
+      toast('Skill archived', `${skill.name} moved to ${archived.archivedPath}`)
+    } catch (error) {
+      toast('Could not archive skill', error instanceof Error ? error.message : String(error))
+    } finally {
+      setSavingSkill(false)
+    }
+  }
+
+  const archiveAgent = async (agent: typeof agents[number]) => {
+    if (!project || !services?.localProjects) return
+    if (!agent.definitionPath?.startsWith('.opensaddle/agents/')) {
+      toast('External agent file', 'Edit and save this agent first to create an OpenSaddle-managed project copy.')
+      return
+    }
+    const references = data.chats.filter((chat) => chat.agentId === agent.id).length
+      + data.workflows.filter((workflow) => workflow.agentIds.includes(agent.id)).length
+      + data.sites.filter((site) => site.agentId === agent.id).length
+      + data.agentSessions.filter((session) => session.agentId === agent.id).length
+    if (references) {
+      toast('Agent is still in use', `${references} chat, workflow, site, or session reference${references === 1 ? 's' : ''} must be reassigned first.`)
+      return
+    }
+    if (!window.confirm(`Archive ${agent.name}? Its project file remains recoverable under .opensaddle/archive.`)) return
+    setSavingAgent(true)
+    try {
+      const path = agent.definitionPath
+      const archived = await services.localProjects.archiveManagedArtifact(project.id, path)
+      deleteAgent(agent.id)
+      await rescanLocalProject(project.id)
+      await refreshManagedArchives(project.id)
+      if (editingAgentId === agent.id) {
+        setEditingAgentId(null)
+        setAgentDraft({ name: '', description: '', prompt: '', harnessId: '' })
+      }
+      toast('Agent archived', `${agent.name} moved to ${archived.archivedPath}`)
+    } catch (error) {
+      toast('Could not archive agent', error instanceof Error ? error.message : String(error))
+    } finally {
+      setSavingAgent(false)
+    }
+  }
+
+  const restoreManagedArchive = async (archive: ManagedArtifactArchive) => {
+    if (!project || !services?.localProjects) return
+    setRestoringArchive(archive.archivedPath)
+    try {
+      const restored = await services.localProjects.restoreManagedArtifact(project.id, archive.archivedPath)
+      await rescanProject()
+      await refreshManagedArchives(project.id)
+      toast(`${archive.kind === 'agent' ? 'Agent' : 'Skill'} restored`, `Restored to ${restored.path}`)
+    } catch (error) {
+      toast('Could not restore artifact', error instanceof Error ? error.message : String(error))
+    } finally {
+      setRestoringArchive(null)
+    }
   }
 
   return (
@@ -367,7 +939,7 @@ export function LocalProjectsPage() {
               <div>
                 <button className="secondary-btn" onClick={() => void window.opensaddle?.openPath(project.local!.rootPath)}>Open folder</button>
                 <button className="secondary-btn" onClick={() => void rescanProject()} disabled={importing}>Rescan</button>
-                <button className="primary-btn" onClick={generateDocumentation}>Generate docs</button>
+                <button className="primary-btn" onClick={() => void generateDocumentation()}>Generate docs</button>
               </div>
             </div>
             <div className="tf-project-tabs" role="tablist">
@@ -378,11 +950,19 @@ export function LocalProjectsPage() {
               ))}
             </div>
 
-            {tab === 'overview' && <LocalOverview project={project as Project & { local: LocalProjectSettings }} clis={clis} agents={agents.length} />}
+            {tab === 'overview' && (
+              <LocalOverview
+                project={project as Project & { local: LocalProjectSettings }}
+                clis={clis}
+                agents={agents.length}
+                manifest={manifest}
+                installedHarnesses={harnessCapabilities.filter((item) => item.availability === 'available').length}
+              />
+            )}
 
             {tab === 'documentation' && (
               <section className="local-section">
-                <div className="local-section-head"><div><h3>Project documentation</h3><p>Existing guidance is detected during import. The documentation agent can maintain the full set.</p></div><button className="primary-btn" onClick={generateDocumentation}>Run documentation agent</button></div>
+                <div className="local-section-head"><div><h3>Project documentation</h3><p>Existing guidance is detected during import. The documentation agent can maintain the full set.</p></div><button className="primary-btn" onClick={() => void generateDocumentation()}>Run documentation agent</button></div>
                 <div className="local-rows">
                   {project.local.documents.map((document) => <div key={document.id}><Icon name="file" /><span><strong>{document.title}</strong><small>{document.path}</small></span><span className="status-pill green">{document.status}</span></div>)}
                   {!project.local.documents.length && <p>No documentation files were detected yet.</p>}
@@ -392,38 +972,107 @@ export function LocalProjectsPage() {
 
             {tab === 'agents' && (
               <section className="local-section">
-                <div className="local-section-head"><div><h3>Custom agents</h3><p>Each agent chooses its own harness, skills, and local execution policy.</p></div></div>
+                <div className="local-section-head"><div><h3>Custom agents</h3><p>Create project-native agents with their own harness, skills, and local execution policy.</p></div></div>
                 <div className="local-form-grid">
-                  <input placeholder="Agent name" value={agentDraft.name} onChange={(event) => setAgentDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                  <input placeholder="Agent name" value={agentDraft.name} disabled={Boolean(editingAgentId)} onChange={(event) => setAgentDraft((draft) => ({ ...draft, name: event.target.value }))} />
                   <select value={agentDraft.harnessId || project.local.defaultHarnessId} onChange={(event) => setAgentDraft((draft) => ({ ...draft, harnessId: event.target.value }))}>
                     {availableHarnesses.map((harness) => <option key={harness.id} value={harness.id} disabled={!harness.available}>{harness.label}{harness.available ? '' : ' · not installed'}</option>)}
                   </select>
                   <input placeholder="Description" value={agentDraft.description} onChange={(event) => setAgentDraft((draft) => ({ ...draft, description: event.target.value }))} />
                   <textarea placeholder="System instructions" value={agentDraft.prompt} onChange={(event) => setAgentDraft((draft) => ({ ...draft, prompt: event.target.value }))} />
-                  <button className="primary-btn" onClick={() => void addAgent()}>Create agent</button>
+                  <div className="local-form-actions">
+                    <button className="primary-btn" onClick={() => void addAgent()} disabled={savingAgent || !agentDraft.name.trim()}>{savingAgent ? 'Saving…' : editingAgentId ? 'Save agent' : 'Create agent'}</button>
+                    {editingAgentId && <button className="secondary-btn" onClick={() => {
+                      setEditingAgentId(null)
+                      setAgentDraft({ name: '', description: '', prompt: '', harnessId: '' })
+                    }}>Cancel</button>}
+                  </div>
                 </div>
                 <div className="local-agent-grid">
                   {agents.map((agent) => (
-                    <button key={agent.id} onClick={() => navigate(`/agent/${agent.id}`)}>
-                      <span><Icon name="spark" /></span><strong>{agent.name}</strong><p>{agent.description}</p>
-                      <small>{agent.harnessId ?? agent.harness} · {agent.permissionPolicy?.sandbox ?? 'workspace-write'}</small>
-                    </button>
+                    <div key={agent.id} className="local-agent-card">
+                      <button className="local-agent-open" onClick={() => navigate(`/agent/${agent.id}`)}>
+                        <span><Icon name="spark" /></span><strong>{agent.name}</strong><p>{agent.description}</p>
+                        <small>{agent.harnessId ?? agent.harness} · {agent.permissionPolicy?.sandbox ?? 'workspace-write'}</small>
+                      </button>
+                      <div className="local-card-actions">
+                        <button onClick={() => editAgent(agent)}>Edit</button>
+                        {agent.definitionPath?.startsWith('.opensaddle/agents/')
+                          ? <button className="danger" onClick={() => void archiveAgent(agent)}>Archive</button>
+                          : <button
+                            title="Open the editor, then save to create an OpenSaddle-managed project copy"
+                            onClick={() => editAgent(agent)}
+                          >{agent.definitionPath ? 'Save managed copy' : 'Save to project'}</button>}
+                      </div>
+                    </div>
                   ))}
                 </div>
+                {managedArchives.some((archive) => archive.kind === 'agent') && (
+                  <div className="local-archive-section">
+                    <h4>Archived agents</h4>
+                    <div className="local-rows">
+                      {managedArchives.filter((archive) => archive.kind === 'agent').map((archive) => (
+                        <div key={archive.archivedPath}>
+                          <Icon name="archive" />
+                          <span><strong>{archive.name.replace(/-/g, ' ')}</strong><small>{archive.originalPath} · {new Date(archive.archivedAt).toLocaleString()}</small></span>
+                          <button className="local-row-action" disabled={restoringArchive === archive.archivedPath} onClick={() => void restoreManagedArchive(archive)}>
+                            {restoringArchive === archive.archivedPath ? 'Restoring…' : 'Restore'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
             {tab === 'skills' && (
               <section className="local-section">
-                <div className="local-section-head"><div><h3>Project skills</h3><p>Skills discovered in the folder can be enabled for every new local agent.</p></div></div>
+                <div className="local-section-head"><div><h3>Project skills</h3><p>Create portable skills inside the project or enable skills discovered during a rescan.</p></div></div>
+                <div className="local-form-grid">
+                  <input placeholder="Skill name" value={skillDraft.name} disabled={Boolean(editingSkillId)} onChange={(event) => setSkillDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                  <input placeholder="Description" value={skillDraft.description} onChange={(event) => setSkillDraft((draft) => ({ ...draft, description: event.target.value }))} />
+                  <textarea placeholder="Skill instructions" value={skillDraft.instructions} onChange={(event) => setSkillDraft((draft) => ({ ...draft, instructions: event.target.value }))} />
+                  <div className="local-form-actions">
+                    <button className="primary-btn" onClick={() => void addSkill()} disabled={savingSkill || !skillDraft.name.trim() || !skillDraft.instructions.trim()}>{savingSkill ? 'Saving…' : editingSkillId ? 'Save skill' : 'Create skill'}</button>
+                    {editingSkillId && <button className="secondary-btn" onClick={() => {
+                      setEditingSkillId(null)
+                      setSkillDraft({ name: '', description: '', instructions: '' })
+                    }}>Cancel</button>}
+                  </div>
+                </div>
                 <div className="local-rows">
                   {project.local.skills.map((skill) => (
                     <div key={skill.id}><Icon name="plugin" /><span><strong>{skill.name}</strong><small>{skill.description} · {skill.path}</small></span>
                       <button className={`context-chip ${skill.enabled ? 'active' : ''}`} onClick={() => patchLocal({ skills: project.local!.skills.map((item) => item.id === skill.id ? { ...item, enabled: !item.enabled } : item) })}>{skill.enabled ? 'Enabled' : 'Disabled'}</button>
+                      <button className="local-row-action" onClick={() => void editSkill(skill)}>Edit</button>
+                      {skill.path.startsWith('.opensaddle/skills/')
+                        ? <button className="local-row-action danger" onClick={() => void archiveSkill(skill)}>Archive</button>
+                        : <button
+                          className="local-row-action"
+                          title="Open the editor, then save to create an OpenSaddle-managed project copy"
+                          onClick={() => void editSkill(skill)}
+                        >Save managed copy</button>}
                     </div>
                   ))}
                   {!project.local.skills.length && <p>No `SKILL.md` files were detected under a skills or agents directory.</p>}
                 </div>
+                {managedArchives.some((archive) => archive.kind === 'skill') && (
+                  <div className="local-archive-section">
+                    <h4>Archived skills</h4>
+                    <div className="local-rows">
+                      {managedArchives.filter((archive) => archive.kind === 'skill').map((archive) => (
+                        <div key={archive.archivedPath}>
+                          <Icon name="archive" />
+                          <span><strong>{archive.name.replace(/-/g, ' ')}</strong><small>{archive.originalPath} · {new Date(archive.archivedAt).toLocaleString()}</small></span>
+                          <button className="local-row-action" disabled={restoringArchive === archive.archivedPath} onClick={() => void restoreManagedArchive(archive)}>
+                            {restoringArchive === archive.archivedPath ? 'Restoring…' : 'Restore'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -433,7 +1082,11 @@ export function LocalProjectsPage() {
                 <div className="local-harness-grid">
                   {availableHarnesses.map((harness) => (
                     <div key={harness.id} className="local-harness-item">
-                      <button className={project.local!.defaultHarnessId === harness.id ? 'active' : ''} disabled={!harness.available} onClick={() => {
+                      <button
+                        className={project.local!.defaultHarnessId === harness.id ? 'active' : ''}
+                        disabled={!harness.available}
+                        title={harnessStatus(harness.capability, harness.available).detail}
+                        onClick={() => {
                         patchLocal({ defaultHarnessId: harness.id })
                         updateProject(project.id, {
                           routingDefaults: {
@@ -443,7 +1096,12 @@ export function LocalProjectsPage() {
                           },
                         })
                       }}>
-                        <Icon name="terminal" /><span><strong>{harness.label}</strong><small>{harness.command || 'Native model gateway'}</small></span><span className={`status-pill ${harness.available ? 'green' : 'red'}`}>{harness.available ? 'Ready' : 'Missing'}</span>
+                        <Icon name="terminal" />
+                        <span>
+                          <strong>{harness.label}</strong>
+                          <small>{harnessStatus(harness.capability, harness.available).detail}</small>
+                        </span>
+                        <span className={`status-pill ${harnessStatus(harness.capability, harness.available).tone}`}>{harnessStatus(harness.capability, harness.available).label}</span>
                       </button>
                       {!BUILTIN_HARNESSES.some((item) => item.id === harness.id) && (
                         <button className="local-harness-remove" title={`Remove ${harness.label}`} onClick={() => {
@@ -460,7 +1118,37 @@ export function LocalProjectsPage() {
                   <h4>Register another CLI</h4>
                   <input placeholder="Display name" value={harnessDraft.label} onChange={(event) => setHarnessDraft((draft) => ({ ...draft, label: event.target.value }))} />
                   <input placeholder="Executable or absolute path" value={harnessDraft.command} onChange={(event) => setHarnessDraft((draft) => ({ ...draft, command: event.target.value }))} />
-                  <input placeholder="Arguments before the prompt" value={harnessDraft.args} onChange={(event) => setHarnessDraft((draft) => ({ ...draft, args: event.target.value }))} />
+                  <label><span>Protocol</span><select value={harnessDraft.protocol} onChange={(event) => {
+                    const protocol = event.target.value as HarnessDraft['protocol']
+                    setHarnessDraft((draft) => ({
+                      ...draft,
+                      protocol,
+                      args: protocol === 'acp' && !draft.args.trim() ? '--acp' : draft.args,
+                    }))
+                  }}>
+                    <option value="cli">Standard CLI</option>
+                    <option value="acp">Agent Client Protocol (ACP)</option>
+                  </select></label>
+                  {harnessDraft.protocol === 'cli' && (
+                    <label><span>Prompt input</span><select value={harnessDraft.promptMode} onChange={(event) => setHarnessDraft((draft) => ({ ...draft, promptMode: event.target.value as HarnessDraft['promptMode'] }))}>
+                      <option value="final_arg">Final positional argument</option>
+                      <option value="flag">Named prompt flag</option>
+                      <option value="stdin">Standard input</option>
+                    </select></label>
+                  )}
+                  <input
+                    className="local-wide"
+                    placeholder={harnessDraft.protocol === 'acp' ? 'ACP launch arguments, for example --acp' : 'Arguments before the prompt'}
+                    value={harnessDraft.args}
+                    onChange={(event) => setHarnessDraft((draft) => ({ ...draft, args: event.target.value }))}
+                  />
+                  {harnessDraft.protocol === 'cli' && harnessDraft.promptMode === 'flag' && (
+                    <label><span>Prompt flag</span><input placeholder="--prompt" value={harnessDraft.promptFlag} onChange={(event) => setHarnessDraft((draft) => ({ ...draft, promptFlag: event.target.value }))} /></label>
+                  )}
+                  <label><span>Model flag</span><input placeholder="--model" value={harnessDraft.modelFlag} onChange={(event) => setHarnessDraft((draft) => ({ ...draft, modelFlag: event.target.value }))} /></label>
+                  <label className="local-wide"><span>Models</span><input placeholder="Optional model ids, comma separated" value={harnessDraft.models} onChange={(event) => setHarnessDraft((draft) => ({ ...draft, models: event.target.value }))} /></label>
+                  <label className="local-toggle"><input type="checkbox" checked={harnessDraft.supportsStreaming} onChange={(event) => setHarnessDraft((draft) => ({ ...draft, supportsStreaming: event.target.checked }))} />Stream output</label>
+                  {harnessDraft.protocol === 'acp' && <p className="local-wide local-harness-note">ACP harnesses receive durable sessions, streamed messages and tool activity, cancellation, and OpenSaddle permission prompts.</p>}
                   <button className="primary-btn" onClick={addHarness}>Register harness</button>
                 </div>
               </section>
@@ -509,7 +1197,19 @@ export function LocalProjectsPage() {
   )
 }
 
-function LocalOverview({ project, clis, agents }: { project: Project & { local: LocalProjectSettings }; clis: string[]; agents: number }) {
+function LocalOverview({
+  project,
+  clis,
+  agents,
+  manifest,
+  installedHarnesses,
+}: {
+  project: Project & { local: LocalProjectSettings }
+  clis: string[]
+  agents: number
+  manifest?: import('../services/contracts').ProjectArtifactManifest
+  installedHarnesses: number
+}) {
   const local = project.local
   return (
     <div className="local-overview-grid">
@@ -517,14 +1217,14 @@ function LocalOverview({ project, clis, agents }: { project: Project & { local: 
         <h3>Runtime</h3>
         <div className="local-stat"><span>Default harness</span><strong>{local.defaultHarnessId}</strong></div>
         <div className="local-stat"><span>Permission preset</span><strong>{local.permissionPreset}</strong></div>
-        <div className="local-stat"><span>Installed CLIs</span><strong>{clis.length || 'None detected'}</strong></div>
+        <div className="local-stat"><span>Installed CLIs</span><strong>{installedHarnesses || clis.length || 'None detected'}</strong></div>
         <div className="local-stat"><span>Custom agents</span><strong>{agents}</strong></div>
       </section>
       <section className="local-section">
         <h3>Detected project context</h3>
-        <div className="local-stat"><span>Documentation</span><strong>{local.documents.length}</strong></div>
-        <div className="local-stat"><span>Skills</span><strong>{local.skills.length}</strong></div>
-        <div className="local-stat"><span>Agent configurations</span><strong>{local.detectedConfigs.length}</strong></div>
+        <div className="local-stat"><span>Documentation</span><strong>{manifest?.counts.documentation ?? local.documents.length}</strong></div>
+        <div className="local-stat"><span>Skills</span><strong>{manifest?.counts.skill ?? local.skills.length}</strong></div>
+        <div className="local-stat"><span>Agent configurations</span><strong>{manifest ? manifest.counts.agent + manifest.counts.instruction : local.detectedConfigs.length}</strong></div>
         <div className="local-config-chips">{local.detectedConfigs.slice(0, 8).map((item) => <span key={item}>{item}</span>)}</div>
       </section>
       <section className="local-section local-wide">

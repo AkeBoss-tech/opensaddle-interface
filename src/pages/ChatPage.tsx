@@ -6,14 +6,14 @@ import {
   DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL, simulateAgentRun,
   type RouteDecision,
 } from '../lib/simulation'
-import type { AgentRunBlock, CodingProvider, Harness, Message, ModelKey, RuntimeKind } from '../types'
+import type { AgentRunBlock, CodingProvider, Harness, Message, ModelKey, RunExecutionMode, RuntimeKind } from '../types'
 import { PROVIDER_NAME, ProviderLogo, providerFromLabel } from '../components/common/ProviderLogo'
 import { evaluatePermissions } from '../services/permissions'
 import { sanitizeHtml } from '../lib/sanitizeHtml'
 import { useRunRegistry } from '../features/runs/RunRegistry'
 import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources } from '../features/runs/runRelations'
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
-import type { GitComparisonResult, GitStatusResult } from '../services/contracts'
+import type { GitComparisonResult, GitStatusResult, RouteEstimate } from '../services/contracts'
 
 const HARNESS_PICKER_OPTIONS: Array<{
   id: CodingProvider
@@ -21,6 +21,7 @@ const HARNESS_PICKER_OPTIONS: Array<{
   shortLabel: string
   detail: string
   logoLabel: string
+  available?: boolean
 }> = [
   { id: 'auto', label: 'Auto', shortLabel: 'Auto', detail: 'Best available', logoLabel: 'OpenSaddle' },
   { id: 'codex', label: 'Codex', shortLabel: 'Codex', detail: 'OpenAI app server', logoLabel: 'OpenAI' },
@@ -30,7 +31,47 @@ const HARNESS_PICKER_OPTIONS: Array<{
   { id: 'opencode', label: 'OpenCode', shortLabel: 'OpenCode', detail: 'Open CLI', logoLabel: 'OpenCode' },
   { id: 'antigravity', label: 'Antigravity', shortLabel: 'Antigravity', detail: 'Agent CLI', logoLabel: 'Antigravity' },
   { id: 'opensaddle', label: 'OpenSaddle', shortLabel: 'OpenSaddle', detail: 'Native harness', logoLabel: 'OpenSaddle' },
+  { id: 'custom', label: 'Project harness', shortLabel: 'Project', detail: 'Project-local CLI', logoLabel: 'OpenSaddle' },
 ]
+
+const PROVIDER_LABEL: Partial<Record<CodingProvider, string>> = {
+  opensaddle: 'OpenSaddle',
+  codex: 'Codex App Server',
+  claude: 'Claude Code',
+  cursor: 'Cursor',
+  gemini: 'Gemini CLI',
+  opencode: 'OpenCode',
+  antigravity: 'Antigravity CLI',
+  custom: 'Custom harness',
+}
+
+const EXECUTION_MODES: Array<{
+  id: RunExecutionMode
+  label: string
+  detail: string
+  icon: string
+}> = [
+  { id: 'plan', label: 'Plan', detail: 'Read-only · no file changes', icon: 'review' },
+  { id: 'review', label: 'Review changes', detail: 'Prepare separately · apply after run', icon: 'shield' },
+  { id: 'project', label: 'Auto-edit', detail: 'Edit inside this project', icon: 'spark' },
+  { id: 'full-access', label: 'Full access', detail: 'Local machine · no approvals', icon: 'terminal' },
+]
+
+function routedModelLabel(route: RouteEstimate | undefined, fallback: ModelKey): string {
+  const provider = route?.providerKey
+  if (route?.nativeModelDefault && provider && provider !== 'auto') {
+    return `${PROVIDER_LABEL[provider] ?? 'Harness'} default`
+  }
+  return MODEL_LABEL[route?.modelKey ?? fallback]
+}
+
+function routedHarnessLabel(route: RouteEstimate | undefined, fallback: Harness): string {
+  const provider = route?.providerKey
+  if ((route?.harnessKey ?? fallback) === 'coding' && provider && provider !== 'auto') {
+    return PROVIDER_LABEL[provider] ?? HARNESS_LABEL[route?.harnessKey ?? fallback]
+  }
+  return HARNESS_LABEL[route?.harnessKey ?? fallback]
+}
 
 const MODEL_PICKER_OPTIONS: Partial<Record<CodingProvider, Array<{
   id: ModelKey | 'auto'
@@ -94,6 +135,9 @@ const MODEL_PICKER_OPTIONS: Partial<Record<CodingProvider, Array<{
     { id: 'gemini', label: 'Gemini', detail: 'Google route', logoLabel: 'Gemini' },
     { id: 'llama', label: 'Llama', detail: 'Local route', logoLabel: 'Llama' },
   ],
+  custom: [
+    { id: 'auto', label: 'Harness default', detail: 'Use the project harness model', logoLabel: 'OpenSaddle' },
+  ],
 }
 
 function HarnessVisual({ id, className = 'provider-logo' }: { id: CodingProvider; className?: string }) {
@@ -103,6 +147,7 @@ function HarnessVisual({ id, className = 'provider-logo' }: { id: CodingProvider
   if (id === 'cursor') return <Icon name="code" className={className} />
   if (id === 'opencode') return <Icon name="terminal" className={className} />
   if (id === 'antigravity') return <Icon name="spark" className={className} />
+  if (id === 'custom') return <Icon name="terminal" className={className} />
   return <ProviderLogo provider="opensaddle" className={className} />
 }
 
@@ -112,19 +157,31 @@ export function ChatPage() {
   const location = useLocation()
   const store = useStore()
   const runRegistry = useRunRegistry()
-  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, toast, services } = store
+  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, toast, services, harnessCapabilities, refreshHarnessCapabilities } = store
   const chat = data.chats.find((c) => c.id === (chatId ?? data.activeChatId))
+  const continuationAction = chat?.continuation?.mode === 'fork' ? 'Fork' : 'Resume'
   const project = data.projects.find((p) => p.id === chat?.projectId) ?? data.projects.find((p) => p.id === data.activeProjectId) ?? data.projects[0]
+  const chatAgent = data.agents.find((agent) => agent.id === chat?.agentId)
   const messages = useMemo(() => data.messages.filter((m) => m.chatId === chat?.id).sort((a, b) => a.createdAt - b.createdAt), [data.messages, chat?.id])
-  const latestRun = useMemo(() => [...messages].reverse().find((message) => message.run)?.run, [messages])
+  const latestMessageRun = useMemo(() => [...messages].reverse().find((message) => message.run)?.run, [messages])
   const rootRun = useMemo(() => [...messages].reverse().find((message) => message.run && !message.run.parentRunId)?.run, [messages])
   const managedRuns = runRegistry.getForThread(chat?.id ?? '')
+  const queuedManagedRuns = managedRuns.filter((managed) =>
+    !managed.run.done && /queued after current turn/i.test(managed.run.statusText))
+  const activeManagedRun = [...managedRuns].reverse().find((managed) =>
+    !managed.run.done && !/queued after current turn/i.test(managed.run.statusText))
+  const latestRun = activeManagedRun?.run ?? latestMessageRun
+  const steerableRun = activeManagedRun && /codex/i.test(activeManagedRun.run.harness)
+    ? activeManagedRun
+    : undefined
 
   const [text, setText] = useState('')
+  const [activeSendMode, setActiveSendMode] = useState<'steer' | 'queue'>('steer')
   const [inspector, setInspector] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1080)
   const [itab, setItab] = useState('overview')
   const [density, setDensity] = useState<'summary' | 'normal' | 'verbose'>('normal')
   const [routeOpen, setRouteOpen] = useState(false)
+  const [refreshingHarnesses, setRefreshingHarnesses] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [tools, setTools] = useState(new Set(['Chrome', 'Files', 'API']))
   const [auto, setAuto] = useState(true)
@@ -132,19 +189,11 @@ export function ChatPage() {
   const [harnessOv, setHarnessOv] = useState<Harness | 'auto'>('auto')
   const [providerOv, setProviderOv] = useState<CodingProvider>('auto')
   const [runtimeOv, setRuntimeOv] = useState<RuntimeKind | 'auto'>('auto')
+  const [executionMode, setExecutionMode] = useState<RunExecutionMode>('project')
   const [openRouterModelId, setOpenRouterModelId] = useState('')
   const [freeModels, setFreeModels] = useState<Array<{ id: string; name: string; contextLength?: number }>>([])
   const [route, setRoute] = useState<RouteDecision>(() => deriveRoute('', data.settings.routingPref))
   const [providerKey, setProviderKey] = useState<CodingProvider>('opensaddle')
-  const PROVIDER_LABEL: Record<Exclude<CodingProvider, 'auto' | 'custom'>, string> = {
-    opensaddle: 'OpenSaddle',
-    codex: 'Codex App Server',
-    claude: 'Claude Code',
-    cursor: 'Cursor',
-    gemini: 'Gemini CLI',
-    opencode: 'OpenCode',
-    antigravity: 'Antigravity CLI',
-  }
   const [perm, setPerm] = useState<ReturnType<typeof needsPermission>>(null)
   const [pending, setPending] = useState('')
   const [permScope, setPermScope] = useState('once')
@@ -153,6 +202,15 @@ export function ChatPage() {
   const [gitComparison, setGitComparison] = useState<GitComparisonResult | null>(null)
   const [gitBusy, setGitBusy] = useState(false)
   const [gitError, setGitError] = useState('')
+  const [gitAction, setGitAction] = useState<'branch' | 'commit' | 'push' | 'pull-request' | null>(null)
+  const [branchName, setBranchName] = useState('')
+  const [commitMessage, setCommitMessage] = useState('')
+  const [commitPaths, setCommitPaths] = useState<string[]>([])
+  const [pullRequestTitle, setPullRequestTitle] = useState('')
+  const [pullRequestBody, setPullRequestBody] = useState('')
+  const [pullRequestBase, setPullRequestBase] = useState('main')
+  const [pullRequestDraft, setPullRequestDraft] = useState(false)
+  const [pullRequestResult, setPullRequestResult] = useState<{ number: number; url: string; title: string } | null>(null)
   const [repositoryEditorOpen, setRepositoryEditorOpen] = useState(false)
   const [repositoryDraft, setRepositoryDraft] = useState('')
   const [delegateEditorOpen, setDelegateEditorOpen] = useState(false)
@@ -197,24 +255,144 @@ export function ChatPage() {
   }, [location.pathname, location.state, nav])
 
   useEffect(() => {
+    if (!chatAgent || chat?.continuation) return
+    const builtinProviders: CodingProvider[] = ['opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity']
+    const agentProvider = chatAgent.harnessId && builtinProviders.includes(chatAgent.harnessId as CodingProvider)
+      ? chatAgent.harnessId as CodingProvider
+      : chatAgent.harnessId ? 'custom' : 'auto'
+    setProviderOv(agentProvider)
+    setHarnessOv(chatAgent.harness)
+    setRuntimeOv(chatAgent.runtime)
+    setModelOv(chatAgent.modelPolicy)
+    setExecutionMode(chatAgent.permissionPolicy?.sandbox === 'full-access'
+      ? 'full-access'
+      : chatAgent.permissionPolicy?.sandbox === 'read-only'
+        ? 'plan'
+        : 'project')
+    setOpenRouterModelId('')
+    setRoute((current) => ({
+      ...current,
+      modelKey: chatAgent.modelPolicy === 'auto' ? current.modelKey : chatAgent.modelPolicy,
+      harnessKey: chatAgent.harness,
+      runtimeKey: chatAgent.runtime,
+    }))
+    if (agentProvider !== 'auto') setProviderKey(agentProvider)
+    setAuto(false)
+  }, [chat?.id, chatAgent?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!chat?.continuation) return
+    setProviderOv(chat.continuation.provider)
+    setHarnessOv('coding')
+    setRuntimeOv('local')
+    setExecutionMode(chat.continuation.authority === 'source_managed' ? 'full-access' : 'project')
+    setOpenRouterModelId('')
+    setRoute((current) => ({ ...current, harnessKey: 'coding', runtimeKey: 'local' }))
+    setProviderKey(chat.continuation.provider)
+    setAuto(false)
+  }, [chat?.continuation, chat?.id])
+
+  useEffect(() => {
     setDelegateEditorOpen(false)
     setDelegateDraft('')
     setRepositoryEditorOpen(false)
+    setGitAction(null)
+    setBranchName('')
+    setCommitMessage('')
+    setCommitPaths([])
+    setPullRequestTitle('')
+    setPullRequestBody('')
+    setPullRequestBase('main')
+    setPullRequestDraft(false)
+    setPullRequestResult(null)
     setGitComparison(null)
   }, [chat?.id])
 
   const serverRouting = Boolean(services?.controlPlane.connected) && auto
   const defaults = project?.routingDefaults
-  const defaultModel = defaults?.modelKey && defaults.modelKey !== 'auto' ? defaults.modelKey : undefined
-  const defaultProvider = defaults?.providerKey && defaults.providerKey !== 'auto' ? defaults.providerKey : undefined
-  const defaultRuntime = defaults?.runtimeKey
+  const defaultModel = chatAgent?.modelPolicy && chatAgent.modelPolicy !== 'auto'
+    ? chatAgent.modelPolicy
+    : defaults?.modelKey && defaults.modelKey !== 'auto' ? defaults.modelKey : undefined
+  const agentHarnessId = chatAgent?.harnessId
+  const builtinProviders: CodingProvider[] = ['opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity']
+  const agentProvider = agentHarnessId
+    ? builtinProviders.includes(agentHarnessId as CodingProvider) ? agentHarnessId as CodingProvider : 'custom'
+    : undefined
+  const defaultProvider = agentProvider
+    ?? (defaults?.providerKey && defaults.providerKey !== 'auto' ? defaults.providerKey : undefined)
+  const defaultRuntime = chatAgent?.runtime ?? defaults?.runtimeKey
   const selectedProvider = providerOv === 'auto' ? defaultProvider : providerOv
   const pickerProvider = providerOv === 'auto' ? 'auto' : providerOv
-  const harnessPickerOption = HARNESS_PICKER_OPTIONS.find((option) => option.id === (selectedProvider ?? 'auto'))
-    ?? HARNESS_PICKER_OPTIONS[0]!
-  const compatibleModelOptions = MODEL_PICKER_OPTIONS[pickerProvider] ?? MODEL_PICKER_OPTIONS.auto!
-  const modelPickerOption = compatibleModelOptions.find((option) => option.id === modelOv)
+  const activeCustomHarness = project?.local?.harnesses.find((item) =>
+    item.id === (agentProvider === 'custom' ? agentHarnessId : project.local?.defaultHarnessId))
+  const liveHarnessOptions = useMemo(() => HARNESS_PICKER_OPTIONS.map((option) => {
+    if (option.id === 'auto') return { ...option, available: true }
+    if (option.id === 'custom') {
+      const capability = activeCustomHarness
+        ? harnessCapabilities.find((item) => item.id === activeCustomHarness.id)
+        : undefined
+      const ready = capability
+        ? capability.availability === 'available' && capability.readiness !== 'unavailable'
+        : Boolean(activeCustomHarness)
+      return {
+        ...option,
+        label: activeCustomHarness?.label ?? option.label,
+        shortLabel: activeCustomHarness?.label ?? option.shortLabel,
+        detail: activeCustomHarness
+          ? ready
+            ? `${activeCustomHarness.protocol === 'acp' ? 'ACP' : 'CLI'} · ${capability?.version ?? activeCustomHarness.command}`
+            : capability?.unavailableReason ?? 'Executable unavailable'
+          : 'Register in Local projects',
+        reason: activeCustomHarness
+          ? capability?.auth.message ?? capability?.unavailableReason ?? 'Project-local harness'
+          : 'No project-local harness is selected.',
+        available: ready,
+      }
+    }
+    const capability = harnessCapabilities.find((item) => item.id === option.id)
+    if (!capability) return { ...option, available: true }
+    const ready = capability.availability === 'available' && capability.readiness === 'ready'
+    const reason = capability.auth.message ?? capability.unavailableReason ?? 'This harness is unavailable.'
+    return {
+      ...option,
+      label: capability.label,
+      detail: ready
+        ? capability.version ?? 'Ready'
+        : capability.auth.setupCommand
+          ? `Setup required · ${capability.auth.setupCommand}`
+          : 'Unavailable',
+      reason,
+      available: ready,
+    }
+  }), [activeCustomHarness, harnessCapabilities])
+  const harnessPickerOption = liveHarnessOptions.find((option) => option.id === pickerProvider)
+    ?? liveHarnessOptions[0]!
+  const liveCapability = harnessCapabilities.find((item) =>
+    item.id === (pickerProvider === 'custom' ? activeCustomHarness?.id : pickerProvider))
+  const compatibleModelOptions = useMemo(() => {
+    const fallback = MODEL_PICKER_OPTIONS[pickerProvider] ?? MODEL_PICKER_OPTIONS.auto!
+    if (!liveCapability?.models.length || pickerProvider === 'auto') return fallback
+    return [
+      { ...fallback[0]!, detail: 'Harness decides', nativeId: '' },
+      ...liveCapability.models.map((model, index) => ({
+        id: fallback[index + 1]?.id ?? 'auto' as const,
+        label: model.id,
+        detail: model.configured ? 'Configured locally' : 'Available in this harness',
+        logoLabel: harnessPickerOption.logoLabel,
+        nativeId: model.id,
+      })),
+    ]
+  }, [harnessPickerOption.logoLabel, liveCapability, pickerProvider])
+  const modelPickerOption = compatibleModelOptions.find((option) =>
+    openRouterModelId && 'nativeId' in option && option.nativeId === openRouterModelId)
+    ?? compatibleModelOptions.find((option) => option.id === modelOv)
     ?? compatibleModelOptions[0]!
+  const selectedModelLabel = pickerProvider === 'auto'
+    ? MODEL_LABEL[route.modelKey]
+    : modelPickerOption.label
+  const selectedHarnessLabel = pickerProvider === 'auto'
+    ? HARNESS_LABEL[route.harnessKey]
+    : harnessPickerOption.label
   const usesNativeCliRouter = selectedProvider !== undefined && selectedProvider !== 'opensaddle' && selectedProvider !== 'custom'
   useEffect(() => {
     if (!routeOpen || services?.controlPlane.modelProvider !== 'openrouter' || !services.runtime.listOpenRouterFreeModels) return
@@ -270,6 +448,84 @@ export function ChatPage() {
   const send = async (forced?: string) => {
     const prompt = (forced ?? text).trim()
     if (!prompt || !chat) return
+    if (forced === undefined && activeManagedRun) {
+      try {
+        if (activeSendMode === 'steer' && steerableRun) {
+          await runRegistry.steer(steerableRun.runId, prompt)
+          setText('')
+          appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+          setActivity((items) => [...items, {
+            title: 'Guidance sent',
+            sub: 'Steered the active Codex turn',
+            kind: 'info',
+            t: 'now',
+          }])
+        } else {
+          const queued = await runRegistry.queue(activeManagedRun.runId, prompt)
+          setText('')
+          appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+          const queuedRun: AgentRunBlock = {
+            id: queued.runId,
+            parentRunId: queued.parentRunId ?? activeManagedRun.runId,
+            executionMode: activeManagedRun.run.executionMode,
+            kind: activeManagedRun.run.kind,
+            title: 'Queued follow-up',
+            model: activeManagedRun.run.model,
+            harness: activeManagedRun.run.harness,
+            runtime: activeManagedRun.run.runtime,
+            statusText: 'Queued after current turn',
+            done: false,
+            tools: [],
+            plan: [],
+            artifacts: [],
+            cost: queued.route?.cost ?? activeManagedRun.run.cost,
+          }
+          const placeholder = appendMessage({
+            chatId: chat.id,
+            role: 'assistant',
+            text: '',
+            routingNote: `Queued · ${queuedRun.model} · ${queuedRun.harness} · ${queuedRun.runtime}`,
+            run: queuedRun,
+          })
+          runRegistry.track({
+            runId: queued.runId,
+            threadId: chat.id,
+            messageId: placeholder.id,
+            parentRunId: queuedRun.parentRunId,
+            initialRun: queuedRun,
+          })
+          setActivity((items) => [...items, {
+            title: 'Follow-up queued',
+            sub: 'Starts when the active turn finishes',
+            kind: 'info',
+            t: 'now',
+          }])
+        }
+      } catch (error) {
+        toast(
+          activeSendMode === 'steer' && steerableRun ? 'Could not steer this run' : 'Could not queue follow-up',
+          error instanceof Error ? error.message : String(error),
+        )
+      }
+      return
+    }
+    const selectedCapability = providerOv !== 'auto'
+      ? harnessCapabilities.find((item) => item.id === providerOv)
+      : undefined
+    if (
+      selectedCapability
+      && (selectedCapability.availability !== 'available' || selectedCapability.readiness !== 'ready')
+    ) {
+      const setup = selectedCapability.auth.setupCommand
+        ? ` Run ${selectedCapability.auth.setupCommand} in Terminal, then reopen the selector.`
+        : ''
+      toast(
+        `${selectedCapability.label} needs setup`,
+        `${selectedCapability.auth.message ?? selectedCapability.unavailableReason ?? 'This harness is not ready.'}${setup}`,
+      )
+      setRouteOpen(true)
+      return
+    }
     setText('')
     setToolsOpen(false)
     setRouteOpen(false)
@@ -312,25 +568,6 @@ export function ChatPage() {
       setActivity([{ title: 'Permission denied', sub: exec.reason, kind: 'error', t: 'now' }])
       return
     }
-    const effectiveProvider = providerOv === 'auto' ? (defaultProvider ?? providerKey) : providerOv
-    if (!approvalId && !exec.approvalRequired && effectiveProvider === 'claude' && services?.runtime.requestApproval) {
-      try {
-        const approval = await services.runtime.requestApproval({
-          projectId: project.id,
-          agentId,
-          action: 'harness.claude.shell',
-        })
-        if (approval.status === 'pending') {
-          if (!services.runtime.resolveApproval) throw new Error('Claude Code shell approval is waiting for a reviewer')
-          await services.runtime.resolveApproval(approval.id, true)
-        }
-        approvalId = approval.id
-      } catch (error) {
-        toast('Approval required', error instanceof Error ? error.message : String(error))
-        return
-      }
-    }
-
     setActivity([{ title: 'Run started', sub: `${project.name} · ${RUNTIME_LABEL[r.runtimeKey]}`, kind: 'info', t: '0.0s' }])
     setInspector(true)
     setItab('overview')
@@ -346,6 +583,7 @@ export function ChatPage() {
 
     const runBlock: AgentRunBlock | undefined = r.klass === 'chat' ? undefined : {
       id: 'pending', kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
+      executionMode,
       title: 'Agent run', model: MODEL_LABEL[r.modelKey], harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
       statusText: 'Planning', done: false, tools: [], plan: [], artifacts: [],
     }
@@ -361,12 +599,16 @@ export function ChatPage() {
           projectId: project.id,
           task: prompt,
           agentId,
+          providerSessionId: chat?.continuation?.sessionId,
+          providerSessionMode: chat?.continuation ? chat.continuation.mode ?? 'resume' : undefined,
+          providerTurnId: chat?.continuation?.mode === 'fork' ? chat.continuation.checkpointId : undefined,
           modelKey: modelOv === 'auto' && usesNativeCliRouter ? 'auto' : modelOv === 'auto' ? defaultModel : modelOv,
           modelId: openRouterModelId || undefined,
           harnessKey: harnessOv === 'auto' ? undefined : harnessOv,
           providerKey: providerOv === 'auto' ? defaultProvider : providerOv,
           runtimeKey: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
-          repo: repository?.folderPath,
+          executionMode,
+          repo: repositoryPath,
           approvalId,
           reviewProviderKey: defaults?.reviewProviderKey === 'auto' ? undefined : defaults?.reviewProviderKey,
         })
@@ -376,11 +618,13 @@ export function ChatPage() {
         const actualHarness = started.route?.harnessKey ?? r.harnessKey
         const actualRuntime = started.route?.runtimeKey ?? r.runtimeKey
         const actualProvider = started.route?.providerKey ?? providerKey
+        const actualModelLabel = routedModelLabel(started.route, r.modelKey)
+        const actualHarnessLabel = routedHarnessLabel(started.route, r.harnessKey)
         const providerNote = actualHarness === 'coding' && actualProvider && actualProvider !== 'auto' && actualProvider !== 'custom'
           ? ` · ${PROVIDER_LABEL[actualProvider]}`
           : ''
         updateMessage(placeholder.id, {
-          routingNote: `${started.route ? 'Server' : 'Auto'} · ${MODEL_LABEL[actualModel]} · ${HARNESS_LABEL[actualHarness]}${providerNote} · ${RUNTIME_LABEL[actualRuntime]}`,
+          routingNote: `${started.route ? 'Server' : 'Auto'} · ${actualModelLabel} · ${HARNESS_LABEL[actualHarness]}${providerNote} · ${RUNTIME_LABEL[actualRuntime]}`,
         })
         // Keep the composer pill consistent with what the server actually ran.
         if (started.route) {
@@ -391,7 +635,7 @@ export function ChatPage() {
         if (isMockMode) {
           // Local mock runtime: the simulation IS the event source.
           await simulateAgentRun(prompt, r, (run: AgentRunBlock) => {
-            updateMessage(placeholder.id, { text: run.output ?? '', run: { ...run, id: started.runId } })
+            updateMessage(placeholder.id, { text: run.output ?? '', run: { ...run, id: started.runId, executionMode } })
             if (run.tools.length) {
               const last = run.tools[run.tools.length - 1]!
               setActivity((a) => a.some((x) => x.title === last.name) ? a : [...a, { title: last.name, sub: last.output, t: last.duration }])
@@ -405,8 +649,11 @@ export function ChatPage() {
         // run card entirely from live session events.
         let liveRun: AgentRunBlock = {
           id: started.runId, kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
-          title: 'Agent run', model: MODEL_LABEL[actualModel], harness: HARNESS_LABEL[actualHarness], runtime: RUNTIME_LABEL[actualRuntime],
+          executionMode,
+          providerKey: actualProvider,
+          title: 'Agent run', model: actualModelLabel, harness: actualHarnessLabel, runtime: RUNTIME_LABEL[actualRuntime],
           statusText: mode.replace('_', ' '), done: false, tools: [], plan: [], artifacts: [],
+          cost: started.route?.cost ?? r.cost,
         }
         if (runBlock) updateMessage(placeholder.id, { run: liveRun })
         runRegistry.track({
@@ -488,14 +735,26 @@ export function ChatPage() {
     { icon: 'bug', title: 'Fix issues', sub: 'Logs + cloud runtime', prompt: 'Investigate the failed cloud task and fix the issue without changing production data.' },
   ]
   const changedFiles = messages.flatMap((message) => message.run?.artifacts.flatMap((artifact) => artifact.diff ?? []) ?? [])
+  const latestRunChangePaths = [...new Set(latestRun?.artifacts.flatMap((artifact) =>
+    artifact.diff?.map((file) => file.path) ?? []) ?? [])]
+  const verificationChecks = messages.flatMap((message) => message.run?.artifacts
+    .filter((artifact) =>
+      artifact.type === 'table'
+      && artifact.table
+      && artifact.title.toLowerCase().includes('verification'))
+    .flatMap((artifact) => artifact.table?.rows ?? []) ?? [])
+  const failedChecks = verificationChecks.filter((check) => check[1]?.toLowerCase() !== 'pass')
   const artifactAdditions = changedFiles.reduce((total, file) => total + file.add, 0)
   const artifactDeletions = changedFiles.reduce((total, file) => total + file.del, 0)
   const projectSources = data.sources.filter((source) => source.projectId === project.id)
   const projectSessions = data.agentSessions.filter((session) => session.projectId === project.id)
   const activeEnvironment = data.environments.find((environment) =>
-    latestRun && RUNTIME_LABEL[environment.kind] === latestRun.runtime,
-  ) ?? (!latestRun ? data.environments.find((environment) => environment.status === 'Running') : undefined)
+    latestRun
+      ? RUNTIME_LABEL[environment.kind] === latestRun.runtime
+      : environment.kind === route.runtimeKey,
+  )
   const repository = projectSources.find((source) => source.kind === 'github')
+  const repositoryPath = repository?.folderPath ?? project.local?.rootPath
   const relationEvents = managedRuns.flatMap((managed) => managed.lastEvent ? [managed.lastEvent] : [])
   const childRuns = rootRun ? selectRelatedRuns({
     parentRunId: rootRun.id,
@@ -508,7 +767,7 @@ export function ChatPage() {
       })),
     ],
     events: relationEvents,
-  }) : []
+  }).filter((child) => !/^Queued follow-up$/i.test(child.title)) : []
   const usedSources = latestRun ? selectUsedRunSources({
     runId: latestRun.id,
     events: relationEvents,
@@ -524,9 +783,10 @@ export function ChatPage() {
   const runActivity = latestRun?.activity ?? []
   const additions = gitStatus?.additions ?? artifactAdditions
   const deletions = gitStatus?.deletions ?? artifactDeletions
+  const defaultPullRequestBase = repository?.branch ?? 'main'
 
   useEffect(() => {
-    const repo = repository?.folderPath
+    const repo = repositoryPath
     const client = services?.runtime
     if (!repo || !client?.gitStatus || !services?.controlPlane.connected) {
       setGitStatus(null)
@@ -550,7 +810,7 @@ export function ChatPage() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [latestRun?.done, project.id, repository?.folderPath, services])
+  }, [latestRun?.done, project.id, repositoryPath, services])
 
   const chooseRepository = async () => {
     if (!repository) {
@@ -576,41 +836,95 @@ export function ChatPage() {
     toast('Repository selected', selected)
   }
 
-  const commitChanges = async () => {
-    const repo = repository?.folderPath
+  const createBranch = async () => {
+    const repo = repositoryPath
     const client = services?.runtime
-    if (!repo || !client?.gitCommit) return void chooseRepository()
-    const message = window.prompt('Commit message')
-    if (!message?.trim()) return
-    if (!window.confirm(`Commit ${gitStatus?.files.length ?? 'the'} changed files to ${gitStatus?.branch ?? 'the current branch'}?`)) return
+    const branch = branchName.trim()
+    if (!repo || !branch || !client?.gitCreateBranch) return
     setGitBusy(true)
+    setGitError('')
     try {
       let approvalId: string | undefined
       try {
-        const result = await client.gitCommit({ projectId: project.id, repo, message, paths: gitStatus?.files.map((file) => file.path) })
-        toast('Changes committed', result.commit.slice(0, 10))
+        const result = await client.gitCreateBranch({ projectId: project.id, repo, branch })
+        toast('Branch created', result.branch)
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
         if (!/approval/i.test(reason) || !client.requestApproval || !client.resolveApproval) throw error
         const approval = await client.requestApproval({ projectId: project.id, action: 'write' })
         await client.resolveApproval(approval.id, true)
         approvalId = approval.id
-        const result = await client.gitCommit({ projectId: project.id, repo, message, paths: gitStatus?.files.map((file) => file.path), approvalId })
-        toast('Changes committed', result.commit.slice(0, 10))
+        const result = await client.gitCreateBranch({ projectId: project.id, repo, branch, approvalId })
+        toast('Branch created', result.branch)
       }
+      setGitAction(null)
+      setBranchName('')
+      setActivity((items) => [...items, {
+        title: 'Branch created',
+        sub: branch,
+        kind: 'info',
+        t: 'now',
+      }])
       setGitStatus(await client.gitStatus?.(project.id, repo) ?? null)
     } catch (error) {
-      toast('Commit failed', error instanceof Error ? error.message : String(error))
+      const reason = error instanceof Error ? error.message : String(error)
+      setGitError(reason)
+      toast('Create branch failed', reason)
+    } finally {
+      setGitBusy(false)
+    }
+  }
+
+  const commitChanges = async (message: string, paths: string[]) => {
+    const repo = repositoryPath
+    const client = services?.runtime
+    if (!repo || !client?.gitCommit) return void chooseRepository()
+    const trimmedMessage = message.trim()
+    if (!trimmedMessage || !paths.length) return
+    setGitBusy(true)
+    try {
+      let approvalId: string | undefined
+      try {
+        const result = await client.gitCommit({ projectId: project.id, repo, message: trimmedMessage, paths })
+        toast('Changes committed', result.commit.slice(0, 10))
+        setActivity((items) => [...items, {
+          title: 'Changes committed',
+          sub: `${result.commit.slice(0, 10)} · ${trimmedMessage}`,
+          kind: 'info',
+          t: 'now',
+        }])
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        if (!/approval/i.test(reason) || !client.requestApproval || !client.resolveApproval) throw error
+        const approval = await client.requestApproval({ projectId: project.id, action: 'write' })
+        await client.resolveApproval(approval.id, true)
+        approvalId = approval.id
+        const result = await client.gitCommit({ projectId: project.id, repo, message: trimmedMessage, paths, approvalId })
+        toast('Changes committed', result.commit.slice(0, 10))
+        setActivity((items) => [...items, {
+          title: 'Changes committed',
+          sub: `${result.commit.slice(0, 10)} · ${trimmedMessage}`,
+          kind: 'info',
+          t: 'now',
+        }])
+      }
+      setGitAction(null)
+      setCommitMessage('')
+      setCommitPaths([])
+      setGitStatus(await client.gitStatus?.(project.id, repo) ?? null)
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      setGitError(reason)
+      toast('Commit failed', reason)
     } finally {
       setGitBusy(false)
     }
   }
 
   const pushChanges = async () => {
-    const repo = repository?.folderPath
+    const repo = repositoryPath
     const client = services?.runtime
     if (!repo || !client?.gitPush || !client.requestApproval || !client.resolveApproval) return void chooseRepository()
-    if (!window.confirm(`Push ${gitStatus?.branch ?? 'the current branch'} to ${gitStatus?.upstream ?? 'origin'}? This updates the remote repository.`)) return
     setGitBusy(true)
     try {
       const approval = await client.requestApproval({ projectId: project.id, action: 'push' })
@@ -623,24 +937,85 @@ export function ChatPage() {
         approvalId: approval.id,
       })
       toast('Branch pushed', `${result.remote}/${result.branch}`)
+      setActivity((items) => [...items, {
+        title: 'Branch pushed',
+        sub: `${result.remote}/${result.branch}`,
+        kind: 'info',
+        t: 'now',
+      }])
+      setGitAction(null)
       setGitStatus(await client.gitStatus?.(project.id, repo) ?? null)
     } catch (error) {
-      toast('Push failed', error instanceof Error ? error.message : String(error))
+      const reason = error instanceof Error ? error.message : String(error)
+      setGitError(reason)
+      toast('Push failed', reason)
+    } finally {
+      setGitBusy(false)
+    }
+  }
+
+  const createPullRequest = async () => {
+    const repo = repositoryPath
+    const client = services?.runtime
+    const branch = gitStatus?.branch
+    if (
+      !repo
+      || !branch
+      || !client?.gitCreatePullRequest
+      || !client.requestApproval
+      || !client.resolveApproval
+      || !pullRequestTitle.trim()
+      || !pullRequestBase.trim()
+    ) return
+    setGitBusy(true)
+    setGitError('')
+    try {
+      const approval = await client.requestApproval({ projectId: project.id, action: 'push' })
+      await client.resolveApproval(approval.id, true)
+      const result = await client.gitCreatePullRequest({
+        projectId: project.id,
+        repo,
+        title: pullRequestTitle.trim(),
+        body: pullRequestBody.trim(),
+        base: pullRequestBase.trim(),
+        head: branch,
+        draft: pullRequestDraft,
+        approvalId: approval.id,
+      })
+      setPullRequestResult({ number: result.number, url: result.url, title: result.title })
+      setGitAction(null)
+      setActivity((items) => [...items, {
+        title: `Pull request #${result.number} created`,
+        sub: `${result.head} → ${result.base}`,
+        kind: 'info',
+        t: 'now',
+      }])
+      toast(`Pull request #${result.number} created`, result.title)
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      setGitError(reason)
+      toast('Pull request failed', reason)
     } finally {
       setGitBusy(false)
     }
   }
 
   const compareBranch = async () => {
-    const repo = repository?.folderPath
+    const repo = repositoryPath
     const client = services?.runtime
     if (!repo || !client?.gitCompare) return void chooseRepository()
     setGitBusy(true)
     try {
-      const comparison = await client.gitCompare(project.id, repo, repository.branch ?? 'main')
+      const comparison = await client.gitCompare(project.id, repo, gitStatus?.upstream ?? repository?.branch ?? 'main')
       setGitComparison(comparison)
       setItab('changes')
       toast('Branch comparison ready', `${comparison.files.length} files · +${comparison.additions} −${comparison.deletions}`)
+      setActivity((items) => [...items, {
+        title: 'Branch comparison ready',
+        sub: `${comparison.base}…${comparison.head} · ${comparison.files.length} files`,
+        kind: 'info',
+        t: 'now',
+      }])
     } catch (error) {
       toast('Compare failed', error instanceof Error ? error.message : String(error))
     } finally {
@@ -662,6 +1037,7 @@ export function ChatPage() {
     const initial: AgentRunBlock = {
       id: 'pending',
       parentRunId: rootRun.id,
+      executionMode,
       kind: requestedRoute.klass === 'research' ? 'research' : requestedRoute.klass === 'browser' ? 'browser' : 'coding',
       title: `Subagent · ${task.slice(0, 52)}`,
       model: MODEL_LABEL[requestedRoute.modelKey],
@@ -687,7 +1063,8 @@ export function ChatPage() {
         agentId: chat.agentId,
         parentRunId: rootRun.id,
         sourceIds: usedSources.map((source) => source.id),
-        repo: repository?.folderPath,
+        executionMode,
+        repo: repositoryPath,
       })
       const child: AgentRunBlock = {
         ...initial,
@@ -700,7 +1077,7 @@ export function ChatPage() {
       updateMessage(message.id, { run: child })
       if (started.mode === 'mock' || started.mode === 'mock_with_repo') {
         await simulateAgentRun(task, requestedRoute, (run) => {
-          updateMessage(message.id, { text: run.output ?? '', run: { ...run, id: started.runId, parentRunId: rootRun.id, title: initial.title } })
+          updateMessage(message.id, { text: run.output ?? '', run: { ...run, id: started.runId, parentRunId: rootRun.id, title: initial.title, executionMode } })
         })
       } else {
         runRegistry.track({
@@ -782,7 +1159,13 @@ export function ChatPage() {
                       await services.runtime.resolveDiff(m.run.id, filePath, hunkIndex, st)
                     }
                     updateHunk(m.id, hid, st)
-                    toast(st === 'accepted' ? 'Hunk accepted' : 'Hunk reverted', filePath)
+                    const reviewMode = m.run?.executionMode === 'review'
+                    toast(
+                      st === 'accepted'
+                        ? reviewMode ? 'Applied to project' : 'Hunk accepted'
+                        : reviewMode ? 'Review change discarded' : 'Hunk reverted',
+                      filePath,
+                    )
                   } catch (error) {
                     toast('Diff update failed', error instanceof Error ? error.message : String(error))
                   }
@@ -826,7 +1209,11 @@ export function ChatPage() {
                 onChange={(e) => { setText(e.target.value); refreshRoute(e.target.value) }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
                 aria-label="Message"
-                placeholder="Message your agent"
+                placeholder={activeManagedRun
+                  ? activeSendMode === 'steer' && steerableRun
+                    ? 'Steer the active Codex run'
+                    : 'Queue a follow-up'
+                  : 'Message your agent'}
                 rows={1}
               />
               <div className="composer-bottom">
@@ -853,6 +1240,45 @@ export function ChatPage() {
                 />
                 <button className="composer-btn composer-icon-btn" title="Attach files (stored in workspace Files)" aria-label="Attach files" onClick={() => attachRef.current?.click()}><Icon name="paperclip" className="icon sm" /></button>
                 <button className="composer-btn options-btn" onClick={() => { setRouteOpen(false); setToolsOpen((v) => !v) }}><Icon name="tools" className="icon sm" />Options</button>
+                {chat.continuation && (
+                  <span
+                    className="composer-continuation-chip"
+                    title={`Native session ${chat.continuation.sessionId}`}
+                  >
+                    <HarnessVisual id={chat.continuation.provider} className="provider-logo xs" />
+                    {continuationAction} {PROVIDER_LABEL[chat.continuation.provider]}
+                  </span>
+                )}
+                {activeManagedRun && (
+                  <span className="composer-active-mode" aria-label="Active turn message behavior">
+                    {steerableRun && (
+                      <button
+                        className={activeSendMode === 'steer' ? 'active' : ''}
+                        title="Guide the active Codex turn immediately"
+                        onClick={() => setActiveSendMode('steer')}
+                      >
+                        <Icon name="arrow" className="icon xs" />
+                        Steer
+                      </button>
+                    )}
+                    <button
+                      className={activeSendMode === 'queue' || !steerableRun ? 'active' : ''}
+                      title="Run this message after the active turn finishes"
+                      onClick={() => setActiveSendMode('queue')}
+                    >
+                      <Icon name="clock" className="icon xs" />
+                      Queue{queuedManagedRuns.length ? ` ${queuedManagedRuns.length}` : ''}
+                    </button>
+                  </span>
+                )}
+                <button
+                  className={`composer-btn execution-mode-chip ${executionMode}`}
+                  title="Choose per-task access mode"
+                  onClick={() => { setToolsOpen(false); setRouteOpen(true) }}
+                >
+                  <Icon name={EXECUTION_MODES.find((mode) => mode.id === executionMode)?.icon ?? 'shield'} className="icon sm" />
+                  {EXECUTION_MODES.find((mode) => mode.id === executionMode)?.label}
+                </button>
                 <span className="composer-spacer" />
                 <button className={`route-pill ${auto ? '' : 'manual'}`} title={serverRouting ? 'Routed by the OpenSaddle control plane' : 'Routed locally (mock)'} onClick={() => { setToolsOpen(false); setRouteOpen((v) => !v); refreshRoute(text || pending || 'build a feature') }}>
                   {auto && <span className="pulse" />}
@@ -861,7 +1287,15 @@ export function ChatPage() {
                   <span className="route-model-label">{modelPickerOption.label}</span>
                   <Icon name="chevron" className="icon sm" />
                 </button>
-                <button className="send-btn" onClick={() => void send()}><Icon name="arrow" className="icon sm" /></button>
+                <button
+                  className="send-btn"
+                  title={activeManagedRun
+                    ? activeSendMode === 'steer' && steerableRun ? 'Steer active run' : 'Queue follow-up'
+                    : 'Send message'}
+                  onClick={() => void send()}
+                >
+                  <Icon name="arrow" className="icon sm" />
+                </button>
               </div>
 
               {toolsOpen && (
@@ -891,16 +1325,34 @@ export function ChatPage() {
                 <div className="popover routing-popover open">
                   <div className="compact-route-head">
                     <div><strong>Run with</strong><span>{route.cost} estimated</span></div>
-                    <button aria-label="Close agent selector" onClick={() => setRouteOpen(false)}><Icon name="x" className="icon sm" /></button>
+                    <div className="compact-route-actions">
+                      <button
+                        aria-label="Refresh harness status"
+                        title="Check local CLI sign-in and model access again"
+                        disabled={refreshingHarnesses}
+                        onClick={() => {
+                          setRefreshingHarnesses(true)
+                          void refreshHarnessCapabilities()
+                            .then(() => toast('Harness status refreshed', 'Local CLI access and models were checked again.'))
+                            .catch((error: unknown) => toast('Harness refresh failed', error instanceof Error ? error.message : String(error)))
+                            .finally(() => setRefreshingHarnesses(false))
+                        }}
+                      >
+                        <Icon name="refresh" className={`icon sm ${refreshingHarnesses ? 'spin' : ''}`} />
+                      </button>
+                      <button aria-label="Close agent selector" onClick={() => setRouteOpen(false)}><Icon name="x" className="icon sm" /></button>
+                    </div>
                   </div>
 
                   <div className="compact-route-section">
                     <span className="compact-route-label">Harness</span>
                     <div className="harness-quick-grid">
-                      {HARNESS_PICKER_OPTIONS.map((option) => (
+                      {liveHarnessOptions.map((option) => (
                         <button
                           key={option.id}
                           className={pickerProvider === option.id ? 'active' : ''}
+                          disabled={option.available === false}
+                          title={'reason' in option ? option.reason : option.detail}
                           onClick={() => {
                             setProviderOv(option.id)
                             setHarnessOv(option.id === 'auto' ? 'auto' : 'coding')
@@ -912,21 +1364,24 @@ export function ChatPage() {
                         >
                           <span className="quick-logo"><HarnessVisual id={option.id} /></span>
                           <span><strong>{option.label}</strong><small>{option.detail}</small></span>
-                          <Icon name="check" className="icon xs quick-check" />
+                          <Icon name={option.available === false ? 'close' : 'check'} className="icon xs quick-check" />
                         </button>
                       ))}
                     </div>
                   </div>
 
                   <div className="compact-route-section model-section">
-                    <span className="compact-route-label">Model <small>for {harnessPickerOption.label}</small></span>
+                    <span className="compact-route-label">Model <small>{pickerProvider === 'auto' ? 'chosen with the harness' : `for ${harnessPickerOption.label}`}</small></span>
                     <div className="model-quick-list">
                       {compatibleModelOptions.map((option) => (
                         <button
-                          key={option.id}
-                          className={modelOv === option.id ? 'active' : ''}
+                          key={'nativeId' in option && option.nativeId ? option.nativeId : option.id}
+                          className={(('nativeId' in option && option.nativeId)
+                            ? openRouterModelId === option.nativeId
+                            : !openRouterModelId && modelOv === option.id) ? 'active' : ''}
                           onClick={() => {
                             setModelOv(option.id)
+                            setOpenRouterModelId('nativeId' in option ? option.nativeId : '')
                             setAuto(option.id === 'auto' && providerOv === 'auto' && harnessOv === 'auto')
                             refreshRoute(text || pending || 'build a feature')
                             setRouteOpen(false)
@@ -940,6 +1395,28 @@ export function ChatPage() {
                           <Icon name="check" className="icon xs quick-check" />
                         </button>
                       ))}
+                    </div>
+                  </div>
+
+                  <div className="compact-route-section execution-mode-section">
+                    <span className="compact-route-label">Access <small>for this task</small></span>
+                    <div className="execution-mode-grid">
+                      {EXECUTION_MODES.map((mode) => {
+                        const disabled = mode.id === 'full-access' && !project.local
+                        return (
+                          <button
+                            key={mode.id}
+                            className={executionMode === mode.id ? 'active' : ''}
+                            disabled={disabled}
+                            title={disabled ? 'Full access is available only for local projects.' : mode.detail}
+                            onClick={() => setExecutionMode(mode.id)}
+                          >
+                            <Icon name={mode.icon} className="icon sm" />
+                            <span><strong>{mode.label}</strong><small>{mode.detail}</small></span>
+                            <Icon name="check" className="icon xs quick-check" />
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
 
@@ -995,9 +1472,16 @@ export function ChatPage() {
                     <span>Changes</span>
                     <strong className="tf-change-count"><i>+{additions}</i> <b>−{deletions}</b></strong>
                   </button>
+                  <button className="tf-state-row" onClick={() => setItab('checks')}>
+                    <Icon name="check" className="icon sm" />
+                    <span>Checks</span>
+                    <small>{verificationChecks.length
+                      ? failedChecks.length ? `${failedChecks.length} need attention` : `${verificationChecks.length} passed`
+                      : 'Not run'}</small>
+                  </button>
                   <button className="tf-state-row" onClick={() => setItab('environment')}>
                     <Icon name="terminal" className="icon sm" />
-                    <span>{latestRun?.runtime ?? activeEnvironment?.name ?? 'Local'}</span>
+                    <span>{latestRun?.runtime ?? activeEnvironment?.name ?? RUNTIME_LABEL[route.runtimeKey]}</span>
                     <small>{latestRun ? latestRun.done ? 'Ready' : 'Running' : activeEnvironment?.status ?? 'Ready'}</small>
                   </button>
                   <div className="tf-state-row">
@@ -1005,6 +1489,46 @@ export function ChatPage() {
                     <span>{gitStatus?.branch ?? repository?.branch ?? 'main'}</span>
                     <small>{gitStatus ? `${gitStatus.ahead}↑ ${gitStatus.behind}↓` : repository?.status ?? 'local'}</small>
                   </div>
+                  <button className="tf-state-row" disabled={!repositoryPath || !gitStatus?.branch || gitBusy || !services?.runtime.gitCreateBranch} onClick={() => {
+                    setGitAction((current) => {
+                      if (current === 'branch') return null
+                      const source = chat.title === 'New task'
+                        ? [...messages].reverse().find((message) => message.role === 'user')?.text ?? 'task'
+                        : chat.title
+                      const slug = source
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, '-')
+                        .replace(/^-|-$/g, '')
+                        .slice(0, 48) || 'task'
+                      setBranchName(`opensaddle/${slug}`)
+                      return 'branch'
+                    })
+                    setGitError('')
+                  }}>
+                    <Icon name="plus" className="icon sm" />
+                    <span>Create branch</span>
+                    <small>From {gitStatus?.branch ?? 'current'}</small>
+                  </button>
+                  {gitAction === 'branch' && gitStatus?.branch && (
+                    <form className="tf-state-inline-form tf-git-action" onSubmit={(event) => {
+                      event.preventDefault()
+                      void createBranch()
+                    }}>
+                      <label htmlFor="branch-name">New branch from {gitStatus.branch}</label>
+                      <input
+                        id="branch-name"
+                        value={branchName}
+                        onChange={(event) => setBranchName(event.target.value)}
+                        placeholder="opensaddle/my-task"
+                        autoFocus
+                      />
+                      <p>Uncommitted changes remain in the working tree when the branch is created.</p>
+                      <div>
+                        <button type="button" onClick={() => setGitAction(null)}>Cancel</button>
+                        <button type="submit" disabled={!branchName.trim() || gitBusy}>{gitBusy ? 'Creating…' : 'Create branch'}</button>
+                      </div>
+                    </form>
+                  )}
                   {!repository?.folderPath && repository && (
                     <button className="tf-state-row" onClick={() => void chooseRepository()}>
                       <Icon name="folder" className="icon sm" />
@@ -1027,17 +1551,173 @@ export function ChatPage() {
                       </div>
                     </form>
                   )}
-                  <button className="tf-state-row" disabled={!gitStatus || gitStatus.clean || gitBusy} onClick={() => void commitChanges()}>
+                  <button className="tf-state-row" disabled={!gitStatus || gitStatus.clean || gitBusy} onClick={() => {
+                    setGitAction((current) => {
+                      if (current === 'commit') return null
+                      const available = gitStatus?.files.map((file) => file.path) ?? []
+                      const taskPaths = latestRunChangePaths.filter((path) => available.includes(path))
+                      setCommitPaths(taskPaths.length ? taskPaths : available)
+                      return 'commit'
+                    })
+                    setGitError('')
+                  }}>
                     <Icon name="activity" className="icon sm" />
                     <span>Commit changes</span>
                     <small>{gitBusy ? 'Working…' : gitStatus?.clean ? 'Clean' : gitStatus ? `${gitStatus.files.length} files` : 'Unavailable'}</small>
                   </button>
-                  <button className="tf-state-row" disabled={!gitStatus?.ahead || gitBusy} onClick={() => void pushChanges()}>
+                  {gitAction === 'commit' && gitStatus && !gitStatus.clean && (
+                    <form className="tf-state-inline-form tf-git-action" onSubmit={(event) => {
+                      event.preventDefault()
+                      void commitChanges(commitMessage, commitPaths)
+                    }}>
+                      <label htmlFor="commit-message">Commit {commitPaths.length} of {gitStatus.files.length} changed file{gitStatus.files.length === 1 ? '' : 's'}</label>
+                      <input
+                        id="commit-message"
+                        value={commitMessage}
+                        onChange={(event) => setCommitMessage(event.target.value)}
+                        placeholder="Describe this change"
+                        autoFocus
+                      />
+                      <div className="tf-git-file-actions">
+                        <button type="button" onClick={() => setCommitPaths(gitStatus.files.map((file) => file.path))}>Select all</button>
+                        <button type="button" onClick={() => setCommitPaths([])}>Clear</button>
+                      </div>
+                      <div className="tf-git-file-list" role="group" aria-label="Files to commit">
+                        {gitStatus.files.map((file) => {
+                          const checked = commitPaths.includes(file.path)
+                          return (
+                            <label key={file.path}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => setCommitPaths((paths) =>
+                                  checked ? paths.filter((path) => path !== file.path) : [...paths, file.path])}
+                              />
+                              <span>{file.path}</span>
+                              <small>{file.untracked ? 'untracked' : file.staged ? 'staged' : file.modified ? 'modified' : file.worktree}</small>
+                            </label>
+                          )
+                        })}
+                      </div>
+                      <p>Creates a commit on <strong>{gitStatus.branch}</strong>. Git hooks are not run by OpenSaddle.</p>
+                      <div>
+                        <button type="button" onClick={() => setGitAction(null)}>Cancel</button>
+                        <button type="submit" disabled={!commitMessage.trim() || !commitPaths.length || gitBusy}>{gitBusy ? 'Committing…' : 'Commit'}</button>
+                      </div>
+                    </form>
+                  )}
+                  <button className="tf-state-row" disabled={!gitStatus?.ahead || gitBusy} onClick={() => {
+                    setGitAction((current) => current === 'push' ? null : 'push')
+                    setGitError('')
+                  }}>
                     <Icon name="cloud" className="icon sm" />
                     <span>Push branch</span>
                     <small>{gitStatus?.ahead ? `${gitStatus.ahead} commit${gitStatus.ahead === 1 ? '' : 's'}` : 'Up to date'}</small>
                   </button>
-                  <button className="tf-state-row" disabled={!repository?.folderPath || gitBusy} onClick={() => void compareBranch()}>
+                  {gitAction === 'push' && gitStatus?.ahead ? (
+                    <form className="tf-state-inline-form tf-git-action" onSubmit={(event) => {
+                      event.preventDefault()
+                      void pushChanges()
+                    }}>
+                      <label>Push {gitStatus.ahead} commit{gitStatus.ahead === 1 ? '' : 's'}?</label>
+                      <p>This updates <strong>{gitStatus.upstream ?? `origin/${gitStatus.branch}`}</strong> and requires explicit approval.</p>
+                      <div>
+                        <button type="button" onClick={() => setGitAction(null)}>Cancel</button>
+                        <button type="submit" disabled={gitBusy}>{gitBusy ? 'Pushing…' : 'Approve & push'}</button>
+                      </div>
+                    </form>
+                  ) : null}
+                  <button
+                    className="tf-state-row"
+                    disabled={
+                      !repositoryPath
+                      || !gitStatus?.branch
+                      || gitStatus.ahead > 0
+                      || gitStatus.branch === defaultPullRequestBase
+                      || gitBusy
+                      || !services?.runtime.gitCreatePullRequest
+                    }
+                    onClick={() => {
+                      setGitAction((current) => {
+                        if (current === 'pull-request') return null
+                        const latestUserPrompt = [...messages].reverse().find((message) => message.role === 'user')?.text.trim()
+                        setPullRequestTitle(
+                          chat.title !== 'New task'
+                            ? chat.title
+                            : latestUserPrompt?.split('\n')[0]?.slice(0, 120) || `Merge ${gitStatus?.branch ?? 'branch'}`,
+                        )
+                        const summary = latestRun?.output?.trim()
+                        const checks = verificationChecks.map((check) => `- ${check[0]}: ${check[1] ?? check.at(-1)}`).join('\n')
+                        setPullRequestBody([
+                          '## Summary',
+                          '',
+                          summary || 'Changes prepared and reviewed in OpenSaddle.',
+                          '',
+                          '## Verification',
+                          '',
+                          checks || '- Not recorded',
+                        ].join('\n'))
+                        setPullRequestBase(defaultPullRequestBase)
+                        return 'pull-request'
+                      })
+                      setGitError('')
+                    }}
+                  >
+                    <Icon name="git" className="icon sm" />
+                    <span>Create pull request</span>
+                    <small>{gitStatus?.ahead
+                      ? 'Push first'
+                      : gitStatus?.branch === defaultPullRequestBase
+                        ? `Create a branch from ${defaultPullRequestBase}`
+                        : pullRequestResult ? `#${pullRequestResult.number}` : 'GitHub'}</small>
+                  </button>
+                  {gitAction === 'pull-request' && gitStatus?.branch && (
+                    <form className="tf-state-inline-form tf-git-action" onSubmit={(event) => {
+                      event.preventDefault()
+                      void createPullRequest()
+                    }}>
+                      <label htmlFor="pull-request-title">Pull request title</label>
+                      <input
+                        id="pull-request-title"
+                        value={pullRequestTitle}
+                        onChange={(event) => setPullRequestTitle(event.target.value)}
+                        autoFocus
+                      />
+                      <div className="tf-git-ref-grid">
+                        <label>Base<input value={pullRequestBase} onChange={(event) => setPullRequestBase(event.target.value)} /></label>
+                        <label>Head<input value={gitStatus.branch} readOnly /></label>
+                      </div>
+                      <label htmlFor="pull-request-body">Description</label>
+                      <textarea
+                        id="pull-request-body"
+                        value={pullRequestBody}
+                        onChange={(event) => setPullRequestBody(event.target.value)}
+                        rows={6}
+                      />
+                      <label className="tf-git-draft-option">
+                        <input type="checkbox" checked={pullRequestDraft} onChange={(event) => setPullRequestDraft(event.target.checked)} />
+                        <span>Create as draft</span>
+                      </label>
+                      <p>Creates a GitHub pull request using your local <strong>gh</strong> login and requires explicit approval.</p>
+                      <div>
+                        <button type="button" onClick={() => setGitAction(null)}>Cancel</button>
+                        <button
+                          type="submit"
+                          disabled={!pullRequestTitle.trim() || !pullRequestBase.trim() || pullRequestBase.trim() === gitStatus.branch || gitBusy}
+                        >
+                          {gitBusy ? 'Creating…' : 'Approve & create'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                  {pullRequestResult && (
+                    <button className="tf-state-row tf-pr-result" onClick={() => window.open(pullRequestResult.url, '_blank', 'noopener,noreferrer')}>
+                      <Icon name="check" className="icon sm" />
+                      <span>PR #{pullRequestResult.number} · {pullRequestResult.title}</span>
+                      <Icon name="forward" className="icon xs" />
+                    </button>
+                  )}
+                  <button className="tf-state-row" disabled={!repositoryPath || gitBusy} onClick={() => void compareBranch()}>
                     <Icon name="git" className="icon sm" />
                     <span>Compare branch</span>
                     <Icon name="forward" className="icon xs" />
@@ -1097,10 +1777,29 @@ export function ChatPage() {
                 <section className="tf-state-card tf-state-run">
                   <div className="tf-state-heading"><span>Run</span></div>
                   <div className="scope-box">
-                    <strong>{latestRun?.title ?? 'Thread ready'}</strong>
-                    <p>{latestRun?.statusText ?? 'Send a message to begin work in this project.'}</p>
+                    <strong>{latestRun?.title ?? (chat.continuation ? 'Native session ready' : 'Thread ready')}</strong>
+                    <p>{latestRun?.statusText ?? (chat.continuation
+                      ? `Send a message to ${continuationAction.toLowerCase()} this ${PROVIDER_LABEL[chat.continuation.provider]} session.`
+                      : 'Send a message to begin work in this project.')}</p>
                   </div>
-                  <div className="kv"><span>Model</span><span>{latestRun?.model ?? MODEL_LABEL[route.modelKey]}</span></div>
+                  {chat.continuation && <div className="kv"><span>{continuationAction} session</span><span title={chat.continuation.sessionId}>{PROVIDER_LABEL[chat.continuation.provider]} · {chat.continuation.sessionId.slice(0, 8)}</span></div>}
+                  <div className="kv"><span>Harness</span><span>{latestRun?.harness ?? selectedHarnessLabel}</span></div>
+                  <div className="kv"><span>Model</span><span>{latestRun?.model ?? selectedModelLabel}</span></div>
+                  <div className="kv"><span>Access</span><span>{EXECUTION_MODES.find((mode) => mode.id === (latestRun?.executionMode ?? executionMode))?.label}</span></div>
+                  {(latestRun?.executionMode ?? executionMode) === 'review' && (
+                    <div className="scope-box review-workspace-note">
+                      <strong>Isolated review workspace</strong>
+                      <p>Changes stay separate until you apply individual hunks.</p>
+                    </div>
+                  )}
+                  {latestRun?.usage && (
+                    <div className="kv">
+                      <span>Context</span>
+                      <span>{latestRun.usage.totalTokens !== undefined ? formatTokenCount(latestRun.usage.totalTokens) : '—'}{latestRun.usage.contextWindow ? ` / ${formatTokenCount(latestRun.usage.contextWindow)}` : ''}{latestRun.usage.contextPercent !== undefined ? ` · ${latestRun.usage.contextPercent}%` : ''}</span>
+                    </div>
+                  )}
+                  {!!latestRun?.warnings?.length && <div className="kv"><span>Warnings</span><span>{latestRun.warnings.length}</span></div>}
+                  {!!queuedManagedRuns.length && <div className="kv"><span>Queue</span><span>{queuedManagedRuns.length} follow-up{queuedManagedRuns.length === 1 ? '' : 's'}</span></div>}
                   <div className="kv"><span>Cost</span><span>{latestRun?.cost ?? route.cost}</span></div>
                   <button className="tf-state-view-all" onClick={() => setItab('activity')}>View activity</button>
                 </section>
@@ -1109,6 +1808,12 @@ export function ChatPage() {
             {itab === 'changes' && (
               <div className="ipanel active"><div className="inspector-section" style={{ borderTop: 0 }}>
                 <h4>{gitComparison ? `${gitComparison.base}…${gitComparison.head}` : 'Changed files'}</h4>
+                {latestRun?.executionMode === 'review' && (
+                  <div className="scope-box review-workspace-note">
+                    <strong>Prepared separately</strong>
+                    <p>Apply approved hunks to the project or discard them from this review.</p>
+                  </div>
+                )}
                 {(() => {
                   const liveFiles = gitComparison?.files ?? gitStatus?.diffFiles
                   const files = liveFiles?.map((file) => ({
@@ -1135,12 +1840,18 @@ export function ChatPage() {
             )}
             {itab === 'checks' && (
               <div className="ipanel active"><div className="inspector-section" style={{ borderTop: 0 }}>
-                <h4>Verification</h4>
+                <div className="tf-inspector-section-head">
+                  <div><h4>Verification</h4><p>Run checks in this task with the selected local harness.</p></div>
+                  <button
+                    className="tiny-btn"
+                    disabled={Boolean(activeManagedRun)}
+                    onClick={() => void send('Run the relevant tests, typechecks, and validation for the changes in this task. Do not make unrelated edits. Report each check and whether it passed.')}
+                  >
+                    {activeManagedRun ? 'Agent running' : verificationChecks.length ? 'Run again' : 'Run checks'}
+                  </button>
+                </div>
                 {(() => {
-                  const checks = messages.flatMap((message) => message.run?.artifacts
-                    .filter((artifact) => artifact.type === 'table' && artifact.table)
-                    .flatMap((artifact) => artifact.table?.rows ?? []) ?? [])
-                  return checks.length ? checks.map((check, index) => (
+                  return verificationChecks.length ? verificationChecks.map((check, index) => (
                     <div key={`${check[0]}-${index}`} className="insp-file">
                       <Icon name={check[1]?.toLowerCase() === 'pass' ? 'check' : 'activity'} className="icon sm" />
                       <span className="if-path">{check[0]}</span>
@@ -1171,8 +1882,8 @@ export function ChatPage() {
               <div className="ipanel active"><div className="inspector-section" style={{ borderTop: 0 }}>
                 <h4>Execution environment</h4>
                 <div className="scope-box"><strong>{latestRun?.runtime ?? RUNTIME_LABEL[route.runtimeKey]}</strong><p>Selected by Auto routing or your thread override.</p></div>
-                <div className="kv"><span>Model</span><span>{latestRun?.model ?? MODEL_LABEL[route.modelKey]}</span></div>
-                <div className="kv"><span>Harness</span><span>{latestRun?.harness ?? HARNESS_LABEL[route.harnessKey]}</span></div>
+                <div className="kv"><span>Model</span><span>{latestRun?.model ?? selectedModelLabel}</span></div>
+                <div className="kv"><span>Harness</span><span>{latestRun?.harness ?? selectedHarnessLabel}</span></div>
                 <button className="secondary-btn" style={{ width: '100%', marginTop: 10 }} onClick={() => nav('/environments')}>Manage environments</button>
               </div></div>
             )}
@@ -1238,6 +1949,9 @@ export function ChatPage() {
 
 function fallbackRunOutput(run: AgentRunBlock) {
   if (!run.done) return run.statusText ? `I’m working on this now: ${run.statusText.toLowerCase()}.` : ''
+  if (run.failure) {
+    return `I couldn’t complete this run. ${run.failure.message}`
+  }
   if (/failed|unavailable|rejected|error/i.test(run.statusText)) {
     return `I couldn’t complete this run. ${run.statusText}`
   }
@@ -1258,6 +1972,131 @@ function fallbackRunOutput(run: AgentRunBlock) {
   return 'I completed the requested work and prepared the result below for review.'
 }
 
+function formatTokenCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 100_000 ? 0 : 1)}K`
+  return String(value)
+}
+
+function InlineAgentRequest({ run, toast }: {
+  run: AgentRunBlock
+  toast: (title: string, message: string) => void
+}) {
+  const runRegistry = useRunRegistry()
+  const request = run.inputRequest
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
+
+  if (!request) return null
+  const questions = request.questions?.length
+    ? request.questions
+    : request.kind === 'clarification'
+      ? [{ id: 'response', prompt: request.prompt, allowOther: true }]
+      : []
+  const supportsSession = request.availableDecisions?.some((decision) =>
+    /session/i.test(decision),
+  ) ?? true
+
+  const respond = async (response: {
+    approved?: boolean
+    scope?: 'once' | 'session'
+    text?: string
+    answers?: Record<string, string[]>
+  }) => {
+    if (!request.id || submitting) return
+    setSubmitting(true)
+    try {
+      await runRegistry.respond(run.id, request.id, response)
+    } catch (error) {
+      toast('Could not send response', error instanceof Error ? error.message : String(error))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const submitAnswers = () => {
+    const submitted = Object.fromEntries(
+      questions
+        .map((question) => [question.id, answers[question.id]?.trim()] as const)
+        .filter(([, answer]) => Boolean(answer))
+        .map(([id, answer]) => [id, [answer]]),
+    )
+    if (Object.keys(submitted).length !== questions.length) {
+      toast('Answer required', 'Complete each question so the agent can continue.')
+      return
+    }
+    void respond({
+      answers: submitted,
+      text: questions.length === 1 ? submitted[questions[0].id]?.[0] : undefined,
+    })
+  }
+
+  return (
+    <div className={`tf-inline-request ${request.kind}`}>
+      <Icon name={request.kind === 'approval' ? 'shield' : 'message'} className="icon sm" />
+      <div className="tf-request-body">
+        <div className="tf-request-heading">
+          <strong>{request.kind === 'approval' ? 'Approval required' : 'Agent needs your input'}</strong>
+          <span>Waiting</span>
+        </div>
+        <p>{request.prompt}</p>
+        {request.detail && request.detail !== request.prompt && <pre className="tf-request-detail">{request.detail}</pre>}
+        {request.kind === 'clarification' && questions.map((question) => (
+          <div className="tf-request-question" key={question.id}>
+            {(question.header || questions.length > 1) && <label>{question.header ?? question.prompt}</label>}
+            {questions.length > 1 && question.header && <small>{question.prompt}</small>}
+            {!!question.options?.length && (
+              <div className="tf-request-options">
+                {question.options.map((option) => (
+                  <button
+                    className={answers[question.id] === option.label ? 'active' : ''}
+                    key={option.label}
+                    title={option.description}
+                    type="button"
+                    onClick={() => setAnswers((current) => ({ ...current, [question.id]: option.label }))}
+                  >
+                    <span>{option.label}</span>
+                    {option.description && <small>{option.description}</small>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(question.allowOther || !question.options?.length) && (
+              <input
+                className="tf-request-input"
+                type={question.secret ? 'password' : 'text'}
+                value={answers[question.id] ?? ''}
+                placeholder={question.secret ? 'Enter a private answer' : 'Type your answer'}
+                aria-label={question.prompt}
+                onChange={(event) => setAnswers((current) => ({ ...current, [question.id]: event.target.value }))}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.nativeEvent.isComposing) submitAnswers()
+                }}
+              />
+            )}
+          </div>
+        ))}
+        {!request.id && <small className="tf-request-unavailable">Reconnect to the local runtime to answer this request.</small>}
+        {request.id && (
+          <div className="tf-request-actions">
+            {request.kind === 'approval' ? (
+              <>
+                <button type="button" disabled={submitting} onClick={() => void respond({ approved: false, scope: 'once' })}>Deny</button>
+                {supportsSession && <button type="button" disabled={submitting} onClick={() => void respond({ approved: true, scope: 'session' })}>Allow for session</button>}
+                <button className="primary" type="button" disabled={submitting} onClick={() => void respond({ approved: true, scope: 'once' })}>Allow once</button>
+              </>
+            ) : (
+              <button className="primary" type="button" disabled={submitting} onClick={submitAnswers}>
+                {submitting ? 'Sending…' : 'Submit answer'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
   m: Message
   onHunk: (filePath: string, hunkIndex: number, id: string, s: 'accepted' | 'rejected') => void
@@ -1272,6 +2111,8 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
     return <div className="message user"><div className="message-body"><div className="message-text">{m.text}</div><MessageActions text={m.text} onRetry={onRetry} onBranch={onBranch} onCopyError={() => toast('Copy failed', 'Clipboard access is unavailable.')} /></div></div>
   }
   const run = m.run
+  const paused = run?.statusText === 'Paused'
+  const interrupted = !!run?.done && (!!run.failure || /^(Stopped|Failed|Cancelled)/i.test(run.statusText))
   const agentOutput = m.text || run?.output || (run ? fallbackRunOutput(run) : '')
   return (
     <div className="message assistant">
@@ -1294,26 +2135,60 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
           <div className="agent-run">
             <div className="run-top">
               <div className="run-avatar" title={PROVIDER_NAME[providerFromLabel(run.model)]}><ProviderLogo label={run.model} className="provider-logo sm" /></div>
-              <div><div className="run-title">{run.title}</div><div className="run-sub">Auto · {run.model} · {run.harness} · {run.runtime}</div></div>
-              <div className={`run-live ${run.done ? 'done' : ''}`}>{run.done ? 'Done' : <><span className="spinner" /> Working</>}</div>
-              {!run.done && run.id !== 'pending' && <button className="tiny-btn" onClick={() => void runRegistry.stop(run.id)}>Stop</button>}
+              <div><div className="run-title">{run.title}</div><div className="run-sub">{run.model} · {run.harness} · {run.runtime}</div></div>
+              <div className={`run-live ${run.done ? interrupted ? 'interrupted' : 'done' : paused ? 'paused' : ''}`}>
+                {run.done
+                  ? interrupted ? run.statusText.split(' · ')[0] : 'Done'
+                  : paused ? <><Icon name="pause" className="icon xs" /> Paused</> : <><span className="spinner" /> Working</>}
+              </div>
+              {!run.done && run.id !== 'pending' && (
+                <div className="run-controls">
+                  {paused
+                    ? <button className="tiny-btn" onClick={() => void runRegistry.resume(run.id).catch((error) => toast('Resume failed', error instanceof Error ? error.message : String(error)))}>Resume</button>
+                    : <button className="tiny-btn" onClick={() => void runRegistry.pause(run.id).catch((error) => toast('Pause failed', error instanceof Error ? error.message : String(error)))}>Pause</button>}
+                  <button className="tiny-btn" onClick={() => void runRegistry.stop(run.id).catch((error) => toast('Stop failed', error instanceof Error ? error.message : String(error)))}>Stop</button>
+                </div>
+              )}
+              {run.done && run.id !== 'pending' && (
+                <button className="tiny-btn" onClick={() => void runRegistry.retry(run.id, m.chatId, run).catch((error) => toast('Retry failed', error instanceof Error ? error.message : String(error)))}>Retry</button>
+              )}
             </div>
-            <div className={`run-status ${run.done ? 'done' : ''}`}>
-              {!run.done && <span className="typing-indicator" aria-label="Working"><span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" /></span>}
-              {run.done && <Icon name="check" className="icon sm tool-check" />}
+            <div className={`run-status ${run.done ? interrupted ? 'interrupted' : 'done' : ''}`}>
+              {!run.done && !paused && <span className="typing-indicator" aria-label="Working"><span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" /></span>}
+              {paused && <Icon name="pause" className="icon sm" />}
+              {run.done && <Icon name={interrupted ? 'x' : 'check'} className={`icon sm ${interrupted ? '' : 'tool-check'}`} />}
               <span>{run.statusText}</span>
-              {!run.done && <span className="streaming-cursor" aria-hidden="true" />}
-              {run.done && run.cost && <span className="status-time">{run.tools.length} tools · {run.cost}</span>}
-            </div>
-            {run.inputRequest && (
-              <div className={`tf-inline-request ${run.inputRequest.kind}`}>
-                <Icon name={run.inputRequest.kind === 'approval' ? 'shield' : 'message'} className="icon sm" />
-                <span>
-                  <strong>{run.inputRequest.kind === 'approval' ? 'Approval required' : 'Agent needs your input'}</strong>
-                  <small>{run.inputRequest.prompt}</small>
+              {!run.done && !paused && <span className="streaming-cursor" aria-hidden="true" />}
+              {(run.usage || run.done && run.cost) && (
+                <span className="status-time">
+                  {[
+                    run.usage?.contextPercent !== undefined ? `${run.usage.contextPercent}% context` : undefined,
+                    run.tools.length ? `${run.tools.length} tools` : undefined,
+                    run.done ? run.cost : undefined,
+                  ].filter(Boolean).join(' · ')}
                 </span>
+              )}
+            </div>
+            {!!run.warnings?.length && (
+              <div className="tf-run-warnings">
+                <Icon name="activity" className="icon sm" />
+                <div>
+                  <strong>Runtime warning</strong>
+                  <p>{run.warnings.at(-1)?.message}</p>
+                </div>
               </div>
             )}
+            {run.failure && (
+              <div className={`tf-run-failure ${run.failure.kind}`}>
+                <Icon name="x" className="icon sm" />
+                <div>
+                  <strong>{run.failure.title}</strong>
+                  <p>{run.failure.message}</p>
+                  <small>{run.failure.recovery}</small>
+                </div>
+              </div>
+            )}
+            {run.inputRequest && <InlineAgentRequest run={run} toast={toast} />}
             {density !== 'summary' && !!run.plan.length && (
               <div className="plan">
                 <div className="plan-head"><Icon name="review" className="icon sm" /> Task plan</div>
@@ -1331,7 +2206,7 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
                   command={t.input}
                   output={t.output}
                   copyText={t.output}
-                  status="success"
+                  status={t.status ?? 'success'}
                   statusLabel={t.cost}
                   duration={t.duration}
                   defaultExpanded={density === 'verbose'}
@@ -1367,11 +2242,17 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
                   <details key={f.path} className="diff-file" open>
                     <summary className="diff-file-head"><span className="df-path">{f.path}</span><span className="df-right"><span className="diff-stat"><span className="add">+{f.add}</span> <span className="del">−{f.del}</span></span></span></summary>
                     <div className="diff-hunks">
+                      {m.run?.executionMode === 'review' && (
+                        <div className="review-diff-notice">
+                          <Icon name="shield" className="icon sm" />
+                          <span><strong>Prepared in an isolated workspace</strong><small>Apply only the changes you want in the project.</small></span>
+                        </div>
+                      )}
                       {f.hunks.map((h, hunkIndex) => (
                         <div key={h.id} className={`hunk ${h.status === 'rejected' ? 'rejected' : ''}`}>
                           <div className="hunk-bar"><span>{h.range}</span><span className="hunk-actions">
-                            {h.status === 'accepted' ? <span className="accepted-pill">Accepted</span> : (
-                              <><button className="tiny-btn" onClick={() => onHunk(f.path, hunkIndex, h.id, 'rejected')}>Reject</button><button className="tiny-btn" onClick={() => onHunk(f.path, hunkIndex, h.id, 'accepted')}>Accept</button></>
+                            {h.status === 'accepted' ? <span className="accepted-pill">{m.run?.executionMode === 'review' ? 'Applied' : 'Accepted'}</span> : (
+                              <><button className="tiny-btn" onClick={() => onHunk(f.path, hunkIndex, h.id, 'rejected')}>{m.run?.executionMode === 'review' ? 'Discard' : 'Reject'}</button><button className="tiny-btn" onClick={() => onHunk(f.path, hunkIndex, h.id, 'accepted')}>{m.run?.executionMode === 'review' ? 'Apply' : 'Accept'}</button></>
                             )}
                           </span></div>
                           {h.lines.map((ln, i) => (

@@ -1,23 +1,35 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdir, rm, stat } from 'node:fs/promises'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { cp, mkdir, rm, stat } from 'node:fs/promises'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import type { ControlPlaneConfig } from './config.js'
 import type { AuthPrincipal, ProvisionedRuntime, RuntimeKind } from './types.js'
 import { StateStore } from './store.js'
 
-function command(program: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+function command(
+  program: string,
+  args: string[],
+  input?: string,
+  preserveOutput = false,
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(program, args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(program, args, {
+      shell: false,
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    })
     let stdout = ''
     let stderr = ''
-    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8') })
-    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8') })
+    child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8') })
+    child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8') })
     child.on('error', reject)
     child.on('close', (code) => {
-      if (code === 0) resolvePromise({ stdout: stdout.trim(), stderr: stderr.trim() })
+      if (code === 0) resolvePromise({
+        stdout: preserveOutput ? stdout : stdout.trim(),
+        stderr: preserveOutput ? stderr : stderr.trim(),
+      })
       else reject(new Error(`${program} exited ${code}: ${stderr.trim()}`))
     })
+    if (input !== undefined) child.stdin?.end(input)
   })
 }
 
@@ -37,6 +49,8 @@ export class RuntimeProvisioner {
     kind: RuntimeKind
     repo?: string
     principal: AuthPrincipal
+    isolateChanges?: boolean
+    reviewTargetPath?: string
   }): Promise<ProvisionedRuntime> {
     const id = `rt_${randomUUID().slice(0, 12)}`
     const runtime: ProvisionedRuntime = {
@@ -51,11 +65,21 @@ export class RuntimeProvisioner {
     await this.store.saveRuntime(runtime)
 
     try {
-      const sourceRepo = input.repo ? await this.validateRepository(input.repo) : undefined
+      const source = input.repo ? await this.validateWorkspace(input.repo) : undefined
+      const reviewTarget = input.reviewTargetPath
+        ? await this.validateWorkspace(input.reviewTargetPath)
+        : source
+      if (input.isolateChanges && source && !source.git) {
+        throw new Error('Review changes requires a Git repository')
+      }
       if (this.config.runtimeProvider === 'docker' && input.kind !== 'local') {
         const workspace = resolve(this.config.workspaceDir, id)
         await mkdir(workspace, { recursive: true, mode: 0o700 })
-        if (sourceRepo) await this.cloneRepository(sourceRepo, workspace)
+        if (source && !source.git) throw new Error('An isolated runtime requires a Git repository')
+        if (source) {
+          if (input.isolateChanges) await this.cloneWorkspaceState(source.path, workspace)
+          else await this.cloneRepository(source.path, workspace)
+        }
         const result = await command('docker', [
           'create',
           '--name', `opensaddle-${id}`,
@@ -76,11 +100,31 @@ export class RuntimeProvisioner {
         await command('docker', ['start', result.stdout])
         runtime.containerId = result.stdout
         runtime.workspacePath = workspace
-      } else {
+        if (input.isolateChanges && source) {
+          runtime.sourceWorkspacePath = reviewTarget?.path ?? source.path
+          runtime.isolatedChanges = true
+        }
+      } else if (input.isolateChanges && source) {
         const workspace = resolve(this.config.workspaceDir, id)
         await mkdir(workspace, { recursive: true, mode: 0o700 })
-        if (sourceRepo) await this.cloneRepository(sourceRepo, workspace)
+        await this.cloneWorkspaceState(source.path, workspace)
         runtime.workspacePath = workspace
+        runtime.sourceWorkspacePath = reviewTarget?.path ?? source.path
+        runtime.isolatedChanges = true
+      } else {
+        // The local desktop runtime intentionally operates in the selected
+        // project folder, matching Codex/Claude Code and making edits visible
+        // to the user's editor immediately. Generated scratch runs still get
+        // an OpenSaddle-owned workspace.
+        if (input.kind === 'local' && source) {
+          runtime.workspacePath = source.path
+        } else {
+          const workspace = resolve(this.config.workspaceDir, id)
+          await mkdir(workspace, { recursive: true, mode: 0o700 })
+          if (source && !source.git) throw new Error('An isolated runtime requires a Git repository')
+          if (source) await this.cloneRepository(source.path, workspace)
+          runtime.workspacePath = workspace
+        }
       }
       runtime.status = 'running'
       await this.store.saveRuntime(runtime)
@@ -92,8 +136,8 @@ export class RuntimeProvisioner {
     }
   }
 
-  private async validateRepository(path: string): Promise<string> {
-    const repo = resolve(path)
+  private async validateWorkspace(path: string): Promise<{ path: string; git: boolean }> {
+    const workspace = resolve(path)
     const projects = this.store.workspace()?.projects
     const localProjectRoots = this.config.mode === 'local' && Array.isArray(projects)
       ? projects.flatMap((candidate) => {
@@ -104,19 +148,59 @@ export class RuntimeProvisioner {
           return typeof rootPath === 'string' ? [resolve(rootPath)] : []
         })
       : []
-    if (![...this.config.allowedRepoRoots, ...localProjectRoots].some((root) => isWithin(repo, root))) {
-      throw new Error('Repository path is outside OPENSADDLE_ALLOWED_REPO_ROOTS')
+    if (![this.config.workspaceDir, ...this.config.allowedRepoRoots, ...localProjectRoots].some((root) => isWithin(workspace, root))) {
+      throw new Error('Workspace path is outside OPENSADDLE_ALLOWED_REPO_ROOTS')
     }
-    const info = await stat(repo)
-    if (!info.isDirectory()) throw new Error('Repository path is not a directory')
-    await command('git', ['-C', repo, 'rev-parse', '--is-inside-work-tree'])
-    return repo
+    const info = await stat(workspace)
+    if (!info.isDirectory()) throw new Error('Workspace path is not a directory')
+    const git = await command('git', ['-C', workspace, 'rev-parse', '--is-inside-work-tree'])
+      .then(() => true)
+      .catch(() => false)
+    return { path: workspace, git }
   }
 
   private async cloneRepository(repo: string, workspace: string): Promise<void> {
     // A local clone gives every run an isolated, diffable checkout while
     // avoiding hard links back into the source repository.
     await command('git', ['clone', '--no-hardlinks', '--quiet', '--', repo, workspace])
+  }
+
+  private async cloneWorkspaceState(repo: string, workspace: string): Promise<void> {
+    await this.cloneRepository(repo, workspace)
+    const hasHead = await command('git', ['-C', repo, 'rev-parse', '--verify', 'HEAD'])
+      .then(() => true)
+      .catch(() => false)
+    if (hasHead) {
+      const { stdout: patch } = await command(
+        'git',
+        ['-C', repo, 'diff', '--binary', 'HEAD', '--'],
+        undefined,
+        true,
+      )
+      if (patch.trim()) {
+        await command('git', ['-C', workspace, 'apply', '--whitespace=nowarn', '-'], patch)
+      }
+    }
+
+    const { stdout } = await command(
+      'git',
+      ['-C', repo, 'ls-files', '--others', '--exclude-standard', '-z'],
+      undefined,
+      true,
+    )
+    for (const relativePath of stdout.split('\0').filter(Boolean)) {
+      const source = resolve(repo, relativePath)
+      const destination = resolve(workspace, relativePath)
+      if (!isWithin(source, repo) || !isWithin(destination, workspace)) {
+        throw new Error('Untracked project path escapes the review workspace')
+      }
+      await mkdir(dirname(destination), { recursive: true, mode: 0o700 })
+      await cp(source, destination, {
+        recursive: true,
+        force: false,
+        preserveTimestamps: true,
+      })
+    }
   }
 
   async release(runtimeId: string, principal: AuthPrincipal, force = false): Promise<boolean> {

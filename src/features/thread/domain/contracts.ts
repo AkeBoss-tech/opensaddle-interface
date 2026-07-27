@@ -26,6 +26,7 @@ export type ThreadStatus =
   | 'needs_approval'
   | 'blocked'
   | 'reviewing'
+  | 'paused'
   | 'completed'
   | 'failed'
   | 'stopped'

@@ -20,6 +20,7 @@ export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'failed
 export type MessageRole = 'user' | 'assistant' | 'system'
 export type LocalSandboxMode = 'read-only' | 'workspace-write' | 'full-access'
 export type LocalApprovalMode = 'always' | 'on-request' | 'never'
+export type RunExecutionMode = 'plan' | 'review' | 'project' | 'full-access'
 
 export interface AgentPermissionPolicy {
   sandbox: LocalSandboxMode
@@ -34,10 +35,13 @@ export interface LocalHarnessDefinition {
   label: string
   command: string
   description: string
+  protocol?: 'cli' | 'acp'
   promptMode: 'final_arg' | 'flag' | 'stdin'
   promptFlag?: string
   args: string[]
   modelFlag?: string
+  /** CLI-native model ids offered by this project-local harness. */
+  models?: string[]
   supportsStreaming: boolean
 }
 
@@ -115,6 +119,15 @@ export interface Chat {
   sharedWith: string[]
   archived?: boolean
   agentId?: string
+  continuation?: {
+    provider: 'codex' | 'claude' | 'cursor' | 'gemini'
+    sessionId: string
+    sourcePath: string
+    authority: 'source_managed' | 'opensaddle_managed' | 'hybrid'
+    mode?: 'resume' | 'fork'
+    /** Provider checkpoint used for an exact historical fork when supported. */
+    checkpointId?: string
+  }
 }
 
 export interface ToolCall {
@@ -125,6 +138,7 @@ export interface ToolCall {
   output: string
   duration: string
   cost: string
+  status?: 'running' | 'success' | 'error'
 }
 
 export interface DiffHunk {
@@ -174,6 +188,13 @@ export interface RunSourceRef {
 export interface AgentRunBlock {
   id: string
   parentRunId?: string
+  executionMode?: RunExecutionMode
+  /** Canonical provider-native session to use for the next turn. A forked
+   * run replaces its source ID with the newly created child session. */
+  providerSessionId?: string
+  providerSessionMode?: 'resume' | 'fork'
+  providerTurnId?: string
+  providerKey?: CodingProvider
   kind: 'coding' | 'research' | 'browser' | 'ops'
   title: string
   model: string
@@ -194,11 +215,43 @@ export interface AgentRunBlock {
   sources?: RunSourceRef[]
   inputRequest?: {
     kind: 'clarification' | 'approval'
+    id?: string
     prompt: string
+    detail?: string
+    questions?: Array<{
+      id: string
+      header?: string
+      prompt: string
+      options?: Array<{ label: string; description?: string }>
+      allowOther?: boolean
+      secret?: boolean
+    }>
+    availableDecisions?: string[]
   }
   /** Last durable runtime event folded into this run; used for safe reattach. */
   lastSequence?: number
   cost?: string
+  usage?: {
+    inputTokens?: number
+    cachedInputTokens?: number
+    outputTokens?: number
+    reasoningTokens?: number
+    totalTokens?: number
+    contextWindow?: number
+    contextPercent?: number
+  }
+  warnings?: Array<{
+    message: string
+    severity?: string
+  }>
+  /** A provider-agnostic recovery hint derived from the native harness failure. */
+  failure?: {
+    kind: 'authentication' | 'permission' | 'harness' | 'context' | 'interrupted' | 'runtime'
+    title: string
+    message: string
+    recovery: string
+    retryable: boolean
+  }
 }
 
 export interface Message {
@@ -223,6 +276,9 @@ export interface CustomAgent {
   /** Runtime provider/profile used by local coding agents. Built-ins use
    * codex/claude/cursor/etc.; custom profiles use their project-local id. */
   harnessId?: string
+  /** Project-relative source for file-backed local agents. OpenSaddle owns
+   * lifecycle actions only for definitions under `.opensaddle/agents`. */
+  definitionPath?: string
   runtime: RuntimeKind
   permissionPolicy?: AgentPermissionPolicy
   skillIds?: string[]

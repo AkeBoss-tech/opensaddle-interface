@@ -33,8 +33,8 @@ function extractJsonText(providerId: string, parsed: Record<string, unknown>): s
     if (typeof parsed.last_agent_message === 'string') return parsed.last_agent_message
   }
 
-  // Claude Code stream-json
-  if (providerId === 'claude') {
+  // Claude Code and Cursor Agent stream-json share assistant/result shapes.
+  if (providerId === 'claude' || providerId === 'cursor') {
     const type = String(parsed.type ?? '')
     if (type === 'assistant' || type === 'result') {
       const message = parsed.message as { content?: Array<{ text?: string }> | string } | undefined
@@ -44,7 +44,7 @@ function extractJsonText(providerId: string, parsed: Record<string, unknown>): s
       }
       if (typeof parsed.result === 'string') return parsed.result
     }
-    if (type === 'content_block_delta') {
+    if (providerId === 'claude' && type === 'content_block_delta') {
       const delta = parsed.delta as { text?: string } | undefined
       if (delta?.text) return delta.text
     }

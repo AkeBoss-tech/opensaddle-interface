@@ -6,6 +6,13 @@ import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
 import { defaultConnectionProfile, initServices, resetServices, type ConnectionProfile, type ServiceBundle } from '../services'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
+import { adoptNativeContinuation } from '../lib/nativeContinuation'
+import type {
+  DurableThread,
+  DurableThreadMessage,
+  HarnessCapability,
+  ProjectArtifactManifest,
+} from '../services/contracts'
 
 function normalizeWorkspace(data: AppData): AppData {
   data.pinnedArtifacts ??= []
@@ -55,7 +62,8 @@ interface StoreApi {
   updateSettings: (patch: Partial<SettingsState>) => void
   setActiveProject: (id: string) => void
   setActiveChat: (id: string | null) => void
-  createChat: (projectId: string, title?: string, agentId?: string) => Chat
+  createChat: (projectId: string, title?: string, agentId?: string, continuation?: Chat['continuation']) => Chat
+  adoptChatContinuation: (id: string, sessionId: string, checkpointId?: string, provider?: NonNullable<Chat['continuation']>['provider']) => void
   renameChat: (id: string, title: string) => void
   deleteChat: (id: string) => void
   archiveChat: (id: string) => void
@@ -70,6 +78,7 @@ interface StoreApi {
   setPinnedArtifacts: (items: PinnedArtifact[]) => void
   createAgent: (input: Omit<CustomAgent, 'id' | 'createdAt'>) => CustomAgent
   updateAgent: (id: string, patch: Partial<Omit<CustomAgent, 'id' | 'projectId' | 'createdAt'>>) => void
+  deleteAgent: (id: string) => void
   createSite: (input: Omit<Site, 'id' | 'createdAt' | 'updatedAt' | 'slug' | 'accent' | 'versions' | 'agentPlacement'> & Partial<Pick<Site, 'slug' | 'accent' | 'agentPlacement'>>) => Site
   createSiteVersion: (siteId: string, label: string, summary: string) => SiteVersion | null
   publishSiteVersion: (siteId: string, versionId: string) => void
@@ -101,6 +110,10 @@ interface StoreApi {
   toasts: Array<{ id: string; title: string; message: string }>
   dismissToast: (id: string) => void
   services: ServiceBundle | null
+  harnessCapabilities: HarnessCapability[]
+  refreshHarnessCapabilities: () => Promise<HarnessCapability[]>
+  localProjectManifests: Record<string, ProjectArtifactManifest>
+  rescanLocalProject: (projectId: string) => Promise<ProjectArtifactManifest | null>
   runtimeModeLabel: string
   persistenceStatus: 'local' | 'loading' | 'syncing' | 'synced' | 'needs_setup' | 'error'
   lastSavedAt: number | null
@@ -119,20 +132,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [persistenceStatus, setPersistenceStatus] = useState<StoreApi['persistenceStatus']>('loading')
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [connection, setConnection] = useState<ConnectionProfile>(() => defaultConnectionProfile())
+  const [harnessCapabilities, setHarnessCapabilities] = useState<HarnessCapability[]>([])
+  const [localProjectManifests, setLocalProjectManifests] = useState<Record<string, ProjectArtifactManifest>>({})
   const grantsRef = useRef(data.permissionGrants)
   const currentUserRef = useRef(data.currentUserId)
   const dataRef = useRef(data)
   const workspaceHydratedRef = useRef(false)
   const saveSequenceRef = useRef(0)
+  const durableHydratedServiceRef = useRef<ServiceBundle['threads'] | null>(null)
+  const threadCreatePromisesRef = useRef(new Map<string, Promise<unknown>>())
+  const messageCreatePromisesRef = useRef(new Map<string, Promise<unknown>>())
+  const messageSyncTimersRef = useRef(new Map<string, number>())
+  const messageSyncSnapshotsRef = useRef(new Map<string, Message>())
   grantsRef.current = data.permissionGrants
   currentUserRef.current = data.currentUserId
   dataRef.current = data
+  const localProjectKey = data.projects
+    .filter((project) => project.workspaceKind === 'local' && project.local)
+    .map((project) => `${project.id}:${project.local!.rootPath}:${JSON.stringify(project.local!.harnesses)}`)
+    .sort()
+    .join('|')
 
   const toast = useCallback((title: string, message: string) => {
     const id = uid('toast')
     setToasts((t) => [...t, { id, title, message }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3600)
   }, [])
+
+  const refreshHarnessCapabilities = useCallback(async () => {
+    if (!services?.localProjects) {
+      setHarnessCapabilities([])
+      return []
+    }
+    const snapshot = await services.localProjects.refreshHarnessCapabilities()
+    setHarnessCapabilities(snapshot.harnesses)
+    return snapshot.harnesses
+  }, [services])
 
   useEffect(() => {
     try {
@@ -193,6 +228,294 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true }
   }, [connection, data.currentUserId, toast])
 
+  // The desktop sidecar can restart independently of the renderer. Recreate
+  // the service bundle whenever loopback health changes so the UI recovers
+  // without a manual reload and never keeps displaying a stale connection.
+  useEffect(() => {
+    if (!services || connection.mode !== 'remote') return
+    let cancelled = false
+    let checking = false
+    const check = async () => {
+      if (checking) return
+      checking = true
+      try {
+        const response = await fetch(`${connection.baseUrl.replace(/\/$/, '')}/api/health`, {
+          headers: {
+            ...(connection.token ? { Authorization: `Bearer ${connection.token}` } : {}),
+            'X-OpenSaddle-User': currentUserRef.current,
+          },
+          signal: AbortSignal.timeout(1_200),
+        })
+        const connected = response.ok
+        if (!cancelled && connected !== services.controlPlane.connected) {
+          setConnection((current) => ({ ...current }))
+        }
+      } catch {
+        if (!cancelled && services.controlPlane.connected) {
+          setConnection((current) => ({ ...current }))
+        }
+      } finally {
+        checking = false
+      }
+    }
+    const timer = window.setInterval(() => void check(), 3_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [connection, services])
+
+  useEffect(() => {
+    if (!services?.localProjects) {
+      setHarnessCapabilities([])
+      setLocalProjectManifests({})
+      return
+    }
+    let cancelled = false
+    void services.localProjects.harnessCapabilities()
+      .then((snapshot) => {
+        if (!cancelled) setHarnessCapabilities(snapshot.harnesses)
+      })
+      .catch(() => {
+        if (!cancelled) setHarnessCapabilities([])
+      })
+    // Workspace persistence is debounced. Re-probe shortly after it settles so
+    // newly registered project-local executables and model ids are reflected.
+    const harnessRefreshTimer = window.setTimeout(() => {
+      void services.localProjects!.refreshHarnessCapabilities()
+        .then((snapshot) => {
+          if (!cancelled) setHarnessCapabilities(snapshot.harnesses)
+        })
+        .catch(() => undefined)
+    }, 800)
+    const localProjects = dataRef.current.projects.filter((project) => project.workspaceKind === 'local' && project.local)
+    void Promise.all(localProjects.map(async (project) => {
+      try {
+        return [project.id, await services.localProjects!.rescan(project.id)] as const
+      } catch {
+        return null
+      }
+    })).then((entries) => {
+      if (cancelled) return
+      setLocalProjectManifests(Object.fromEntries(entries.filter((entry): entry is readonly [string, ProjectArtifactManifest] => Boolean(entry))))
+    })
+    return () => {
+      cancelled = true
+      window.clearTimeout(harnessRefreshTimer)
+    }
+  }, [localProjectKey, services])
+
+  useEffect(() => {
+    if (!services?.threads || !workspaceHydratedRef.current || durableHydratedServiceRef.current === services.threads) return
+    durableHydratedServiceRef.current = services.threads
+    let cancelled = false
+    void (async () => {
+      const durableThreads: DurableThread[] = []
+      let threadCursor: string | undefined
+      do {
+        const page = await services.threads!.list({ includeArchived: true, limit: 100, cursor: threadCursor })
+        durableThreads.push(...page.threads)
+        threadCursor = page.nextCursor
+      } while (threadCursor && durableThreads.length < 2_000)
+
+      const durableMessages = (
+        await Promise.all(durableThreads.map(async (thread) => {
+          const items: DurableThreadMessage[] = []
+          let cursor: string | undefined
+          do {
+            const page = await services.threads!.messages(thread.id, { limit: 250, cursor })
+            items.push(...page.messages)
+            cursor = page.nextCursor
+          } while (cursor && items.length < 10_000)
+          return items
+        }))
+      ).flat()
+      if (cancelled) return
+      setData((current) => {
+        const next = structuredClone(current)
+        const remoteChats = durableThreads.map<Chat>((thread) => ({
+          id: thread.id,
+          projectId: thread.projectId,
+          title: thread.title,
+          visibility: thread.visibility,
+          createdAt: thread.createdAt,
+          updatedAt: thread.updatedAt,
+          branchedFromId: thread.branchedFromId,
+          sharedWith: thread.sharedWith,
+          archived: Boolean(thread.archivedAt),
+          agentId: thread.agentId,
+          continuation: thread.continuation,
+        }))
+        const remoteMessages = durableMessages.map<Message>((message) => ({
+          ...(message.payload ?? {}),
+          id: message.id,
+          chatId: message.threadId,
+          role: message.role,
+          text: message.text,
+          createdAt: message.createdAt,
+        }) as Message)
+        const remoteChatIds = new Set(remoteChats.map((thread) => thread.id))
+        const remoteMessageIds = new Set(remoteMessages.map((message) => message.id))
+        next.chats = [...remoteChats, ...next.chats.filter((thread) => !remoteChatIds.has(thread.id))]
+        next.messages = [...remoteMessages, ...next.messages.filter((message) => !remoteMessageIds.has(message.id))]
+        return normalizeWorkspace(next)
+      })
+    })().catch((error: unknown) => {
+      if (!cancelled) toast('Task history sync failed', error instanceof Error ? error.message : String(error))
+    })
+    return () => { cancelled = true }
+  }, [services, persistenceStatus, toast])
+
+  // Keep the open task current with granular thread storage. This is separate
+  // from the workspace snapshot because a run, another desktop window, or a
+  // restored process can append messages after the initial hydration.
+  useEffect(() => {
+    const threads = services?.threads
+    const threadId = data.activeChatId
+    if (!threads || !threadId) return
+    let cancelled = false
+
+    const refresh = async () => {
+      const page = await threads.messages(threadId, { limit: 250 })
+      if (cancelled) return
+      const remote = page.messages.map<Message>((message) => ({
+        ...(message.payload ?? {}),
+        id: message.id,
+        chatId: message.threadId,
+        role: message.role,
+        text: message.text,
+        createdAt: message.createdAt,
+      }) as Message)
+      setData((current) => {
+        const currentById = new Map(
+          current.messages
+            .filter((message) => message.chatId === threadId)
+            .map((message) => [message.id, message]),
+        )
+        const changed = remote.some((message) => {
+          const existing = currentById.get(message.id)
+          return !existing
+            || existing.text !== message.text
+            || JSON.stringify(existing.run) !== JSON.stringify(message.run)
+            || existing.routingNote !== message.routingNote
+            || existing.lightHtml !== message.lightHtml
+        })
+        if (!changed) return current
+        const remoteIds = new Set(remote.map((message) => message.id))
+        return normalizeWorkspace({
+          ...current,
+          messages: [
+            ...current.messages.filter((message) => message.chatId !== threadId || !remoteIds.has(message.id)),
+            ...remote,
+          ],
+        })
+      })
+    }
+
+    void refresh().catch((error: unknown) => {
+      if (!cancelled) toast('Task history sync failed', error instanceof Error ? error.message : String(error))
+    })
+    const timer = window.setInterval(() => {
+      void refresh().catch(() => undefined)
+    }, 2_500)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [data.activeChatId, services, toast])
+
+  // Keep operational surfaces (Work, sidebar, search) current even when a
+  // different task is open. Thread metadata is cheap to poll; message history
+  // is fetched only for threads whose server-owned updatedAt changed.
+  useEffect(() => {
+    const threads = services?.threads
+    if (!threads || persistenceStatus !== 'synced') return
+    let cancelled = false
+    let refreshing = false
+
+    const refreshChangedThreads = async () => {
+      if (refreshing) return
+      refreshing = true
+      try {
+        const durableThreads: DurableThread[] = []
+        let cursor: string | undefined
+        do {
+          const page = await threads.list({ includeArchived: true, limit: 250, cursor })
+          durableThreads.push(...page.threads)
+          cursor = page.nextCursor
+        } while (cursor && durableThreads.length < 2_000)
+        if (cancelled) return
+
+        const currentChats = new Map(dataRef.current.chats.map((chat) => [chat.id, chat]))
+        const changedThreads = durableThreads.filter((thread) => {
+          const current = currentChats.get(thread.id)
+          return !current
+            || current.updatedAt !== thread.updatedAt
+            || Boolean(current.archived) !== Boolean(thread.archivedAt)
+        })
+        if (!changedThreads.length) return
+
+        const changedMessages = (
+          await Promise.all(changedThreads.map(async (thread) => {
+            const items: DurableThreadMessage[] = []
+            let messageCursor: string | undefined
+            do {
+              const page = await threads.messages(thread.id, { limit: 250, cursor: messageCursor })
+              items.push(...page.messages)
+              messageCursor = page.nextCursor
+            } while (messageCursor && items.length < 10_000)
+            return items
+          }))
+        ).flat()
+        if (cancelled) return
+
+        const changedIds = new Set(changedThreads.map((thread) => thread.id))
+        const remoteChats = changedThreads.map<Chat>((thread) => ({
+          id: thread.id,
+          projectId: thread.projectId,
+          title: thread.title,
+          visibility: thread.visibility,
+          createdAt: thread.createdAt,
+          updatedAt: thread.updatedAt,
+          branchedFromId: thread.branchedFromId,
+          sharedWith: thread.sharedWith,
+          archived: Boolean(thread.archivedAt),
+          agentId: thread.agentId,
+          continuation: thread.continuation,
+        }))
+        const remoteMessages = changedMessages.map<Message>((message) => ({
+          ...(message.payload ?? {}),
+          id: message.id,
+          chatId: message.threadId,
+          role: message.role,
+          text: message.text,
+          createdAt: message.createdAt,
+        }) as Message)
+        setData((current) => normalizeWorkspace({
+          ...current,
+          chats: [
+            ...remoteChats,
+            ...current.chats.filter((chat) => !changedIds.has(chat.id)),
+          ],
+          messages: [
+            ...remoteMessages,
+            ...current.messages.filter((message) => !changedIds.has(message.chatId)),
+          ],
+        }))
+      } finally {
+        refreshing = false
+      }
+    }
+
+    const timer = window.setInterval(() => {
+      void refreshChangedThreads().catch(() => undefined)
+    }, 3_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [persistenceStatus, services])
+
   useEffect(() => {
     if (!services?.workspace || !workspaceHydratedRef.current || persistenceStatus === 'needs_setup') return
     const sequence = ++saveSequenceRef.current
@@ -217,6 +540,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const patch = useCallback((fn: (d: AppData) => AppData) => setData((d) => fn(structuredClone(d))), [])
 
+  const rescanLocalProject = useCallback(async (projectId: string) => {
+    if (!services?.localProjects) return null
+    const manifest = await services.localProjects.rescan(projectId)
+    setLocalProjectManifests((current) => ({ ...current, [projectId]: manifest }))
+    return manifest
+  }, [services])
+
+  const threadPayload = useCallback((message: Message): Record<string, unknown> => ({
+    ...(message.routingNote ? { routingNote: message.routingNote } : {}),
+    ...(message.run ? { run: message.run } : {}),
+    ...(message.lightHtml ? { lightHtml: message.lightHtml } : {}),
+  }), [])
+
+  const reportThreadSyncError = useCallback((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes('already_exists')) return
+    toast('Task history sync failed', message)
+  }, [toast])
+
   const api = useMemo<StoreApi>(() => ({
     data,
     toasts,
@@ -225,6 +567,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     persistenceStatus,
     lastSavedAt,
     connection,
+    harnessCapabilities,
+    refreshHarnessCapabilities,
+    localProjectManifests,
+    rescanLocalProject,
     connectToServer: async (profile) => {
       const baseUrl = profile.baseUrl.trim().replace(/\/$/, '')
       if (!/^https?:\/\//i.test(baseUrl)) throw new Error('Server URL must start with http:// or https://')
@@ -238,11 +584,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!response.ok) throw new Error(`OpenSaddle server returned HTTP ${response.status}`)
       setPersistenceStatus('loading')
       workspaceHydratedRef.current = false
+      durableHydratedServiceRef.current = null
       setServices(null)
       setConnection({ id: `remote-${baseUrl}`, name: profile.name.trim() || baseUrl, mode: 'remote', baseUrl, token: profile.token, allowMockFallback: false })
     },
     switchToDemo: () => {
       workspaceHydratedRef.current = false
+      durableHydratedServiceRef.current = null
       setServices(null)
       setConnection(defaultConnectionProfile().mode === 'demo' ? defaultConnectionProfile() : {
         id: 'demo', name: 'Demo workspace', mode: 'demo', baseUrl: 'http://127.0.0.1:8765', allowMockFallback: true,
@@ -263,36 +611,122 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (id) d.recentChatIds = [id, ...d.recentChatIds.filter((x) => x !== id)].slice(0, 12)
       return d
     }),
-    createChat: (projectId, title = 'New chat', agentId) => {
-      const chat: Chat = { id: uid('chat'), projectId, title, visibility: 'private', createdAt: Date.now(), updatedAt: Date.now(), sharedWith: [], agentId }
+    createChat: (projectId, title = 'New chat', agentId, continuation) => {
+      const chat: Chat = { id: uid('chat'), projectId, title, visibility: 'private', createdAt: Date.now(), updatedAt: Date.now(), sharedWith: [], agentId, continuation }
       patch((d) => { d.chats.unshift(chat); d.activeChatId = chat.id; d.activeProjectId = projectId; d.recentChatIds = [chat.id, ...d.recentChatIds].slice(0, 12); return d })
+      if (services?.threads) {
+        const pending = services.threads.create({
+          id: chat.id,
+          projectId,
+          title,
+          visibility: chat.visibility,
+          sharedWith: chat.sharedWith,
+          agentId,
+          continuation,
+        }).catch(reportThreadSyncError).finally(() => threadCreatePromisesRef.current.delete(chat.id))
+        threadCreatePromisesRef.current.set(chat.id, pending)
+      }
       return chat
     },
-    renameChat: (id, title) => patch((d) => { const c = d.chats.find((x) => x.id === id); if (c) { c.title = title; c.updatedAt = Date.now() } return d }),
-    deleteChat: (id) => patch((d) => {
-      d.chats = d.chats.filter((c) => c.id !== id)
-      d.messages = d.messages.filter((m) => m.chatId !== id)
-      d.recentChatIds = d.recentChatIds.filter((x) => x !== id)
-      if (d.activeChatId === id) d.activeChatId = null
-      return d
-    }),
-    archiveChat: (id) => patch((d) => { const c = d.chats.find((x) => x.id === id); if (c) c.archived = true; return d }),
-    setChatVisibility: (id, visibility, sharedWith = []) => patch((d) => {
-      const c = d.chats.find((x) => x.id === id)
-      if (c) { c.visibility = visibility; c.sharedWith = sharedWith; c.updatedAt = Date.now() }
-      return d
-    }),
+    adoptChatContinuation: (id, sessionId, checkpointId, provider) => {
+      const targetChat = dataRef.current.chats.find((chat) => chat.id === id)
+      const existing = targetChat?.continuation
+      const project = targetChat ? dataRef.current.projects.find((candidate) => candidate.id === targetChat.projectId) : undefined
+      if (existing?.sessionId === sessionId && existing.checkpointId === checkpointId && existing.mode === 'resume') return
+      const continuation = adoptNativeContinuation({
+        existing,
+        sessionId,
+        checkpointId,
+        provider,
+        sourcePath: project?.local?.rootPath ?? `project:${targetChat?.projectId ?? 'local'}`,
+      })
+      if (!continuation) return
+      patch((d) => {
+        const chat = d.chats.find((candidate) => candidate.id === id)
+        if (chat) {
+          chat.continuation = continuation
+          chat.updatedAt = Date.now()
+        }
+        return d
+      })
+      if (services?.threads) {
+        void (async () => {
+          await threadCreatePromisesRef.current.get(id)
+          await services.threads!.update(id, { continuation })
+        })().catch(reportThreadSyncError)
+      }
+    },
+    renameChat: (id, title) => {
+      patch((d) => { const c = d.chats.find((x) => x.id === id); if (c) { c.title = title; c.updatedAt = Date.now() } return d })
+      void services?.threads?.update(id, { title }).catch(reportThreadSyncError)
+    },
+    deleteChat: (id) => {
+      patch((d) => {
+        d.chats = d.chats.filter((c) => c.id !== id)
+        d.messages = d.messages.filter((m) => m.chatId !== id)
+        d.recentChatIds = d.recentChatIds.filter((x) => x !== id)
+        if (d.activeChatId === id) d.activeChatId = null
+        return d
+      })
+      void services?.threads?.remove(id).catch(reportThreadSyncError)
+    },
+    archiveChat: (id) => {
+      patch((d) => { const c = d.chats.find((x) => x.id === id); if (c) c.archived = true; return d })
+      void services?.threads?.update(id, { archived: true }).catch(reportThreadSyncError)
+    },
+    setChatVisibility: (id, visibility, sharedWith = []) => {
+      patch((d) => {
+        const c = d.chats.find((x) => x.id === id)
+        if (c) { c.visibility = visibility; c.sharedWith = sharedWith; c.updatedAt = Date.now() }
+        return d
+      })
+      void services?.threads?.update(id, { visibility, sharedWith }).catch(reportThreadSyncError)
+    },
     branchChat: (id) => {
       const src = dataRef.current.chats.find((c) => c.id === id)
       if (!src) return null
-      const created: Chat = { ...src, id: uid('chat'), title: `${src.title} (fork)`, branchedFromId: id, createdAt: Date.now(), updatedAt: Date.now(), visibility: 'private', sharedWith: [] }
+      const created: Chat = {
+        ...src,
+        id: uid('chat'),
+        title: `${src.title} (fork)`,
+        branchedFromId: id,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        visibility: 'private',
+        sharedWith: [],
+        continuation: src.continuation ? { ...src.continuation, mode: 'fork' } : undefined,
+      }
+      const copied = dataRef.current.messages
+        .filter((message) => message.chatId === id)
+        .map((message) => ({ ...message, id: uid('msg'), chatId: created.id }))
       patch((d) => {
         d.chats.unshift(created)
-        const msgs = d.messages.filter((m) => m.chatId === id).map((m) => ({ ...m, id: uid('msg'), chatId: created.id }))
-        d.messages.push(...msgs)
+        d.messages.push(...copied)
         d.activeChatId = created.id
         return d
       })
+      if (services?.threads) {
+        const pending = services.threads.create({
+          id: created.id,
+          projectId: created.projectId,
+          title: created.title,
+          visibility: created.visibility,
+          sharedWith: created.sharedWith,
+          agentId: created.agentId,
+          continuation: created.continuation,
+          branchedFromId: id,
+        }).then(async () => {
+          for (const message of copied) {
+            await services.threads!.appendMessage(created.id, {
+              id: message.id,
+              role: message.role,
+              text: message.text,
+              payload: threadPayload(message),
+            })
+          }
+        }).catch(reportThreadSyncError).finally(() => threadCreatePromisesRef.current.delete(created.id))
+        threadCreatePromisesRef.current.set(created.id, pending)
+      }
       return created
     },
     branchChatFromMessage: (chatId, messageId) => {
@@ -302,6 +736,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .sort((left, right) => left.createdAt - right.createdAt)
       const targetIndex = sourceMessages.findIndex((message) => message.id === messageId)
       if (!src || targetIndex < 0) return null
+      const providerCheckpoint = [...sourceMessages.slice(0, targetIndex + 1)]
+        .reverse()
+        .find((message) => message.run?.providerSessionId)
+        ?.run
       const created: Chat = {
         ...src,
         id: uid('chat'),
@@ -311,22 +749,55 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updatedAt: Date.now(),
         visibility: 'private',
         sharedWith: [],
+        continuation: src.continuation ? {
+          ...src.continuation,
+          sessionId: providerCheckpoint?.providerSessionId ?? src.continuation.sessionId,
+          checkpointId: providerCheckpoint?.providerTurnId,
+          mode: 'fork',
+        } : undefined,
       }
+      const copied = sourceMessages.slice(0, targetIndex + 1).map((message) => ({
+        ...message,
+        id: uid('msg'),
+        chatId: created.id,
+      }))
       patch((data) => {
         data.chats.unshift(created)
-        data.messages.push(...sourceMessages.slice(0, targetIndex + 1).map((message) => ({
-          ...message,
-          id: uid('msg'),
-          chatId: created.id,
-        })))
+        data.messages.push(...copied)
         data.activeChatId = created.id
         data.recentChatIds = [created.id, ...data.recentChatIds.filter((id) => id !== created.id)].slice(0, 12)
         return data
       })
+      if (services?.threads) {
+        const pending = services.threads.create({
+          id: created.id,
+          projectId: created.projectId,
+          title: created.title,
+          visibility: created.visibility,
+          sharedWith: created.sharedWith,
+          agentId: created.agentId,
+          continuation: created.continuation,
+          branchedFromId: chatId,
+        }).then(async () => {
+          for (const message of copied) {
+            await services.threads!.appendMessage(created.id, {
+              id: message.id,
+              role: message.role,
+              text: message.text,
+              payload: threadPayload(message),
+            })
+          }
+        }).catch(reportThreadSyncError).finally(() => threadCreatePromisesRef.current.delete(created.id))
+        threadCreatePromisesRef.current.set(created.id, pending)
+      }
       return created
     },
     appendMessage: (msg) => {
       const full: Message = { ...msg, id: msg.id ?? uid('msg'), createdAt: Date.now() }
+      // Make the optimistic message immediately available to follow-up
+      // updateMessage calls. A runtime can start emitting before React has
+      // committed the append into dataRef.
+      messageSyncSnapshotsRef.current.set(full.id, full)
       patch((d) => {
         d.messages.push(full)
         const c = d.chats.find((x) => x.id === full.chatId)
@@ -336,13 +807,59 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         return d
       })
+      if (services?.threads) {
+        const pending = (async () => {
+          await threadCreatePromisesRef.current.get(full.chatId)
+          return await services.threads!.appendMessage(full.chatId, {
+            id: full.id,
+            role: full.role,
+            text: full.text,
+            payload: threadPayload(full),
+          })
+        })().catch(reportThreadSyncError).finally(() => messageCreatePromisesRef.current.delete(full.id))
+        messageCreatePromisesRef.current.set(full.id, pending)
+      }
+      window.setTimeout(() => {
+        if (
+          !messageSyncTimersRef.current.has(full.id)
+          && messageSyncSnapshotsRef.current.get(full.id) === full
+        ) {
+          messageSyncSnapshotsRef.current.delete(full.id)
+        }
+      }, 5_000)
       return full
     },
-    updateMessage: (id, p) => patch((d) => {
-      const i = d.messages.findIndex((m) => m.id === id)
-      if (i >= 0) d.messages[i] = { ...d.messages[i], ...p }
-      return d
-    }),
+    updateMessage: (id, p) => {
+      // Runtime events can arrive faster than React commits dataRef. Merge
+      // against the most recently queued durable snapshot so a later status
+      // event cannot persist stale/empty text over an earlier streamed delta.
+      const current = messageSyncSnapshotsRef.current.get(id)
+        ?? dataRef.current.messages.find((message) => message.id === id)
+      const next = current ? { ...current, ...p } : undefined
+      if (next) messageSyncSnapshotsRef.current.set(id, next)
+      patch((d) => {
+        const i = d.messages.findIndex((m) => m.id === id)
+        if (i >= 0) d.messages[i] = { ...d.messages[i], ...p }
+        return d
+      })
+      if (services?.threads && next) {
+        window.clearTimeout(messageSyncTimersRef.current.get(id))
+        messageSyncTimersRef.current.set(id, window.setTimeout(() => {
+          messageSyncTimersRef.current.delete(id)
+          void (async () => {
+            await messageCreatePromisesRef.current.get(id)
+            const snapshot = messageSyncSnapshotsRef.current.get(id) ?? next
+            await services.threads!.updateMessage(snapshot.chatId, id, {
+              text: snapshot.text,
+              payload: threadPayload(snapshot),
+            })
+            if (messageSyncSnapshotsRef.current.get(id) === snapshot) {
+              messageSyncSnapshotsRef.current.delete(id)
+            }
+          })().catch(reportThreadSyncError)
+        }, 180))
+      }
+    },
     createProject: (name, parentId, description) => {
       const id = uid('proj')
       patch((d) => {
@@ -429,6 +946,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateAgent: (id, agentPatch) => patch((d) => {
       const agent = d.agents.find((item) => item.id === id)
       if (agent) Object.assign(agent, agentPatch)
+      return d
+    }),
+    deleteAgent: (id) => patch((d) => {
+      d.agents = d.agents.filter((agent) => agent.id !== id)
+      d.permissionGrants = d.permissionGrants.filter((grant) =>
+        !(grant.principalKind === 'agent' && grant.principalId === id))
       return d
     }),
     createSite: (input) => {
@@ -775,7 +1298,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     exportData: () => JSON.stringify(data, null, 2),
     services,
     runtimeModeLabel: modeLabel(detectRuntimeMode()),
-  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, lastSavedAt, connection])
+  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, lastSavedAt, connection, harnessCapabilities, refreshHarnessCapabilities, localProjectManifests, rescanLocalProject, threadPayload, reportThreadSyncError])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

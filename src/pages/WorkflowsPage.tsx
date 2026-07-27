@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 
 export function WorkflowsPage() {
   const { projectId } = useParams()
+  const [searchParams] = useSearchParams()
+  const selectedRunId = searchParams.get('run')
   const { data, createWorkflow, updateWorkflowStatus, runWorkflow, toast } = useStore()
   const [name, setName] = useState('New workflow')
   const [runningId, setRunningId] = useState<string | null>(null)
@@ -33,6 +35,13 @@ export function WorkflowsPage() {
       .map(({ workflow }) => workflow),
     [data.workflows, data.workflowRuns],
   )
+
+  useEffect(() => {
+    if (!selectedRunId) return
+    window.setTimeout(() => {
+      document.getElementById(`workflow-run-${selectedRunId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }, 0)
+  }, [selectedRunId])
 
   return (
     <div className="content-page">
@@ -111,7 +120,7 @@ export function WorkflowsPage() {
             {recentRuns.map((run) => {
               const wf = data.workflows.find((w) => w.id === run.workflowId)
               return (
-                <div className="row-item" key={run.id}>
+                <div id={`workflow-run-${run.id}`} className={`row-item ${selectedRunId === run.id ? 'tf-target-row' : ''}`} key={run.id}>
                   <div className="row-icon"><Icon name="activity" className="icon sm" /></div>
                   <div className="row-copy">
                     <div className="row-title">{wf?.name ?? run.workflowId}</div>
