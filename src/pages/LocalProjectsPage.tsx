@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 import type { HarnessCapability, ManagedArtifactArchive, ProjectArtifactManifest } from '../services/contracts'
@@ -142,7 +142,7 @@ function inferredSource(configs: string[]): LocalProjectSettings['importedFrom']
   return 'folder'
 }
 
-export function LocalProjectsPage() {
+export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'skills' } = {}) {
   const {
     data,
     importLocalProject,
@@ -153,6 +153,7 @@ export function LocalProjectsPage() {
     createChat,
     setActiveChat,
     setActiveProject,
+    updateWikiSettings,
     upsertPermissionGrant,
     toast,
     services,
@@ -161,10 +162,12 @@ export function LocalProjectsPage() {
     rescanLocalProject,
   } = useStore()
   const navigate = useNavigate()
+  const { projectId: routeProjectId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const projects = data.projects.filter((project) => project.workspaceKind === 'local' && project.local)
-  const [selectedId, setSelectedId] = useState(() => searchParams.get('project') ?? projects[0]?.id ?? '')
+  const [selectedId, setSelectedId] = useState(() => routeProjectId ?? searchParams.get('project') ?? projects[0]?.id ?? '')
   const [tab, setTab] = useState<LocalTab>(() => {
+    if (focusedTab) return focusedTab
     const requested = searchParams.get('tab')
     return requested && ['overview', 'documentation', 'agents', 'skills', 'harnesses', 'permissions'].includes(requested)
       ? requested as LocalTab
@@ -208,6 +211,16 @@ export function LocalProjectsPage() {
   }, [projects, selectedId])
 
   useEffect(() => {
+    if (!routeProjectId || !focusedTab) return
+    if (projects.some((item) => item.id === routeProjectId)) {
+      setSelectedId(routeProjectId)
+      setActiveProject(routeProjectId)
+      setTab(focusedTab)
+    }
+  }, [focusedTab, projects, routeProjectId, setActiveProject])
+
+  useEffect(() => {
+    if (focusedTab) return
     const requestedProject = searchParams.get('project')
     if (requestedProject && projects.some((item) => item.id === requestedProject)) setSelectedId(requestedProject)
     const requestedTab = searchParams.get('tab')
@@ -216,7 +229,7 @@ export function LocalProjectsPage() {
     } else if (requestedProject) {
       setTab('overview')
     }
-  }, [projects, searchParams])
+  }, [focusedTab, projects, searchParams])
 
   const selectProjectTab = (projectId: string, nextTab: LocalTab) => {
     setSelectedId(projectId)
@@ -900,27 +913,63 @@ export function LocalProjectsPage() {
     }
   }
 
+  if (focusedTab && !project?.local) {
+    return <div className="local-project-empty"><Icon name="folder" /><h2>Local project not found</h2><p>This project is no longer available on this machine.</p></div>
+  }
+
   return (
-    <div className="local-projects-page">
-      <header className="local-projects-header">
-        <div>
-          <span className="tf-eyebrow">OpenSaddle Desktop</span>
-          <h1>Local projects</h1>
-          <p>Bring a code folder into OpenSaddle, document it, and administer every local agent, skill, harness, and permission.</p>
-        </div>
-        <button className="primary-btn" onClick={() => void pickProject()} disabled={importing}>
-          <Icon name="folder" className="icon sm" />{importing ? 'Inspecting…' : 'Add folder'}
-        </button>
-      </header>
+    <div className={`local-projects-page ${focusedTab ? 'project-artifact-page' : ''}`}>
+      {focusedTab && project?.local ? (
+        <header className="project-artifact-header">
+          <div className={`project-artifact-mark ${focusedTab}`}>
+            <Icon name={focusedTab === 'agents' ? 'spark' : 'plugin'} />
+          </div>
+          <div className="project-artifact-title">
+            <span className="tf-eyebrow">Local project · {project.name}</span>
+            <h1>{focusedTab === 'agents' ? 'Agents' : 'Skills'}</h1>
+            <p>{focusedTab === 'agents'
+              ? `Create and manage the agents that belong to ${project.name}. Their definitions stay inside the project.`
+              : `Reusable instructions and workflows installed only for ${project.name}. Skills remain portable with the repository.`}</p>
+            <small>{project.local.rootPath}</small>
+          </div>
+          <div className="project-artifact-actions">
+            <button className="secondary-btn" onClick={() => void window.opensaddle?.openPath(project.local!.rootPath)}><Icon name="folder" className="icon sm" />Open folder</button>
+            <button className="secondary-btn" onClick={() => void rescanProject()} disabled={importing}><Icon name="refresh" className={`icon sm ${importing ? 'spin' : ''}`} />Rescan</button>
+          </div>
+        </header>
+      ) : (
+        <>
+          <header className="local-projects-header">
+            <div>
+              <span className="tf-eyebrow">OpenSaddle Desktop</span>
+              <h1>Local projects</h1>
+              <p>Bring a code folder into OpenSaddle, document it, and administer every local agent, skill, harness, and permission.</p>
+            </div>
+            <button className="primary-btn" onClick={() => void pickProject()} disabled={importing}>
+              <Icon name="folder" className="icon sm" />{importing ? 'Inspecting…' : 'Add folder'}
+            </button>
+          </header>
 
-      <div className="local-import-row">
-        <input value={manualPath} onChange={(event) => setManualPath(event.target.value)} placeholder="/path/to/project" />
-        <button className="secondary-btn" onClick={() => void importPath(manualPath)} disabled={importing || !manualPath.trim()}>Add path</button>
-        <span>{window.opensaddleDesktop ? 'Desktop filesystem access enabled' : 'Connect Desktop for native folder inspection'}</span>
-      </div>
+          <div className="local-import-row">
+            <input value={manualPath} onChange={(event) => setManualPath(event.target.value)} placeholder="/path/to/project" />
+            <button className="secondary-btn" onClick={() => void importPath(manualPath)} disabled={importing || !manualPath.trim()}>Add path</button>
+            <span>{window.opensaddleDesktop ? 'Desktop filesystem access enabled' : 'Connect Desktop for native folder inspection'}</span>
+          </div>
+        </>
+      )}
 
-      <div className="local-projects-layout">
-        <aside className="local-project-list">
+      {focusedTab && project && (
+        <nav className="project-artifact-nav" aria-label={`${project.name} artifacts`}>
+          <button onClick={() => navigate(`/local?project=${project.id}`)}><Icon name="layout" className="icon sm" />Overview</button>
+          <button onClick={() => { updateWikiSettings({ selectedProjectId: project.id }); navigate('/wiki') }}><Icon name="book" className="icon sm" />Wiki</button>
+          <button onClick={() => navigate(`/sites?project=${project.id}`)}><Icon name="globe" className="icon sm" />Sites</button>
+          <button className={focusedTab === 'agents' ? 'active' : ''} onClick={() => navigate(`/project/${project.id}/agents`)}><Icon name="spark" className="icon sm" />Agents</button>
+          <button className={focusedTab === 'skills' ? 'active' : ''} onClick={() => navigate(`/project/${project.id}/skills`)}><Icon name="plugin" className="icon sm" />Skills</button>
+        </nav>
+      )}
+
+      <div className={`local-projects-layout ${focusedTab ? 'focused' : ''}`}>
+        {!focusedTab && <aside className="local-project-list">
           <div className="tf-section-label">On this machine</div>
           {projects.map((item) => (
             <button key={item.id} className={item.id === project?.id ? 'active' : ''} onClick={() => selectProjectTab(item.id, 'overview')}>
@@ -930,25 +979,25 @@ export function LocalProjectsPage() {
             </button>
           ))}
           {!projects.length && <p>No local folders have been added.</p>}
-        </aside>
+        </aside>}
 
         {project?.local ? (
           <main className="local-project-detail">
-            <div className="local-project-title">
+            {!focusedTab && <div className="local-project-title">
               <div><span className="local-badge">Local admin</span><h2>{project.name}</h2><p>{project.local.rootPath}</p></div>
               <div>
                 <button className="secondary-btn" onClick={() => void window.opensaddle?.openPath(project.local!.rootPath)}>Open folder</button>
                 <button className="secondary-btn" onClick={() => void rescanProject()} disabled={importing}>Rescan</button>
                 <button className="primary-btn" onClick={() => void generateDocumentation()}>Generate docs</button>
               </div>
-            </div>
-            <div className="tf-project-tabs" role="tablist">
+            </div>}
+            {!focusedTab && <div className="tf-project-tabs" role="tablist">
               {(['overview', 'documentation', 'agents', 'skills', 'harnesses', 'permissions'] as const).map((item) => (
                 <button key={item} className={tab === item ? 'active' : ''} onClick={() => selectProjectTab(project.id, item)}>
                   {item[0]!.toUpperCase() + item.slice(1)}
                 </button>
               ))}
-            </div>
+            </div>}
 
             {tab === 'overview' && (
               <LocalOverview

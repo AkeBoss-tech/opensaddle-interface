@@ -43,9 +43,14 @@ function Shell() {
   const [browserCollapsed, setBrowserCollapsed] = useState(false)
   const [browserWidth, setBrowserWidth] = useState(620)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('opensaddle-sidebar-collapsed') === 'true')
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('opensaddle-sidebar-width'))
+    return Number.isFinite(saved) ? Math.max(220, Math.min(420, saved)) : 248
+  })
   const workspaceRef = useRef<HTMLDivElement>(null)
   const nav = useNavigate()
   const loc = useLocation()
+  const settingsFocused = loc.pathname === '/settings'
 
   useEffect(() => {
     const open = () => setPalette(true)
@@ -93,8 +98,12 @@ function Shell() {
       sites: 'Sites',
       local: 'Local projects',
     }
+    const project = parts[0] === 'project' ? data.projects.find((item) => item.id === parts[1]) : undefined
+    if (project && (parts[2] === 'agents' || parts[2] === 'skills')) {
+      return <><span>OpenSaddle</span><span>/</span><span>{project.name}</span><span>/</span><strong>{parts[2] === 'agents' ? 'Agents' : 'Skills'}</strong></>
+    }
     const label = parts[0] === 'chat' ? (data.chats.find((c) => c.id === parts[1])?.title ?? 'Thread')
-      : parts[0] === 'project' ? (data.projects.find((p) => p.id === parts[1])?.name ?? 'Project')
+      : parts[0] === 'project' ? (project?.name ?? 'Project')
       : routeLabels[parts[0] ?? ''] ?? parts[0] ?? 'Work'
     return <><span>OpenSaddle</span><span>/</span><strong>{label}</strong></>
   }, [loc.pathname, data.chats, data.projects])
@@ -115,6 +124,24 @@ function Shell() {
       window.removeEventListener('pointermove', resize)
       window.removeEventListener('pointerup', stop)
     }
+    window.addEventListener('pointermove', resize)
+    window.addEventListener('pointerup', stop, { once: true })
+  }
+
+  const beginSidebarResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (sidebarCollapsed) return
+    event.preventDefault()
+    const resize = (move: PointerEvent) => {
+      const width = Math.max(220, Math.min(420, move.clientX))
+      setSidebarWidth(width)
+      localStorage.setItem('opensaddle-sidebar-width', String(width))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', resize)
+      window.removeEventListener('pointerup', stop)
+      document.body.classList.remove('tf-resizing-sidebar')
+    }
+    document.body.classList.add('tf-resizing-sidebar')
     window.addEventListener('pointermove', resize)
     window.addEventListener('pointerup', stop, { once: true })
   }
@@ -156,10 +183,24 @@ function Shell() {
   }
 
   return (
-    <div className="app">
-      <ThreadFirstSidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} onCreateProject={() => { setProjParent(data.activeProjectId); setProjectModal(true) }} />
+    <div
+      className={`app ${settingsFocused ? 'settings-focus' : ''}`}
+      style={{ '--sidebar-w': `${sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
+    >
+      {!settingsFocused && (
+        <ThreadFirstSidebar
+          collapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
+          onCreateProject={() => { setProjParent(data.activeProjectId); setProjectModal(true) }}
+          onResizeStart={beginSidebarResize}
+          onResetWidth={() => {
+            setSidebarWidth(248)
+            localStorage.setItem('opensaddle-sidebar-width', '248')
+          }}
+        />
+      )}
       <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
-        <Topbar crumbs={crumbs} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={() => { setBrowserOpen(true); setBrowserCollapsed(false) }} />
+        {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={() => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         <div ref={workspaceRef} className="workspace-split">
         <div className="page-wrap">
           <Routes>
@@ -170,6 +211,8 @@ function Shell() {
             <Route path="/chat/:chatId" element={<ChatPage />} />
             <Route path="/project/:projectId" element={<ProjectWorkspacePage />} />
             <Route path="/project/:projectId/manage" element={<ProjectPage />} />
+            <Route path="/project/:projectId/agents" element={<LocalProjectsPage focusedTab="agents" />} />
+            <Route path="/project/:projectId/skills" element={<LocalProjectsPage focusedTab="skills" />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/wiki" element={<WikiPage />} />
             <Route path="/agents" element={<AgentsPage />} />
@@ -203,7 +246,7 @@ function Shell() {
           {browserCollapsed && <button className="native-browser-restore" type="button" title="Restore browser" onClick={() => setBrowserCollapsed(false)}>‹</button>}
         </>}
         </div>
-        <WorkspaceStatusBar />
+        {!settingsFocused && <WorkspaceStatusBar />}
       </main>
       <ToastStack />
       <CommandPalette open={palette} onClose={() => setPalette(false)} items={items} />

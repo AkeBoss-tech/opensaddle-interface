@@ -1,4 +1,5 @@
 .tf-sidebar {
+  position: relative;
   width: var(--sidebar-w);
   min-width: var(--sidebar-w);
   height: 100vh;
@@ -14,7 +15,7 @@
 .tf-sidebar-head { height: 58px; padding: 10px 10px 8px 12px; display: flex; align-items: center; gap: 6px; }
 .tf-workspace { min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; }
 .tf-workspace-logo { width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated); }
-.tf-workspace > span:nth-child(2) { min-width: 0; display: grid; gap: 1px; }
+.tf-workspace > span:nth-child(2) { min-width: 0; display: grid; gap: 1px; transform: translateY(2px); }
 .tf-workspace strong { font-size: 12.5px; font-weight: 650; }
 .tf-workspace small { color: var(--dim); font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tf-icon-button { width: 29px; height: 29px; flex: 0 0 auto; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--dim) !important; cursor: pointer; }
@@ -68,6 +69,30 @@
 .tf-thread-time { align-self: start; padding-top: 2px; }
 .tf-empty-copy { margin: 3px 8px; color: var(--dim); font-size: 10px; line-height: 1.45; }
 .tf-sidebar-foot { position: relative; padding: 8px; border-top: 1px solid var(--border); }
+.tf-sidebar-resizer {
+  position: absolute;
+  z-index: 40;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.tf-sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 2px;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+  transition: background-color var(--motion-fast) linear;
+}
+.tf-sidebar-resizer:hover::after,
+.tf-sidebar-resizer:active::after,
+.tf-resizing-sidebar .tf-sidebar-resizer::after { background: var(--accent); }
+.tf-resizing-sidebar { cursor: col-resize !important; user-select: none; }
 .tf-profile { width: 100%; height: 39px; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 8px; background: transparent; padding: 4px 6px; cursor: pointer; text-align: left; }
 .tf-profile:hover { background: var(--card-hover); }
 .tf-profile > span:nth-child(2) { min-width: 0; flex: 1; display: grid; gap: 1px; }
@@ -621,6 +646,70 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
 
 .tf-local-tag { margin-left: auto; padding: 2px 5px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 5px; color: var(--accent); font-size: 7px; text-transform: uppercase; letter-spacing: .05em; }
 .local-projects-page { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: 32px 0 56px; }
+.project-artifact-page { width: min(1120px, calc(100% - 56px)); padding-top: 34px; }
+.project-artifact-header {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.project-artifact-mark {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--card) 74%, transparent);
+}
+.project-artifact-mark.agents { color: #e7a66c; }
+.project-artifact-mark.skills { color: #d48cce; }
+.project-artifact-title h1 { margin: 2px 0 5px; font-size: 25px; letter-spacing: -.035em; }
+.project-artifact-title p { max-width: 680px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.project-artifact-title small { display: block; margin-top: 6px; color: var(--dim); font: 8.5px var(--font-mono, monospace); }
+.project-artifact-actions { display: flex; gap: 7px; }
+.project-artifact-nav {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.project-artifact-nav button {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 9.5px;
+  cursor: pointer;
+}
+.project-artifact-nav button:hover,
+.project-artifact-nav button.active { color: var(--text); background: var(--card-hover); }
+.local-projects-layout.focused {
+  display: block;
+  min-height: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.local-projects-layout.focused .local-project-detail { padding: 0; }
+.local-projects-layout.focused .local-section { padding: 18px; border-radius: 13px; }
+.local-projects-layout.focused .local-section-head h3 { font-size: 14px; }
+.local-projects-layout.focused .local-form-grid {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated) 76%, transparent);
+}
+.local-projects-layout.focused .local-agent-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
 .local-projects-header, .local-project-title, .local-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .local-projects-header h1 { margin: 4px 0 6px; font-size: 25px; letter-spacing: -.03em; }
 .local-projects-header p, .local-project-title p, .local-section-head p { margin: 0; color: var(--dim); line-height: 1.5; }
@@ -742,6 +831,8 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
   .tf-project-layout { grid-template-columns: 1fr; }
   .tf-project-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .local-projects-page { width: calc(100% - 28px); }
+  .project-artifact-header { grid-template-columns: 42px minmax(0, 1fr); }
+  .project-artifact-actions { grid-column: 2; }
   .local-projects-layout { grid-template-columns: 1fr; }
   .local-project-list { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); }
   .local-project-list .tf-section-label { display: none; }
@@ -757,6 +848,9 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
   .tf-resource-grid, .tf-project-side { grid-template-columns: 1fr; }
   .tf-project-thread-list .os-status, .tf-project-change-stat { display: none; }
   .local-projects-header, .local-project-title, .local-section-head { flex-direction: column; }
+  .project-artifact-header { grid-template-columns: 1fr; }
+  .project-artifact-actions { grid-column: 1; flex-wrap: wrap; }
+  .project-artifact-nav { overflow-x: auto; }
   .local-overview-grid, .local-agent-grid, .local-harness-grid, .local-form-grid { grid-template-columns: 1fr; }
   .local-form-grid textarea, .local-wide { grid-column: 1; }
   .local-flow { grid-template-columns: 1fr; }

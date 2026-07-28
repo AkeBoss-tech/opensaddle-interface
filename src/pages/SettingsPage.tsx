@@ -1,8 +1,61 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 
+const SETTINGS_DESTINATIONS = [
+  { id: 'settings-general', label: 'General', icon: 'settings', group: 'Personal' },
+  { id: 'settings-profile', label: 'Profile', icon: 'users', group: 'Personal' },
+  { id: 'settings-appearance', label: 'Appearance', icon: 'sun', group: 'Personal' },
+  { id: 'settings-notifications', label: 'Notifications', icon: 'bell', group: 'Personal' },
+  { id: 'settings-connection', label: 'Connection', icon: 'cloud', group: 'OpenSaddle' },
+  { id: 'settings-models', label: 'Models & routing', icon: 'spark', group: 'OpenSaddle' },
+  { id: 'settings-data', label: 'Data & recovery', icon: 'db', group: 'OpenSaddle' },
+] as const
+
 export function SettingsPage() {
+  const navigate = useNavigate()
+  const [query, setQuery] = useState('')
+  const [active, setActive] = useState('settings-general')
+  const destinations = SETTINGS_DESTINATIONS.filter((item) =>
+    item.label.toLowerCase().includes(query.trim().toLowerCase()))
+  const open = (id: string) => {
+    setActive(id)
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  return (
+    <div className="codex-settings-shell">
+      <aside className="codex-settings-nav">
+        <button className="codex-settings-back" onClick={() => navigate(-1)}><Icon name="back" className="icon sm" />Back to app</button>
+        <div className="codex-settings-all"><Icon name="sliders" className="icon sm" /><strong>All settings</strong><Icon name="chevron" className="icon xs" /></div>
+        <label className="codex-settings-search">
+          <Icon name="search" className="icon sm" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search settings…" />
+        </label>
+        {['Personal', 'OpenSaddle'].map((group) => {
+          const items = destinations.filter((item) => item.group === group)
+          if (!items.length) return null
+          return (
+            <div className="codex-settings-nav-group" key={group}>
+              <span>{group}</span>
+              {items.map((item) => (
+                <button key={item.id} className={active === item.id ? 'active' : ''} onClick={() => open(item.id)}>
+                  <Icon name={item.icon} className="icon sm" />{item.label}
+                </button>
+              ))}
+            </div>
+          )
+        })}
+      </aside>
+      <main className="codex-settings-main">
+        <SettingsContent />
+      </main>
+    </div>
+  )
+}
+
+function SettingsContent() {
   const {
     data,
     updateSettings,
@@ -44,7 +97,7 @@ export function SettingsPage() {
 
   return (
     <div className="content-page settings-page">
-      <div className="page-header">
+      <div className="page-header" id="settings-general">
         <div className="page-header-copy"><div className="eyebrow">Workspace control center</div><h1>Settings</h1><p>Connect models, verify local storage, and manage the preferences that shape every run.</p></div>
       </div>
 
@@ -78,7 +131,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="card connection-card">
+      <section className="card connection-card" id="settings-connection">
         <div className="card-header"><div><h3>OpenSaddle connection</h3><p>{connection.mode === 'remote' ? `${connection.name} · ${connection.baseUrl}` : 'Demo mode uses seeded data and simulated runs.'}</p></div><span className={`sync-badge ${controlPlane?.connected ? 'synced' : connection.mode === 'demo' ? 'local' : 'error'}`}>{connection.mode === 'remote' ? (controlPlane?.connected ? 'Connected' : 'Offline') : 'Demo'}</span></div>
         <div className="card-body">
           <div className="form-row"><label>Connection name</label><input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="My OpenSaddle server" /></div>
@@ -93,7 +146,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="provider-setup card">
+      <section className="provider-setup card" id="settings-models">
         <div className="provider-setup-icon"><Icon name="key" /></div>
         <div className="provider-setup-copy">
           <div className="eyebrow">Model provider</div>
@@ -109,13 +162,13 @@ export function SettingsPage() {
       </section>
 
       <div className="grid-2">
-        <div className="card"><div className="card-header"><div><h3>Profile</h3></div></div><div className="card-body">
+        <div className="card" id="settings-profile"><div className="card-header"><div><h3>Profile</h3></div></div><div className="card-body">
           <div className="form-row"><label>Display name</label><input value={s.displayName} onChange={(e) => updateSettings({ displayName: e.target.value })} /></div>
           <div className="form-row"><label>Email</label><input value={s.email} onChange={(e) => updateSettings({ email: e.target.value })} /></div>
           <div className="form-row" style={{ marginBottom: 0 }}><label>Timezone</label><select value={s.timezone} onChange={(e) => updateSettings({ timezone: e.target.value })}><option>America/New_York</option><option>America/Los_Angeles</option><option>UTC</option></select></div>
         </div></div>
 
-        <div className="card"><div className="card-header"><div><h3>Appearance</h3></div></div><div className="card-body">
+        <div className="card" id="settings-appearance"><div className="card-header"><div><h3>Appearance</h3></div></div><div className="card-body">
           <div className="setting-row"><div className="setting-copy"><strong>Theme</strong><span>{s.theme}</span></div>
             <button className="tiny-btn" onClick={() => { const order = ['dark', 'light', 'hc'] as const; setTheme(order[(order.indexOf(s.theme) + 1) % 3]); }}>Cycle</button>
           </div>
@@ -133,13 +186,13 @@ export function SettingsPage() {
           <div className="setting-row"><div className="setting-copy"><strong>Prefer local runtime</strong></div><button className={`switch ${s.keepDataLocal ? 'on' : ''}`} onClick={() => updateSettings({ keepDataLocal: !s.keepDataLocal })} /></div>
         </div></div>
 
-        <div className="card"><div className="card-header"><div><h3>Notifications</h3></div></div><div className="card-body">
+        <div className="card" id="settings-notifications"><div className="card-header"><div><h3>Notifications</h3></div></div><div className="card-body">
           {(Object.keys(s.notifications) as Array<keyof typeof s.notifications>).map((k) => (
             <div key={k} className="setting-row"><div className="setting-copy"><strong>{k}</strong></div><button className={`switch ${s.notifications[k] ? 'on' : ''}`} onClick={() => updateSettings({ notifications: { ...s.notifications, [k]: !s.notifications[k] } })} /></div>
           ))}
         </div></div>
 
-        <div className="card"><div className="card-header"><div><h3>Data & retention</h3><p>{controlPlane?.storage === 'sqlite' ? 'Durable SQLite database' : 'Local browser cache'}</p></div></div><div className="card-body">
+        <div className="card" id="settings-data"><div className="card-header"><div><h3>Data & retention</h3><p>{controlPlane?.storage === 'sqlite' ? 'Durable SQLite database' : 'Local browser cache'}</p></div></div><div className="card-body">
           <div className="form-row"><label>Chat retention (days)</label><input type="number" min="1" value={s.retentionDays} onChange={(e) => updateSettings({ retentionDays: Math.max(1, Number(e.target.value) || 1) })} /></div>
           <div className="form-row"><label>Tool output retention</label><input type="number" min="1" value={s.toolRetentionDays} onChange={(e) => updateSettings({ toolRetentionDays: Math.max(1, Number(e.target.value) || 1) })} /></div>
           <div className="form-row"><label>Region</label><select value={s.region} onChange={(e) => updateSettings({ region: e.target.value })}><option>United States</option><option>EU</option></select></div>

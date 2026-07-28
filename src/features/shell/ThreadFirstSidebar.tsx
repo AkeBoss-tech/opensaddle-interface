@@ -116,12 +116,18 @@ function ProjectTree({
                       <span>Documentation</span>
                       <small>{manifest?.counts.documentation ?? documents.length}</small>
                     </button>
-                    <button className="tf-artifact-row" onClick={() => onOpenLocalArtifact(project, 'agents')}>
+                    <button
+                      className={`tf-artifact-row ${locationPath === `/project/${project.id}/agents` ? 'active' : ''}`}
+                      onClick={() => onOpenLocalArtifact(project, 'agents')}
+                    >
                       <Icon name="spark" className="icon sm tf-artifact-icon agents" />
                       <span>Agents</span>
                       <small>{agents.length + (manifest?.counts.agent ?? 0)}</small>
                     </button>
-                    <button className="tf-artifact-row" onClick={() => onOpenLocalArtifact(project, 'skills')}>
+                    <button
+                      className={`tf-artifact-row ${locationPath === `/project/${project.id}/skills` ? 'active' : ''}`}
+                      onClick={() => onOpenLocalArtifact(project, 'skills')}
+                    >
                       <Icon name="plugin" className="icon sm tf-artifact-icon skills" />
                       <span>Skills</span>
                       <small>{manifest?.counts.skill ?? skills.length}</small>
@@ -156,10 +162,14 @@ export function ThreadFirstSidebar({
   collapsed,
   onCollapsedChange,
   onCreateProject,
+  onResizeStart,
+  onResetWidth,
 }: {
   collapsed: boolean
   onCollapsedChange: (collapsed: boolean) => void
   onCreateProject: () => void
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void
+  onResetWidth: () => void
 }) {
   const store = useStore()
   const { data, createChat, setActiveChat, setActiveProject, services, localProjectManifests } = store
@@ -214,6 +224,10 @@ export function ThreadFirstSidebar({
 
   const openLocalArtifact = (project: Project, tab: 'documentation' | 'agents' | 'skills') => {
     setActiveProject(project.id)
+    if (tab === 'agents' || tab === 'skills') {
+      navigate(`/project/${project.id}/${tab}`)
+      return
+    }
     navigate(`/local?project=${project.id}&tab=${tab}`)
   }
 
@@ -345,6 +359,16 @@ export function ThreadFirstSidebar({
           </div>
         )}
       </div>
+      {!collapsed && (
+        <div
+          className="tf-sidebar-resizer"
+          role="separator"
+          aria-label="Resize navigation sidebar"
+          aria-orientation="vertical"
+          onPointerDown={onResizeStart}
+          onDoubleClick={onResetWidth}
+        />
+      )}
     </aside>
   )
 }
