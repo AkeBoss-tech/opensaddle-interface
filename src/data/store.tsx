@@ -3,6 +3,15 @@ import type {
   AgentInterface, AppData, Chat, CodingProvider, CustomAgent, Dashboard, LocalProjectSettings, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
 } from '../types'
 import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
+import {
+  captureWorkspaceRecovery,
+  deleteWorkspaceRecovery,
+  listWorkspaceRecoveries,
+  loadWorkspace,
+  normalizeWorkspace,
+  readWorkspaceRecovery,
+  type WorkspaceRecovery,
+} from './workspacePersistence'
 import { defaultConnectionProfile, initServices, resetServices, type ConnectionProfile, type ServiceBundle } from '../services'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
@@ -13,44 +22,6 @@ import type {
   HarnessCapability,
   ProjectArtifactManifest,
 } from '../services/contracts'
-
-function normalizeWorkspace(data: AppData): AppData {
-  data.pinnedArtifacts ??= []
-  for (const project of data.projects) {
-    project.workspaceKind ??= project.local ? 'local' : 'enterprise'
-    if (project.local) {
-      project.local.harnesses ??= []
-      project.local.skills ??= []
-      project.local.documents ??= []
-      project.local.detectedConfigs ??= []
-      project.local.defaultHarnessId ??= 'codex'
-      project.local.permissionPreset ??= 'workspace-write'
-      project.local.adminAccess = true
-    }
-  }
-  const codingProject = data.projects.find((project) => project.id === 'proj-coding')
-  if (codingProject && !codingProject.routingDefaults) {
-    codingProject.routingDefaults = {
-      providerKey: 'codex',
-      modelKey: 'sonnet',
-      runtimeKey: 'sandbox',
-      reviewProviderKey: 'claude',
-    }
-  }
-  return data
-}
-
-function load(): AppData {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return normalizeWorkspace(createSeedData())
-    const parsed = JSON.parse(raw) as AppData
-    if (parsed.version !== DATA_VERSION) return normalizeWorkspace(createSeedData())
-    return normalizeWorkspace(parsed)
-  } catch {
-    return normalizeWorkspace(createSeedData())
-  }
-}
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
@@ -122,12 +93,17 @@ interface StoreApi {
   connectToServer: (profile: Pick<ConnectionProfile, 'name' | 'baseUrl' | 'token'>) => Promise<void>
   switchToDemo: () => void
   initializeRemoteWorkspace: () => Promise<void>
+  workspaceRecoveries: WorkspaceRecovery[]
+  restoreWorkspaceRecovery: (id: string) => void
+  discardWorkspaceRecovery: (id: string) => void
 }
 
 const StoreContext = createContext<StoreApi | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<AppData>(() => load())
+  const [initialLoad] = useState(() => loadWorkspace())
+  const [data, setData] = useState<AppData>(() => initialLoad.data)
+  const [workspaceRecoveries, setWorkspaceRecoveries] = useState<WorkspaceRecovery[]>(() => initialLoad.recoveries)
   const [toasts, setToasts] = useState<Array<{ id: string; title: string; message: string }>>([])
   const [services, setServices] = useState<ServiceBundle | null>(null)
   const [persistenceStatus, setPersistenceStatus] = useState<StoreApi['persistenceStatus']>('loading')
@@ -145,6 +121,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const messageCreatePromisesRef = useRef(new Map<string, Promise<unknown>>())
   const messageSyncTimersRef = useRef(new Map<string, number>())
   const messageSyncSnapshotsRef = useRef(new Map<string, Message>())
+  const loadNoticeShownRef = useRef(false)
   grantsRef.current = data.permissionGrants
   currentUserRef.current = data.currentUserId
   dataRef.current = data
@@ -159,6 +136,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setToasts((t) => [...t, { id, title, message }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3600)
   }, [])
+
+  useEffect(() => {
+    if (!initialLoad.notice || loadNoticeShownRef.current) return
+    loadNoticeShownRef.current = true
+    toast('Workspace recovery', initialLoad.notice)
+  }, [initialLoad.notice, toast])
 
   const refreshHarnessCapabilities = useCallback(async () => {
     if (!services?.localProjects) {
@@ -1309,14 +1292,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
     resetData: () => {
       resetServices()
+      captureWorkspaceRecovery(localStorage, STORAGE_KEY, JSON.stringify(data), 'Snapshot before reset to seed')
+      setWorkspaceRecoveries(listWorkspaceRecoveries())
       const seed = createSeedData()
       setData(seed)
-      toast('Data reset', 'Demo workspace restored from seed.')
+      toast('Data reset', 'Demo workspace restored from seed. The previous workspace is available in recovery.')
     },
     exportData: () => JSON.stringify(data, null, 2),
+    workspaceRecoveries,
+    restoreWorkspaceRecovery: (id) => {
+      const recovery = workspaceRecoveries.find((item) => item.id === id)
+      if (!recovery) return
+      try {
+        captureWorkspaceRecovery(localStorage, STORAGE_KEY, JSON.stringify(data), 'Snapshot before manual restore')
+        const restored = readWorkspaceRecovery(recovery)
+        setData(restored)
+        setWorkspaceRecoveries(listWorkspaceRecoveries())
+        toast('Workspace restored', `Recovered the snapshot from ${new Date(recovery.createdAt).toLocaleString()}.`)
+      } catch (error) {
+        toast('Restore failed', error instanceof Error ? error.message : String(error))
+      }
+    },
+    discardWorkspaceRecovery: (id) => {
+      const recovery = workspaceRecoveries.find((item) => item.id === id)
+      if (!recovery) return
+      setWorkspaceRecoveries(deleteWorkspaceRecovery(recovery))
+      toast('Recovery removed', 'The preserved snapshot was deleted.')
+    },
     services,
     runtimeModeLabel: modeLabel(detectRuntimeMode()),
-  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, lastSavedAt, connection, harnessCapabilities, refreshHarnessCapabilities, localProjectManifests, rescanLocalProject, threadPayload, reportThreadSyncError])
+  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, lastSavedAt, connection, harnessCapabilities, refreshHarnessCapabilities, localProjectManifests, rescanLocalProject, threadPayload, reportThreadSyncError, workspaceRecoveries])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

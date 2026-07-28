@@ -16,6 +16,9 @@ export function SettingsPage() {
     connectToServer,
     switchToDemo,
     initializeRemoteWorkspace,
+    workspaceRecoveries,
+    restoreWorkspaceRecovery,
+    discardWorkspaceRecovery,
     toast,
   } = useStore()
   const s = data.settings
@@ -147,6 +150,23 @@ export function SettingsPage() {
         <div className="card"><div className="card-header"><div><h3>Demo data</h3></div></div><div className="card-body">
           <div className="setting-row"><div className="setting-copy"><strong>Export workspace JSON</strong><span>Portable backup of the current workspace</span></div><button className="tiny-btn" onClick={download}>Export</button></div>
           <div className="setting-row"><div className="setting-copy"><strong>Reset to seed</strong><span>Restores the full demo workspace</span></div><button className="danger-btn" onClick={() => { if (confirm('Reset all local demo data?')) resetData() }}>Reset</button></div>
+        </div></div>
+
+        <div className="card"><div className="card-header"><div><h3>Workspace recovery</h3><p>Raw snapshots preserved before migration, reset, or recovery.</p></div><span className="sync-badge local">{workspaceRecoveries.length}</span></div><div className="card-body">
+          {workspaceRecoveries.length === 0
+            ? <div className="setting-row"><div className="setting-copy"><strong>No recovery snapshots</strong><span>OpenSaddle will preserve incompatible or unreadable data instead of silently replacing it.</span></div><Icon name="shield" className="icon sm" /></div>
+            : workspaceRecoveries.map((recovery) => (
+              <div className="setting-row" key={recovery.id}>
+                <div className="setting-copy">
+                  <strong>{recovery.reason}</strong>
+                  <span>{new Date(recovery.createdAt).toLocaleString()} · {recovery.sourceKey}{recovery.sourceVersion ? ` · v${recovery.sourceVersion}` : ''}</span>
+                </div>
+                <div className="setting-actions">
+                  <button className="tiny-btn" onClick={() => { if (confirm('Replace the current workspace with this recovery snapshot? The current workspace will be backed up first.')) restoreWorkspaceRecovery(recovery.id) }}>Restore</button>
+                  <button className="danger-btn" onClick={() => { if (confirm('Permanently delete this recovery snapshot?')) discardWorkspaceRecovery(recovery.id) }}>Delete</button>
+                </div>
+              </div>
+            ))}
         </div></div>
       </div>
     </div>
