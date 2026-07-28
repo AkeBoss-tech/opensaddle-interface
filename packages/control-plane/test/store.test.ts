@@ -69,6 +69,39 @@ test('persists workspace documents and grants across store instances', async () 
   }
 })
 
+test('consumes a one-time grant without deleting its audit record', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'opensaddle-grant-'))
+  try {
+    const first = new StateStore(config(dataDir))
+    await first.init()
+    await first.replaceGrant({
+      id: 'grant-once',
+      principalKind: 'user',
+      principalId: 'user-ad',
+      resourceKind: 'tool',
+      resourceId: 'email',
+      action: 'write',
+      effect: 'allow',
+      scope: 'once',
+      scopeId: 'thread-1',
+      usesRemaining: 1,
+      createdAt: 1,
+      createdBy: 'user-ad',
+    })
+    const consumed = await first.consumeGrant('grant-once')
+    assert.equal(consumed?.usesRemaining, 0)
+    assert.equal(typeof consumed?.consumedAt, 'number')
+    assert.equal(first.grants().find((grant) => grant.id === 'grant-once')?.usesRemaining, 0)
+    assert.equal(await first.consumeGrant('grant-once'), undefined)
+
+    const second = new StateStore(config(dataDir))
+    await second.init()
+    assert.equal(second.grants().find((grant) => grant.id === 'grant-once')?.usesRemaining, 0)
+  } finally {
+    await rm(dataDir, { recursive: true, force: true })
+  }
+})
+
 test('migrates legacy conversations and persists granular thread operations', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'opensaddle-threads-'))
   try {

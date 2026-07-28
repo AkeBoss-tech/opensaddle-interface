@@ -100,6 +100,31 @@ describe('server-side permission evaluation', () => {
     assert.deepEqual(result.matchedGrantIds, ['deny'])
   })
 
+  it('does not reuse a consumed one-time grant', () => {
+    const result = evaluatePermissions([
+      grant({
+        id: 'once-consumed',
+        principalKind: 'user',
+        principalId: 'u1',
+        resourceKind: 'tool',
+        resourceId: 'email',
+        action: 'write',
+        effect: 'allow',
+        scope: 'once',
+        scopeId: 'thread-1',
+        usesRemaining: 0,
+        consumedAt: 10,
+      }),
+    ], {
+      userId: 'u1',
+      resourceKind: 'tool',
+      resourceId: 'email',
+      action: 'write',
+    })
+    assert.equal(result.allowed, false)
+    assert.equal(result.matchedGrantIds.length, 0)
+  })
+
   it('allows cross-thread delegation only to equal or lesser-privileged agents', () => {
     const grants = [
       grant({ id: 'caller-read', principalKind: 'agent', principalId: 'caller', resourceKind: 'repository', resourceId: 'repo-1', action: 'read', effect: 'allow' }),

@@ -18,6 +18,7 @@ export function evaluatePermissions(grants: PermissionGrant[], input: Permission
     if (!scopeMatches) return false
     if (grant.action !== input.action && grant.action !== 'administer') return false
     if (grant.expiresAt !== undefined && grant.expiresAt <= now) return false
+    if (grant.usesRemaining !== undefined && grant.usesRemaining <= 0) return false
     if (grant.pathPrefix !== undefined && (input.path === undefined || !input.path.startsWith(grant.pathPrefix))) {
       return false
     }

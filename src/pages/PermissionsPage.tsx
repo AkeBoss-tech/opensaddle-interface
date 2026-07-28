@@ -96,9 +96,12 @@ export function PermissionsPage() {
                   return (
                     <tr key={g.id}>
                       <td>{g.principalKind}:{principal ?? g.principalId}</td>
-                      <td>{g.resourceKind}/{g.resourceId}{g.pathPrefix ? ` · ${g.pathPrefix}` : ''}</td>
+                      <td>
+                        {g.resourceKind}/{g.resourceId}{g.pathPrefix ? ` · ${g.pathPrefix}` : ''}
+                        {g.scope ? ` · ${g.scope}${g.scopeId ? `:${g.scopeId}` : ''}` : ''}
+                      </td>
                       <td>{g.action}{g.approvalRequired ? ' · approve' : ''}</td>
-                      <td><span className={`status-pill ${g.effect === 'allow' ? 'green' : 'red'}`}>{g.effect}</span></td>
+                      <td><span className={`status-pill ${g.consumedAt ? '' : g.effect === 'allow' ? 'green' : 'red'}`}>{g.consumedAt ? `${g.effect} · consumed` : g.effect}</span></td>
                       <td><button className="tiny-btn" onClick={() => {
                         void revokePermissionGrant(g.id)
                           .then(() => toast('Revoked', g.id))

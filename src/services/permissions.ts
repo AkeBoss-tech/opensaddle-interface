@@ -29,6 +29,7 @@ export function evaluatePermissions(
     if (!scopeMatches) return false
     if (g.action !== input.action && g.action !== 'administer') return false
     if (g.expiresAt && g.expiresAt < Date.now()) return false
+    if (g.usesRemaining !== undefined && g.usesRemaining <= 0) return false
     if (g.pathPrefix && input.path && !input.path.startsWith(g.pathPrefix)) return false
     return true
   })
@@ -128,6 +129,24 @@ export class LocalPermissionClient implements PermissionClient {
 
   async revoke(grantId: string): Promise<void> {
     this.setGrants(this.getGrants().filter((g) => g.id !== grantId))
+  }
+
+  async consume(grantId: string): Promise<PermissionGrant> {
+    const all = [...this.getGrants()]
+    const index = all.findIndex((grant) => grant.id === grantId)
+    if (index < 0) throw new Error('Permission grant not found')
+    const current = all[index]!
+    if (current.usesRemaining === undefined || current.usesRemaining <= 0) {
+      throw new Error('Permission grant is not consumable')
+    }
+    const consumed = {
+      ...current,
+      usesRemaining: current.usesRemaining - 1,
+      consumedAt: Date.now(),
+    }
+    all[index] = consumed
+    this.setGrants(all)
+    return consumed
   }
 
   async check(input: {

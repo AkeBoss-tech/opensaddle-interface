@@ -499,6 +499,10 @@ export interface PermissionGrant {
   approvalRequired?: boolean
   expiresAt?: number
   pathPrefix?: string
+  scope?: 'once' | 'thread' | 'project' | 'organization'
+  scopeId?: string
+  usesRemaining?: number
+  consumedAt?: number
   createdAt: number
   createdBy: string
 }
@@ -513,6 +517,7 @@ export interface EffectivePermission {
 export interface PermissionClient {
   list(projectId?: string): Promise<PermissionGrant[]>
   upsert(grant: Omit<PermissionGrant, 'id' | 'createdAt'> & { id?: string }): Promise<PermissionGrant>
+  consume(grantId: string): Promise<PermissionGrant>
   revoke(grantId: string): Promise<void>
   check(input: {
     userId: string

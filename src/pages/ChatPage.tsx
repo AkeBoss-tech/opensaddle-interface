@@ -6,7 +6,7 @@ import {
   DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL, simulateAgentRun,
   type RouteDecision,
 } from '../lib/simulation'
-import type { AgentRunBlock, CodingProvider, Harness, Message, ModelKey, RunExecutionMode, RuntimeKind } from '../types'
+import type { AgentRunBlock, CodingProvider, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
 import { PROVIDER_NAME, ProviderLogo, providerFromLabel } from '../components/common/ProviderLogo'
 import { evaluatePermissions } from '../services/permissions'
 import { sanitizeHtml } from '../lib/sanitizeHtml'
@@ -71,6 +71,26 @@ function routedHarnessLabel(route: RouteEstimate | undefined, fallback: Harness)
     return PROVIDER_LABEL[provider] ?? HARNESS_LABEL[route?.harnessKey ?? fallback]
   }
   return HARNESS_LABEL[route?.harnessKey ?? fallback]
+}
+
+type PromptPermission = NonNullable<ReturnType<typeof needsPermission>>
+type PromptPermissionScope = 'once' | 'chat' | 'project' | 'always'
+
+function promptGrantApplies(
+  grant: PermissionGrant,
+  permission: PromptPermission,
+  context: { chatId: string; projectId: string },
+): boolean {
+  if (grant.principalKind !== 'user'
+    || grant.resourceKind !== permission.resourceKind
+    || grant.resourceId !== permission.resourceId
+    || grant.action !== permission.action) return false
+  if (grant.expiresAt !== undefined && grant.expiresAt <= Date.now()) return false
+  if (grant.usesRemaining !== undefined && grant.usesRemaining <= 0) return false
+  if (!grant.scope || grant.scope === 'organization') return true
+  if (grant.scope === 'project') return grant.scopeId === context.projectId
+  if (grant.scope === 'thread' || grant.scope === 'once') return grant.scopeId === context.chatId
+  return false
 }
 
 const MODEL_PICKER_OPTIONS: Partial<Record<CodingProvider, Array<{
@@ -157,7 +177,7 @@ export function ChatPage() {
   const location = useLocation()
   const store = useStore()
   const runRegistry = useRunRegistry()
-  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, toast, services, harnessCapabilities, refreshHarnessCapabilities } = store
+  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, harnessCapabilities, refreshHarnessCapabilities } = store
   const chat = data.chats.find((c) => c.id === (chatId ?? data.activeChatId))
   const continuationAction = chat?.continuation?.mode === 'fork' ? 'Fork' : 'Resume'
   const project = data.projects.find((p) => p.id === chat?.projectId) ?? data.projects.find((p) => p.id === data.activeProjectId) ?? data.projects[0]
@@ -196,7 +216,7 @@ export function ChatPage() {
   const [providerKey, setProviderKey] = useState<CodingProvider>('opensaddle')
   const [perm, setPerm] = useState<ReturnType<typeof needsPermission>>(null)
   const [pending, setPending] = useState('')
-  const [permScope, setPermScope] = useState('once')
+  const [permScope, setPermScope] = useState<PromptPermissionScope>('once')
   const [activity, setActivity] = useState<Array<{ title: string; sub: string; kind?: string; t: string }>>([])
   const [gitStatus, setGitStatus] = useState<GitStatusResult | null>(null)
   const [gitComparison, setGitComparison] = useState<GitComparisonResult | null>(null)
@@ -533,6 +553,34 @@ export function ChatPage() {
     const r = refreshRoute(prompt)
     const permission = needsPermission(prompt)
     if (permission) {
+      const matching = data.permissionGrants.filter((grant) =>
+        grant.principalId === data.currentUserId
+        && promptGrantApplies(grant, permission, { chatId: chat.id, projectId: project.id }))
+      const denied = matching.find((grant) => grant.effect === 'deny')
+      if (denied) {
+        if (denied.scope === 'once') await consumePermissionGrant(denied.id)
+        appendMessage({
+          chatId: chat.id,
+          role: 'assistant',
+          text: '',
+          lightHtml: `<p>The saved policy denies <strong>${permission.resource}</strong> for this ${denied.scope === 'project' ? 'project' : denied.scope === 'organization' ? 'workspace' : 'thread'}.</p>`,
+          routingNote: `Denied by ${denied.id}`,
+        })
+        toast('Access denied by policy', permission.resource)
+        return
+      }
+      const allowed = matching.find((grant) => grant.effect === 'allow')
+      if (allowed) {
+        if (allowed.scope === 'once') await consumePermissionGrant(allowed.id)
+        setActivity((items) => [...items, {
+          title: 'Saved permission applied',
+          sub: `${permission.resource} · ${allowed.scope ?? 'workspace'}`,
+          kind: 'info',
+          t: 'now',
+        }])
+        await runAgent(prompt, r, chat.id)
+        return
+      }
       setPending(prompt)
       setPerm(permission)
       return
@@ -691,8 +739,50 @@ export function ChatPage() {
     setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
   }
 
+  const savePromptDecision = async (
+    request: PromptPermission,
+    effect: 'allow' | 'deny',
+    scope: PromptPermissionScope,
+  ) => {
+    if (!chat) throw new Error('A task is required before saving a permission')
+    const persistedScope: NonNullable<PermissionGrant['scope']> = scope === 'chat'
+      ? 'thread'
+      : scope === 'always'
+        ? 'organization'
+        : scope
+    const scopeId = persistedScope === 'organization'
+      ? 'org-default'
+      : persistedScope === 'project'
+        ? project.id
+        : chat.id
+    return await upsertPermissionGrant({
+      principalKind: 'user',
+      principalId: data.currentUserId,
+      resourceKind: request.resourceKind,
+      resourceId: request.resourceId,
+      action: request.action,
+      effect,
+      inheritance: 'direct',
+      scope: persistedScope,
+      scopeId,
+      usesRemaining: persistedScope === 'once' ? 1 : undefined,
+      createdBy: data.currentUserId,
+    })
+  }
+
   const grantPerm = async () => {
+    const request = perm
+    if (!request || !chat) return
     setPerm(null)
+    let grant: PermissionGrant
+    try {
+      grant = await savePromptDecision(request, 'allow', permScope)
+      if (grant.scope === 'once') grant = await consumePermissionGrant(grant.id)
+    } catch (error) {
+      toast('Could not save permission', error instanceof Error ? error.message : String(error))
+      setPerm(request)
+      return
+    }
     let approvalId: string | undefined
     const execution = chat ? evaluatePermissions(data.permissionGrants, {
       userId: data.currentUserId,
@@ -720,11 +810,42 @@ export function ChatPage() {
         return
       }
     }
-    toast('Access granted', `Scope: ${permScope}`)
-    setActivity((a) => [...a, { title: 'Permission granted', sub: perm?.resource ?? '', kind: 'info', t: 'now' }])
-    if (chat) {
-      const r = refreshRoute(pending)
-      await runAgent(pending, r, chat.id, approvalId)
+    toast('Access granted', `${request.resource} · ${permScope}`)
+    setActivity((a) => [...a, {
+      title: 'Permission granted',
+      sub: `${request.resource} · ${permScope}${grant.consumedAt ? ' · consumed' : ''}`,
+      kind: 'info',
+      t: 'now',
+    }])
+    const r = refreshRoute(pending)
+    await runAgent(pending, r, chat.id, approvalId)
+  }
+
+  const denyPromptPermission = async (persist: boolean) => {
+    const request = perm
+    if (!request || !chat) return
+    setPerm(null)
+    const scope: PromptPermissionScope = persist ? permScope : 'once'
+    try {
+      let grant = await savePromptDecision(request, 'deny', scope)
+      if (grant.scope === 'once') grant = await consumePermissionGrant(grant.id)
+      appendMessage({
+        chatId: chat.id,
+        role: 'assistant',
+        text: '',
+        lightHtml: `<p>The capability <strong>${request.resource}</strong> was denied${persist ? ` for this ${scope}` : ' once'}, so I paused.</p>`,
+        routingNote: `Permission denied · ${grant.id}`,
+      })
+      toast(persist ? 'Deny policy saved' : 'Access denied', `${request.resource} · ${scope}`)
+      setActivity((items) => [...items, {
+        title: 'Permission denied',
+        sub: `${request.resource} · ${scope}${grant.consumedAt ? ' · consumed' : ''}`,
+        kind: 'error',
+        t: 'now',
+      }])
+    } catch (error) {
+      toast('Could not save denial', error instanceof Error ? error.message : String(error))
+      setPerm(request)
     }
   }
 
@@ -1932,12 +2053,12 @@ export function ChatPage() {
                 <div className="permission-row"><Icon name="chart" className="icon sm" /><span>Cost / risk</span><strong>{perm.risk}</strong></div>
               </div>
               <div className="form-row" style={{ marginTop: 12, marginBottom: 0 }}><label>Grant for</label>
-                <div className="seg">{['once', 'chat', 'project', 'always'].map((s) => <button key={s} className={permScope === s ? 'active' : ''} onClick={() => setPermScope(s)}>{s}</button>)}</div>
+                <div className="seg">{(['once', 'chat', 'project', 'always'] as const).map((s) => <button key={s} className={permScope === s ? 'active' : ''} onClick={() => setPermScope(s)}>{s}</button>)}</div>
               </div>
             </div>
             <div className="modal-actions">
-              <button className="danger-btn" onClick={() => { setPerm(null); toast('Policy added', `Deny ${perm.resource}`) }}>Deny & add policy</button>
-              <button className="ghost-btn" onClick={() => { setPerm(null); appendMessage({ chatId: chat.id, role: 'assistant', text: '', lightHtml: `<p>The capability <strong>${perm.resource}</strong> is outside this project's boundary, so I paused.</p>`, routingNote: 'Permission denied' }); toast('Access denied', '') }}>Deny</button>
+              <button className="danger-btn" onClick={() => void denyPromptPermission(true)}>Deny & add policy</button>
+              <button className="ghost-btn" onClick={() => void denyPromptPermission(false)}>Deny once</button>
               <button className="primary-btn" onClick={() => void grantPerm()}>Allow</button>
             </div>
           </div>

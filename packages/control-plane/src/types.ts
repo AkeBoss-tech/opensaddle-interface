@@ -41,6 +41,10 @@ export interface PermissionGrant {
   approvalRequired?: boolean
   expiresAt?: number
   pathPrefix?: string
+  scope?: 'once' | 'thread' | 'project' | 'organization'
+  scopeId?: string
+  usesRemaining?: number
+  consumedAt?: number
   createdAt: number
   createdBy: string
 }

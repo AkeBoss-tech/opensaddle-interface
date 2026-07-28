@@ -156,6 +156,18 @@ export class StateStore {
     return this.db.prepare('DELETE FROM grants WHERE id = ?').run(id).changes > 0
   }
 
+  async consumeGrant(id: string): Promise<PermissionGrant | undefined> {
+    const grant = this.row<PermissionGrant>('SELECT data_json FROM grants WHERE id = ?', id)
+    if (!grant || grant.usesRemaining === undefined || grant.usesRemaining <= 0) return undefined
+    const consumed: PermissionGrant = {
+      ...grant,
+      usesRemaining: grant.usesRemaining - 1,
+      consumedAt: Date.now(),
+    }
+    await this.replaceGrant(consumed)
+    return consumed
+  }
+
   runs(): RunRecord[] {
     return this.rows<RunRecord>('SELECT data_json FROM runs ORDER BY updated_at DESC LIMIT 500')
   }

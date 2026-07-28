@@ -1721,6 +1721,11 @@ app.put('/api/permissions/grants', async (request, reply) => {
   const admin = requireAdmin(store.grants(), request.principal)
   if (!admin.allowed) return permissionDenied(reply, admin.reason)
   const body = objectBody(request)
+  const scope = enumValue(body, 'scope', ['once', 'thread', 'project', 'organization'] as const)
+  const usesRemaining = body.uses_remaining
+  if (usesRemaining !== undefined && (!Number.isInteger(usesRemaining) || (usesRemaining as number) < 0 || (usesRemaining as number) > 1_000)) {
+    return reply.code(400).send({ error: 'uses_remaining_must_be_a_non_negative_integer' })
+  }
   const grant: PermissionGrant = {
     id: optionalString(body, 'id', 200) ?? `grant_${randomUUID().slice(0, 12)}`,
     principalKind: enumValue<PrincipalKind>(body, 'principal_kind', ['user', 'group', 'agent']) ?? 'user',
@@ -1736,11 +1741,26 @@ app.put('/api/permissions/grants', async (request, reply) => {
     approvalRequired: body.approval_required === true,
     expiresAt: typeof body.expires_at === 'number' ? body.expires_at : undefined,
     pathPrefix: optionalString(body, 'path_prefix', 2_000),
+    scope,
+    scopeId: optionalString(body, 'scope_id', 500),
+    usesRemaining: usesRemaining as number | undefined,
     createdAt: Date.now(),
     createdBy: request.principal.userId,
   }
   await store.replaceGrant(grant)
   return grant
+})
+
+app.post<{ Params: { grantId: string } }>('/api/permissions/grants/:grantId/consume', async (request, reply) => {
+  const admin = requireAdmin(store.grants(), request.principal)
+  if (!admin.allowed) return permissionDenied(reply, admin.reason)
+  const grant = store.grants().find((candidate) => candidate.id === request.params.grantId)
+  if (!grant) return reply.code(404).send({ error: 'grant_not_found' })
+  if (grant.principalKind === 'user' && grant.principalId !== request.principal.userId && !request.principal.roles.includes('admin')) {
+    return permissionDenied(reply, 'Grant belongs to another user')
+  }
+  const consumed = await store.consumeGrant(grant.id)
+  return consumed ?? reply.code(409).send({ error: 'grant_not_consumable' })
 })
 
 app.delete<{ Params: { grantId: string } }>('/api/permissions/grants/:grantId', async (request, reply) => {

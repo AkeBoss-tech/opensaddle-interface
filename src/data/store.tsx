@@ -97,6 +97,7 @@ interface StoreApi {
   refreshWikiSummaries: (projectId: string) => void
   setPermissionGrants: (grants: PermissionGrant[]) => void
   upsertPermissionGrant: (grant: Omit<PermissionGrant, 'id' | 'createdAt'> & { id?: string }) => Promise<PermissionGrant>
+  consumePermissionGrant: (id: string) => Promise<PermissionGrant>
   revokePermissionGrant: (id: string) => Promise<void>
   createWorkflow: (input: Omit<WorkflowDef, 'id' | 'createdAt'>) => WorkflowDef
   updateWorkflowStatus: (id: string, status: WorkflowDef['status']) => void
@@ -1161,6 +1162,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return d
       })
       return next
+    },
+    consumePermissionGrant: async (id) => {
+      const consumed = services
+        ? await services.permissions.consume(id)
+        : (() => {
+          const current = dataRef.current.permissionGrants.find((grant) => grant.id === id)
+          if (!current || current.usesRemaining === undefined || current.usesRemaining <= 0) {
+            throw new Error('Permission grant is not consumable')
+          }
+          return { ...current, usesRemaining: current.usesRemaining - 1, consumedAt: Date.now() }
+        })()
+      patch((d) => {
+        const index = d.permissionGrants.findIndex((grant) => grant.id === consumed.id)
+        if (index >= 0) d.permissionGrants[index] = consumed
+        return d
+      })
+      return consumed
     },
     revokePermissionGrant: async (id) => {
       if (services) await services.permissions.revoke(id)

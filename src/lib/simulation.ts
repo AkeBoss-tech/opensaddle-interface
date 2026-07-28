@@ -72,16 +72,19 @@ export function needsPermission(text: string) {
   const l = text.toLowerCase()
   if (l.includes('salesforce')) return {
     resource: 'Salesforce Accounts API', title: 'Capability requested: Read a database',
+    resourceKind: 'tool' as const, resourceId: 'salesforce', action: 'read',
     why: "To answer the user's question about at-risk accounts", data: 'Account name, region, renewal date',
     model: 'Claude Sonnet (US, approved)', reversible: 'Yes · read-only', risk: '~$0.02 · Low',
   }
   if (l.includes('production') || l.includes('deploy')) return {
     resource: 'Production deployment', title: 'Capability requested: Deploy applications',
+    resourceKind: 'tool' as const, resourceId: 'production-deployment', action: 'execute',
     why: 'The change must reach the production environment', data: 'Build artifact + release notes',
     model: 'Claude Opus (US, approved)', reversible: 'No · rollback required', risk: '~$0.40 · High',
   }
   if (l.includes('email') || l.includes('cold email')) return {
     resource: 'Send email on your behalf', title: 'Capability requested: Send email',
+    resourceKind: 'tool' as const, resourceId: 'email', action: 'write',
     why: 'To deliver the drafted outreach to recipients', data: 'Recipient list, subject, body',
     model: 'Claude Sonnet (US, approved)', reversible: 'No · messages are sent', risk: '~$0.01 · Medium',
   }

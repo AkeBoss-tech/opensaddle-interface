@@ -59,8 +59,18 @@ export class RemotePermissionClient implements PermissionClient {
         approval_required: grant.approvalRequired,
         expires_at: grant.expiresAt,
         path_prefix: grant.pathPrefix,
+        scope: grant.scope,
+        scope_id: grant.scopeId,
+        uses_remaining: grant.usesRemaining,
       }),
     }))
+  }
+
+  async consume(grantId: string): Promise<PermissionGrant> {
+    return await this.checked<PermissionGrant>(await fetch(
+      `${this.baseUrl}/api/permissions/grants/${encodeURIComponent(grantId)}/consume`,
+      { method: 'POST', headers: this.headers() },
+    ))
   }
 
   async revoke(grantId: string): Promise<void> {
