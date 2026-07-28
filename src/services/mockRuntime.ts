@@ -41,6 +41,7 @@ export class MockRuntimeClient implements RuntimeClient {
 
   async startRun(input: {
     projectId: string
+    threadId?: string
     task: string
     agentId?: string
     parentRunId?: string

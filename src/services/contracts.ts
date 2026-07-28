@@ -3,6 +3,7 @@ import type { AgentRunBlock, AppData, CodingProvider, Harness, ModelKey, RunExec
 export type RunEventType =
   | 'session.created'
   | 'session.attached'
+  | 'session.continued'
   | 'agent.started'
   | 'agent.output.delta'
   | 'agent.input.requested'
@@ -124,6 +125,7 @@ export interface RuntimeClient {
   }): Promise<RouteEstimate>
   startRun(input: {
     projectId: string
+    threadId?: string
     task: string
     agentId?: string
     parentRunId?: string

@@ -129,6 +129,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
 
   async startRun(input: {
     projectId: string
+    threadId?: string
     task: string
     agentId?: string
     parentRunId?: string
@@ -157,6 +158,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         headers: this.headers(true),
         body: JSON.stringify({
           project_id: input.projectId,
+          thread_id: input.threadId,
           task: input.task,
           agent_id: input.agentId,
           parent_run_id: input.parentRunId,
@@ -422,10 +424,15 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     const controller = new AbortController()
     let fallbackStop: (() => void) | null = null
     let receivedEvents = 0
-    const emit = createOrderedEventEmitter((event) => {
-      receivedEvents += 1
-      onEvent(event)
-    })
+    // The authoritative Python run store numbers durable events from one.
+    // Other event sources can retain the reconciler's zero-based default.
+    const emit = createOrderedEventEmitter(
+      (event) => {
+        receivedEvents += 1
+        onEvent(event)
+      },
+      1,
+    )
 
     void (async () => {
       if (!(await this.healthy())) {

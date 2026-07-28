@@ -848,6 +848,7 @@ export function ChatPage() {
       try {
         const started = await services.runtime.startRun({
           projectId: project.id,
+          threadId: cid,
           task: prompt,
           agentId,
           providerSessionId: chat?.continuation?.sessionId,

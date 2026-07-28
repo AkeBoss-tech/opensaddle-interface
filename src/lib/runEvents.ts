@@ -539,6 +539,23 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       addActivity('status', 'Session ready', detail)
       break
     }
+    case 'session.continued': {
+      const providerSessionId = typeof event.payload.provider_session_id === 'string'
+        ? event.payload.provider_session_id
+        : undefined
+      const mode = event.payload.mode === 'fork' ? 'fork' : 'resume'
+      next.providerSessionId = providerSessionId
+      next.providerSessionMode = mode
+      next.statusText = mode === 'fork'
+        ? 'Forked provider session'
+        : 'Continued provider session'
+      addActivity(
+        'status',
+        next.statusText,
+        providerSessionId,
+      )
+      break
+    }
     case 'agent.started':
       next.statusText = 'Agent started'
       addActivity('status', 'Agent started', typeof event.payload.provider === 'string' ? event.payload.provider : undefined)

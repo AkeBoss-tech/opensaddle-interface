@@ -5,12 +5,13 @@ import type { SessionEvent } from './contracts'
  * whichever transport wins the race cannot cause earlier durable events to be
  * discarded.
  */
-export function createOrderedEventEmitter(onEvent: (event: SessionEvent) => void) {
+export function createOrderedEventEmitter(
+  onEvent: (event: SessionEvent) => void,
+  firstSequence = 0,
+) {
   const pending = new Map<number, SessionEvent>()
   const seenIds = new Set<string>()
-  // The authoritative OpenSaddle run store numbers durable events from 1.
-  // Mock/runtime-local streams do not pass through this reconciler.
-  let nextSequence = 1
+  let nextSequence = firstSequence
 
   return (event: SessionEvent) => {
     if (seenIds.has(event.event_id) || event.sequence < nextSequence) return

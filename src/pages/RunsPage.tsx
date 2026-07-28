@@ -132,6 +132,7 @@ export function RunsPage() {
             || event.type === 'command.completed'
             || event.type === 'tool.requested'
             || event.type === 'tool.completed'
+            || event.type === 'session.continued'
             || event.type === 'warning'
             || event.type === 'verification.completed'
             || event.type === 'usage.updated')
@@ -162,8 +163,13 @@ export function RunsPage() {
                     const command = typeof payload.command === 'string' ? payload.command : undefined
                     const message = typeof payload.message === 'string' ? payload.message : undefined
                     const checks = Array.isArray(payload.checks) ? payload.checks.length : undefined
+                    const providerSessionId = typeof payload.provider_session_id === 'string'
+                      ? payload.provider_session_id
+                      : undefined
                     const label = event.type === 'warning'
                       ? 'Warning'
+                      : event.type === 'session.continued'
+                        ? 'Continued provider session'
                       : event.type === 'verification.completed'
                         ? 'Verification completed'
                         : event.type === 'usage.updated'
@@ -174,7 +180,7 @@ export function RunsPage() {
                     return (
                       <div className="local-run-activity-row" key={event.event_id}>
                         <Icon name={event.type === 'warning' ? 'alert' : event.type.startsWith('command.') ? 'terminal' : 'activity'} className="icon sm" />
-                        <span><strong>{label}</strong><small>{message ?? (checks !== undefined ? `${checks} check${checks === 1 ? '' : 's'}` : event.type.replaceAll('.', ' '))}</small></span>
+                        <span><strong>{label}</strong><small>{message ?? providerSessionId ?? (checks !== undefined ? `${checks} check${checks === 1 ? '' : 's'}` : event.type.replaceAll('.', ' '))}</small></span>
                       </div>
                     )
                   })}
