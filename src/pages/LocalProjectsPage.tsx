@@ -189,13 +189,14 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
   const local = project?.local
   const manifest = project ? localProjectManifests[project.id] : undefined
   const agents = project ? data.agents.filter((agent) => agent.projectId === project.id) : []
+  const managedArchivesSupported = services?.localProjects?.supportsManagedArchives !== false
 
   useEffect(() => {
     void window.opensaddle?.getRuntimeInfo().then((info) => setClis(info.clis)).catch(() => setClis([]))
   }, [])
 
   useEffect(() => {
-    if (!project?.id || !services?.localProjects) {
+    if (!project?.id || !services?.localProjects || !managedArchivesSupported) {
       setManagedArchives([])
       return
     }
@@ -204,7 +205,7 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
       .then((archives) => { if (active) setManagedArchives(archives) })
       .catch(() => { if (active) setManagedArchives([]) })
     return () => { active = false }
-  }, [project?.id, services?.localProjects])
+  }, [managedArchivesSupported, project?.id, services?.localProjects])
 
   useEffect(() => {
     if (!selectedId && projects[0]) setSelectedId(projects[0].id)
@@ -330,6 +331,7 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
         description: inspection.description,
         local: importedLocal,
       })
+      await services?.localProjects?.registerProject?.(id, inspection.rootPath)
       await Promise.all(['read', 'write', 'execute', 'administer'].map((action) => upsertPermissionGrant({
         principalKind: 'user',
         principalId: data.currentUserId,
@@ -386,7 +388,7 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
           serverManifest,
           skills.map((skill) => skill.id),
         )
-        await refreshManagedArchives(id)
+        if (managedArchivesSupported) await refreshManagedArchives(id)
       }
       setSelectedId(id)
       setSearchParams({ project: id })
@@ -806,7 +808,7 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
   }
 
   const refreshManagedArchives = async (projectId = project?.id) => {
-    if (!projectId || !services?.localProjects) return
+    if (!projectId || !services?.localProjects || !managedArchivesSupported) return
     const archives = await services.localProjects.listManagedArchives(projectId)
     setManagedArchives(archives)
   }
@@ -1046,12 +1048,12 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
                       </button>
                       <div className="local-card-actions">
                         <button onClick={() => editAgent(agent)}>Edit</button>
-                        {agent.definitionPath?.startsWith('.opensaddle/agents/')
+                        {managedArchivesSupported && agent.definitionPath?.startsWith('.opensaddle/agents/')
                           ? <button className="danger" onClick={() => void archiveAgent(agent)}>Archive</button>
-                          : <button
+                          : !agent.definitionPath?.startsWith('.opensaddle/agents/') ? <button
                             title="Open the editor, then save to create an OpenSaddle-managed project copy"
                             onClick={() => editAgent(agent)}
-                          >{agent.definitionPath ? 'Save managed copy' : 'Save to project'}</button>}
+                          >{agent.definitionPath ? 'Save managed copy' : 'Save to project'}</button> : null}
                       </div>
                     </div>
                   ))}
@@ -1095,13 +1097,13 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
                     <div key={skill.id}><Icon name="plugin" /><span><strong>{skill.name}</strong><small>{skill.description} · {skill.path}</small></span>
                       <button className={`context-chip ${skill.enabled ? 'active' : ''}`} onClick={() => patchLocal({ skills: project.local!.skills.map((item) => item.id === skill.id ? { ...item, enabled: !item.enabled } : item) })}>{skill.enabled ? 'Enabled' : 'Disabled'}</button>
                       <button className="local-row-action" onClick={() => void editSkill(skill)}>Edit</button>
-                      {skill.path.startsWith('.opensaddle/skills/')
+                      {managedArchivesSupported && skill.path.startsWith('.opensaddle/skills/')
                         ? <button className="local-row-action danger" onClick={() => void archiveSkill(skill)}>Archive</button>
-                        : <button
+                        : !skill.path.startsWith('.opensaddle/skills/') ? <button
                           className="local-row-action"
                           title="Open the editor, then save to create an OpenSaddle-managed project copy"
                           onClick={() => void editSkill(skill)}
-                        >Save managed copy</button>}
+                        >Save managed copy</button> : null}
                     </div>
                   ))}
                   {!project.local.skills.length && <p>No `SKILL.md` files were detected under a skills or agents directory.</p>}

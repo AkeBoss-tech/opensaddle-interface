@@ -290,6 +290,19 @@
       position:absolute; left:0; right:0; bottom:0; pointer-events:none; padding:30px 18px 14px;
       background:linear-gradient(to bottom,transparent 0%,rgba(17,18,16,.89) 28%,var(--bg) 52%);
     }
+    .queued-followups { pointer-events:auto; max-width:720px; max-height:176px; overflow:auto; margin:0 auto 7px; border:1px solid var(--border); border-radius:12px; background:color-mix(in srgb,var(--surface) 96%,transparent); box-shadow:0 10px 32px rgba(0,0,0,.2); }
+    .queued-followups-head { min-height:29px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 10px; border-bottom:1px solid var(--border); color:var(--dim); font-size:9px; font-weight:650; letter-spacing:.05em; text-transform:uppercase; }
+    .queued-followups-head > span:first-child { display:flex; align-items:center; gap:6px; }
+    .queued-followup { min-height:39px; display:flex; align-items:center; gap:8px; padding:6px 8px; }
+    .queued-followup + .queued-followup { border-top:1px solid var(--border); }
+    .queued-followup-position { width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center; border:1px solid var(--border-strong); border-radius:6px; color:var(--muted); font-size:9px; }
+    .queued-followup-text { min-width:0; flex:1; color:var(--text); font-size:10px; line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .queued-followup textarea { min-width:0; flex:1; resize:vertical; border:1px solid var(--border-strong); border-radius:7px; background:var(--surface-2); color:var(--text); padding:6px 7px; font:inherit; font-size:10px; line-height:1.35; outline:0; }
+    .queued-followup textarea:focus { border-color:var(--accent); outline:2px solid color-mix(in srgb,var(--accent) 22%,transparent); }
+    .queued-followup-actions { display:flex; align-items:center; gap:3px; }
+    .queued-followup-actions button { border:0; border-radius:6px; background:transparent; color:var(--muted); padding:4px 6px; font-size:9px; cursor:pointer; }
+    .queued-followup-actions button:hover { background:var(--card-hover); color:var(--text); }
+    .queued-followup-actions button:disabled { opacity:.45; cursor:default; }
     .composer {
       pointer-events:auto; max-width:720px; margin:0 auto; border:1px solid #42433d; background:#292a27; border-radius:19px;
       box-shadow:0 16px 45px rgba(0,0,0,.28); overflow:visible; position:relative;

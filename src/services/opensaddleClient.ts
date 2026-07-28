@@ -181,9 +181,9 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         run_id: string
         session_id: string
         mode?: string
-        route?: RouteEstimate
+        route?: ApiRouteEstimate
       }
-      return { runId: data.run_id, sessionId: data.session_id, mode: data.mode, route: data.route }
+      return { runId: data.run_id, sessionId: data.session_id, mode: data.mode, route: routeFromApi(data.route) }
     } catch (error) {
       if (this.allowFallback && error instanceof TypeError) return this.fallback.startRun(input)
       throw error
@@ -203,13 +203,13 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       parent_run_id?: string
       queued_after_run_id?: string
       status: RuntimeRunSummary['status']
-      route: RouteEstimate
+      route: ApiRouteEstimate
       provider_session_id?: string
       provider_session_mode?: 'resume' | 'fork'
       provider_turn_id?: string
       execution_mode?: RuntimeRunSummary['executionMode']
-      created_at: number
-      updated_at: number
+      created_at: number | string
+      updated_at: number | string
       error?: string
       last_event_type?: RuntimeRunSummary['lastEventType']
     }>
@@ -222,13 +222,19 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       parentRunId: run.parent_run_id,
       queuedAfterRunId: run.queued_after_run_id,
       status: run.status,
-      route: run.route,
+      route: routeFromApi(run.route) ?? {
+        modelKey: 'sonnet',
+        harnessKey: 'chat',
+        runtimeKey: 'local',
+        reasons: ['Recovered from the local OpenSaddle runtime'],
+        cost: '$0.00',
+      },
       providerSessionId: run.provider_session_id,
       providerSessionMode: run.provider_session_mode,
       providerTurnId: run.provider_turn_id,
       executionMode: run.execution_mode,
-      createdAt: run.created_at,
-      updatedAt: run.updated_at,
+      createdAt: timestampFromApi(run.created_at),
+      updatedAt: timestampFromApi(run.updated_at),
       error: run.error,
       lastEventType: run.last_event_type,
     }))
@@ -600,6 +606,16 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     }
   }
 
+  async updateQueue(runId: string, text: string): Promise<void> {
+    if (!(await this.healthy())) return this.fallback.updateQueue(runId, text)
+    const res = await fetch(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/queue`, {
+      method: 'PATCH',
+      headers: this.headers(true),
+      body: JSON.stringify({ text }),
+    })
+    if (!res.ok) throw await this.responseError(res)
+  }
+
   async respondToRequest(runId: string, requestId: string, response: {
     approved?: boolean
     scope?: 'once' | 'session'
@@ -645,4 +661,48 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     })
     if (!res.ok) throw await this.responseError(res)
   }
+}
+type ApiRouteEstimate = Omit<Partial<RouteEstimate>, 'alternatives'> & {
+  model_key?: RouteEstimate['modelKey']
+  model_id?: string
+  native_model_default?: boolean
+  harness_key?: RouteEstimate['harnessKey']
+  provider_key?: RouteEstimate['providerKey']
+  runtime_key?: RouteEstimate['runtimeKey']
+  alternatives?: Array<{
+    modelKey?: RouteEstimate['modelKey']
+    model_key?: RouteEstimate['modelKey']
+    harnessKey?: RouteEstimate['harnessKey']
+    harness_key?: RouteEstimate['harnessKey']
+    score: number
+  }>
+}
+
+function routeFromApi(route: ApiRouteEstimate | undefined): RouteEstimate | undefined {
+  if (!route) return undefined
+  const modelKey = route.modelKey ?? route.model_key
+  const harnessKey = route.harnessKey ?? route.harness_key
+  const runtimeKey = route.runtimeKey ?? route.runtime_key
+  if (!modelKey || !harnessKey || !runtimeKey) return undefined
+  return {
+    modelKey,
+    modelId: route.modelId ?? route.model_id,
+    nativeModelDefault: route.nativeModelDefault ?? route.native_model_default,
+    harnessKey,
+    providerKey: route.providerKey ?? route.provider_key,
+    runtimeKey,
+    reasons: route.reasons ?? [],
+    cost: route.cost ?? '$0.00',
+    alternatives: route.alternatives?.map((alternative) => ({
+      modelKey: alternative.modelKey ?? alternative.model_key ?? modelKey,
+      harnessKey: alternative.harnessKey ?? alternative.harness_key ?? harnessKey,
+      score: alternative.score,
+    })),
+  }
+}
+
+function timestampFromApi(value: number | string): number {
+  if (typeof value === 'number') return value
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : Date.now()
 }

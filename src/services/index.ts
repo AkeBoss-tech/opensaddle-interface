@@ -7,6 +7,8 @@ import { LocalPermissionClient } from './permissions'
 import { RemotePermissionClient } from './remotePermissions'
 import { RemoteWorkspaceClient } from './remoteWorkspace'
 import { RemoteThreadClient } from './remoteThreads'
+import { AuthoritativeThreadClient } from './authoritativeThreads'
+import { AuthoritativeLocalProjectClient } from './authoritativeLocalProjects'
 import { RemoteLocalProjectClient } from './remoteLocalProjects'
 import { WorkerSandboxClient } from './sandbox'
 import { MockOAuthToolClient } from './oauthTools'
@@ -73,6 +75,7 @@ export function initServices(opts: {
       let modelProvider: string | undefined
       let configuredModels: string[] = []
       let storage: string | undefined
+      let backendCapabilities = new Set<string>()
       if (connection.mode === 'remote' && mode !== 'mock') {
         try {
           const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/health`, {
@@ -89,28 +92,34 @@ export function initServices(opts: {
               model_provider?: string
               configured_models?: string[]
               storage?: { engine?: string }
+              capabilities?: string[]
             }
             backendMode = health.mode
             modelProvider = health.model_provider
             configuredModels = health.configured_models ?? []
             storage = health.storage?.engine
+            backendCapabilities = new Set(health.capabilities ?? [])
           }
         } catch {
           backendAvailable = false
         }
       }
       let permissions: PermissionClient
-      if (backendAvailable) {
+      if (backendAvailable && (backendCapabilities.size === 0 || backendCapabilities.has('permissions'))) {
         const remote = new RemotePermissionClient(baseUrl, getUserId, token)
-        let serverGrants = await remote.list()
-        // A fresh loopback daemon can be initialized from the local demo's
-        // grants. Company mode never trusts browser state as bootstrap policy.
-        if (backendMode === 'local' && serverGrants.length <= 1 && opts.getGrants().length > 0) {
-          for (const grant of opts.getGrants()) await remote.upsert(grant)
-          serverGrants = await remote.list()
+        try {
+          let serverGrants = await remote.list()
+          // A fresh loopback daemon can be initialized from the local demo's
+          // grants. Company mode never trusts browser state as bootstrap policy.
+          if (backendMode === 'local' && serverGrants.length <= 1 && opts.getGrants().length > 0) {
+            for (const grant of opts.getGrants()) await remote.upsert(grant)
+            serverGrants = await remote.list()
+          }
+          opts.setGrants(serverGrants)
+          permissions = remote
+        } catch {
+          permissions = new LocalPermissionClient(opts.getGrants, opts.setGrants)
         }
-        opts.setGrants(serverGrants)
-        permissions = remote
       } else {
         permissions = new LocalPermissionClient(opts.getGrants, opts.setGrants)
       }
@@ -124,14 +133,23 @@ export function initServices(opts: {
             allowFallback,
           })
           : new MockRuntimeClient()
-      const workspace = backendAvailable
+      const workspace = backendAvailable && (backendCapabilities.size === 0 || backendCapabilities.has('workspace'))
         ? new RemoteWorkspaceClient(baseUrl, getUserId, token)
         : undefined
       const threads = backendAvailable
-        ? new RemoteThreadClient(baseUrl, getUserId, token)
+        ? backendCapabilities.has('threads')
+          ? new AuthoritativeThreadClient(baseUrl, getUserId, token)
+          : backendCapabilities.size === 0
+            ? new RemoteThreadClient(baseUrl, getUserId, token)
+            : undefined
         : undefined
-      const localProjects = backendAvailable && backendMode === 'local'
-        ? new RemoteLocalProjectClient(baseUrl, getUserId, token)
+      const localProjects = backendAvailable
+        && backendMode === 'local'
+        ? backendCapabilities.has('projects')
+          ? new AuthoritativeLocalProjectClient(baseUrl, getUserId, token)
+          : backendCapabilities.size === 0 || backendCapabilities.has('local-projects')
+            ? new RemoteLocalProjectClient(baseUrl, getUserId, token)
+            : undefined
         : undefined
       return {
         mode,

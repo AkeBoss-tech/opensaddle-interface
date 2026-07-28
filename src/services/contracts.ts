@@ -8,6 +8,7 @@ export type RunEventType =
   | 'agent.input.requested'
   | 'user.input.submitted'
   | 'agent.queued'
+  | 'agent.queue.updated'
   | 'agent.dequeued'
   | 'tool.requested'
   | 'tool.completed'
@@ -155,6 +156,7 @@ export interface RuntimeClient {
     queuedAfterRunId?: string
     route?: RouteEstimate
   }>
+  updateQueue(runId: string, text: string): Promise<void>
   respondToRequest(runId: string, requestId: string, response: {
     approved?: boolean
     scope?: 'once' | 'session'
@@ -390,6 +392,8 @@ export interface ManagedArtifactArchive {
 }
 
 export interface LocalProjectClient {
+  readonly supportsManagedArchives?: boolean
+  registerProject?(projectId: string, root: string): Promise<{ projectId: string; root: string }>
   harnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
   refreshHarnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
   localSessions(provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]>

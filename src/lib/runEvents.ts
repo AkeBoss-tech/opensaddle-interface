@@ -750,7 +750,13 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       next.statusText = 'Queued after current turn'
       addActivity('status', 'Follow-up queued')
       break
+    case 'agent.queue.updated':
+      if (typeof event.payload.text === 'string') next.queuedTask = event.payload.text
+      next.statusText = 'Queued after current turn'
+      addActivity('status', 'Queued follow-up edited')
+      break
     case 'agent.dequeued':
+      next.queuedTask = undefined
       next.statusText = 'Starting queued follow-up'
       addActivity('status', 'Queued follow-up started')
       break

@@ -3,7 +3,7 @@ import { useStore } from '../../data/store'
 import { applyRunEvent } from '../../lib/runEvents'
 import type { RuntimeRunSummary, SessionEvent } from '../../services/contracts'
 import type { AgentRunBlock } from '../../types'
-import { runtimeRunToAgentBlock, selectOrphanedRuntimeRuns } from './recovery'
+import { isRecoverableRuntimeRun, runtimeRunToAgentBlock, selectOrphanedRuntimeRuns } from './recovery'
 import { appendTranscript, eventText } from './transcript'
 
 export interface ManagedRun {
@@ -40,6 +40,7 @@ interface RunRegistryApi {
     queuedAfterRunId?: string
     route?: import('../../services/contracts').RouteEstimate
   }>
+  updateQueue: (runId: string, text: string) => Promise<void>
   respond: (runId: string, requestId: string, response: {
     approved?: boolean
     scope?: 'once' | 'session'
@@ -70,6 +71,7 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   const dataRef = useRef(data)
   const reconciledRuntime = useRef<object | null>(null)
   const recoveringRuns = useRef(new Set<string>())
+  const validatedStoredRuns = useRef(new Set<string>())
   dataRef.current = data
 
   const release = useCallback((runId: string) => {
@@ -145,19 +147,78 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   // Reattach durable runs after refresh or navigation. The runtime reconciles
   // the complete event snapshot before continuing the live stream.
   useEffect(() => {
-    if (!services?.runtime) return
-    for (const message of data.messages) {
-      if (!message.run || message.run.done || message.run.id === 'pending') continue
-      track({
-        runId: message.run.id,
-        threadId: message.chatId,
-        messageId: message.id,
-        initialRun: message.run,
-        initialText: message.text,
-        parentRunId: message.run.parentRunId,
-      })
+    const runtime = services?.runtime
+    if (!runtime) return
+    const candidates = data.messages.filter((message) =>
+      message.run
+      && !message.run.done
+      && message.run.id !== 'pending'
+      && !subscriptions.current.has(message.run.id)
+      && !validatedStoredRuns.current.has(message.run.id))
+    if (!candidates.length) return
+
+    if (!runtime.listRuns) {
+      for (const message of candidates) {
+        validatedStoredRuns.current.add(message.run!.id)
+        track({
+          runId: message.run!.id,
+          threadId: message.chatId,
+          messageId: message.id,
+          initialRun: message.run!,
+          initialText: message.text,
+          parentRunId: message.run!.parentRunId,
+        })
+      }
+      return
     }
-  }, [data.messages, services, track])
+
+    let cancelled = false
+    void runtime.listRuns().then((durableRuns) => {
+      if (cancelled) return
+      const durableById = new Map(durableRuns.map((run) => [run.runId, run]))
+      for (const message of candidates) {
+        const storedRun = message.run!
+        validatedStoredRuns.current.add(storedRun.id)
+        const durable = durableById.get(storedRun.id)
+        if (!durable) {
+          updateMessage(message.id, {
+            run: {
+              ...storedRun,
+              statusText: 'Run record unavailable',
+              done: true,
+              failure: {
+                kind: 'interrupted',
+                title: 'This local run is no longer available',
+                message: 'The cached conversation referenced a run that is not present in the local OpenSaddle service.',
+                recovery: 'Start a new run from this message if you want to continue.',
+                retryable: false,
+              },
+            },
+          })
+          continue
+        }
+        const initialRun = runtimeRunToAgentBlock(durable)
+        if (!isRecoverableRuntimeRun(durable)) {
+          updateMessage(message.id, { run: initialRun })
+          continue
+        }
+        track({
+          runId: durable.runId,
+          threadId: message.chatId,
+          messageId: message.id,
+          initialRun,
+          initialText: message.text,
+          parentRunId: durable.parentRunId,
+        })
+      }
+    }).catch(() => {
+      // Keep cached state intact when the local service is temporarily
+      // unavailable. A later service instance will trigger reconciliation.
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [data.messages, services, track, updateMessage])
 
   // A server-owned run can outlive the renderer before its optimistic
   // assistant message reaches thread storage. Once durable thread hydration is
@@ -326,6 +387,12 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
     return await services.runtime.queue(runId, text)
   }, [services])
 
+  const updateQueue = useCallback(async (runId: string, text: string) => {
+    if (!services?.runtime) throw new Error('OpenSaddle runtime is unavailable')
+    await services.runtime.updateQueue(runId, text)
+    updateManagedRun(runId, (run) => ({ ...run, queuedTask: text }))
+  }, [services, updateManagedRun])
+
   const respond = useCallback(async (runId: string, requestId: string, response: {
     approved?: boolean
     scope?: 'once' | 'session'
@@ -349,8 +416,8 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<RunRegistryApi>(
-    () => ({ runs, track, stop, pause, resume, retry, steer, queue, respond, getForThread }),
-    [getForThread, pause, queue, respond, resume, retry, runs, steer, stop, track],
+    () => ({ runs, track, stop, pause, resume, retry, steer, queue, updateQueue, respond, getForThread }),
+    [getForThread, pause, queue, respond, resume, retry, runs, steer, stop, track, updateQueue],
   )
   return <RunRegistryContext.Provider value={value}>{children}</RunRegistryContext.Provider>
 }

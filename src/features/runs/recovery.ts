@@ -48,7 +48,7 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
   const done = run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled'
   const statusText = run.status === 'paused'
     ? 'Paused · ready to resume'
-    : run.status === 'waiting'
+    : run.status === 'waiting' || (run.status === 'queued' && !!run.parentRunId)
       ? 'Queued after current turn'
       : run.status === 'queued' || run.status === 'provisioning'
         ? 'Starting'
@@ -80,6 +80,7 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
     harness: providerLabel,
     runtime: RUNTIME_LABELS[run.route.runtimeKey] ?? run.route.runtimeKey,
     statusText,
+    queuedTask: run.status === 'waiting' || run.status === 'queued' ? run.task : undefined,
     done,
     tools: [],
     plan: [],

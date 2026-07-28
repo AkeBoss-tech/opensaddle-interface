@@ -123,6 +123,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const durableHydratedServiceRef = useRef<ServiceBundle['threads'] | null>(null)
   const threadCreatePromisesRef = useRef(new Map<string, Promise<unknown>>())
   const messageCreatePromisesRef = useRef(new Map<string, Promise<unknown>>())
+  const threadMessageTailRef = useRef(new Map<string, Promise<unknown>>())
   const messageSyncTimersRef = useRef(new Map<string, number>())
   const messageSyncSnapshotsRef = useRef(new Map<string, Message>())
   const loadNoticeShownRef = useRef(false)
@@ -311,7 +312,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         threadCursor = page.nextCursor
       } while (threadCursor && durableThreads.length < 2_000)
 
-      const durableMessages = (
+      let durableMessages = (
         await Promise.all(durableThreads.map(async (thread) => {
           const items: DurableThreadMessage[] = []
           let cursor: string | undefined
@@ -323,6 +324,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return items
         }))
       ).flat()
+      const durableThreadIds = new Set(durableThreads.map((thread) => thread.id))
+      const localOnlyChats = dataRef.current.chats.filter((chat) => !durableThreadIds.has(chat.id))
+      for (const chat of localOnlyChats) {
+        const created = await services.threads!.create({
+          id: chat.id,
+          projectId: chat.projectId,
+          title: chat.title,
+          visibility: chat.visibility,
+          sharedWith: chat.sharedWith,
+          agentId: chat.agentId,
+          continuation: chat.continuation,
+          runConfig: chat.runConfig,
+          pinned: dataRef.current.recentChatIds.includes(chat.id),
+        })
+        durableThreads.push(created)
+        const localMessages = dataRef.current.messages
+          .filter((message) => message.chatId === chat.id)
+          .sort((left, right) => left.createdAt - right.createdAt)
+        const uploaded: DurableThreadMessage[] = []
+        for (const message of localMessages) {
+          uploaded.push(await services.threads!.appendMessage(chat.id, {
+            id: message.id,
+            role: message.role,
+            text: message.text,
+            payload: threadPayload(message),
+          }))
+        }
+        durableMessages = [...durableMessages, ...uploaded]
+      }
       if (cancelled) return
       setData((current) => {
         const next = structuredClone(current)
@@ -367,7 +397,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const threads = services?.threads
     const threadId = data.activeChatId
-    if (!threads || !threadId) return
+    if (!threads || !threadId || !threadHistoryHydrated) return
     let cancelled = false
 
     const refresh = async () => {
@@ -417,7 +447,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [data.activeChatId, services, toast])
+  }, [data.activeChatId, services, threadHistoryHydrated, toast])
 
   // Keep operational surfaces (Work, sidebar, search) current even when a
   // different task is open. Thread metadata is cheap to poll; message history
@@ -840,7 +870,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return d
       })
       if (services?.threads) {
-        const pending = (async () => {
+        const prior = threadMessageTailRef.current.get(full.chatId) ?? Promise.resolve()
+        const pending = prior.catch(() => undefined).then(async () => {
           await threadCreatePromisesRef.current.get(full.chatId)
           return await services.threads!.appendMessage(full.chatId, {
             id: full.id,
@@ -848,8 +879,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             text: full.text,
             payload: threadPayload(full),
           })
-        })().catch(reportThreadSyncError).finally(() => messageCreatePromisesRef.current.delete(full.id))
+        }).catch(reportThreadSyncError).finally(() => {
+          messageCreatePromisesRef.current.delete(full.id)
+          if (threadMessageTailRef.current.get(full.chatId) === pending) {
+            threadMessageTailRef.current.delete(full.chatId)
+          }
+        })
         messageCreatePromisesRef.current.set(full.id, pending)
+        threadMessageTailRef.current.set(full.chatId, pending)
       }
       window.setTimeout(() => {
         if (

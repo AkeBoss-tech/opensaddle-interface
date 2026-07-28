@@ -162,6 +162,18 @@ export class MockRuntimeClient implements RuntimeClient {
     return { runId: queuedRunId, sessionId, parentRunId: runId, queuedAfterRunId: runId }
   }
 
+  async updateQueue(runId: string, text: string): Promise<void> {
+    this.emit(runId, {
+      event_id: uid('evt'),
+      session_id: 'local',
+      run_id: runId,
+      sequence: 9003,
+      timestamp: new Date().toISOString(),
+      type: 'agent.queue.updated',
+      payload: { text },
+    })
+  }
+
   async respondToRequest(runId: string, requestId: string, response: {
     approved?: boolean
     scope?: 'once' | 'session'

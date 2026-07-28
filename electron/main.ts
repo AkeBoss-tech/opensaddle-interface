@@ -2,20 +2,21 @@ import { app, BrowserWindow, dialog, ipcMain, shell, WebContentsView } from 'ele
 import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
-let controlPlaneProc: ChildProcess | null = null
+let opensaddleProc: ChildProcess | null = null
 let krailProc: ChildProcess | null = null
 let embeddedBrowser: WebContentsView | null = null
 let sidecarsShuttingDown = false
-let controlPlaneRestartTimer: NodeJS.Timeout | null = null
-let controlPlaneHealthTimer: NodeJS.Timeout | null = null
-let controlPlaneEnsurePromise: Promise<boolean> | null = null
+let opensaddleRestartTimer: NodeJS.Timeout | null = null
+let opensaddleHealthTimer: NodeJS.Timeout | null = null
+let opensaddleEnsurePromise: Promise<boolean> | null = null
+let opensaddleLaunchError: string | null = null
 
 const OPENSADDLE_URL = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
 const KRAIL_URL = process.env.KRAIL_URL ?? 'http://127.0.0.1:8787'
@@ -172,6 +173,15 @@ async function which(cmd: string): Promise<boolean> {
   })
 }
 
+async function commandPath(cmd: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const child = spawn(process.platform === 'win32' ? 'where' : 'which', [cmd])
+    let output = ''
+    child.stdout?.on('data', (chunk) => { output += String(chunk) })
+    child.on('close', (code) => resolve(code === 0 ? output.trim().split(/\r?\n/)[0] || null : null))
+  })
+}
+
 async function discoverClis(): Promise<string[]> {
   const found: string[] = []
   for (const cmd of CLI_CANDIDATES) {
@@ -180,85 +190,144 @@ async function discoverClis(): Promise<string[]> {
   return found
 }
 
-async function controlPlaneHealthy(): Promise<boolean> {
+async function opensaddleHealthy(): Promise<boolean> {
   try {
     const response = await fetch(new URL('/api/health', OPENSADDLE_URL), {
       signal: AbortSignal.timeout(800),
     })
     if (!response.ok) return false
-    const payload = await response.json() as { mode?: string }
-    return payload.mode === 'local'
+    const payload = await response.json() as { service?: string; mode?: string }
+    return payload.service === 'opensaddle' && payload.mode === 'local'
   } catch {
     return false
   }
 }
 
-async function waitForControlPlane(timeoutMs = 12_000): Promise<boolean> {
+async function waitForOpenSaddle(timeoutMs = 20_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (await controlPlaneHealthy()) return true
+    if (await opensaddleHealthy()) return true
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
   return false
 }
 
-function launchControlPlane(): void {
-  if (controlPlaneProc || sidecarsShuttingDown) return
-  const env = {
-    ...process.env,
-    OPENSADDLE_MODE: 'local',
-    OPENSADDLE_HOST: '127.0.0.1',
-    OPENSADDLE_PORT: '8765',
-    OPENSADDLE_RUNTIME_PROVIDER: process.env.OPENSADDLE_RUNTIME_PROVIDER ?? 'local',
-    OPENSADDLE_DATA_DIR: process.env.OPENSADDLE_DATA_DIR ?? path.join(app.getPath('userData'), 'control-plane'),
-    OPENSADDLE_ALLOWED_REPO_ROOTS: process.env.OPENSADDLE_ALLOWED_REPO_ROOTS ?? app.getPath('home'),
+interface OpenSaddleLaunch {
+  command: string
+  args: string[]
+  cwd: string
+  source: string
+}
+
+async function resolveOpenSaddleLaunch(): Promise<OpenSaddleLaunch | null> {
+  const stateDir = process.env.OPENSADDLE_DATA_DIR
+    ?? path.join(app.getPath('userData'), 'opensaddle-server')
+  mkdirSync(stateDir, { recursive: true })
+  const serverArgs = [
+    'serve-api',
+    '--host', '127.0.0.1',
+    '--port', new URL(OPENSADDLE_URL).port || '8765',
+    '--state-dir', stateDir,
+  ]
+  const configured = process.env.OPENSADDLE_EXECUTABLE
+  if (configured && existsSync(configured)) {
+    return { command: configured, args: serverArgs, cwd: stateDir, source: 'configured executable' }
   }
-  if (isDev) {
-    const controlPlaneEntry = path.resolve(__dirname, '../../packages/control-plane/src/server.ts')
-    if (!existsSync(controlPlaneEntry)) return
-    controlPlaneProc = spawn('npx', ['tsx', controlPlaneEntry], {
-      cwd: path.resolve(__dirname, '../..'),
-      stdio: 'ignore',
-      env,
-    })
-  } else {
-    const controlPlaneEntry = path.join(process.resourcesPath, 'control-plane/dist/server.js')
-    if (!existsSync(controlPlaneEntry)) return
-    controlPlaneProc = spawn(process.execPath, [controlPlaneEntry], {
-      cwd: app.getPath('userData'),
-      stdio: 'ignore',
-      env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
-    })
+  const bundled = process.platform === 'win32'
+    ? path.join(process.resourcesPath, 'opensaddle-backend', 'opensaddle.exe')
+    : path.join(process.resourcesPath, 'opensaddle-backend', 'opensaddle')
+  if (!isDev && existsSync(bundled)) {
+    return { command: bundled, args: serverArgs, cwd: stateDir, source: 'bundled backend' }
   }
-  controlPlaneProc.once('exit', () => {
-    controlPlaneProc = null
+  const backendRoots = [
+    process.env.OPENSADDLE_BACKEND_DIR,
+    path.resolve(__dirname, '../../../opensaddle'),
+    path.join(app.getPath('documents'), 'CodingProjects', 'opensaddle'),
+  ].filter((candidate): candidate is string => !!candidate)
+  for (const backendRoot of backendRoots) {
+    const virtualEnvCli = process.platform === 'win32'
+      ? path.join(backendRoot, '.venv', 'Scripts', 'opensaddle.exe')
+      : path.join(backendRoot, '.venv', 'bin', 'opensaddle')
+    if (existsSync(virtualEnvCli)) {
+      return { command: virtualEnvCli, args: serverArgs, cwd: stateDir, source: backendRoot }
+    }
+  }
+  const installed = await commandPath('opensaddle')
+  if (installed) {
+    return { command: installed, args: serverArgs, cwd: stateDir, source: 'PATH' }
+  }
+  const uvCandidates = [
+    await commandPath('uv'),
+    path.join(app.getPath('home'), '.local', 'bin', 'uv'),
+    path.join(app.getPath('home'), '.cargo', 'bin', 'uv'),
+    '/opt/homebrew/bin/uv',
+    '/usr/local/bin/uv',
+  ].filter((candidate, index, all): candidate is string =>
+    !!candidate && all.indexOf(candidate) === index && existsSync(candidate))
+  const backendRoot = backendRoots.find((candidate) => existsSync(path.join(candidate, 'pyproject.toml')))
+  if (backendRoot && uvCandidates[0]) {
+    return {
+      command: uvCandidates[0],
+      args: ['run', '--project', backendRoot, 'opensaddle', ...serverArgs],
+      cwd: stateDir,
+      source: backendRoot,
+    }
+  }
+  return null
+}
+
+async function launchOpenSaddle(): Promise<void> {
+  if (opensaddleProc || sidecarsShuttingDown) return
+  const launch = await resolveOpenSaddleLaunch()
+  if (!launch) {
+    opensaddleLaunchError = 'OpenSaddle backend was not found. Install the opensaddle CLI or set OPENSADDLE_EXECUTABLE.'
+    return
+  }
+  opensaddleLaunchError = null
+  opensaddleProc = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
+    stdio: 'ignore',
+    env: { ...process.env, OPENSADDLE_DESKTOP: '1' },
+  })
+  opensaddleProc.once('error', (error) => {
+    opensaddleLaunchError = `Could not start ${launch.source}: ${error.message}`
+  })
+  opensaddleProc.once('exit', (code, signal) => {
+    opensaddleProc = null
+    if (code && code !== 0) {
+      opensaddleLaunchError = `OpenSaddle backend exited with code ${code}${signal ? ` (${signal})` : ''}.`
+    }
     if (sidecarsShuttingDown) return
-    controlPlaneRestartTimer = setTimeout(() => {
-      controlPlaneRestartTimer = null
-      void ensureControlPlane()
+    opensaddleRestartTimer = setTimeout(() => {
+      opensaddleRestartTimer = null
+      void ensureOpenSaddle()
     }, 1_500)
   })
 }
 
-async function ensureControlPlane(): Promise<boolean> {
-  if (controlPlaneEnsurePromise) return controlPlaneEnsurePromise
+async function ensureOpenSaddle(): Promise<boolean> {
+  if (opensaddleEnsurePromise) return opensaddleEnsurePromise
   const pending = (async () => {
-    if (await controlPlaneHealthy()) return true
-    launchControlPlane()
-    return waitForControlPlane()
+    if (await opensaddleHealthy()) return true
+    await launchOpenSaddle()
+    const healthy = await waitForOpenSaddle()
+    if (!healthy && !opensaddleLaunchError) {
+      opensaddleLaunchError = `OpenSaddle backend did not become ready at ${OPENSADDLE_URL}.`
+    }
+    return healthy
   })()
-  controlPlaneEnsurePromise = pending
+  opensaddleEnsurePromise = pending
   try {
     return await pending
   } finally {
-    if (controlPlaneEnsurePromise === pending) controlPlaneEnsurePromise = null
+    if (opensaddleEnsurePromise === pending) opensaddleEnsurePromise = null
   }
 }
 
 async function startSidecars(): Promise<void> {
-  await ensureControlPlane()
-  controlPlaneHealthTimer = setInterval(() => {
-    if (!sidecarsShuttingDown) void ensureControlPlane()
+  await ensureOpenSaddle()
+  opensaddleHealthTimer = setInterval(() => {
+    if (!sidecarsShuttingDown) void ensureOpenSaddle()
   }, 3_000)
   if (!isDev) return
   const krailEntry = path.resolve(__dirname, '../../packages/krail/src/server.ts')
@@ -273,12 +342,12 @@ async function startSidecars(): Promise<void> {
 
 function stopSidecars(): void {
   sidecarsShuttingDown = true
-  if (controlPlaneRestartTimer) clearTimeout(controlPlaneRestartTimer)
-  controlPlaneRestartTimer = null
-  if (controlPlaneHealthTimer) clearInterval(controlPlaneHealthTimer)
-  controlPlaneHealthTimer = null
-  controlPlaneProc?.kill()
-  controlPlaneProc = null
+  if (opensaddleRestartTimer) clearTimeout(opensaddleRestartTimer)
+  opensaddleRestartTimer = null
+  if (opensaddleHealthTimer) clearInterval(opensaddleHealthTimer)
+  opensaddleHealthTimer = null
+  opensaddleProc?.kill()
+  opensaddleProc = null
   krailProc?.kill()
   krailProc = null
 }
@@ -321,6 +390,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('runtime:info', async () => ({
     mode: 'desktop',
     opensaddleUrl: OPENSADDLE_URL,
+    opensaddleConnected: await opensaddleHealthy(),
+    opensaddleError: opensaddleLaunchError,
     krailUrl: KRAIL_URL,
     clis: await discoverClis(),
   }))
@@ -400,7 +471,7 @@ app.whenReady().then(async () => {
   })
 
   app.on('activate', async () => {
-    await ensureControlPlane()
+    await ensureOpenSaddle()
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })

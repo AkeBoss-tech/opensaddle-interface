@@ -285,6 +285,9 @@ export function ChatPage() {
 
   const [text, setText] = useState('')
   const [activeSendMode, setActiveSendMode] = useState<'steer' | 'queue'>('steer')
+  const [queueEditingRunId, setQueueEditingRunId] = useState<string | null>(null)
+  const [queueDraft, setQueueDraft] = useState('')
+  const [queueBusyRunId, setQueueBusyRunId] = useState<string | null>(null)
   const initialInspectorState = useRef(readThreadInspectorState(chat?.id))
   const [inspector, setInspector] = useState(initialInspectorState.current.open)
   const [itab, setItab] = useState<ThreadInspectorTab>(initialInspectorState.current.tab)
@@ -676,7 +679,7 @@ export function ChatPage() {
         } else {
           const queued = await runRegistry.queue(activeManagedRun.runId, prompt)
           setText('')
-          appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+          const queuedPromptMessage = appendMessage({ chatId: chat.id, role: 'user', text: prompt })
           const queuedRun: AgentRunBlock = {
             id: queued.runId,
             parentRunId: queued.parentRunId ?? activeManagedRun.runId,
@@ -687,6 +690,8 @@ export function ChatPage() {
             harness: activeManagedRun.run.harness,
             runtime: activeManagedRun.run.runtime,
             statusText: 'Queued after current turn',
+            queuedTask: prompt,
+            queuedPromptMessageId: queuedPromptMessage.id,
             done: false,
             tools: [],
             plan: [],
@@ -1541,6 +1546,88 @@ export function ChatPage() {
           />
 
           <div className="composer-wrap">
+            {!!queuedManagedRuns.length && (
+              <div className="queued-followups" aria-label="Queued follow-ups">
+                <div className="queued-followups-head">
+                  <span><Icon name="clock" className="icon xs" />Up next</span>
+                  <span>{queuedManagedRuns.length}</span>
+                </div>
+                {queuedManagedRuns.map((managed, index) => {
+                  const queuedPrompt = managed.run.queuedTask ?? 'Queued follow-up'
+                  const editing = queueEditingRunId === managed.runId
+                  const busy = queueBusyRunId === managed.runId
+                  return (
+                    <div className="queued-followup" key={managed.runId}>
+                      <span className="queued-followup-position">{index + 1}</span>
+                      {editing ? (
+                        <textarea
+                          aria-label={`Edit queued follow-up ${index + 1}`}
+                          value={queueDraft}
+                          onChange={(event) => setQueueDraft(event.target.value)}
+                          rows={2}
+                          maxLength={20_000}
+                        />
+                      ) : (
+                        <span className="queued-followup-text">{queuedPrompt}</span>
+                      )}
+                      <span className="queued-followup-actions">
+                        {editing ? (
+                          <>
+                            <button type="button" disabled={busy} onClick={() => setQueueEditingRunId(null)}>Cancel</button>
+                            <button
+                              type="button"
+                              disabled={busy || !queueDraft.trim()}
+                              onClick={() => {
+                                const revised = queueDraft.trim()
+                                if (!revised) return
+                                setQueueBusyRunId(managed.runId)
+                                void runRegistry.updateQueue(managed.runId, revised)
+                                  .then(() => {
+                                    if (managed.run.queuedPromptMessageId) {
+                                      updateMessage(managed.run.queuedPromptMessageId, { text: revised })
+                                    }
+                                    setQueueEditingRunId(null)
+                                    toast('Follow-up updated', 'The durable queue will use the revised prompt.')
+                                  })
+                                  .catch((error) => toast('Queue update failed', error instanceof Error ? error.message : String(error)))
+                                  .finally(() => setQueueBusyRunId(null))
+                              }}
+                            >
+                              {busy ? 'Saving…' : 'Save'}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQueueDraft(queuedPrompt)
+                                setQueueEditingRunId(managed.runId)
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                setQueueBusyRunId(managed.runId)
+                                void runRegistry.stop(managed.runId)
+                                  .then(() => toast('Follow-up removed', 'The queued turn will not run.'))
+                                  .catch((error) => toast('Could not remove follow-up', error instanceof Error ? error.message : String(error)))
+                                  .finally(() => setQueueBusyRunId(null))
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
             <div className="composer" id="composer">
               <div className="composer-context">
                 <span className="context-chip"><Icon name="folder" className="icon sm" />{project.name}</span>

@@ -211,6 +211,10 @@ export interface AgentRunBlock {
   harness: string
   runtime: string
   statusText: string
+  /** User-authored prompt for a durable follow-up that has not started yet. */
+  queuedTask?: string
+  /** Exact transcript message that owns the queued prompt. */
+  queuedPromptMessageId?: string
   /** Human-readable agent narration. This is kept alongside structured run
    * state so mock, restored, and remote runs all have a visible transcript. */
   output?: string

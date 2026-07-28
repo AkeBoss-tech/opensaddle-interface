@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json && cp preload.cjs dist-electron/preload.cjs",
     "dev": "npm run build && electron .",
     "start": "electron .",
-    "package:mac": "npm run build && npm run build --prefix ../packages/control-plane && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --publish never"
+    "package:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --publish never"
   },
   "devDependencies": {
     "electron": "^37.2.0",
@@ -35,24 +35,6 @@
       {
         "from": "assets/opensaddle-icon.png",
         "to": "opensaddle-icon.png"
-      },
-      {
-        "from": "../packages/control-plane/dist",
-        "to": "control-plane/dist",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../packages/control-plane/node_modules",
-        "to": "control-plane/node_modules",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../packages/control-plane/package.json",
-        "to": "control-plane/package.json"
       }
     ],
     "mac": {

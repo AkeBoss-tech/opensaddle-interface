@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('opensaddle', {
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:info') as Promise<{
     mode: string
     opensaddleUrl: string
+    opensaddleConnected: boolean
+    opensaddleError: string | null
     krailUrl: string
     clis: string[]
   }>,
