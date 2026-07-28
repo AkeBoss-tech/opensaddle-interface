@@ -3,6 +3,14 @@ import type { GitComparisonResult, GitStatusResult, RuntimeClient, RouteEstimate
 import type { CodingProvider, Harness, ModelKey, RunExecutionMode, RuntimeKind } from '../types'
 import { createOrderedEventEmitter } from './orderedEvents'
 
+export function shouldStopRunReconciliation(responseStatus: number, runStatus?: string): boolean {
+  return responseStatus === 404
+    || responseStatus === 410
+    || runStatus === 'completed'
+    || runStatus === 'failed'
+    || runStatus === 'cancelled'
+}
+
 /**
  * Talks to a local OpenSaddle daemon when available; falls back to mock simulation.
  */
@@ -428,13 +436,14 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
                 headers: this.headers(),
                 signal: controller.signal,
               })
+              if (shouldStopRunReconciliation(snapshot.status)) return
               if (snapshot.ok) {
                 const run = await snapshot.json() as {
                   status?: string
                   events?: SessionEvent[]
                 }
                 for (const event of run.events ?? []) emit(event)
-                if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') return
+                if (shouldStopRunReconciliation(snapshot.status, run.status)) return
               }
             } catch {
               if (controller.signal.aborted) return
@@ -483,6 +492,10 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         if (!controller.signal.aborted && receivedEvents === 0 && this.allowFallback && error instanceof TypeError) {
           fallbackStop = this.fallback.subscribe(runId, onEvent)
         }
+      } finally {
+        // The reconciliation loop is intentionally detached so it can race
+        // the SSE attach. Always stop it when that stream exits or rejects.
+        controller.abort()
       }
     })()
 

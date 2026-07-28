@@ -95,6 +95,7 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
       },
     }))
 
+    let closedBeforeAttach = false
     const unsubscribe = services.runtime.subscribe(input.runId, (event) => {
       const previous = runById.current.get(input.runId) ?? input.initialRun
       if (event.sequence <= (previous.lastSequence ?? -1)) return
@@ -133,10 +134,12 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
       // through it prevents final tool, usage, and closure evidence from being
       // dropped when a provider completes several events in one burst.
       if (event.type === 'session.closed') {
-        release(input.runId)
+        if (subscriptions.current.has(input.runId)) release(input.runId)
+        else closedBeforeAttach = true
       }
     })
-    subscriptions.current.set(input.runId, unsubscribe)
+    if (closedBeforeAttach) unsubscribe()
+    else subscriptions.current.set(input.runId, unsubscribe)
   }, [adoptChatContinuation, release, services, updateMessage])
 
   // Reattach durable runs after refresh or navigation. The runtime reconciles

@@ -7,6 +7,7 @@ import {
 } from '../../../src/features/runs/recovery.js'
 import { appendTranscript } from '../../../src/features/runs/transcript.js'
 import { createOrderedEventEmitter } from '../../../src/services/orderedEvents.js'
+import { shouldStopRunReconciliation } from '../../../src/services/opensaddleClient.js'
 import type { RuntimeRunSummary, SessionEvent } from '../../../src/services/contracts.js'
 import { applyRunEvent } from '../../../src/lib/runEvents.js'
 import { adoptNativeContinuation } from '../../../src/lib/nativeContinuation.js'
@@ -55,6 +56,16 @@ function runtimeRun(status: RuntimeRunSummary['status']): RuntimeRunSummary {
 }
 
 describe('durable client event handling', () => {
+  it('stops reconciling terminal and expired runs', () => {
+    assert.equal(shouldStopRunReconciliation(404), true)
+    assert.equal(shouldStopRunReconciliation(410), true)
+    assert.equal(shouldStopRunReconciliation(200, 'completed'), true)
+    assert.equal(shouldStopRunReconciliation(200, 'failed'), true)
+    assert.equal(shouldStopRunReconciliation(200, 'cancelled'), true)
+    assert.equal(shouldStopRunReconciliation(200, 'running'), false)
+    assert.equal(shouldStopRunReconciliation(503), false)
+  })
+
   it('keeps thread inspectors quiet by default and prioritizes actionable evidence', () => {
     assert.deepEqual(parseThreadInspectorState(undefined), {
       open: false,
