@@ -121,12 +121,14 @@ export function WorkPage() {
         const provider = run.route.providerKey && run.route.providerKey !== 'auto'
           ? run.route.providerKey
           : run.route.harnessKey
+        const awaitingInteraction = run.status === 'running'
+          && (run.lastEventType === 'approval.requested' || run.lastEventType === 'input.requested')
         return {
           id: `run-${run.runId}`,
           title: run.task,
           subtitle: `${project?.name ?? run.projectId} · ${provider} · ${run.executionMode ?? 'project'} access`,
           projectId: run.projectId,
-          status: run.status === 'waiting'
+          status: awaitingInteraction || run.status === 'waiting'
             ? 'Needs input'
             : run.status[0]!.toUpperCase() + run.status.slice(1),
           href: `/runs?run=${encodeURIComponent(run.runId)}`,

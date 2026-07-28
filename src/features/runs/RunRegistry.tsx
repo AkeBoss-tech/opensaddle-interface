@@ -330,12 +330,10 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
     answers?: Record<string, string[]>
   }) => {
     await services?.runtime.respondToRequest(runId, requestId, response)
-    updateManagedRun(runId, (run) => ({
-      ...run,
-      inputRequest: undefined,
-      statusText: response.approved === false ? 'Request denied' : 'Continuing',
-    }))
-  }, [services, updateManagedRun])
+    // The runtime emits the durable approval.resolved/user.input.submitted
+    // event before this request returns. Let that authoritative event update
+    // the message instead of overwriting its decision status optimistically.
+  }, [services])
 
   const getForThread = useCallback(
     (threadId: string) => Object.values(runs).filter((run) => run.threadId === threadId),

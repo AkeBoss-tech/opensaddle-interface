@@ -185,6 +185,66 @@ describe('durable client event handling', () => {
     assert.match(waiting.inputRequest?.prompt ?? '', /exponential backoff/)
   })
 
+  it('keeps resolved and checkpoint-cancelled harness interactions as durable evidence', () => {
+    const initial: AgentRunBlock = {
+      id: 'run-1',
+      kind: 'coding',
+      title: 'Coding run',
+      model: 'Codex',
+      harness: 'Codex',
+      runtime: 'Local',
+      statusText: 'Working',
+      done: false,
+      tools: [],
+      plan: [],
+      artifacts: [],
+    }
+    const requested = applyRunEvent(initial, {
+      ...event(0),
+      type: 'approval.requested',
+      payload: {
+        request_id: 'approval-1',
+        prompt: 'Allow npm test?',
+        detail: 'npm test',
+        available_decisions: ['accept', 'acceptForSession', 'decline'],
+      },
+    })
+    const allowed = applyRunEvent(requested, {
+      ...event(1),
+      type: 'approval.resolved',
+      payload: { request_id: 'approval-1', allowed: true, scope: 'session' },
+    })
+
+    assert.equal(allowed.inputRequest, undefined)
+    assert.equal(allowed.statusText, 'Approval granted')
+    assert.equal(allowed.activity?.at(-1)?.label, 'Approval granted')
+    assert.equal(allowed.activity?.at(-1)?.detail, 'Allowed for this session')
+
+    const requestedAgain = applyRunEvent(allowed, {
+      ...event(2),
+      type: 'input.requested',
+      payload: { request_id: 'question-1', prompt: 'Which release channel?' },
+    })
+    const recovered = applyRunEvent(requestedAgain, {
+      ...event(3),
+      type: 'agent.paused',
+      payload: { reason: 'control_plane_restarted', resumable: true },
+    })
+
+    assert.equal(recovered.inputRequest, undefined)
+    assert.equal(recovered.statusText, 'Paused · ready to resume')
+    assert.match(recovered.activity?.at(-1)?.detail ?? '', /pending request will be reissued/)
+
+    const steered = applyRunEvent(recovered, {
+      ...event(4),
+      type: 'user.input.submitted',
+      payload: { kind: 'steer', text: 'Keep the patch limited to authentication.' },
+    })
+    assert.equal(steered.statusText, 'Guidance accepted')
+    assert.equal(steered.activity?.at(-1)?.label, 'Guidance sent')
+    assert.equal(steered.activity?.at(-1)?.detail, 'Keep the patch limited to authentication.')
+  })
+
   it('attributes provider-native nested file changes to the visible run', () => {
     const initial: AgentRunBlock = {
       id: 'run-1',

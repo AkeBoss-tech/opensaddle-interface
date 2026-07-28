@@ -207,6 +207,21 @@
 .chat-shell.inspector-open > .resizer { display: block !important; touch-action: none; }
 .chat-shell.inspector-open > .resizer:focus-visible { background: rgba(128,169,255,.5); outline: 1px solid var(--accent); outline-offset: -1px; }
 body.is-resizing-panel { cursor: col-resize; user-select: none; }
+.tf-run-decision {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 7px 0;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--green) 22%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--green) 5%, transparent);
+  color: var(--muted);
+  font-size: 10px;
+}
+.tf-run-decision .icon { color: var(--green); }
+.tf-run-decision strong { color: var(--text); font-size: 10px; }
+.tf-run-decision span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-shell .inspector-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 5px 6px; }
 .chat-shell .inspector-tabs .itab { justify-content: center; min-width: 0; }
 body[data-theme="light"] .chat-shell .scope-box { background: #f8f8f4; border-color: #d7d7d0; }

@@ -721,13 +721,16 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
           ? event.payload.available_decisions.filter((value): value is string => typeof value === 'string')
           : undefined,
       }
-      addActivity('status', 'Approval requested')
+      addActivity('status', 'Approval requested', next.inputRequest.prompt)
       break
-    case 'approval.resolved':
+    case 'approval.resolved': {
       next.inputRequest = undefined
-      next.statusText = event.payload.allowed === false ? 'Approval denied' : 'Approval granted'
-      addActivity('status', next.statusText)
+      const allowed = event.payload.allowed !== false
+      const scope = event.payload.scope === 'session' ? 'session' : 'once'
+      next.statusText = allowed ? 'Approval granted' : 'Approval denied'
+      addActivity('status', next.statusText, allowed ? `Allowed for this ${scope}` : 'Denied')
       break
+    }
     case 'agent.input.requested':
       next.statusText = 'Waiting for your answer'
       next.inputRequest = {
@@ -738,11 +741,17 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       }
       addActivity('status', 'Agent asked a question', next.inputRequest.prompt)
       break
-    case 'user.input.submitted':
+    case 'user.input.submitted': {
       next.inputRequest = undefined
-      next.statusText = 'Continuing'
-      addActivity('status', 'Answer submitted')
+      const steering = event.payload.kind === 'steer'
+      next.statusText = steering ? 'Guidance accepted' : 'Continuing'
+      const answerCount = finiteNumber(event.payload.answer_count)
+      const detail = steering && typeof event.payload.text === 'string'
+        ? event.payload.text.trim().slice(0, 240)
+        : answerCount !== undefined ? `${answerCount} answer${answerCount === 1 ? '' : 's'} sent` : undefined
+      addActivity('status', steering ? 'Guidance sent' : 'Answer submitted', detail)
       break
+    }
     case 'agent.queued':
       next.statusText = 'Queued after current turn'
       addActivity('status', 'Follow-up queued')
@@ -753,11 +762,15 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       break
     case 'agent.paused': {
       const recovered = event.payload.reason === 'control_plane_restarted'
+      const requestCancelled = next.inputRequest !== undefined
+      next.inputRequest = undefined
       next.statusText = recovered ? 'Paused · ready to resume' : 'Paused'
       addActivity(
         'status',
         recovered ? 'Run recovered after restart' : 'Agent paused',
-        recovered ? 'Saved workspace and provider session retained' : undefined,
+        recovered
+          ? `Saved workspace and provider session retained${requestCancelled ? ' · pending request will be reissued if still needed' : ''}`
+          : requestCancelled ? 'Pending request closed at the checkpoint' : undefined,
       )
       break
     }

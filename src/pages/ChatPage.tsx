@@ -2498,6 +2498,8 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
   const run = m.run
   const paused = /^Paused\b/.test(run?.statusText ?? '')
   const interrupted = !!run?.done && (!!run.failure || /^(Stopped|Failed|Cancelled)/i.test(run.statusText))
+  const lastDecision = [...(run?.activity ?? [])].reverse().find((item) =>
+    /^(?:Approval granted|Approval denied|Answer submitted|Guidance sent)$/.test(item.label))
   const agentOutput = m.text || run?.output || (run ? fallbackRunOutput(run) : '')
   return (
     <div className="message assistant">
@@ -2554,6 +2556,13 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
                 </span>
               )}
             </div>
+            {lastDecision && (
+              <div className="tf-run-decision">
+                <Icon name={lastDecision.label.startsWith('Approval') ? 'shield' : 'message'} className="icon sm" />
+                <strong>{lastDecision.label}</strong>
+                {lastDecision.detail && <span>{lastDecision.detail}</span>}
+              </div>
+            )}
             {!!run.warnings?.length && (
               <div className="tf-run-warnings">
                 <Icon name="activity" className="icon sm" />
