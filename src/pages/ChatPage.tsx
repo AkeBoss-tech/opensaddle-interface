@@ -13,6 +13,15 @@ import { sanitizeHtml } from '../lib/sanitizeHtml'
 import { useRunRegistry } from '../features/runs/RunRegistry'
 import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources } from '../features/runs/runRelations'
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
+import {
+  DEFAULT_THREAD_INSPECTOR_STATE,
+  THREAD_INSPECTOR_STORAGE_KEY,
+  clampInspectorWidth,
+  parseThreadInspectorState,
+  selectInspectorAttention,
+  type ThreadInspectorState,
+  type ThreadInspectorTab,
+} from '../features/thread/inspectorState'
 import type { GitComparisonResult, GitStatusResult, RouteEstimate } from '../services/contracts'
 
 const HARNESS_PICKER_OPTIONS: Array<{
@@ -96,6 +105,28 @@ function normalizeTaskCapabilities(values: Iterable<string>): Set<string> {
     const normalized = Object.hasOwn(aliases, value) ? aliases[value] : value
     return normalized && TASK_CAPABILITIES.includes(normalized as typeof TASK_CAPABILITIES[number]) ? [normalized] : []
   }))
+}
+
+function readThreadInspectorState(threadId: string | undefined): ThreadInspectorState {
+  if (!threadId || typeof window === 'undefined') return { ...DEFAULT_THREAD_INSPECTOR_STATE }
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(THREAD_INSPECTOR_STORAGE_KEY) ?? '{}') as Record<string, unknown>
+    return parseThreadInspectorState(stored[threadId])
+  } catch {
+    return { ...DEFAULT_THREAD_INSPECTOR_STATE }
+  }
+}
+
+function writeThreadInspectorState(threadId: string | undefined, state: ThreadInspectorState): void {
+  if (!threadId || typeof window === 'undefined') return
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(THREAD_INSPECTOR_STORAGE_KEY) ?? '{}') as Record<string, unknown>
+    delete stored[threadId]
+    const entries = [...Object.entries(stored).slice(-99), [threadId, state] as const]
+    window.localStorage.setItem(THREAD_INSPECTOR_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)))
+  } catch {
+    // A blocked or full browser storage area must not break the thread.
+  }
 }
 
 function promptGrantApplies(
@@ -239,8 +270,12 @@ export function ChatPage() {
 
   const [text, setText] = useState('')
   const [activeSendMode, setActiveSendMode] = useState<'steer' | 'queue'>('steer')
-  const [inspector, setInspector] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1080)
-  const [itab, setItab] = useState('overview')
+  const initialInspectorState = useRef(readThreadInspectorState(chat?.id))
+  const [inspector, setInspector] = useState(initialInspectorState.current.open)
+  const [itab, setItab] = useState<ThreadInspectorTab>(initialInspectorState.current.tab)
+  const [inspectorWidth, setInspectorWidth] = useState(initialInspectorState.current.width)
+  const inspectorWidthRef = useRef(initialInspectorState.current.width)
+  const inspectorAttentionKey = useRef(initialInspectorState.current.lastAttentionKey)
   const [density, setDensity] = useState<'summary' | 'normal' | 'verbose'>('normal')
   const [routeOpen, setRouteOpen] = useState(false)
   const [refreshingHarnesses, setRefreshingHarnesses] = useState(false)
@@ -279,6 +314,54 @@ export function ChatPage() {
   const [delegateEditorOpen, setDelegateEditorOpen] = useState(false)
   const [delegateDraft, setDelegateDraft] = useState('')
   const attachRef = useRef<HTMLInputElement>(null)
+  const persistInspector = (state: Partial<ThreadInspectorState>) => {
+    const next = {
+      open: state.open ?? inspector,
+      tab: state.tab ?? itab,
+      width: clampInspectorWidth(state.width ?? inspectorWidthRef.current),
+      lastAttentionKey: state.lastAttentionKey ?? inspectorAttentionKey.current,
+    }
+    writeThreadInspectorState(chat?.id, next)
+  }
+  const openInspector = (tab: ThreadInspectorTab = itab) => {
+    setInspector(true)
+    setItab(tab)
+    persistInspector({ open: true, tab })
+  }
+  const closeInspector = () => {
+    setInspector(false)
+    persistInspector({ open: false })
+  }
+  const selectInspectorTab = (tab: ThreadInspectorTab) => {
+    setItab(tab)
+    persistInspector({ tab })
+  }
+  const beginInspectorResize = (startX: number) => {
+    const startWidth = inspectorWidth
+    const onMove = (event: PointerEvent) => {
+      const width = clampInspectorWidth(startWidth - (event.clientX - startX))
+      inspectorWidthRef.current = width
+      setInspectorWidth(width)
+    }
+    const onUp = (event: PointerEvent) => {
+      const width = clampInspectorWidth(startWidth - (event.clientX - startX))
+      inspectorWidthRef.current = width
+      setInspectorWidth(width)
+      persistInspector({ width })
+      document.body.classList.remove('is-resizing-panel')
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    document.body.classList.add('is-resizing-panel')
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+  const resizeInspectorTo = (width: number) => {
+    const next = clampInspectorWidth(width)
+    inspectorWidthRef.current = next
+    setInspectorWidth(next)
+    persistInspector({ width: next })
+  }
   const transcript = useTranscriptPosition({
     itemCount: messages.length,
     revision: `${messages.at(-1)?.text.length ?? 0}:${messages.at(-1)?.run?.statusText ?? ''}`,
@@ -398,6 +481,12 @@ export function ChatPage() {
     setPullRequestDraft(false)
     setPullRequestResult(null)
     setGitComparison(null)
+    const savedInspector = readThreadInspectorState(chat?.id)
+    setInspector(savedInspector.open)
+    setItab(savedInspector.tab)
+    inspectorWidthRef.current = savedInspector.width
+    setInspectorWidth(savedInspector.width)
+    inspectorAttentionKey.current = savedInspector.lastAttentionKey
   }, [chat?.id])
 
   const serverRouting = Boolean(services?.controlPlane.connected) && auto
@@ -705,8 +794,7 @@ export function ChatPage() {
       return
     }
     setActivity([{ title: 'Run started', sub: `${project.name} · ${RUNTIME_LABEL[r.runtimeKey]}`, kind: 'info', t: '0.0s' }])
-    setInspector(true)
-    setItab('overview')
+    openInspector('overview')
 
     if (r.klass === 'chat' && !services?.controlPlane.connected) {
       appendMessage({
@@ -954,6 +1042,23 @@ export function ChatPage() {
       && artifact.title.toLowerCase().includes('verification'))
     .flatMap((artifact) => artifact.table?.rows ?? []) ?? [])
   const failedChecks = verificationChecks.filter((check) => check[1]?.toLowerCase() !== 'pass')
+  const inspectorAttention = selectInspectorAttention({
+    run: latestRun,
+    failedChecks: failedChecks.map((check) => `${check[0] ?? 'Check'}:${check[1] ?? 'fail'}`),
+    changedPaths: [...new Set(changedFiles.map((file) => file.path))].sort(),
+  })
+  useEffect(() => {
+    if (!chat || !inspectorAttention || inspectorAttention.key === inspectorAttentionKey.current) return
+    inspectorAttentionKey.current = inspectorAttention.key
+    setInspector(true)
+    setItab(inspectorAttention.tab)
+    writeThreadInspectorState(chat.id, {
+      open: true,
+      tab: inspectorAttention.tab,
+      width: inspectorWidthRef.current,
+      lastAttentionKey: inspectorAttention.key,
+    })
+  }, [chat?.id, inspectorAttention?.key]) // eslint-disable-line react-hooks/exhaustive-deps
   const artifactAdditions = changedFiles.reduce((total, file) => total + file.add, 0)
   const artifactDeletions = changedFiles.reduce((total, file) => total + file.del, 0)
   const projectSources = data.sources.filter((source) => source.projectId === project.id)
@@ -1217,7 +1322,7 @@ export function ChatPage() {
     try {
       const comparison = await client.gitCompare(project.id, repo, gitStatus?.upstream ?? repository?.branch ?? 'main')
       setGitComparison(comparison)
-      setItab('changes')
+      selectInspectorTab('changes')
       toast('Branch comparison ready', `${comparison.files.length} files · +${comparison.additions} −${comparison.deletions}`)
       setActivity((items) => [...items, {
         title: 'Branch comparison ready',
@@ -1315,7 +1420,10 @@ export function ChatPage() {
 
   return (
     <section className="page active" style={{ height: '100%' }}>
-      <div className={`chat-shell ${inspector ? 'inspector-open' : ''}`}>
+      <div
+        className={`chat-shell ${inspector ? 'inspector-open' : ''}`}
+        style={{ '--inspector-w': `${inspectorWidth}px` } as React.CSSProperties}
+      >
         <div className="chat-main">
           {!!messages.length && (
             <div className="tf-thread-toolbar">
@@ -1327,12 +1435,12 @@ export function ChatPage() {
                 ))}
               </div>
               {latestRun?.artifacts.some((artifact) => artifact.type === 'diff') && (
-                <button className="tf-toolbar-button" onClick={() => { setInspector(true); setItab('changes') }}>
+                <button className="tf-toolbar-button" onClick={() => openInspector('changes')}>
                   <Icon name="git" className="icon xs" />
                   {latestRun.artifacts.flatMap((artifact) => artifact.diff ?? []).length} changes
                 </button>
               )}
-              <button className="tf-toolbar-button" onClick={() => setInspector(true)}><Icon name="panel" className="icon xs" />Details</button>
+              <button className="tf-toolbar-button" onClick={() => openInspector()}><Icon name="panel" className="icon xs" />Details</button>
             </div>
           )}
           <div className="chat-scroll" ref={transcript.containerRef} onScroll={transcript.onScroll}>
@@ -1513,7 +1621,7 @@ export function ChatPage() {
                   <div className="popover-title">Chat options</div>
                   <div className="popover-actions">
                     <button onClick={() => nav(`/permissions/${project.id}`)}><Icon name="shield" className="icon sm" /><span><strong>Scoped access</strong><small>Review project permissions</small></span></button>
-                    <button onClick={() => setInspector(true)}><Icon name="panel" className="icon sm" /><span><strong>Run details</strong><small>Open the activity inspector</small></span></button>
+                    <button onClick={() => openInspector()}><Icon name="panel" className="icon sm" /><span><strong>Run details</strong><small>Open the activity inspector</small></span></button>
                   </div>
                   <div className="popover-title popover-title-secondary">Available tools</div>
                   {TASK_CAPABILITIES.map((t) => {
@@ -1672,15 +1780,33 @@ export function ChatPage() {
           </div>
         </div>
 
-        <div className="resizer" />
+        <div
+          className="resizer"
+          role="separator"
+          aria-label="Resize thread inspector"
+          aria-orientation="vertical"
+          aria-valuemin={260}
+          aria-valuemax={520}
+          aria-valuenow={inspectorWidth}
+          tabIndex={0}
+          onPointerDown={(event) => beginInspectorResize(event.clientX)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft') resizeInspectorTo(inspectorWidth + 16)
+            else if (event.key === 'ArrowRight') resizeInspectorTo(inspectorWidth - 16)
+            else if (event.key === 'Home') resizeInspectorTo(260)
+            else if (event.key === 'End') resizeInspectorTo(520)
+            else return
+            event.preventDefault()
+          }}
+        />
         <aside className="inspector">
           <div className="inspector-inner">
             <div className="inspector-header">
               <strong>{itab === 'overview' ? 'Current state' : itab[0]!.toUpperCase() + itab.slice(1)}</strong>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                {itab !== 'overview' && <button className="tiny-btn" onClick={() => setItab('overview')}>Back</button>}
+                {itab !== 'overview' && <button className="tiny-btn" onClick={() => selectInspectorTab('overview')}>Back</button>}
                 <button className="tiny-btn" onClick={() => { const n = branchChat(chat.id); if (n) { nav(`/chat/${n.id}`); toast('Chat forked', n.title) } }}>Fork</button>
-                <button className="icon-btn" onClick={() => setInspector(false)}><Icon name="x" className="icon sm" /></button>
+                <button className="icon-btn" onClick={closeInspector}><Icon name="x" className="icon sm" /></button>
               </div>
             </div>
             {itab !== 'overview' && <div className="inspector-tabs">
@@ -1691,26 +1817,26 @@ export function ChatPage() {
                 ['environment', 'Environment'],
                 ['access', 'Access'],
               ].map(([key, label]) => (
-                <button key={key} className={`itab ${itab === key ? 'active' : ''}`} onClick={() => setItab(key)}>{label}</button>
+                <button key={key} className={`itab ${itab === key ? 'active' : ''}`} onClick={() => selectInspectorTab(key as ThreadInspectorTab)}>{label}</button>
               ))}
             </div>}
             {itab === 'overview' && (
               <div className="ipanel active tf-state-rail">
                 <section className="tf-state-card">
                   <div className="tf-state-heading"><span>Environment</span><Icon name="plus" className="icon sm" /></div>
-                  <button className="tf-state-row" onClick={() => setItab('changes')}>
+                  <button className="tf-state-row" onClick={() => selectInspectorTab('changes')}>
                     <Icon name="git" className="icon sm" />
                     <span>Changes</span>
                     <strong className="tf-change-count"><i>+{additions}</i> <b>−{deletions}</b></strong>
                   </button>
-                  <button className="tf-state-row" onClick={() => setItab('checks')}>
+                  <button className="tf-state-row" onClick={() => selectInspectorTab('checks')}>
                     <Icon name="check" className="icon sm" />
                     <span>Checks</span>
                     <small>{verificationChecks.length
                       ? failedChecks.length ? `${failedChecks.length} need attention` : `${verificationChecks.length} passed`
                       : 'Not run'}</small>
                   </button>
-                  <button className="tf-state-row" onClick={() => setItab('environment')}>
+                  <button className="tf-state-row" onClick={() => selectInspectorTab('environment')}>
                     <Icon name="terminal" className="icon sm" />
                     <span>{latestRun?.runtime ?? activeEnvironment?.name ?? RUNTIME_LABEL[route.runtimeKey]}</span>
                     <small>{latestRun ? latestRunState : activeEnvironment?.status ?? 'Ready'}</small>
@@ -1963,7 +2089,7 @@ export function ChatPage() {
                       <Icon name="plus" className="icon sm" />
                     </button>
                   </div>
-                  <ChildRunList runs={childRuns} onOpenRun={() => setItab('activity')} />
+                  <ChildRunList runs={childRuns} onOpenRun={() => selectInspectorTab('activity')} />
                   {delegateEditorOpen && (
                     <form className="tf-state-inline-form" onSubmit={(event) => { event.preventDefault(); void delegateSubtask(delegateDraft) }}>
                       <label htmlFor="delegate-task">Subagent task</label>
@@ -1991,7 +2117,7 @@ export function ChatPage() {
                   {!!usedSources.length && <div className="tf-state-sublabel">Used in this run</div>}
                   <UsedSourcesList sources={usedSources.slice(0, 5)} onOpenSource={(source) => {
                     if (source.url) window.open(source.url, '_blank', 'noopener,noreferrer')
-                    else setItab('changes')
+                    else selectInspectorTab('changes')
                   }} />
                   {!!projectSources.length && <div className="tf-state-sublabel">Available to project</div>}
                   {projectSources.slice(0, usedSources.length ? 2 : 4).map((source) => (
@@ -2036,7 +2162,7 @@ export function ChatPage() {
                     <div className="tf-state-live-activity" aria-label="Recent harness activity">
                       <div className="tf-state-sublabel">Recent activity</div>
                       {threadRunActivity.slice(-3).map((item) => (
-                        <button key={item.id} type="button" onClick={() => setItab('activity')}>
+                        <button key={item.id} type="button" onClick={() => selectInspectorTab('activity')}>
                           <Icon
                             name={item.kind === 'tool' ? 'terminal' : item.kind === 'change' ? 'file' : item.kind === 'error' ? 'x' : 'activity'}
                             className="icon sm"
@@ -2055,7 +2181,7 @@ export function ChatPage() {
                       {latestRun.done && <button type="button" onClick={() => void runRegistry.retry(latestRun.id, chat.id, latestRun).catch((error) => toast('Retry failed', error instanceof Error ? error.message : String(error)))}><Icon name="refresh" className="icon sm" />Retry from checkpoint</button>}
                     </div>
                   )}
-                  <button className="tf-state-view-all" onClick={() => setItab('activity')}>View activity</button>
+                  <button className="tf-state-view-all" onClick={() => selectInspectorTab('activity')}>View activity</button>
                 </section>
               </div>
             )}
@@ -2173,7 +2299,7 @@ export function ChatPage() {
       </div>
 
       {!inspector && !messages.length && (
-        <button className="icon-btn" style={{ position: 'absolute', right: 12, top: 8, zIndex: 5 }} onClick={() => setInspector(true)} title="Open inspector"><Icon name="panel" /></button>
+        <button className="icon-btn" style={{ position: 'absolute', right: 12, top: 8, zIndex: 5 }} onClick={() => openInspector()} title="Open inspector"><Icon name="panel" /></button>
       )}
 
       {perm && (

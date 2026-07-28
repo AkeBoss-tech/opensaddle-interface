@@ -10,6 +10,11 @@ import { createOrderedEventEmitter } from '../../../src/services/orderedEvents.j
 import type { RuntimeRunSummary, SessionEvent } from '../../../src/services/contracts.js'
 import { applyRunEvent } from '../../../src/lib/runEvents.js'
 import { adoptNativeContinuation } from '../../../src/lib/nativeContinuation.js'
+import {
+  clampInspectorWidth,
+  parseThreadInspectorState,
+  selectInspectorAttention,
+} from '../../../src/features/thread/inspectorState.js'
 import type { AgentRunBlock } from '../../../src/types/index.js'
 
 function event(sequence: number, text = String(sequence)): SessionEvent {
@@ -50,6 +55,78 @@ function runtimeRun(status: RuntimeRunSummary['status']): RuntimeRunSummary {
 }
 
 describe('durable client event handling', () => {
+  it('keeps thread inspectors quiet by default and prioritizes actionable evidence', () => {
+    assert.deepEqual(parseThreadInspectorState(undefined), {
+      open: false,
+      tab: 'overview',
+      width: 292,
+    })
+    assert.equal(clampInspectorWidth(100), 260)
+    assert.equal(clampInspectorWidth(800), 520)
+
+    const run: AgentRunBlock = {
+      id: 'run-attention',
+      kind: 'coding',
+      title: 'Coding run',
+      model: 'Codex',
+      harness: 'Codex',
+      runtime: 'Local',
+      statusText: 'Waiting for approval',
+      done: false,
+      tools: [],
+      plan: [],
+      artifacts: [],
+      inputRequest: {
+        kind: 'approval',
+        id: 'approval-1',
+        prompt: 'Allow network access?',
+      },
+    }
+    assert.deepEqual(selectInspectorAttention({
+      run,
+      failedChecks: ['Typecheck'],
+      changedPaths: ['src/app.ts'],
+    }), {
+      key: 'approval:approval-1',
+      tab: 'access',
+    })
+    assert.deepEqual(selectInspectorAttention({
+      run: { ...run, inputRequest: undefined, done: true },
+      failedChecks: ['Typecheck'],
+      changedPaths: ['src/app.ts'],
+    }), {
+      key: 'checks:Typecheck',
+      tab: 'checks',
+    })
+    assert.deepEqual(selectInspectorAttention({
+      run: {
+        ...run,
+        inputRequest: undefined,
+        done: true,
+        failure: {
+          kind: 'authentication',
+          title: 'Codex needs sign-in',
+          message: 'The native session could not authenticate.',
+          recovery: 'Sign in and retry.',
+          retryable: true,
+        },
+      },
+      failedChecks: [],
+      changedPaths: ['src/app.ts'],
+    }), {
+      key: 'failure:run-attention:authentication',
+      tab: 'activity',
+    })
+    assert.deepEqual(selectInspectorAttention({
+      run: undefined,
+      failedChecks: [],
+      changedPaths: ['src/app.ts'],
+    }), {
+      key: 'changes:src/app.ts',
+      tab: 'changes',
+    })
+  })
+
   it('orders snapshot and SSE events without dropping early deltas', () => {
     const received: number[] = []
     const emit = createOrderedEventEmitter((item) => received.push(item.sequence))

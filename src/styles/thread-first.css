@@ -204,7 +204,9 @@
 }
 .tf-density-control button:hover, .tf-density-control button.active, .tf-toolbar-button:hover { color: var(--text); background: var(--card-hover); }
 .tf-thread-toolbar + .chat-scroll { padding-top: 46px; }
-.chat-shell.inspector-open > .resizer { display: block !important; }
+.chat-shell.inspector-open > .resizer { display: block !important; touch-action: none; }
+.chat-shell.inspector-open > .resizer:focus-visible { background: rgba(128,169,255,.5); outline: 1px solid var(--accent); outline-offset: -1px; }
+body.is-resizing-panel { cursor: col-resize; user-select: none; }
 .chat-shell .inspector-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 5px 6px; }
 .chat-shell .inspector-tabs .itab { justify-content: center; min-width: 0; }
 body[data-theme="light"] .chat-shell .scope-box { background: #f8f8f4; border-color: #d7d7d0; }
