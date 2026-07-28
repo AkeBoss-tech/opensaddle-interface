@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../../data/store'
+import { connectionPresentation } from '../../lib/connectionPresentation'
 import { Icon } from '../common/Icon'
 
 export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onForward, onPalette, onBrowser }: { crumbs: React.ReactNode; sidebarCollapsed: boolean; onToggleSidebar: () => void; onBack: () => void; onForward: () => void; onPalette: () => void; onBrowser: () => void }) {
-  const { data, setTheme, markNotificationsRead, toast, runtimeModeLabel, services, persistenceStatus } = useStore()
+  const { connection, data, setTheme, markNotificationsRead, toast, services, persistenceStatus } = useStore()
   const [notifOpen, setNotifOpen] = useState(false)
   const nav = useNavigate()
   const unread = data.notifications.filter((n) => !n.read).length
-  const connectionLabel = services?.controlPlane.connected
-    ? services.controlPlane.mode === 'company' ? 'Cloud' : 'Local'
-    : window.opensaddleDesktop ? 'Starting…' : 'Offline'
+  const connectionState = connectionPresentation({
+    connection,
+    controlPlane: services?.controlPlane ?? null,
+    desktop: Boolean(window.opensaddleDesktop),
+  })
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -40,12 +43,10 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
         <Link
           to="/settings"
           className="crumb-pill system-pill"
-          title={services?.controlPlane.connected
-            ? `${services.controlPlane.mode === 'company' ? 'Company' : 'Local'} control plane · ${services.controlPlane.modelProvider} · ${services.controlPlane.storage ?? 'server'}`
-            : `${runtimeModeLabel} · offline cache`}
+          title={connectionState.title}
         >
-          <span className={`pulse ${services?.controlPlane.connected ? '' : 'offline'}`} />
-          {connectionLabel}
+          <span className={`pulse ${connectionState.connected ? '' : 'offline'}`} />
+          {connectionState.label}
           {persistenceStatus === 'error' && <span className="system-pill-sync">Save error</span>}
         </Link>
         {window.opensaddleDesktop && <button className="icon-btn" title="Open split browser" onClick={onBrowser}><Icon name="globe" /></button>}

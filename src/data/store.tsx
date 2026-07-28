@@ -259,6 +259,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!services || connection.mode !== 'remote') return
     let cancelled = false
     let checking = false
+    const reinitialize = () => {
+      workspaceHydratedRef.current = false
+      durableHydratedServiceRef.current = null
+      setPersistenceStatus('loading')
+      setServices(null)
+      setConnection((current) => ({ ...current }))
+    }
     const check = async () => {
       if (checking) return
       checking = true
@@ -269,16 +276,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         })
         const connected = response.ok
         if (!cancelled && connected !== services.controlPlane.connected) {
-          setConnection((current) => ({ ...current }))
+          reinitialize()
         }
       } catch {
         if (!cancelled && services.controlPlane.connected) {
-          setConnection((current) => ({ ...current }))
+          reinitialize()
         }
       } finally {
         checking = false
       }
     }
+    void check()
     const timer = window.setInterval(() => void check(), 3_000)
     return () => {
       cancelled = true
