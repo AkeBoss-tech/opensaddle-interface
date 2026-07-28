@@ -47,8 +47,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
 
   private async responseError(res: Response): Promise<Error> {
     try {
-      const body = await res.json() as { error?: string; message?: string; reason?: string }
-      return new Error(body.reason ?? body.message ?? body.error ?? `OpenSaddle HTTP ${res.status}`)
+      const body = await res.json() as { detail?: string; error?: string; message?: string; reason?: string }
+      return new Error(body.detail ?? body.reason ?? body.message ?? body.error ?? `OpenSaddle HTTP ${res.status}`)
     } catch {
       return new Error(`OpenSaddle HTTP ${res.status}`)
     }

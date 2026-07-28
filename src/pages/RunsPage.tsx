@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
-import type { RuntimeRunSummary } from '../services/contracts'
+import type { RuntimeRunSummary, SessionEvent } from '../services/contracts'
+import { eventText } from '../features/runs/transcript'
 
 export function RunsPage() {
   const { data, updateTaskStatus, toast, services, createChat, setActiveChat } = useStore()
@@ -14,6 +15,7 @@ export function RunsPage() {
     selectedRunId || services?.mode === 'desktop' || services?.controlPlane.mode === 'local' ? 'local' : 'scheduled',
   )
   const [localRuns, setLocalRuns] = useState<RuntimeRunSummary[]>([])
+  const [selectedRunEvents, setSelectedRunEvents] = useState<SessionEvent[]>([])
   const [runBusy, setRunBusy] = useState<string | null>(null)
 
   const scheduled = data.tasks.filter((t) => t.type === 'scheduled')
@@ -36,6 +38,20 @@ export function RunsPage() {
   useEffect(() => {
     if (services?.mode === 'desktop' || services?.controlPlane.mode === 'local') setTab('local')
   }, [services?.controlPlane.mode, services?.mode])
+
+  useEffect(() => {
+    if (!selectedRunId || !services?.runtime) {
+      setSelectedRunEvents([])
+      return
+    }
+    setSelectedRunEvents([])
+    return services.runtime.subscribe(selectedRunId, (event) => {
+      setSelectedRunEvents((current) => {
+        if (current.some((candidate) => candidate.event_id === event.event_id)) return current
+        return [...current, event].sort((left, right) => left.sequence - right.sequence)
+      })
+    })
+  }, [selectedRunId, services])
 
   useEffect(() => {
     if (!services?.runtime.listRuns) {
@@ -103,6 +119,70 @@ export function RunsPage() {
       </div>
 
       {tab === 'local' && (
+        <>
+        {selectedRunId && (() => {
+          const selected = localRuns.find((run) => run.runId === selectedRunId)
+          if (!selected) return null
+          const transcript = selectedRunEvents
+            .filter((event) => event.type === 'agent.output.delta')
+            .map((event) => eventText(event.payload))
+            .join('')
+          const activity = selectedRunEvents.filter((event) =>
+            event.type === 'command.started'
+            || event.type === 'command.completed'
+            || event.type === 'tool.requested'
+            || event.type === 'tool.completed'
+            || event.type === 'warning'
+            || event.type === 'verification.completed'
+            || event.type === 'usage.updated')
+          return (
+            <div className="card local-run-detail">
+              <div className="card-header">
+                <div>
+                  <span className="eyebrow">Local harness activity</span>
+                  <h3>{selected.task}</h3>
+                  <p>{selected.route.providerKey ?? selected.agentId ?? selected.route.harnessKey} · {selected.route.modelId ?? selected.route.modelKey} · {selected.executionMode ?? 'project'} access</p>
+                </div>
+                <div className="row-actions">
+                  <span className={`status-pill ${selected.status === 'completed' ? 'green' : selected.status === 'failed' || selected.status === 'cancelled' ? 'red' : selected.status === 'paused' ? 'yellow' : ''}`}>{selected.status}</span>
+                  <button className="tiny-btn" onClick={() => navigate('/runs')}>Close</button>
+                </div>
+              </div>
+              <div className="local-run-transcript" aria-label="Agent output">
+                <div className="local-run-transcript-label"><Icon name="terminal" className="icon sm" />Agent output</div>
+                {transcript
+                  ? <pre>{transcript}</pre>
+                  : <div className="local-run-transcript-empty">{selected.status === 'running' ? 'Waiting for provider output…' : 'This run produced no assistant text.'}</div>}
+              </div>
+              {activity.length > 0 && (
+                <div className="local-run-activity">
+                  <h4>Activity</h4>
+                  {activity.map((event) => {
+                    const payload = event.payload
+                    const command = typeof payload.command === 'string' ? payload.command : undefined
+                    const message = typeof payload.message === 'string' ? payload.message : undefined
+                    const checks = Array.isArray(payload.checks) ? payload.checks.length : undefined
+                    const label = event.type === 'warning'
+                      ? 'Warning'
+                      : event.type === 'verification.completed'
+                        ? 'Verification completed'
+                        : event.type === 'usage.updated'
+                          ? 'Usage updated'
+                          : event.type.startsWith('command.')
+                            ? command ?? 'Command'
+                            : typeof payload.tool === 'string' ? payload.tool : 'Tool'
+                    return (
+                      <div className="local-run-activity-row" key={event.event_id}>
+                        <Icon name={event.type === 'warning' ? 'alert' : event.type.startsWith('command.') ? 'terminal' : 'activity'} className="icon sm" />
+                        <span><strong>{label}</strong><small>{message ?? (checks !== undefined ? `${checks} check${checks === 1 ? '' : 's'}` : event.type.replaceAll('.', ' '))}</small></span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })()}
         <div className="card">
           <div className="card-header">
             <div><h3>Durable local activity</h3><p>Server-owned runs survive navigation, reloads, and desktop restarts.</p></div>
@@ -116,7 +196,17 @@ export function RunsPage() {
               const active = ['queued', 'provisioning', 'running', 'waiting', 'paused'].includes(run.status)
               const provider = run.route.providerKey && run.route.providerKey !== 'auto' ? run.route.providerKey : run.route.harnessKey
               return (
-                <div id={`local-run-${run.runId}`} className={`row-item local-run-row ${selectedRunId === run.runId ? 'tf-target-row' : ''}`} key={run.runId}>
+                <div
+                  id={`local-run-${run.runId}`}
+                  className={`row-item local-run-row ${selectedRunId === run.runId ? 'tf-target-row' : ''}`}
+                  key={run.runId}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/runs?run=${encodeURIComponent(run.runId)}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') navigate(`/runs?run=${encodeURIComponent(run.runId)}`)
+                  }}
+                >
                   <div className="row-icon"><Icon name="terminal" className="icon sm" /></div>
                   <div className="row-copy">
                     <div className="row-title">{run.task}</div>
@@ -134,10 +224,10 @@ export function RunsPage() {
                     <span className={`status-pill ${run.status === 'completed' ? 'green' : run.status === 'failed' || run.status === 'cancelled' ? 'red' : run.status === 'paused' || run.status === 'waiting' ? 'yellow' : ''}`}>
                       {run.status}
                     </span>
-                    {active && run.status !== 'paused' && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={() => void runAction(run, 'pause')}>Pause</button>}
-                    {run.status === 'paused' && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={() => void runAction(run, 'resume')}>Resume</button>}
-                    {active && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={() => void runAction(run, 'stop')}>Stop</button>}
-                    {!active && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={() => void runAction(run, 'retry')}>Retry</button>}
+                    {active && run.status !== 'paused' && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'pause') }}>Pause</button>}
+                    {run.status === 'paused' && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'resume') }}>Resume</button>}
+                    {active && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'stop') }}>Stop</button>}
+                    {!active && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'retry') }}>Retry</button>}
                   </div>
                 </div>
               )
@@ -147,6 +237,7 @@ export function RunsPage() {
             )}
           </div>
         </div>
+        </>
       )}
 
       {tab === 'scheduled' && (

@@ -8,7 +8,9 @@ import type { SessionEvent } from './contracts'
 export function createOrderedEventEmitter(onEvent: (event: SessionEvent) => void) {
   const pending = new Map<number, SessionEvent>()
   const seenIds = new Set<string>()
-  let nextSequence = 0
+  // The authoritative OpenSaddle run store numbers durable events from 1.
+  // Mock/runtime-local streams do not pass through this reconciler.
+  let nextSequence = 1
 
   return (event: SessionEvent) => {
     if (seenIds.has(event.event_id) || event.sequence < nextSequence) return
