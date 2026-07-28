@@ -26,6 +26,7 @@ export function isRecoverableRuntimeRun(run: RuntimeRunSummary): boolean {
     || run.status === 'provisioning'
     || run.status === 'running'
     || run.status === 'waiting'
+    || run.status === 'awaiting_input'
     || run.status === 'paused'
 }
 
@@ -56,10 +57,15 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
     ? run.route.providerKey
     : run.route.harnessKey
   const providerLabel = PROVIDER_LABELS[provider] ?? provider
-  const done = run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled'
+  const done = run.status === 'completed'
+    || run.status === 'failed'
+    || run.status === 'cancelled'
+    || run.status === 'timed_out'
   const statusText = run.status === 'paused'
     ? 'Paused · ready to resume'
-    : run.status === 'waiting' || (run.status === 'queued' && !!run.parentRunId)
+    : run.status === 'waiting' || run.status === 'awaiting_input'
+      ? 'Waiting for your answer'
+      : run.status === 'queued' && !!run.parentRunId
       ? 'Queued after current turn'
       : run.status === 'queued' || run.status === 'provisioning'
         ? 'Starting'
@@ -69,6 +75,8 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
             ? 'Completed'
             : run.status === 'cancelled'
               ? 'Stopped'
+              : run.status === 'timed_out'
+                ? 'Timed out'
               : `${providerLabel} could not finish`
 
   return {
@@ -118,6 +126,14 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
           recovery: 'Retry from the saved checkpoint when you are ready to continue.',
           retryable: true,
         }
-        : undefined,
+        : run.status === 'timed_out'
+          ? {
+            kind: 'runtime',
+            title: 'The run timed out',
+            message: 'The harness exceeded its configured time limit.',
+            recovery: 'Retry from the saved checkpoint when you are ready to continue.',
+            retryable: true,
+          }
+          : undefined,
   }
 }

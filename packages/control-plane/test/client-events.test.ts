@@ -6,6 +6,10 @@ import {
   selectOrphanedRuntimeRuns,
   selectThreadLinkedRuntimeRuns,
 } from '../../../src/features/runs/recovery.js'
+import {
+  agentRunLifecycleControls,
+  runtimeRunLifecycleControls,
+} from '../../../src/features/runs/lifecycleControls.js'
 import { appendTranscript } from '../../../src/features/runs/transcript.js'
 import { createOrderedEventEmitter } from '../../../src/services/orderedEvents.js'
 import { shouldStopRunReconciliation } from '../../../src/services/opensaddleClient.js'
@@ -68,6 +72,47 @@ describe('durable client event handling', () => {
     assert.equal(shouldStopRunReconciliation(200, 'cancelled'), true)
     assert.equal(shouldStopRunReconciliation(200, 'running'), false)
     assert.equal(shouldStopRunReconciliation(503), false)
+  })
+
+  it('shows only lifecycle controls supported by the active harness state', () => {
+    const codex = runtimeRun('running')
+    assert.deepEqual(runtimeRunLifecycleControls(codex), {
+      canPause: false,
+      canResume: false,
+      canStop: true,
+      canRetry: false,
+    })
+    const claude = {
+      ...codex,
+      route: { ...codex.route, providerKey: 'claude' as const },
+    }
+    assert.equal(runtimeRunLifecycleControls(claude).canPause, true)
+    assert.deepEqual(runtimeRunLifecycleControls({ ...claude, status: 'queued' }), {
+      canPause: false,
+      canResume: false,
+      canStop: true,
+      canRetry: false,
+    })
+    assert.deepEqual(runtimeRunLifecycleControls({ ...claude, status: 'completed' }), {
+      canPause: false,
+      canResume: false,
+      canStop: false,
+      canRetry: true,
+    })
+  })
+
+  it('keeps waiting and timed-out durable runs truthful after hydration', () => {
+    const waiting = runtimeRunToAgentBlock(runtimeRun('awaiting_input'))
+    assert.equal(waiting.statusText, 'Waiting for your answer')
+    assert.equal(waiting.done, false)
+    assert.equal(agentRunLifecycleControls(waiting).canPause, false)
+    assert.equal(agentRunLifecycleControls(waiting).canStop, true)
+
+    const timedOut = runtimeRunToAgentBlock(runtimeRun('timed_out'))
+    assert.equal(timedOut.statusText, 'Timed out')
+    assert.equal(timedOut.done, true)
+    assert.equal(timedOut.failure?.title, 'The run timed out')
+    assert.equal(agentRunLifecycleControls(timedOut).canRetry, true)
   })
 
   it('turns edited plan lines into bounded same-turn steering guidance', () => {

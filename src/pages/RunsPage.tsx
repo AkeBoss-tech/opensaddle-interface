@@ -7,6 +7,7 @@ import { eventText } from '../features/runs/transcript'
 import { applyRunEvent } from '../lib/runEvents'
 import { runtimeRunToAgentBlock } from '../features/runs/recovery'
 import { InlineAgentRequest } from '../features/runs/InlineAgentRequest'
+import { runtimeRunLifecycleControls } from '../features/runs/lifecycleControls'
 
 export function RunsPage() {
   const { data, updateTaskStatus, toast, services, createChat, setActiveChat } = useStore()
@@ -149,7 +150,7 @@ export function RunsPage() {
                   <p>{selected.route.providerKey ?? selected.agentId ?? selected.route.harnessKey} · {selected.route.modelId ?? selected.route.modelKey} · {selected.executionMode ?? 'project'} access</p>
                 </div>
                 <div className="row-actions">
-                  <span className={`status-pill ${selected.status === 'completed' ? 'green' : selected.status === 'failed' || selected.status === 'cancelled' ? 'red' : selected.status === 'paused' ? 'yellow' : ''}`}>{selected.status}</span>
+                  <span className={`status-pill ${selected.status === 'completed' ? 'green' : selected.status === 'failed' || selected.status === 'cancelled' || selected.status === 'timed_out' ? 'red' : selected.status === 'paused' || selected.status === 'waiting' || selected.status === 'awaiting_input' ? 'yellow' : ''}`}>{selected.status.replaceAll('_', ' ')}</span>
                   <button className="tiny-btn" onClick={() => navigate('/runs')}>Close</button>
                 </div>
               </div>
@@ -200,7 +201,7 @@ export function RunsPage() {
           <div className="card-body row-list">
             {localRuns.map((run) => {
               const project = data.projects.find((candidate) => candidate.id === run.projectId)
-              const active = ['queued', 'provisioning', 'running', 'waiting', 'paused'].includes(run.status)
+              const controls = runtimeRunLifecycleControls(run)
               const provider = run.route.providerKey && run.route.providerKey !== 'auto' ? run.route.providerKey : run.route.harnessKey
               return (
                 <div
@@ -228,13 +229,13 @@ export function RunsPage() {
                     </div>
                   </div>
                   <div className="row-actions">
-                    <span className={`status-pill ${run.status === 'completed' ? 'green' : run.status === 'failed' || run.status === 'cancelled' ? 'red' : run.status === 'paused' || run.status === 'waiting' ? 'yellow' : ''}`}>
-                      {run.status}
+                    <span className={`status-pill ${run.status === 'completed' ? 'green' : run.status === 'failed' || run.status === 'cancelled' || run.status === 'timed_out' ? 'red' : run.status === 'paused' || run.status === 'waiting' || run.status === 'awaiting_input' ? 'yellow' : ''}`}>
+                      {run.status.replaceAll('_', ' ')}
                     </span>
-                    {active && run.status !== 'paused' && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'pause') }}>Pause</button>}
-                    {run.status === 'paused' && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'resume') }}>Resume</button>}
-                    {active && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'stop') }}>Stop</button>}
-                    {!active && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'retry') }}>Retry</button>}
+                    {controls.canPause && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'pause') }}>Pause</button>}
+                    {controls.canResume && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'resume') }}>Resume</button>}
+                    {controls.canStop && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'stop') }}>Stop</button>}
+                    {controls.canRetry && <button className="tiny-btn" disabled={Boolean(runBusy)} onClick={(event) => { event.stopPropagation(); void runAction(run, 'retry') }}>Retry</button>}
                   </div>
                 </div>
               )

@@ -71,7 +71,7 @@ export interface RuntimeRunSummary {
   agentId?: string
   parentRunId?: string
   queuedAfterRunId?: string
-  status: 'queued' | 'provisioning' | 'running' | 'waiting' | 'paused' | 'completed' | 'failed' | 'cancelled'
+  status: 'queued' | 'provisioning' | 'running' | 'waiting' | 'awaiting_input' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'timed_out'
   route: RouteEstimate
   providerSessionId?: string
   providerSessionMode?: 'resume' | 'fork'

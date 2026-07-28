@@ -12,6 +12,7 @@ import { evaluatePermissions } from '../services/permissions'
 import { sanitizeHtml } from '../lib/sanitizeHtml'
 import { useRunRegistry } from '../features/runs/RunRegistry'
 import { InlineAgentRequest } from '../features/runs/InlineAgentRequest'
+import { agentRunLifecycleControls } from '../features/runs/lifecycleControls'
 import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources } from '../features/runs/runRelations'
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
 import { buildPlanRevision } from '../features/thread/planRevision'
@@ -278,6 +279,7 @@ export function ChatPage() {
     !managed.run.done && !/queued after current turn/i.test(managed.run.statusText))
   const latestRun = activeManagedRun?.run ?? latestMessageRun
   const latestRunPaused = /^Paused\b/.test(latestRun?.statusText ?? '')
+  const latestRunControls = latestRun ? agentRunLifecycleControls(latestRun) : undefined
   const latestRunState = latestRun
     ? latestRun.done
       ? latestRun.failure ? 'Needs attention' : 'Ready'
@@ -2467,11 +2469,10 @@ export function ChatPage() {
                   )}
                   {latestRun && latestRun.id !== 'pending' && (
                     <div className="tf-state-run-actions">
-                      {!latestRun.done && (latestRunPaused
-                        ? <button type="button" onClick={() => void runRegistry.resume(latestRun.id).catch((error) => toast('Resume failed', error instanceof Error ? error.message : String(error)))}><Icon name="play" className="icon sm" />Resume</button>
-                        : <button type="button" onClick={() => void runRegistry.pause(latestRun.id).catch((error) => toast('Pause failed', error instanceof Error ? error.message : String(error)))}><Icon name="pause" className="icon sm" />Pause</button>)}
-                      {!latestRun.done && <button type="button" onClick={() => void runRegistry.stop(latestRun.id).catch((error) => toast('Stop failed', error instanceof Error ? error.message : String(error)))}><Icon name="x" className="icon sm" />Stop</button>}
-                      {latestRun.done && <button type="button" onClick={() => void runRegistry.retry(latestRun.id, chat.id, latestRun).catch((error) => toast('Retry failed', error instanceof Error ? error.message : String(error)))}><Icon name="refresh" className="icon sm" />Retry from checkpoint</button>}
+                      {latestRunControls?.canPause && <button type="button" onClick={() => void runRegistry.pause(latestRun.id).catch((error) => toast('Pause failed', error instanceof Error ? error.message : String(error)))}><Icon name="pause" className="icon sm" />Pause</button>}
+                      {latestRunControls?.canResume && <button type="button" onClick={() => void runRegistry.resume(latestRun.id).catch((error) => toast('Resume failed', error instanceof Error ? error.message : String(error)))}><Icon name="play" className="icon sm" />Resume</button>}
+                      {latestRunControls?.canStop && <button type="button" onClick={() => void runRegistry.stop(latestRun.id).catch((error) => toast('Stop failed', error instanceof Error ? error.message : String(error)))}><Icon name="x" className="icon sm" />Stop</button>}
+                      {latestRunControls?.canRetry && <button type="button" onClick={() => void runRegistry.retry(latestRun.id, chat.id, latestRun).catch((error) => toast('Retry failed', error instanceof Error ? error.message : String(error)))}><Icon name="refresh" className="icon sm" />Retry from checkpoint</button>}
                     </div>
                   )}
                   <button className="tf-state-view-all" onClick={() => selectInspectorTab('activity')}>View activity</button>
@@ -2676,6 +2677,7 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch, onPr
   }
   const run = m.run
   const paused = /^Paused\b/.test(run?.statusText ?? '')
+  const controls = run ? agentRunLifecycleControls(run) : undefined
   const interrupted = !!run?.done && (!!run.failure || /^(Stopped|Failed|Cancelled)/i.test(run.statusText))
   const lastDecision = [...(run?.activity ?? [])].reverse().find((item) =>
     /^(?:Approval granted|Approval denied|Answer submitted|Guidance sent)$/.test(item.label))
@@ -2733,13 +2735,12 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch, onPr
               </div>
               {!run.done && run.id !== 'pending' && (
                 <div className="run-controls">
-                  {paused
-                    ? <button className="tiny-btn" onClick={() => void runRegistry.resume(run.id).catch((error) => toast('Resume failed', error instanceof Error ? error.message : String(error)))}>Resume</button>
-                    : <button className="tiny-btn" onClick={() => void runRegistry.pause(run.id).catch((error) => toast('Pause failed', error instanceof Error ? error.message : String(error)))}>Pause</button>}
-                  <button className="tiny-btn" onClick={() => void runRegistry.stop(run.id).catch((error) => toast('Stop failed', error instanceof Error ? error.message : String(error)))}>Stop</button>
+                  {controls?.canPause && <button className="tiny-btn" onClick={() => void runRegistry.pause(run.id).catch((error) => toast('Pause failed', error instanceof Error ? error.message : String(error)))}>Pause</button>}
+                  {controls?.canResume && <button className="tiny-btn" onClick={() => void runRegistry.resume(run.id).catch((error) => toast('Resume failed', error instanceof Error ? error.message : String(error)))}>Resume</button>}
+                  {controls?.canStop && <button className="tiny-btn" onClick={() => void runRegistry.stop(run.id).catch((error) => toast('Stop failed', error instanceof Error ? error.message : String(error)))}>Stop</button>}
                 </div>
               )}
-              {run.done && run.id !== 'pending' && (
+              {controls?.canRetry && run.id !== 'pending' && (
                 <button className="tiny-btn" onClick={() => void runRegistry.retry(run.id, m.chatId, run).catch((error) => toast('Retry failed', error instanceof Error ? error.message : String(error)))}>Retry</button>
               )}
             </div>
