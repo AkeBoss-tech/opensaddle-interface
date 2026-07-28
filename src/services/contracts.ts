@@ -11,6 +11,7 @@ export type RunEventType =
   | 'agent.queued'
   | 'agent.queue.updated'
   | 'agent.dequeued'
+  | 'agent.steered'
   | 'tool.requested'
   | 'tool.completed'
   | 'approval.requested'

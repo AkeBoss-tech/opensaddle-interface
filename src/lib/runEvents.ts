@@ -560,6 +560,10 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       next.statusText = 'Agent started'
       addActivity('status', 'Agent started', typeof event.payload.provider === 'string' ? event.payload.provider : undefined)
       break
+    case 'agent.steered':
+      next.statusText = 'Guidance delivered'
+      addActivity('status', 'Guidance delivered', 'Applied to the active provider turn')
+      break
     case 'agent.output.delta': {
       const status = typeof event.payload.status === 'string' ? event.payload.status : null
       if (status) {

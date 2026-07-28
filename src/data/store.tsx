@@ -911,7 +911,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (i >= 0) d.messages[i] = { ...d.messages[i], ...p }
         return d
       })
-      if (services?.threads && next) {
+      // Assistant/system messages are projections of the authoritative run
+      // stream. The server writes their durable content when a run completes;
+      // only user-authored messages may be edited through the thread PATCH
+      // endpoint. Keeping run-card updates renderer-local also prevents a
+      // refresh reconciliation from attempting to mutate server-authored
+      // history and producing noisy 422 responses.
+      if (services?.threads && next?.role === 'user') {
         window.clearTimeout(messageSyncTimersRef.current.get(id))
         messageSyncTimersRef.current.set(id, window.setTimeout(() => {
           messageSyncTimersRef.current.delete(id)

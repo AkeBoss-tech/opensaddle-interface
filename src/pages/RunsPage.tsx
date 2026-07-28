@@ -133,6 +133,7 @@ export function RunsPage() {
             || event.type === 'tool.requested'
             || event.type === 'tool.completed'
             || event.type === 'session.continued'
+            || event.type === 'agent.steered'
             || event.type === 'warning'
             || event.type === 'verification.completed'
             || event.type === 'usage.updated')
@@ -170,6 +171,8 @@ export function RunsPage() {
                       ? 'Warning'
                       : event.type === 'session.continued'
                         ? 'Continued provider session'
+                      : event.type === 'agent.steered'
+                        ? 'Guidance delivered'
                       : event.type === 'verification.completed'
                         ? 'Verification completed'
                         : event.type === 'usage.updated'
