@@ -42,11 +42,11 @@ export class LocalSessionDiscovery {
     const providers: LocalSessionProvider[] = provider ? [provider] : ['codex', 'claude']
     const candidates = (await Promise.all(providers.map(async (item) => {
       const files = await collectJsonl(this.roots[item], this.maxFiles)
-      return await Promise.all(files.map(async (path) => ({
+      return files.map(({ path, updatedAt }) => ({
         provider: item,
         path,
-        updatedAt: (await stat(path)).mtimeMs,
-      })))
+        updatedAt,
+      }))
     }))).flat()
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, Math.max(1, Math.min(limit * 4, 400)))
@@ -63,20 +63,28 @@ export class LocalSessionDiscovery {
   }
 }
 
-async function collectJsonl(root: string, maxFiles: number): Promise<string[]> {
-  const files: string[] = []
+async function collectJsonl(root: string, maxFiles: number): Promise<Array<{ path: string; updatedAt: number }>> {
+  let files: Array<{ path: string; updatedAt: number }> = []
   const queue = [root]
-  while (queue.length && files.length < maxFiles) {
+  const maxDirectories = Math.max(100, maxFiles * 4)
+  let visitedDirectories = 0
+  while (queue.length && visitedDirectories < maxDirectories) {
     const directory = queue.shift()!
+    visitedDirectories += 1
     const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
     for (const entry of entries) {
-      if (files.length >= maxFiles) break
       const path = join(directory, entry.name)
-      if (entry.isDirectory()) queue.push(path)
-      else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(path)
+      if (entry.isDirectory() && !entry.isSymbolicLink()) queue.push(path)
+      else if (entry.isFile() && !entry.isSymbolicLink() && entry.name.endsWith('.jsonl')) {
+        const metadata = await stat(path).catch(() => undefined)
+        if (metadata) files.push({ path, updatedAt: metadata.mtimeMs })
+        if (files.length >= maxFiles * 2) {
+          files = files.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, maxFiles)
+        }
+      }
     }
   }
-  return files
+  return files.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, maxFiles)
 }
 
 async function readCodexMetadata(

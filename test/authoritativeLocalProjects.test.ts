@@ -29,6 +29,15 @@ test('adapts Python project-domain files, harnesses, and rescans without using l
       id: 'cursor', display_name: 'Cursor', installed: true, executable_path: '/bin/cursor', version: '2.0.0', auth_state: 'authenticated', readiness: 'unavailable',
       readiness_reason: 'Cursor is signed in, but this account exposes no CLI models.', models: [],
     }] })
+    if (path === '/api/local-sessions?provider=codex') return json({ sessions: [{
+      provider: 'codex',
+      sessionId: 'session-1',
+      path: '/home/local/.codex/sessions/rollout.jsonl',
+      cwd: '/work/demo',
+      updatedAt: 1_700_000_000_000,
+      version: '1.2.3',
+      originator: 'Codex Desktop',
+    }] })
     if (path === '/api/projects/demo') return json({ project_id: 'demo', root: '/work/demo', created_at: '2026-01-01T00:00:00Z' })
     if (path === '/api/projects/demo/files?path=docs') return json({ project_id: 'demo', path: 'docs', items: [{ path: 'docs/guide.md', kind: 'file', size: 4, modified_ns: 1_700_000_000_000_000_000 }] })
     if (path === '/api/projects/demo/file?path=docs%2Fguide.md') return new Response('docs', { headers: { 'X-OpenSaddle-File-Path': 'docs/guide.md' } })
@@ -58,6 +67,16 @@ test('adapts Python project-domain files, harnesses, and rescans without using l
   )
   await client.refreshHarnessCapabilities()
   assert.equal(paths.includes('GET /api/harnesses?refresh=true'), true)
+  assert.deepEqual(await client.localSessions('codex'), [{
+    provider: 'codex',
+    sessionId: 'session-1',
+    path: '/home/local/.codex/sessions/rollout.jsonl',
+    cwd: '/work/demo',
+    updatedAt: 1_700_000_000_000,
+    version: '1.2.3',
+    originator: 'Codex Desktop',
+  }])
+  assert.equal(paths.includes('GET /api/local-sessions?provider=codex'), true)
 
   assert.deepEqual(await client.registerProject('demo', '/work/demo'), { projectId: 'demo', root: '/work/demo' })
   assert.deepEqual(await client.listProjects(), [{
@@ -80,7 +99,6 @@ test('adapts Python project-domain files, harnesses, and rescans without using l
 
 test('does not simulate unsupported legacy local-project features', async () => {
   const client = new AuthoritativeLocalProjectClient('http://daemon.test', () => 'local-admin', undefined, async () => json({}))
-  await assert.rejects(client.localSessions('codex'), UnsupportedAuthoritativeProjectOperationError)
   await assert.rejects(client.archiveManagedArtifact('demo', '.codex/skills/review/SKILL.md'), UnsupportedAuthoritativeProjectOperationError)
   await assert.rejects(client.searchFiles('demo', 'review'), UnsupportedAuthoritativeProjectOperationError)
 })

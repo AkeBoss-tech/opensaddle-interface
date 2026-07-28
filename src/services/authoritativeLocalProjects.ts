@@ -249,8 +249,10 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
       }))
   }
 
-  async localSessions(_provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]> {
-    throw new UnsupportedAuthoritativeProjectOperationError('Native session discovery')
+  async localSessions(provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]> {
+    const query = provider ? `?provider=${encodeURIComponent(provider)}` : ''
+    const response = await this.request<{ sessions?: LocalSessionSummary[] }>(`/api/local-sessions${query}`)
+    return response.sessions ?? []
   }
 
   async listFiles(projectId: string, input: { path?: string; limit?: number } = {}) {

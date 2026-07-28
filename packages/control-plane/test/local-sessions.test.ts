@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { it } from 'node:test'
@@ -68,6 +68,38 @@ it('discovers Codex and Claude session metadata without returning transcript con
       ],
     )
     assert.equal(JSON.stringify(sessions).includes('private prompt'), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+it('keeps the newest sessions when the file scan is bounded', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'opensaddle-local-session-order-'))
+  const codexRoot = join(root, 'codex')
+  const claudeRoot = join(root, 'claude')
+  const older = join(codexRoot, '2025')
+  const newer = join(codexRoot, '2026')
+  const outside = join(root, 'outside')
+  await mkdir(older, { recursive: true })
+  await mkdir(newer, { recursive: true })
+  await mkdir(claudeRoot, { recursive: true })
+  await mkdir(outside, { recursive: true })
+  const oldPath = join(older, 'old.jsonl')
+  const newPath = join(newer, 'new.jsonl')
+  await writeFile(oldPath, JSON.stringify({ type: 'session_meta', payload: { id: 'old-session' } }))
+  await writeFile(newPath, JSON.stringify({ type: 'session_meta', payload: { id: 'new-session' } }))
+  await writeFile(join(outside, 'hidden.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id: 'hidden-session' } }))
+  await utimes(oldPath, new Date(1_000), new Date(1_000))
+  await utimes(newPath, new Date(2_000), new Date(2_000))
+  await symlink(outside, join(codexRoot, 'linked'), 'dir')
+
+  try {
+    const sessions = await new LocalSessionDiscovery({
+      codexRoot,
+      claudeRoot,
+      maxFiles: 1,
+    }).list('codex')
+    assert.deepEqual(sessions.map((session) => session.sessionId), ['new-session'])
   } finally {
     await rm(root, { recursive: true, force: true })
   }
