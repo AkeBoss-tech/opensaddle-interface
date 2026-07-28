@@ -5,6 +5,7 @@ import type { RuntimeRunSummary, SessionEvent } from '../../services/contracts'
 import type { AgentRunBlock } from '../../types'
 import {
   isRecoverableRuntimeRun,
+  reconcileDurableRunBlock,
   runtimeRunToAgentBlock,
   selectOrphanedRuntimeRuns,
   selectThreadLinkedRuntimeRuns,
@@ -259,6 +260,23 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
         // the authoritative runtime snapshot, then replay its complete event
         // history into the same message.
         for (const message of snapshot.messages) {
+          if (message.run && message.runtimeRunId) {
+            const durableRun = durableById.get(message.runtimeRunId)
+            if (!durableRun || durableRun.threadId !== message.chatId) continue
+            const reconciled = reconcileDurableRunBlock(message.run, durableRun)
+            if (
+              reconciled.parentRunId !== message.run.parentRunId
+              || reconciled.title !== message.run.title
+              || reconciled.statusText !== message.run.statusText
+              || reconciled.done !== message.run.done
+              || reconciled.runtimeAttached !== message.run.runtimeAttached
+              || reconciled.providerSessionId !== message.run.providerSessionId
+              || reconciled.providerTurnId !== message.run.providerTurnId
+            ) {
+              updateMessage(message.id, { run: reconciled })
+            }
+            continue
+          }
           if (
             message.run
             || !message.runtimeRunId

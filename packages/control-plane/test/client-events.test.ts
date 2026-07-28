@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   isRecoverableRuntimeRun,
+  reconcileDurableRunBlock,
   runtimeRunToAgentBlock,
   selectOrphanedRuntimeRuns,
   selectThreadLinkedRuntimeRuns,
@@ -148,6 +149,34 @@ describe('durable client event handling', () => {
     assert.equal(timedOut.done, true)
     assert.equal(timedOut.failure?.title, 'The run timed out')
     assert.equal(agentRunLifecycleControls(timedOut).canRetry, true)
+  })
+
+  it('restores retry provenance from the durable run list', () => {
+    const summary = {
+      ...runtimeRun('completed'),
+      runId: 'run-retry',
+      retryOfRunId: 'run-original',
+      retryCheckpointId: 'checkpoint-2',
+    }
+    const retried = runtimeRunToAgentBlock(summary)
+
+    assert.equal(retried.parentRunId, 'run-original')
+    assert.equal(retried.title, 'Codex retry')
+    assert.equal(retried.statusText, 'Completed')
+
+    const reconciled = reconcileDurableRunBlock({
+      ...retried,
+      title: 'Codex run',
+      parentRunId: undefined,
+      statusText: 'Working',
+      done: false,
+      tools: [{ id: 'tool-1', name: 'Terminal', status: 'complete', input: '', output: 'done' }],
+    }, summary)
+    assert.equal(reconciled.parentRunId, 'run-original')
+    assert.equal(reconciled.title, 'Codex retry')
+    assert.equal(reconciled.statusText, 'Completed')
+    assert.equal(reconciled.done, true)
+    assert.equal(reconciled.tools.length, 1)
   })
 
   it('turns edited plan lines into bounded same-turn steering guidance', () => {

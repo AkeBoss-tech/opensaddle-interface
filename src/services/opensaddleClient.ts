@@ -242,6 +242,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       task: string
       agent_id?: string
       parent_run_id?: string
+      retry_of_run_id?: string
+      retry_checkpoint_id?: string
       queued_after_run_id?: string
       status: RuntimeRunSummary['status']
       attached?: boolean
@@ -265,6 +267,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       task: run.task,
       agentId: run.agent_id,
       parentRunId: run.parent_run_id,
+      retryOfRunId: run.retry_of_run_id,
+      retryCheckpointId: run.retry_checkpoint_id,
       queuedAfterRunId: run.queued_after_run_id,
       status: run.status,
       attached: run.attached,

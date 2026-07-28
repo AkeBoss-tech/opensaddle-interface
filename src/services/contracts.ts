@@ -71,6 +71,8 @@ export interface RuntimeRunSummary {
   task: string
   agentId?: string
   parentRunId?: string
+  retryOfRunId?: string
+  retryCheckpointId?: string
   queuedAfterRunId?: string
   status: 'queued' | 'provisioning' | 'running' | 'waiting' | 'awaiting_input' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'timed_out'
   /** Whether the authoritative daemon still owns a live harness process. */

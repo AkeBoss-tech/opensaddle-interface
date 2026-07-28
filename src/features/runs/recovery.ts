@@ -81,7 +81,7 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
 
   return {
     id: run.runId,
-    parentRunId: run.parentRunId,
+    parentRunId: run.parentRunId ?? run.retryOfRunId,
     providerSessionId: run.providerSessionId,
     providerSessionMode: run.providerSessionMode,
     providerTurnId: run.providerTurnId,
@@ -95,7 +95,7 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
         : run.route.harnessKey === 'browser'
           ? 'browser'
           : 'ops',
-    title: `${providerLabel} run`,
+    title: run.retryOfRunId ? `${providerLabel} retry` : `${providerLabel} run`,
     model: run.route.nativeModelDefault
       ? `${providerLabel} default`
       : run.route.modelId ?? run.route.modelKey,
@@ -136,5 +136,26 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
             retryable: true,
           }
           : undefined,
+  }
+}
+
+export function reconcileDurableRunBlock(
+  current: AgentRunBlock,
+  durableRun: RuntimeRunSummary,
+): AgentRunBlock {
+  const durable = runtimeRunToAgentBlock(durableRun)
+  return {
+    ...current,
+    parentRunId: durable.parentRunId ?? current.parentRunId,
+    providerSessionId: durable.providerSessionId ?? current.providerSessionId,
+    providerSessionMode: durable.providerSessionMode ?? current.providerSessionMode,
+    providerTurnId: durable.providerTurnId ?? current.providerTurnId,
+    providerKey: durable.providerKey ?? current.providerKey,
+    runtimeAttached: durable.runtimeAttached,
+    executionMode: durable.executionMode ?? current.executionMode,
+    title: durableRun.retryOfRunId ? durable.title : current.title,
+    statusText: durable.statusText,
+    done: durable.done,
+    failure: current.failure ?? durable.failure,
   }
 }
