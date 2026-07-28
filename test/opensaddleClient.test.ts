@@ -61,3 +61,67 @@ test('sends native reasoning effort and accepts the authoritative estimate route
     globalThis.fetch = originalFetch
   }
 })
+
+test('adapts the authoritative repository API for the desktop Git panel', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: Array<{ path: string; method: string; body?: unknown }> = []
+  globalThis.fetch = async (input, init) => {
+    const path = input.toString().replace('http://daemon.test', '')
+    requests.push({
+      path,
+      method: init?.method ?? 'GET',
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    })
+    if (path === '/api/repositories' && init?.method === 'POST') {
+      return json({ repository_id: 'local-project', root: '/repo' }, 201)
+    }
+    if (path === '/api/repositories/local-project/status') {
+      return json({
+        repository: '/repo',
+        branch: 'main',
+        detached: false,
+        head: 'abc123',
+        upstream: 'origin/main',
+        ahead: 1,
+        behind: 0,
+        clean: false,
+        additions: 4,
+        deletions: 2,
+        files: [{
+          path: 'src/app.ts',
+          original_path: 'src/old.ts',
+          index: 'M',
+          worktree: '.',
+          staged: true,
+          modified: false,
+          untracked: false,
+        }],
+        diff_files: [{
+          path: 'src/app.ts',
+          additions: 4,
+          deletions: 2,
+          binary: false,
+        }],
+      })
+    }
+    return json({ detail: `unexpected path ${path}` }, 404)
+  }
+
+  try {
+    const client = new OpenSaddleRuntimeClient('http://daemon.test', undefined, {
+      allowFallback: false,
+    })
+    const status = await client.gitStatus('local-project', '/repo')
+
+    assert.deepEqual(requests[0], {
+      path: '/api/repositories',
+      method: 'POST',
+      body: { repository_id: 'local-project', root: '/repo' },
+    })
+    assert.equal(status.branch, 'main')
+    assert.equal(status.files[0]?.originalPath, 'src/old.ts')
+    assert.equal(status.diffFiles[0]?.additions, 4)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

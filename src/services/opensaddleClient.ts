@@ -66,6 +66,15 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     }
   }
 
+  private async ensureGitRepository(projectId: string, repo: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/repositories`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify({ repository_id: projectId, root: repo }),
+    })
+    if (!response.ok) throw await this.responseError(response)
+  }
+
   async estimate(task: string, prefs?: {
     projectId?: string
     routingPref?: string
@@ -327,17 +336,87 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
   }
 
   async gitStatus(projectId: string, repo: string): Promise<GitStatusResult> {
-    const query = new URLSearchParams({ project_id: projectId, repo })
-    const response = await fetch(`${this.baseUrl}/api/git/status?${query}`, { headers: this.headers() })
+    await this.ensureGitRepository(projectId, repo)
+    const response = await fetch(`${this.baseUrl}/api/repositories/${encodeURIComponent(projectId)}/status`, {
+      headers: this.headers(),
+    })
     if (!response.ok) throw await this.responseError(response)
-    return await response.json() as GitStatusResult
+    const body = await response.json() as {
+      repository: string
+      branch: string | null
+      detached: boolean
+      head: string | null
+      upstream: string | null
+      ahead: number
+      behind: number
+      clean: boolean
+      additions: number
+      deletions: number
+      files: Array<{
+        path: string
+        original_path?: string
+        index: string
+        worktree: string
+        staged: boolean
+        modified: boolean
+        untracked: boolean
+      }>
+      diff_files: Array<{ path: string; additions: number | null; deletions: number | null; binary: boolean }>
+    }
+    return {
+      repository: body.repository,
+      branch: body.branch,
+      detached: body.detached,
+      head: body.head,
+      upstream: body.upstream,
+      ahead: body.ahead,
+      behind: body.behind,
+      clean: body.clean,
+      additions: body.additions,
+      deletions: body.deletions,
+      files: body.files.map((file) => ({
+        path: file.path,
+        originalPath: file.original_path,
+        index: file.index,
+        worktree: file.worktree,
+        staged: file.staged,
+        modified: file.modified,
+        untracked: file.untracked,
+      })),
+      diffFiles: body.diff_files,
+    }
   }
 
   async gitCompare(projectId: string, repo: string, base: string, head?: string): Promise<GitComparisonResult> {
-    const query = new URLSearchParams({ project_id: projectId, repo, base, ...(head ? { head } : {}) })
-    const response = await fetch(`${this.baseUrl}/api/git/compare?${query}`, { headers: this.headers() })
+    await this.ensureGitRepository(projectId, repo)
+    const query = new URLSearchParams({ base, ...(head ? { head } : {}) })
+    const response = await fetch(
+      `${this.baseUrl}/api/repositories/${encodeURIComponent(projectId)}/compare?${query}`,
+      { headers: this.headers() },
+    )
     if (!response.ok) throw await this.responseError(response)
-    return await response.json() as GitComparisonResult
+    const body = await response.json() as {
+      repository: string
+      base: string
+      head: string
+      merge_base: string
+      additions: number
+      deletions: number
+      files: GitComparisonResult['files']
+      patch: string
+      truncated: boolean
+    }
+    return {
+      repository: body.repository,
+      base: body.base,
+      head: body.head,
+      mergeBase: body.merge_base,
+      additions: body.additions,
+      deletions: body.deletions,
+      files: body.files,
+      patch: body.patch,
+      truncated: body.truncated,
+    }
   }
 
   async gitCreateBranch(input: {
@@ -347,19 +426,23 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     startPoint?: string
     approvalId?: string
   }): Promise<{ repository: string; branch: string; startPoint: string; summary: string }> {
-    const response = await fetch(`${this.baseUrl}/api/git/branch`, {
+    await this.ensureGitRepository(input.projectId, input.repo)
+    const response = await fetch(`${this.baseUrl}/api/repositories/${encodeURIComponent(input.projectId)}/branches`, {
       method: 'POST',
       headers: this.headers(true),
       body: JSON.stringify({
-        project_id: input.projectId,
-        repo: input.repo,
-        branch: input.branch,
+        name: input.branch,
         start_point: input.startPoint,
-        approval_id: input.approvalId,
+        checkout: true,
       }),
     })
     if (!response.ok) throw await this.responseError(response)
-    return await response.json() as { repository: string; branch: string; startPoint: string; summary: string }
+    return {
+      repository: input.repo,
+      branch: input.branch,
+      startPoint: input.startPoint ?? 'HEAD',
+      summary: `Switched to new branch '${input.branch}'`,
+    }
   }
 
   async gitCommit(input: {
@@ -370,20 +453,30 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     includeAll?: boolean
     approvalId?: string
   }): Promise<{ repository: string; commit: string; summary: string }> {
-    const response = await fetch(`${this.baseUrl}/api/git/commit`, {
+    await this.ensureGitRepository(input.projectId, input.repo)
+    const status = await this.gitStatus(input.projectId, input.repo)
+    const paths = input.paths?.length
+      ? input.paths
+      : input.includeAll ? status.files.map((file) => file.path) : []
+    if (paths.length) {
+      const staged = await fetch(`${this.baseUrl}/api/repositories/${encodeURIComponent(input.projectId)}/stage`, {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify({ paths, expected_head: status.head }),
+      })
+      if (!staged.ok) throw await this.responseError(staged)
+    }
+    const response = await fetch(`${this.baseUrl}/api/repositories/${encodeURIComponent(input.projectId)}/commit`, {
       method: 'POST',
       headers: this.headers(true),
       body: JSON.stringify({
-        project_id: input.projectId,
-        repo: input.repo,
         message: input.message,
-        paths: input.paths,
-        include_all: input.includeAll,
-        approval_id: input.approvalId,
+        expected_head: status.head,
       }),
     })
     if (!response.ok) throw await this.responseError(response)
-    return await response.json() as { repository: string; commit: string; summary: string }
+    const body = await response.json() as { head: string; output: string }
+    return { repository: input.repo, commit: body.head, summary: body.output }
   }
 
   async gitPush(input: {
@@ -393,15 +486,13 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     branch?: string
     approvalId: string
   }): Promise<{ repository: string; remote: string; branch: string; summary: string }> {
-    const response = await fetch(`${this.baseUrl}/api/git/push`, {
+    await this.ensureGitRepository(input.projectId, input.repo)
+    const response = await fetch(`${this.baseUrl}/api/repositories/${encodeURIComponent(input.projectId)}/push`, {
       method: 'POST',
       headers: this.headers(true),
       body: JSON.stringify({
-        project_id: input.projectId,
-        repo: input.repo,
         remote: input.remote,
         branch: input.branch,
-        approval_id: input.approvalId,
       }),
     })
     if (!response.ok) throw await this.responseError(response)
@@ -426,29 +517,39 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     base: string
     head: string
   }> {
-    const response = await fetch(`${this.baseUrl}/api/git/pull-request`, {
+    await this.ensureGitRepository(input.projectId, input.repo)
+    const status = input.head ? undefined : await this.gitStatus(input.projectId, input.repo)
+    const head = input.head ?? status?.branch
+    if (!head) throw new Error('A branch is required to create a pull request')
+    const response = await fetch(`${this.baseUrl}/api/repositories/${encodeURIComponent(input.projectId)}/pull-requests`, {
       method: 'POST',
       headers: this.headers(true),
       body: JSON.stringify({
-        project_id: input.projectId,
-        repo: input.repo,
         title: input.title,
         body: input.body,
         base: input.base,
-        head: input.head,
+        head,
         draft: input.draft,
-        approval_id: input.approvalId,
+        idempotency_key: input.approvalId,
       }),
     })
     if (!response.ok) throw await this.responseError(response)
-    return await response.json() as {
-      repository: string
+    const body = await response.json() as {
       number: number
       url: string
       title: string
       state: string
-      base: string
-      head: string
+      baseRefName?: string
+      headRefName?: string
+    }
+    return {
+      repository: input.repo,
+      number: body.number,
+      url: body.url,
+      title: body.title,
+      state: body.state,
+      base: body.baseRefName ?? input.base,
+      head: body.headRefName ?? head,
     }
   }
 
