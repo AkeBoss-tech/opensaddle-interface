@@ -346,18 +346,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         threadCursor = page.nextCursor
       } while (threadCursor && durableThreads.length < 2_000)
 
-      let durableMessages = (
-        await Promise.all(durableThreads.map(async (thread) => {
-          const items: DurableThreadMessage[] = []
-          let cursor: string | undefined
-          do {
-            const page = await services.threads!.messages(thread.id, { limit: 250, cursor })
-            items.push(...page.messages)
-            cursor = page.nextCursor
-          } while (cursor && items.length < 10_000)
-          return items
-        }))
-      ).flat()
+      // Thread metadata is enough to hydrate the Work page and navigation.
+      // Fetching every transcript here caused one request (plus a browser CORS
+      // preflight) per historical task and could temporarily starve the local
+      // sidecar's health checks. The active transcript is loaded by the
+      // granular effect below; other transcripts are loaded when opened or
+      // when their server-owned updatedAt changes.
+      let durableMessages: DurableThreadMessage[] = []
       const durableThreadIds = new Set(durableThreads.map((thread) => thread.id))
       const localOnlyChats = dataRef.current.chats.filter((chat) => !durableThreadIds.has(chat.id))
       for (const chat of localOnlyChats) {
