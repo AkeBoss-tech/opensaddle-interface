@@ -430,6 +430,7 @@ function interactionQuestions(value: unknown): NonNullable<AgentRunBlock['inputR
       header: typeof row.header === 'string' ? row.header : undefined,
       prompt: row.prompt,
       options,
+      multiSelect: row.multiSelect === true,
       allowOther: row.allowOther === true,
       secret: row.secret === true,
     }]

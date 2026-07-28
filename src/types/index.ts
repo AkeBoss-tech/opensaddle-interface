@@ -237,6 +237,7 @@ export interface AgentRunBlock {
       header?: string
       prompt: string
       options?: Array<{ label: string; description?: string }>
+      multiSelect?: boolean
       allowOther?: boolean
       secret?: boolean
     }>

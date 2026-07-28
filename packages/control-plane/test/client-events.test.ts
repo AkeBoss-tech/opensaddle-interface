@@ -373,12 +373,14 @@ describe('durable client event handling', () => {
           header: 'Release channel',
           prompt: 'Where should I publish?',
           options: [{ label: 'Preview', description: 'Safe test deployment' }],
+          multiSelect: true,
           allowOther: true,
         }],
       },
     })
     assert.equal(waiting.inputRequest?.id, 'codex:question-1')
     assert.equal(waiting.inputRequest?.questions?.[0]?.options?.[0]?.label, 'Preview')
+    assert.equal(waiting.inputRequest?.questions?.[0]?.multiSelect, true)
 
     const continued = applyRunEvent(waiting, {
       ...event(1),

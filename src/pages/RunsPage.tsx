@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 import type { RuntimeRunSummary, SessionEvent } from '../services/contracts'
 import { eventText } from '../features/runs/transcript'
+import { applyRunEvent } from '../lib/runEvents'
+import { runtimeRunToAgentBlock } from '../features/runs/recovery'
+import { InlineAgentRequest } from '../features/runs/InlineAgentRequest'
 
 export function RunsPage() {
   const { data, updateTaskStatus, toast, services, createChat, setActiveChat } = useStore()
@@ -17,6 +20,14 @@ export function RunsPage() {
   const [localRuns, setLocalRuns] = useState<RuntimeRunSummary[]>([])
   const [selectedRunEvents, setSelectedRunEvents] = useState<SessionEvent[]>([])
   const [runBusy, setRunBusy] = useState<string | null>(null)
+  const selectedRun = localRuns.find((run) => run.runId === selectedRunId)
+  const selectedAgentRun = useMemo(() => {
+    if (!selectedRun) return undefined
+    return selectedRunEvents.reduce(
+      (run, event) => applyRunEvent(run, event),
+      runtimeRunToAgentBlock(selectedRun),
+    )
+  }, [selectedRun, selectedRunEvents])
 
   const scheduled = data.tasks.filter((t) => t.type === 'scheduled')
   const background = data.tasks.filter((t) => t.type === 'background')
@@ -120,9 +131,8 @@ export function RunsPage() {
 
       {tab === 'local' && (
         <>
-        {selectedRunId && (() => {
-          const selected = localRuns.find((run) => run.runId === selectedRunId)
-          if (!selected) return null
+        {selectedRun && (() => {
+          const selected = selectedRun
           const transcript = selectedRunEvents
             .filter((event) => event.type === 'agent.output.delta')
             .map((event) => eventText(event.payload))
@@ -136,6 +146,8 @@ export function RunsPage() {
             || event.type === 'agent.steered'
             || event.type === 'approval.requested'
             || event.type === 'approval.resolved'
+            || event.type === 'input.requested'
+            || event.type === 'user.input.submitted'
             || event.type === 'warning'
             || event.type === 'verification.completed'
             || event.type === 'usage.updated')
@@ -158,6 +170,7 @@ export function RunsPage() {
                   ? <pre>{transcript}</pre>
                   : <div className="local-run-transcript-empty">{selected.status === 'running' ? 'Waiting for provider output…' : 'This run produced no assistant text.'}</div>}
               </div>
+              {selectedAgentRun?.inputRequest && <InlineAgentRequest run={selectedAgentRun} toast={toast} />}
               {activity.length > 0 && (
                 <div className="local-run-activity">
                   <h4>Activity</h4>
@@ -180,6 +193,15 @@ export function RunsPage() {
                           ? 'Denied'
                           : `Allowed for this ${payload.scope === 'session' ? 'session' : 'tool call'}`
                         : undefined
+                    const inputDetail = event.type === 'input.requested'
+                      ? typeof payload.prompt === 'string'
+                        ? payload.prompt
+                        : 'Waiting for an answer'
+                      : event.type === 'user.input.submitted'
+                        ? typeof payload.answer_count === 'number'
+                          ? `${payload.answer_count} answer${payload.answer_count === 1 ? '' : 's'} sent`
+                          : 'Answer delivered to the agent'
+                        : undefined
                     const label = event.type === 'warning'
                       ? 'Warning'
                       : event.type === 'session.continued'
@@ -190,6 +212,10 @@ export function RunsPage() {
                         ? 'Approval requested'
                       : event.type === 'approval.resolved'
                         ? payload.allowed === false ? 'Approval denied' : 'Approval granted'
+                      : event.type === 'input.requested'
+                        ? 'Question asked'
+                      : event.type === 'user.input.submitted'
+                        ? 'Answer submitted'
                       : event.type === 'verification.completed'
                         ? 'Verification completed'
                         : event.type === 'usage.updated'
@@ -199,8 +225,8 @@ export function RunsPage() {
                             : typeof payload.tool === 'string' ? payload.tool : 'Tool'
                     return (
                       <div className="local-run-activity-row" key={event.event_id}>
-                        <Icon name={event.type === 'warning' ? 'alert' : event.type.startsWith('approval.') ? 'shield' : event.type.startsWith('command.') ? 'terminal' : 'activity'} className="icon sm" />
-                        <span><strong>{label}</strong><small>{approvalDetail ?? message ?? providerSessionId ?? (checks !== undefined ? `${checks} check${checks === 1 ? '' : 's'}` : event.type.replaceAll('.', ' '))}</small></span>
+                        <Icon name={event.type === 'warning' ? 'alert' : event.type.startsWith('approval.') ? 'shield' : event.type === 'input.requested' || event.type === 'user.input.submitted' ? 'message' : event.type.startsWith('command.') ? 'terminal' : 'activity'} className="icon sm" />
+                        <span><strong>{label}</strong><small>{approvalDetail ?? inputDetail ?? message ?? providerSessionId ?? (checks !== undefined ? `${checks} check${checks === 1 ? '' : 's'}` : event.type.replaceAll('.', ' '))}</small></span>
                       </div>
                     )
                   })}
