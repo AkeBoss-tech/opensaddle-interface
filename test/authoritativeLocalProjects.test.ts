@@ -97,10 +97,63 @@ test('adapts Python project-domain files, harnesses, and rescans without using l
   assert.equal(paths.some((path) => path.includes('managed-artifact') || path.includes('/search')), false)
 })
 
-test('does not simulate unsupported legacy local-project features', async () => {
+test('does not simulate unsupported authoritative project search', async () => {
   const client = new AuthoritativeLocalProjectClient('http://daemon.test', () => 'local-admin', undefined, async () => json({}))
-  await assert.rejects(client.archiveManagedArtifact('demo', '.codex/skills/review/SKILL.md'), UnsupportedAuthoritativeProjectOperationError)
   await assert.rejects(client.searchFiles('demo', 'review'), UnsupportedAuthoritativeProjectOperationError)
+})
+
+test('archives, lists, and restores managed project definitions through authoritative file moves', async () => {
+  const paths: string[] = []
+  const moves: Array<{ source: string; destination: string }> = []
+  const client = new AuthoritativeLocalProjectClient('http://daemon.test', () => 'local-admin', undefined, async (input, init) => {
+    const path = input.toString().replace('http://daemon.test', '')
+    paths.push(`${init?.method ?? 'GET'} ${path}`)
+    if (path === '/api/projects/demo') {
+      return json({ project_id: 'demo', root: '/work/demo', created_at: '2026-01-01T00:00:00Z' })
+    }
+    if (path === '/api/projects/demo/files/move' && init?.method === 'POST') {
+      moves.push(JSON.parse(String(init.body)))
+      return json({ project_id: 'demo' })
+    }
+    if (path === '/api/projects/demo/files?path=.opensaddle%2Farchive&recursive=true') {
+      return json({
+        items: [{
+          path: '.opensaddle/archive/1700000000000-proof/.opensaddle/agents/reviewer.md',
+          kind: 'file',
+          size: 42,
+          modified_ns: 1_700_000_000_000_000_000,
+        }],
+      })
+    }
+    return json({ detail: `unexpected path ${path}` }, 404)
+  })
+
+  const archived = await client.archiveManagedArtifact('demo', '.opensaddle/agents/reviewer.md')
+  assert.match(archived.archivedPath, /^\.opensaddle\/archive\/\d+-[a-f0-9-]+\/\.opensaddle\/agents\/reviewer\.md$/)
+  assert.deepEqual(moves[0], {
+    source: '.opensaddle/agents/reviewer.md',
+    destination: archived.archivedPath,
+  })
+
+  assert.deepEqual(await client.listManagedArchives('demo'), [{
+    archivedPath: '.opensaddle/archive/1700000000000-proof/.opensaddle/agents/reviewer.md',
+    originalPath: '.opensaddle/agents/reviewer.md',
+    kind: 'agent',
+    name: 'reviewer',
+    archivedAt: 1_700_000_000_000,
+    bytes: 42,
+  }])
+
+  const restored = await client.restoreManagedArtifact(
+    'demo',
+    '.opensaddle/archive/1700000000000-proof/.opensaddle/agents/reviewer.md',
+  )
+  assert.equal(restored.path, '.opensaddle/agents/reviewer.md')
+  assert.deepEqual(moves[1], {
+    source: '.opensaddle/archive/1700000000000-proof/.opensaddle/agents/reviewer.md',
+    destination: '.opensaddle/agents/reviewer.md',
+  })
+  assert.equal(paths.includes('GET /api/projects/demo/files?path=.opensaddle%2Farchive&recursive=true'), true)
 })
 
 test('refreshes the authoritative thread version before metadata updates', async () => {

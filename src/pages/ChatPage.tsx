@@ -269,6 +269,13 @@ export function ChatPage() {
   const continuationAction = chat?.continuation?.mode === 'fork' ? 'Fork' : 'Resume'
   const project = data.projects.find((p) => p.id === chat?.projectId) ?? data.projects.find((p) => p.id === data.activeProjectId) ?? data.projects[0]
   const chatAgent = data.agents.find((agent) => agent.id === chat?.agentId)
+  const agentDefinitionPath = chatAgent?.definitionPath?.startsWith('.opensaddle/agents/')
+    ? chatAgent.definitionPath
+    : undefined
+  const agentSkillPaths = project.local?.skills
+    .filter((skill) => skill.enabled && chatAgent?.skillIds?.includes(skill.id))
+    .map((skill) => skill.path)
+    .filter((path) => path.startsWith('.opensaddle/skills/'))
   const messages = useMemo(() => data.messages.filter((m) => m.chatId === chat?.id).sort((a, b) => a.createdAt - b.createdAt), [data.messages, chat?.id])
   const latestMessageRun = useMemo(() => [...messages].reverse().find((message) => message.run)?.run, [messages])
   const rootRun = useMemo(() => [...messages].reverse().find((message) => message.run && !message.run.parentRunId)?.run, [messages])
@@ -932,6 +939,8 @@ export function ChatPage() {
           assistantMessageId: placeholder.id,
           task: prompt,
           agentId,
+          agentDefinitionPath,
+          skillPaths: agentSkillPaths,
           providerSessionId: chat?.continuation?.sessionId,
           providerSessionMode: chat?.continuation ? chat.continuation.mode ?? 'resume' : undefined,
           providerTurnId: chat?.continuation?.mode === 'fork' ? chat.continuation.checkpointId : undefined,
@@ -1564,6 +1573,8 @@ export function ChatPage() {
         assistantMessageId: message.id,
         task,
         agentId: chat.agentId,
+        agentDefinitionPath,
+        skillPaths: agentSkillPaths,
         parentRunId: rootRun.id,
         sourceIds: usedSources.map((source) => source.id),
         executionMode,

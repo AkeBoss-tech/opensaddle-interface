@@ -872,10 +872,11 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
       toast('External agent file', 'Edit and save this agent first to create an OpenSaddle-managed project copy.')
       return
     }
-    const references = data.chats.filter((chat) => chat.agentId === agent.id).length
+    const references = data.chats.filter((chat) => chat.agentId === agent.id && !chat.archived).length
       + data.workflows.filter((workflow) => workflow.agentIds.includes(agent.id)).length
       + data.sites.filter((site) => site.agentId === agent.id).length
-      + data.agentSessions.filter((session) => session.agentId === agent.id).length
+      + data.agentSessions.filter((session) =>
+        session.agentId === agent.id && session.status !== 'idle').length
     if (references) {
       toast('Agent is still in use', `${references} chat, workflow, site, or session reference${references === 1 ? 's' : ''} must be reassigned first.`)
       return

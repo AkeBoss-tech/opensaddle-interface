@@ -46,6 +46,8 @@ export class MockRuntimeClient implements RuntimeClient {
     threadId?: string
     task: string
     agentId?: string
+    agentDefinitionPath?: string
+    skillPaths?: string[]
     parentRunId?: string
     sourceIds?: string[]
     providerSessionId?: string

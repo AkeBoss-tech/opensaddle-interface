@@ -158,6 +158,15 @@ export class UnsupportedAuthoritativeProjectOperationError extends Error {
   }
 }
 
+class AuthoritativeProjectHttpError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
 /**
  * Adapter for the Python daemon's authoritative `/api/projects` resources.
  *
@@ -166,7 +175,7 @@ export class UnsupportedAuthoritativeProjectOperationError extends Error {
  * returns durable project-domain records and raw file bodies.
  */
 export class AuthoritativeLocalProjectClient implements LocalProjectClient {
-  readonly supportsManagedArchives = false
+  readonly supportsManagedArchives = true
   private readonly baseUrl: string
   private readonly getUserId: () => string
   private readonly token?: string
@@ -189,7 +198,10 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
 
   private async error(response: Response): Promise<Error> {
     const body = await response.json().catch(() => null) as { detail?: string; error?: string; message?: string } | null
-    return new Error(body?.detail ?? body?.message ?? body?.error ?? `OpenSaddle HTTP ${response.status}`)
+    return new AuthoritativeProjectHttpError(
+      body?.detail ?? body?.message ?? body?.error ?? `OpenSaddle HTTP ${response.status}`,
+      response.status,
+    )
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -309,26 +321,100 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
     return { root, path: result.path, bytes: result.size, modifiedAt: Date.now() }
   }
 
-  async archiveManagedArtifact(_projectId: string, _path: string): Promise<{
+  async archiveManagedArtifact(projectId: string, path: string): Promise<{
     root: string
     path: string
     archivedPath: string
     archivedAt: number
   }> {
-    throw new UnsupportedAuthoritativeProjectOperationError('Managed artifact archive')
+    if (!path.startsWith('.opensaddle/agents/') && !path.startsWith('.opensaddle/skills/')) {
+      throw new Error('Only OpenSaddle-managed agents and skills can be archived.')
+    }
+    const archivedAt = Date.now()
+    const archiveId = `${archivedAt}-${crypto.randomUUID().slice(0, 8)}`
+    const archivedPath = `.opensaddle/archive/${archiveId}/${path}`
+    await this.request(this.projectPath(projectId, 'files/move'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: path, destination: archivedPath }),
+    })
+    return {
+      root: await this.root(projectId),
+      path,
+      archivedPath,
+      archivedAt,
+    }
   }
 
-  async listManagedArchives(_projectId: string): Promise<ManagedArtifactArchive[]> {
-    throw new UnsupportedAuthoritativeProjectOperationError('Managed artifact archive listing')
+  async listManagedArchives(projectId: string): Promise<ManagedArtifactArchive[]> {
+    const query = new URLSearchParams({ path: '.opensaddle/archive', recursive: 'true' })
+    let result: { items: DomainFileEntry[] }
+    try {
+      result = await this.request<{ items: DomainFileEntry[] }>(
+        `${this.projectPath(projectId, 'files')}?${query}`,
+      )
+    } catch (error) {
+      if (error instanceof AuthoritativeProjectHttpError && error.status === 404) return []
+      throw error
+    }
+    return result.items.flatMap((item): ManagedArtifactArchive[] => {
+      if (item.kind !== 'file') return []
+      const parts = item.path.split('/')
+      if (parts.length < 5 || parts[0] !== '.opensaddle' || parts[1] !== 'archive') return []
+      const archiveId = parts[2] ?? ''
+      const originalPath = parts.slice(3).join('/')
+      const kind = originalPath.startsWith('.opensaddle/agents/')
+        ? 'agent'
+        : originalPath.startsWith('.opensaddle/skills/')
+          ? 'skill'
+          : null
+      if (!kind) return []
+      const timestamp = Number(archiveId.split('-')[0])
+      const archivedAt = Number.isFinite(timestamp)
+        ? timestamp
+        : Math.floor(item.modified_ns / 1_000_000)
+      return [{
+        archivedPath: item.path,
+        originalPath,
+        kind,
+        name: kind === 'skill'
+          ? originalPath.split('/').at(-2) ?? originalPath
+          : originalPath.split('/').at(-1)?.replace(/\.md$/i, '') ?? originalPath,
+        archivedAt,
+        bytes: item.size ?? 0,
+      }]
+    }).sort((left, right) => right.archivedAt - left.archivedAt)
   }
 
-  async restoreManagedArtifact(_projectId: string, _archivedPath: string): Promise<{
+  async restoreManagedArtifact(projectId: string, archivedPath: string): Promise<{
     root: string
     path: string
     archivedPath: string
     restoredAt: number
   }> {
-    throw new UnsupportedAuthoritativeProjectOperationError('Managed artifact restore')
+    const parts = archivedPath.split('/')
+    if (
+      parts.length < 5
+      || parts[0] !== '.opensaddle'
+      || parts[1] !== 'archive'
+    ) {
+      throw new Error('Invalid OpenSaddle managed archive path.')
+    }
+    const path = parts.slice(3).join('/')
+    if (!path.startsWith('.opensaddle/agents/') && !path.startsWith('.opensaddle/skills/')) {
+      throw new Error('Archive does not contain a managed agent or skill.')
+    }
+    await this.request(this.projectPath(projectId, 'files/move'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: archivedPath, destination: path }),
+    })
+    return {
+      root: await this.root(projectId),
+      path,
+      archivedPath,
+      restoredAt: Date.now(),
+    }
   }
 
   async searchFiles(_projectId: string, _query: string, _limit?: number): Promise<{

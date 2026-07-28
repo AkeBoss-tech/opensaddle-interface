@@ -144,6 +144,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     assistantMessageId?: string
     task: string
     agentId?: string
+    agentDefinitionPath?: string
+    skillPaths?: string[]
     parentRunId?: string
     sourceIds?: string[]
     providerSessionId?: string
@@ -184,6 +186,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
           assistant_message_id: input.assistantMessageId,
           task: input.task,
           agent_id: input.agentId,
+          agent_definition_path: input.agentDefinitionPath,
+          skill_paths: input.skillPaths,
           parent_run_id: input.parentRunId,
           source_ids: input.sourceIds,
           provider_session_id: input.providerSessionId,

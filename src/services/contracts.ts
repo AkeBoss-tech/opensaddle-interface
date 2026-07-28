@@ -195,6 +195,8 @@ export interface RuntimeClient {
     assistantMessageId?: string
     task: string
     agentId?: string
+    agentDefinitionPath?: string
+    skillPaths?: string[]
     parentRunId?: string
     sourceIds?: string[]
     providerSessionId?: string
