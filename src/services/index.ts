@@ -120,9 +120,6 @@ export function initServices(opts: {
       } else {
         permissions = new LocalPermissionClient(opts.getGrants, opts.setGrants)
       }
-      const tools = new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
-      const sandbox = new WorkerSandboxClient()
-      const browserRuntime = new BrowserAgentRuntime(files, sandbox, permissions, ['https://example.com'])
       const runtime = connection.mode === 'remote' && (mode === 'desktop' || mode === 'browser')
           ? new OpenSaddleRuntimeClient(baseUrl, new MockRuntimeClient(), {
             token,
@@ -148,6 +145,15 @@ export function initServices(opts: {
             ? new RemoteLocalProjectClient(baseUrl, getUserId, token)
             : undefined
         : undefined
+      const tools = new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
+      const sandbox = new WorkerSandboxClient()
+      const browserRuntime = new BrowserAgentRuntime(
+        files,
+        sandbox,
+        permissions,
+        ['https://example.com'],
+        localProjects,
+      )
       return {
         mode,
         runtime,

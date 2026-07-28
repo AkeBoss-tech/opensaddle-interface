@@ -51,13 +51,13 @@ export function BrowserRuntimePage() {
       )}
       <div className="grid-2">
         <div className="card">
-          <div className="card-header"><div><h3>Tool invocations</h3><p>Every call is scoped and emitted as an event.</p></div></div>
+          <div className="card-header"><div><h3>Tool invocations</h3><p>Every call is scoped and emitted as an event. Registered local projects use their real folder; other projects use browser storage.</p></div></div>
           <div className="card-body">
             <div className="form-row"><label>JavaScript Worker code</label><textarea className="files-editor sandbox" value={code} onChange={(event) => setCode(event.target.value)} /></div>
             <div className="row-actions" style={{ flexWrap: 'wrap' }}>
               <button className="primary-btn" disabled={busy} onClick={() => void run('javascript.execute')}><Icon name="play" className="icon sm" />Run Worker</button>
-              <button className="secondary-btn" disabled={busy} onClick={() => void run('filesystem.read')}>Read project file</button>
-              <button className="secondary-btn" disabled={busy} onClick={() => void run('filesystem.write')}>Write artifact</button>
+              <button className="secondary-btn" disabled={busy} onClick={() => void run('filesystem.read')}>Read active project file</button>
+              <button className="secondary-btn" disabled={busy} onClick={() => void run('filesystem.write')}>Write active project artifact</button>
               <button className="secondary-btn" disabled={busy} onClick={() => void run('http.fetch')}>Fetch HTTPS</button>
             </div>
           </div>

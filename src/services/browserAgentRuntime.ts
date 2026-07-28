@@ -1,4 +1,4 @@
-import type { FileStore, PermissionClient, SandboxClient } from './contracts'
+import type { FileStore, LocalProjectClient, PermissionClient, SandboxClient } from './contracts'
 import { BROWSER_RUNTIME_TOOLS } from '../runtime/ui'
 
 export type BrowserCapability =
@@ -77,17 +77,20 @@ export class BrowserAgentRuntime {
   private readonly sandbox: SandboxClient
   private readonly permissions: PermissionClient
   private readonly allowedNetworkOrigins: string[]
+  private readonly localProjects?: LocalProjectClient
 
   constructor(
     files: FileStore,
     sandbox: SandboxClient,
     permissions: PermissionClient,
     allowedNetworkOrigins: string[] = [],
+    localProjects?: LocalProjectClient,
   ) {
     this.files = files
     this.sandbox = sandbox
     this.permissions = permissions
     this.allowedNetworkOrigins = allowedNetworkOrigins
+    this.localProjects = localProjects
   }
 
   subscribe(listener: (event: BrowserRuntimeEvent) => void): () => void {
@@ -140,18 +143,29 @@ export class BrowserAgentRuntime {
     if (input.tool === 'filesystem.read') {
       const path = text(input.args.path, 'path')
       await this.authorize(input, 'read', path)
-      const content = await this.files.read(projectPath(input.projectId, path))
-      emit('tool.output', { chars: content.length })
-      return { path, content: content.slice(0, MAX_TEXT) }
+      const authoritative = await this.isAuthoritativeLocalProject(input.projectId)
+      const result = authoritative
+        ? await this.localProjects!.readFile(input.projectId, path)
+        : { content: await this.files.read(projectPath(input.projectId, path)), truncated: false }
+      const content = result.content.slice(0, MAX_TEXT)
+      const storage = authoritative ? 'local-project' : 'browser-workspace'
+      emit('tool.output', { chars: content.length, storage, truncated: result.truncated || result.content.length > MAX_TEXT })
+      return { path, content, storage, truncated: result.truncated || result.content.length > MAX_TEXT }
     }
 
     if (input.tool === 'filesystem.write') {
       const path = text(input.args.path, 'path')
       const content = text(input.args.content, 'content')
       await this.authorize(input, 'write', path)
-      await this.files.write(projectPath(input.projectId, path), content)
-      emit('file.changed', { path, bytes: content.length })
-      return { path, bytes: content.length }
+      const authoritative = await this.isAuthoritativeLocalProject(input.projectId)
+      if (authoritative) {
+        await this.localProjects!.writeManagedArtifact(input.projectId, { path, content })
+      } else {
+        await this.files.write(projectPath(input.projectId, path), content)
+      }
+      const storage = authoritative ? 'local-project' : 'browser-workspace'
+      emit('file.changed', { path, bytes: content.length, storage })
+      return { path, bytes: content.length, storage }
     }
 
     if (input.tool === 'javascript.execute') {
@@ -177,5 +191,11 @@ export class BrowserAgentRuntime {
     }
 
     throw new Error(`Unknown browser tool: ${input.tool}`)
+  }
+
+  private async isAuthoritativeLocalProject(projectId: string): Promise<boolean> {
+    if (!this.localProjects?.listProjects) return false
+    const projects = await this.localProjects.listProjects()
+    return projects.some((project) => project.projectId === projectId)
   }
 }
