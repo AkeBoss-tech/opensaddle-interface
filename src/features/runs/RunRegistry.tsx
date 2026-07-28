@@ -129,7 +129,10 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
         },
       }))
 
-      if (event.type === 'agent.completed' || event.type === 'agent.failed' || event.type === 'session.closed') {
+      // `session.closed` is the canonical terminal boundary. Staying attached
+      // through it prevents final tool, usage, and closure evidence from being
+      // dropped when a provider completes several events in one burst.
+      if (event.type === 'session.closed') {
         release(input.runId)
       }
     })

@@ -80,6 +80,17 @@ export async function runProcessSession(input: ProcessSessionInput): Promise<Pro
     let stderrBytes = 0
     let settled = false
     let lineBuf = ''
+    let lineProcessing: Promise<void> = Promise.resolve()
+
+    const processLine = (line: string) => {
+      // Provider parsers can emit structured tool activity before returning
+      // assistant text. Keep every line in process order and retain the queue
+      // until close so terminal run events cannot overtake visible activity.
+      lineProcessing = lineProcessing.then(async () => {
+        const delta = await input.onStdoutLine?.(line)
+        if (delta?.trim()) await input.emit('agent.output.delta', { text: delta })
+      }).catch(() => undefined)
+    }
 
     const onAbort = () => {
       try { child.kill('SIGTERM') } catch { /* ignore */ }
@@ -99,12 +110,7 @@ export async function runProcessSession(input: ProcessSessionInput): Promise<Pro
         lineBuf += text
         const lines = lineBuf.split(/\r?\n/)
         lineBuf = lines.pop() ?? ''
-        for (const line of lines) {
-          void Promise.resolve(input.onStdoutLine?.(line)).then((delta) => {
-            if (delta?.trim()) return input.emit('agent.output.delta', { text: delta })
-            return undefined
-          }).catch(() => undefined)
-        }
+        for (const line of lines) processLine(line)
       }
     })
 
@@ -129,27 +135,24 @@ export async function runProcessSession(input: ProcessSessionInput): Promise<Pro
       if (settled) return
       settled = true
       input.signal.removeEventListener('abort', onAbort)
-      if (lineBuf.trim()) {
-        void Promise.resolve(input.onStdoutLine?.(lineBuf)).then((delta) => {
-          if (delta?.trim()) return input.emit('agent.output.delta', { text: delta })
-          return undefined
-        }).catch(() => undefined)
-      }
+      if (lineBuf.trim()) processLine(lineBuf)
       stdoutStream.end()
       stderrStream.end()
       writeFileSync(join(runnerDir, 'exit_code.txt'), String(code ?? ''))
-      void input.emit('tool.completed', {
-        tool: 'cli.spawn',
-        exit_code: code,
-        stdout_bytes: stdoutBytes,
-        stderr_bytes: stderrBytes,
-      })
-      resolve({
-        exitCode: code,
-        stdout,
-        stderr,
-        timedOut: false,
-      })
+      void lineProcessing.then(async () => {
+        await input.emit('tool.completed', {
+          tool: 'cli.spawn',
+          exit_code: code,
+          stdout_bytes: stdoutBytes,
+          stderr_bytes: stderrBytes,
+        })
+        resolve({
+          exitCode: code,
+          stdout,
+          stderr,
+          timedOut: false,
+        })
+      }).catch(reject)
     })
   })
 }
