@@ -59,19 +59,25 @@ export class RunManager {
   async recoverInterruptedRuns(): Promise<number> {
     const interrupted = this.store.runs().filter((run) => run.status === 'queued' || run.status === 'running')
     for (const run of interrupted) {
-      run.status = 'failed'
-      run.error = 'Control plane restarted before the run completed'
+      // The harness process cannot survive a control-plane restart, but its
+      // workspace and provider-native session can. Treat the persisted run as
+      // a paused checkpoint so the desktop can reattach and explicitly resume
+      // it instead of presenting an ordinary failure and forcing a new run.
+      run.status = 'paused'
+      run.error = undefined
       run.updatedAt = Date.now()
-      await this.emit(run, 'agent.failed', { reason: 'interrupted', error: run.error })
-      await this.emit(run, 'session.closed', { status: 'interrupted' })
+      await this.emit(run, 'warning', {
+        severity: 'info',
+        message: 'OpenSaddle restarted while this run was active. The saved checkpoint is ready to resume.',
+        reason: 'control_plane_restarted',
+      })
+      await this.emit(run, 'agent.paused', {
+        checkpoint_sequence: run.events.length,
+        runtime_id: run.runtimeId,
+        reason: 'control_plane_restarted',
+        resumable: true,
+      })
       await this.store.saveRun(run)
-      if (run.runtimeId) {
-        await this.provisioner.release(
-          run.runtimeId,
-          { userId: 'system', roles: ['system'], authType: 'local' },
-          true,
-        ).catch(() => undefined)
-      }
     }
     await this.drainQueuedRuns()
     return interrupted.length

@@ -672,10 +672,16 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       next.statusText = 'Starting queued follow-up'
       addActivity('status', 'Queued follow-up started')
       break
-    case 'agent.paused':
-      next.statusText = 'Paused'
-      addActivity('status', 'Agent paused')
+    case 'agent.paused': {
+      const recovered = event.payload.reason === 'control_plane_restarted'
+      next.statusText = recovered ? 'Paused · ready to resume' : 'Paused'
+      addActivity(
+        'status',
+        recovered ? 'Run recovered after restart' : 'Agent paused',
+        recovered ? 'Saved workspace and provider session retained' : undefined,
+      )
       break
+    }
     case 'agent.resumed':
       next.statusText = 'Resumed'
       addActivity('status', 'Agent resumed')

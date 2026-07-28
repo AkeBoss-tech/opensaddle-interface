@@ -221,8 +221,15 @@ export class RuntimeProvisioner {
 
   async cleanupExpired(): Promise<void> {
     const system: AuthPrincipal = { userId: 'system', roles: ['system'], authType: 'local' }
+    const pausedRuntimeIds = new Set(
+      this.store.runs()
+        .filter((run) => run.status === 'paused' && run.runtimeId)
+        .map((run) => run.runtimeId!),
+    )
     for (const runtime of this.store.runtimes()) {
-      if (runtime.status === 'running' && runtime.expiresAt <= Date.now()) {
+      // A paused run is an explicit durable checkpoint. Keep its workspace
+      // available until the user resumes, retries, or cancels that run.
+      if (runtime.status === 'running' && runtime.expiresAt <= Date.now() && !pausedRuntimeIds.has(runtime.id)) {
         await this.release(runtime.id, system, true).catch(() => undefined)
       }
     }

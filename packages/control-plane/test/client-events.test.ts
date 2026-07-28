@@ -428,6 +428,36 @@ describe('durable client event handling', () => {
     assert.equal(created.executionMode, 'plan')
   })
 
+  it('presents a restart-recovered run as a resumable checkpoint', () => {
+    const initial: AgentRunBlock = {
+      id: 'run-1',
+      kind: 'coding',
+      title: 'Coding run',
+      model: 'Codex default',
+      harness: 'Codex',
+      runtime: 'Local desktop',
+      statusText: 'Working',
+      done: false,
+      tools: [],
+      plan: [],
+      artifacts: [],
+    }
+    const recovered = applyRunEvent(initial, {
+      ...event(4),
+      type: 'agent.paused',
+      payload: {
+        reason: 'control_plane_restarted',
+        runtime_id: 'runtime-1',
+        resumable: true,
+      },
+    })
+
+    assert.equal(recovered.done, false)
+    assert.equal(recovered.statusText, 'Paused · ready to resume')
+    assert.equal(recovered.activity?.at(-1)?.label, 'Run recovered after restart')
+    assert.equal(recovered.activity?.at(-1)?.detail, 'Saved workspace and provider session retained')
+  })
+
   it('preserves resolved hunk state when the server refreshes the remaining diff', () => {
     const initial: AgentRunBlock = {
       id: 'run-1',

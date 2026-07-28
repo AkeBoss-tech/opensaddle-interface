@@ -214,6 +214,25 @@ export function ChatPage() {
   const activeManagedRun = [...managedRuns].reverse().find((managed) =>
     !managed.run.done && !/queued after current turn/i.test(managed.run.statusText))
   const latestRun = activeManagedRun?.run ?? latestMessageRun
+  const latestRunPaused = /^Paused\b/.test(latestRun?.statusText ?? '')
+  const latestRunState = latestRun
+    ? latestRun.done
+      ? latestRun.failure ? 'Needs attention' : 'Ready'
+      : latestRunPaused ? 'Paused'
+        : /queued/i.test(latestRun.statusText) ? 'Queued' : 'Running'
+    : 'Ready'
+  const threadRunActivity = useMemo(() => {
+    const entries = new Map<string, NonNullable<AgentRunBlock['activity']>[number]>()
+    for (const message of messages) {
+      for (const item of message.run?.activity ?? []) entries.set(item.id, item)
+    }
+    for (const managed of managedRuns) {
+      for (const item of managed.run.activity ?? []) entries.set(item.id, item)
+    }
+    return [...entries.values()]
+      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
+      .slice(-160)
+  }, [managedRuns, messages])
   const steerableRun = activeManagedRun && /codex/i.test(activeManagedRun.run.harness)
     ? activeManagedRun
     : undefined
@@ -971,7 +990,6 @@ export function ChatPage() {
       detail: source.detail,
     })),
   }) : []
-  const runActivity = latestRun?.activity ?? []
   const additions = gitStatus?.additions ?? artifactAdditions
   const deletions = gitStatus?.deletions ?? artifactDeletions
   const defaultPullRequestBase = repository?.branch ?? 'main'
@@ -1695,7 +1713,7 @@ export function ChatPage() {
                   <button className="tf-state-row" onClick={() => setItab('environment')}>
                     <Icon name="terminal" className="icon sm" />
                     <span>{latestRun?.runtime ?? activeEnvironment?.name ?? RUNTIME_LABEL[route.runtimeKey]}</span>
-                    <small>{latestRun ? latestRun.done ? 'Ready' : 'Running' : activeEnvironment?.status ?? 'Ready'}</small>
+                    <small>{latestRun ? latestRunState : activeEnvironment?.status ?? 'Ready'}</small>
                   </button>
                   <div className="tf-state-row">
                     <Icon name="branch" className="icon sm" />
@@ -2014,6 +2032,29 @@ export function ChatPage() {
                   {!!latestRun?.warnings?.length && <div className="kv"><span>Warnings</span><span>{latestRun.warnings.length}</span></div>}
                   {!!queuedManagedRuns.length && <div className="kv"><span>Queue</span><span>{queuedManagedRuns.length} follow-up{queuedManagedRuns.length === 1 ? '' : 's'}</span></div>}
                   <div className="kv"><span>Cost</span><span>{latestRun?.cost ?? route.cost}</span></div>
+                  {!!threadRunActivity.length && (
+                    <div className="tf-state-live-activity" aria-label="Recent harness activity">
+                      <div className="tf-state-sublabel">Recent activity</div>
+                      {threadRunActivity.slice(-3).map((item) => (
+                        <button key={item.id} type="button" onClick={() => setItab('activity')}>
+                          <Icon
+                            name={item.kind === 'tool' ? 'terminal' : item.kind === 'change' ? 'file' : item.kind === 'error' ? 'x' : 'activity'}
+                            className="icon sm"
+                          />
+                          <span><strong>{item.label}</strong>{item.detail && <small>{item.detail}</small>}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {latestRun && latestRun.id !== 'pending' && (
+                    <div className="tf-state-run-actions">
+                      {!latestRun.done && (latestRunPaused
+                        ? <button type="button" onClick={() => void runRegistry.resume(latestRun.id).catch((error) => toast('Resume failed', error instanceof Error ? error.message : String(error)))}><Icon name="play" className="icon sm" />Resume</button>
+                        : <button type="button" onClick={() => void runRegistry.pause(latestRun.id).catch((error) => toast('Pause failed', error instanceof Error ? error.message : String(error)))}><Icon name="pause" className="icon sm" />Pause</button>)}
+                      {!latestRun.done && <button type="button" onClick={() => void runRegistry.stop(latestRun.id).catch((error) => toast('Stop failed', error instanceof Error ? error.message : String(error)))}><Icon name="x" className="icon sm" />Stop</button>}
+                      {latestRun.done && <button type="button" onClick={() => void runRegistry.retry(latestRun.id, chat.id, latestRun).catch((error) => toast('Retry failed', error instanceof Error ? error.message : String(error)))}><Icon name="refresh" className="icon sm" />Retry from checkpoint</button>}
+                    </div>
+                  )}
                   <button className="tf-state-view-all" onClick={() => setItab('activity')}>View activity</button>
                 </section>
               </div>
@@ -2078,8 +2119,8 @@ export function ChatPage() {
               <div className="ipanel active"><div className="inspector-section" style={{ borderTop: 0 }}>
                 <h4>Run timeline</h4>
                 <div className="timeline">
-                  {(runActivity.length
-                    ? runActivity.map((item) => ({
+                  {(threadRunActivity.length
+                    ? threadRunActivity.map((item) => ({
                       title: item.label,
                       sub: item.detail ?? item.kind,
                       kind: item.kind === 'error' ? 'error' : 'info',
@@ -2329,7 +2370,7 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
     return <div className="message user"><div className="message-body"><div className="message-text">{m.text}</div><MessageActions text={m.text} onRetry={onRetry} onBranch={onBranch} onCopyError={() => toast('Copy failed', 'Clipboard access is unavailable.')} /></div></div>
   }
   const run = m.run
-  const paused = run?.statusText === 'Paused'
+  const paused = /^Paused\b/.test(run?.statusText ?? '')
   const interrupted = !!run?.done && (!!run.failure || /^(Stopped|Failed|Cancelled)/i.test(run.statusText))
   const agentOutput = m.text || run?.output || (run ? fallbackRunOutput(run) : '')
   return (

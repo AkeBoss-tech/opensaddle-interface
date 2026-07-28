@@ -262,6 +262,111 @@ describe('durable run lifecycle', () => {
     }
   })
 
+  it('recovers an active run as a resumable checkpoint after a control-plane restart', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'opensaddle-run-restart-'))
+    const projectDir = join(dataDir, 'project')
+    await mkdir(projectDir)
+    const config: ControlPlaneConfig = {
+      mode: 'local',
+      host: '127.0.0.1',
+      port: 0,
+      dataDir,
+      workspaceDir: join(dataDir, 'workspaces'),
+      corsOrigins: [],
+      apiKeys: new Map(),
+      bootstrapAdminId: principal.userId,
+      modelRoutes: {},
+      defaultModel: 'gpt',
+      defaultCodingProvider: 'codex',
+      codingProviders: ['codex'],
+      harnessProfiles: [],
+      runtimeProvider: 'local',
+      dockerImage: 'node:22-alpine',
+      runtimeTtlMs: 60_000,
+      allowedRepoRoots: [dataDir],
+      maxConcurrentRuns: 2,
+      modelProvider: 'unconfigured',
+    }
+    const store = new StateStore(config)
+    await store.init()
+    const provisioner = new RuntimeProvisioner(config, store)
+    const route: RouteEstimate = {
+      modelKey: 'gpt',
+      modelId: 'gpt-5.4',
+      harnessKey: 'coding',
+      providerKey: 'codex',
+      runtimeKey: 'local',
+      reasons: ['test'],
+      cost: '$0',
+      alternatives: [],
+    }
+    const runId = 'run-restart'
+    const runtimeId = 'runtime-restart'
+    await store.saveRuntime({
+      id: runtimeId,
+      kind: 'local',
+      status: 'running',
+      projectId: 'project-1',
+      ownerId: principal.userId,
+      workspacePath: projectDir,
+      createdAt: Date.now(),
+      expiresAt: Date.now() - 1,
+    })
+    await store.saveRun({
+      id: runId,
+      sessionId: 'session-restart',
+      projectId: 'project-1',
+      ownerId: principal.userId,
+      task: 'Continue after restart',
+      route,
+      status: 'running',
+      runtimeId,
+      providerSessionId: 'thread-native-restart',
+      providerSessionMode: 'resume',
+      createdAt: Date.now() - 1_000,
+      updatedAt: Date.now() - 500,
+      events: [],
+    })
+
+    const workspaces: string[] = []
+    const providerSessions: Array<string | undefined> = []
+    const harnesses = {
+      async run(input: HarnessRunInput) {
+        workspaces.push(input.workspacePath)
+        providerSessions.push(input.providerSessionId)
+        await input.emit('agent.started', { provider: 'codex' })
+        await input.emit('agent.output.delta', { text: 'continued after restart' })
+        return { summary: '', providerId: 'codex' }
+      },
+    }
+    const manager = new RunManager(config, store, {} as never, provisioner, harnesses as never)
+
+    try {
+      assert.equal(await manager.recoverInterruptedRuns(), 1)
+      const recovered = store.run(runId)!
+      assert.equal(recovered.status, 'paused')
+      assert.equal(recovered.error, undefined)
+      await provisioner.cleanupExpired()
+      assert.equal(store.runtime(runtimeId)?.status, 'running')
+      assert.ok(recovered.events.some((event) =>
+        event.type === 'agent.paused'
+        && event.payload.reason === 'control_plane_restarted'
+        && event.payload.resumable === true,
+      ))
+      assert.equal(recovered.events.some((event) => event.type === 'session.closed'), false)
+
+      await manager.resume(runId, principal)
+      await eventually(() => store.run(runId)?.status === 'completed', 'recovered run did not complete')
+      assert.deepEqual(workspaces, [projectDir])
+      assert.deepEqual(providerSessions, ['thread-native-restart'])
+      assert.ok(store.run(runId)?.events.some((event) =>
+        event.type === 'agent.output.delta' && event.payload.text === 'continued after restart',
+      ))
+    } finally {
+      await rm(dataDir, { recursive: true, force: true })
+    }
+  })
+
   it('persists a pending harness request and resumes after the user responds', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'opensaddle-run-interaction-'))
     const config: ControlPlaneConfig = {

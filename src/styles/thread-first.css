@@ -585,6 +585,61 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
 .tf-state-view-all:hover { color: var(--text); }
 .tf-state-run .scope-box { margin: 2px 7px 8px; }
 .tf-state-run .kv { margin-inline: 7px; }
+.tf-state-live-activity {
+  display: grid;
+  gap: 2px;
+  margin: 10px 7px 3px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+.tf-state-live-activity .tf-state-sublabel { padding: 0 0 4px; }
+.tf-state-live-activity > button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  padding: 6px 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  text-align: left;
+  cursor: pointer;
+}
+.tf-state-live-activity > button:hover { color: var(--text); background: var(--card-hover); }
+.tf-state-live-activity > button .icon { margin-top: 1px; }
+.tf-state-live-activity > button span { min-width: 0; display: grid; gap: 2px; }
+.tf-state-live-activity > button strong,
+.tf-state-live-activity > button small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tf-state-live-activity > button strong { color: var(--muted); font-size: 9px; font-weight: 590; }
+.tf-state-live-activity > button small { color: var(--dim); font-size: 8px; }
+.tf-state-run-actions {
+  display: flex;
+  gap: 5px;
+  margin: 10px 7px 2px;
+}
+.tf-state-run-actions button {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 9px;
+  cursor: pointer;
+}
+.tf-state-run-actions button:first-child { flex: 1; color: var(--text); }
+.tf-state-run-actions button:hover { border-color: var(--border-strong); background: var(--card-hover); }
 
 .tf-project-page { width: min(1080px, calc(100% - 48px)); margin: 0 auto; padding: 38px 0 80px; }
 .tf-project-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
