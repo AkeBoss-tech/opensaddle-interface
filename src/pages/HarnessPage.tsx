@@ -159,7 +159,7 @@ export function HarnessPage() {
           <div className="card-body">
             <div className="form-row"><label>Repository path</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input style={{ flex: 1 }} value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="/path/to/git/repo (optional → simulated)" />
+                <input style={{ flex: 1 }} value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="/path/to/git/repo (required)" />
                 <button className="tiny-btn" onClick={() => void pickRepo()}>Browse</button>
               </div>
             </div>

@@ -200,21 +200,28 @@ export function PermissionsPage() {
             <div><h3>Sources</h3><p>GitHub and other connectors</p></div>
             <button className="tiny-btn right" onClick={async () => {
               if (!services?.tools) return
-              await services.tools.connect('github')
-              const repos = await services.tools.call({
-                toolId: 'github', action: 'repos.list', args: {}, projectId: project.id, userId: data.currentUserId, agentId: checkAgent || undefined,
-              })
-              if (repos.ok && Array.isArray(repos.data)) {
-                const first = (repos.data as Array<{ full_name: string }>)[0]
-                if (first) {
-                  attachSource({
-                    projectId: project.id, kind: 'github', name: first.full_name.split('/')[1] ?? first.full_name,
-                    externalId: first.full_name, url: `https://github.com/${first.full_name}`, status: 'connected', branch: 'main',
-                  })
-                  toast('Repository attached', first.full_name)
+              try {
+                await services.tools.connect('github')
+                const manifests = await services.tools.list()
+                const github = manifests.find((tool) => tool.id === 'github')
+                const listAction = github?.actions.find((action) => action.id.endsWith('repos.list'))?.id ?? 'repos.list'
+                const repos = await services.tools.call({
+                  toolId: 'github', action: listAction, args: {}, projectId: project.id, userId: data.currentUserId, agentId: checkAgent || undefined,
+                })
+                if (repos.ok && Array.isArray(repos.data)) {
+                  const first = (repos.data as Array<{ full_name: string }>)[0]
+                  if (first) {
+                    attachSource({
+                      projectId: project.id, kind: 'github', name: first.full_name.split('/')[1] ?? first.full_name,
+                      externalId: first.full_name, url: `https://github.com/${first.full_name}`, status: 'connected', branch: 'main',
+                    })
+                    toast('Repository attached', first.full_name)
+                  }
+                } else {
+                  toast('GitHub unavailable', repos.error ?? 'No repositories were returned.')
                 }
-              } else {
-                toast('GitHub', repos.error ?? 'Connected')
+              } catch (error) {
+                toast('GitHub setup required', error instanceof Error ? error.message : String(error))
               }
             }}>Connect GitHub</button>
           </div>

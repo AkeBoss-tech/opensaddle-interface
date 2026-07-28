@@ -12,6 +12,7 @@ import { AuthoritativeLocalProjectClient } from './authoritativeLocalProjects'
 import { RemoteLocalProjectClient } from './remoteLocalProjects'
 import { WorkerSandboxClient } from './sandbox'
 import { MockOAuthToolClient } from './oauthTools'
+import { RemoteIntegrationToolClient } from './remoteIntegrations'
 import { BrowserAgentRuntime } from './browserAgentRuntime'
 import type { PermissionGrant } from './contracts'
 
@@ -145,7 +146,9 @@ export function initServices(opts: {
             ? new RemoteLocalProjectClient(baseUrl, getUserId, token)
             : undefined
         : undefined
-      const tools = new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
+      const tools = connection.mode === 'remote' && mode !== 'mock'
+        ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
+        : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
       const sandbox = new WorkerSandboxClient()
       const browserRuntime = new BrowserAgentRuntime(
         files,
