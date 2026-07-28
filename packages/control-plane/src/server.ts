@@ -3,7 +3,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
 import { authenticate, redactUrl } from './auth.js'
 import { loadConfig } from './config.js'
-import { policyForExecutionMode, type RunExecutionMode } from './executionModes.js'
+import { applyTaskCapabilities, policyForExecutionMode, type RunExecutionMode, type TaskCapabilityId } from './executionModes.js'
 import { GitWorkspaceError, GitWorkspaceService } from './gitWorkspace.js'
 import { HarnessCapabilityRegistry } from './harness/capabilityRegistry.js'
 import { HarnessRegistry } from './harness/index.js'
@@ -1461,7 +1461,16 @@ app.post('/api/runs', async (request, reply) => {
     })
     if (!administer.allowed) return permissionDenied(reply, administer.reason)
   }
-  const executionPolicy = policyForExecutionMode(executionMode, localSettings.policy)
+  const rawCapabilityIds = stringArray(body, 'capability_ids', 20, 100)
+  const knownCapabilityIds = rawCapabilityIds?.filter((capability): capability is TaskCapabilityId =>
+    ['Browser', 'Network', 'Secure VM', 'Subagents'].includes(capability))
+  if (rawCapabilityIds && knownCapabilityIds?.length !== rawCapabilityIds.length) {
+    return reply.code(400).send({ error: 'unknown_task_capability' })
+  }
+  const executionPolicy = applyTaskCapabilities(
+    policyForExecutionMode(executionMode, localSettings.policy),
+    knownCapabilityIds,
+  )
   if (parentRunId) {
     const parent = runs.get(parentRunId)
     if (!parent) return reply.code(404).send({ error: 'parent_run_not_found' })

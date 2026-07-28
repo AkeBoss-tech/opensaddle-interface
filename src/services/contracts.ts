@@ -136,6 +136,7 @@ export interface RuntimeClient {
     providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
     executionMode?: RunExecutionMode
+    capabilityIds?: string[]
     repo?: string
     approvalId?: string
     reviewProviderKey?: CodingProvider

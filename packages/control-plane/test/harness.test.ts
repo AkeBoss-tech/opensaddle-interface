@@ -8,8 +8,11 @@ import { estimateRoute } from '../src/router.js'
 import { containsUnsupportedToolCall } from '../src/modelGateway.js'
 import {
   codexForkCheckpoint,
+  codexInteractionDeniedByPolicy,
   codexInteractionRequest,
   codexInteractionResult,
+  codexSandboxMode,
+  codexThreadConfig,
   mergeCodexMessage,
 } from '../src/harness/codexAppServer.js'
 import type { ControlPlaneConfig } from '../src/config.js'
@@ -224,6 +227,59 @@ describe('Codex app-server transcript merging', () => {
       codexInteractionResult(request!.method, { approved: false }),
       { decision: 'decline' },
     )
+  })
+
+  it('translates task capabilities into supported Codex thread controls', () => {
+    assert.deepEqual(codexThreadConfig({
+      sandbox: 'workspace-write',
+      approvals: 'on-request',
+      network: false,
+      allowedTools: [],
+      deniedTools: [
+        'mcp__browser__*',
+        'mcp__chrome__*',
+        'mcp__opensaddle__create_vm',
+        'spawn_agent',
+      ],
+    }), {
+      sandbox_workspace_write: { network_access: false },
+      web_search: 'disabled',
+      features: { multi_agent: false },
+    })
+    assert.equal(codexSandboxMode({
+      sandbox: 'full-access',
+      approvals: 'never',
+      network: false,
+      allowedTools: [],
+      deniedTools: [],
+    }), 'workspace-write')
+    assert.equal(codexSandboxMode({
+      sandbox: 'full-access',
+      approvals: 'never',
+      network: true,
+      allowedTools: [],
+      deniedTools: [],
+    }), 'danger-full-access')
+  })
+
+  it('rejects Codex network permission escalation when Network is disabled', () => {
+    const policy = {
+      sandbox: 'workspace-write' as const,
+      approvals: 'on-request' as const,
+      network: false,
+      allowedTools: [],
+      deniedTools: [],
+    }
+    assert.equal(codexInteractionDeniedByPolicy({
+      id: 18,
+      method: 'item/permissions/requestApproval',
+      params: { permissions: { network: { enabled: true } } },
+    }, policy), 'Network is disabled for this task')
+    assert.equal(codexInteractionDeniedByPolicy({
+      id: 19,
+      method: 'item/fileChange/requestApproval',
+      params: { grantRoot: '/tmp/project' },
+    }, policy), undefined)
   })
 
   it('maps native user questions and structured answers', () => {

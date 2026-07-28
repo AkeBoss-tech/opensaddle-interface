@@ -134,6 +134,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
     executionMode?: RunExecutionMode
+    capabilityIds?: string[]
     repo?: string
     approvalId?: string
     reviewProviderKey?: CodingProvider
@@ -161,6 +162,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
           provider_key: input.providerKey,
           runtime_key: input.runtimeKey,
           execution_mode: input.executionMode,
+          capability_ids: input.capabilityIds,
           repo: input.repo,
           approval_id: input.approvalId,
           review_provider_key: input.reviewProviderKey,

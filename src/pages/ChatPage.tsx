@@ -75,6 +75,21 @@ function routedHarnessLabel(route: RouteEstimate | undefined, fallback: Harness)
 
 type PromptPermission = NonNullable<ReturnType<typeof needsPermission>>
 type PromptPermissionScope = 'once' | 'chat' | 'project' | 'always'
+const TASK_CAPABILITIES = ['Browser', 'Network', 'Secure VM', 'Subagents'] as const
+
+function normalizeTaskCapabilities(values: Iterable<string>): Set<string> {
+  const aliases: Record<string, string | undefined> = {
+    Chrome: 'Browser',
+    API: 'Network',
+    VM: 'Secure VM',
+    'Coding agent': 'Subagents',
+    Files: undefined,
+  }
+  return new Set([...values].flatMap((value) => {
+    const normalized = Object.hasOwn(aliases, value) ? aliases[value] : value
+    return normalized && TASK_CAPABILITIES.includes(normalized as typeof TASK_CAPABILITIES[number]) ? [normalized] : []
+  }))
+}
 
 function promptGrantApplies(
   grant: PermissionGrant,
@@ -204,7 +219,7 @@ export function ChatPage() {
   const [routeOpen, setRouteOpen] = useState(false)
   const [refreshingHarnesses, setRefreshingHarnesses] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
-  const [tools, setTools] = useState(new Set(['Chrome', 'Files', 'API']))
+  const [tools, setTools] = useState<Set<string>>(new Set(['Browser', 'Network']))
   const [auto, setAuto] = useState(true)
   const [modelOv, setModelOv] = useState<ModelKey | 'auto'>('auto')
   const [harnessOv, setHarnessOv] = useState<Harness | 'auto'>('auto')
@@ -280,7 +295,7 @@ export function ChatPage() {
     if (!chat) return
     setRunConfigReadyChatId(null)
     const config = chat.runConfig
-    setTools(new Set(config?.tools ?? ['Chrome', 'Files', 'API']))
+    setTools(normalizeTaskCapabilities(config?.tools ?? ['Browser', 'Network']))
     setAuto(config?.auto ?? true)
     setProviderOv(config?.providerKey ?? 'auto')
     setModelOv(config?.modelKey ?? 'auto')
@@ -687,6 +702,7 @@ export function ChatPage() {
           providerKey: providerOv === 'auto' ? defaultProvider : providerOv,
           runtimeKey: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
           executionMode,
+          capabilityIds: [...tools],
           repo: repositoryPath,
           approvalId,
           reviewProviderKey: defaults?.reviewProviderKey === 'auto' ? undefined : defaults?.reviewProviderKey,
@@ -1216,6 +1232,7 @@ export function ChatPage() {
         parentRunId: rootRun.id,
         sourceIds: usedSources.map((source) => source.id),
         executionMode,
+        capabilityIds: [...tools],
         repo: repositoryPath,
       })
       const child: AgentRunBlock = {
@@ -1458,15 +1475,15 @@ export function ChatPage() {
                     <button onClick={() => setInspector(true)}><Icon name="panel" className="icon sm" /><span><strong>Run details</strong><small>Open the activity inspector</small></span></button>
                   </div>
                   <div className="popover-title popover-title-secondary">Available tools</div>
-                  {['Chrome', 'Files', 'API', 'VM', 'Coding agent'].map((t) => (
+                  {TASK_CAPABILITIES.map((t) => (
                     <button key={t} className={`tool-option ${tools.has(t) ? 'enabled' : ''}`} onClick={() => {
                       const next = new Set(tools)
                       if (next.has(t)) next.delete(t); else next.add(t)
                       setTools(next)
                       toast(`${t} ${next.has(t) ? 'enabled' : 'disabled'}`, 'Applies to this chat.')
                     }}>
-                      <span className="tool-icon-wrap"><Icon name={t === 'VM' ? 'vm' : t === 'Files' ? 'file' : t === 'API' ? 'api' : t === 'Coding agent' ? 'code' : 'globe'} /></span>
-                      <span className="tool-copy"><strong>{t}</strong><small>Toggle availability</small></span>
+                      <span className="tool-icon-wrap"><Icon name={t === 'Secure VM' ? 'vm' : t === 'Network' ? 'api' : t === 'Subagents' ? 'code' : 'globe'} /></span>
+                      <span className="tool-copy"><strong>{t}</strong><small>{t === 'Browser' ? 'Browser and Chrome tools' : t === 'Network' ? 'Web fetch and search' : t === 'Secure VM' ? 'Provision external runtimes' : 'Delegate child runs'}</small></span>
                       <span className="check"><Icon name="check" className="icon sm" /></span>
                     </button>
                   ))}

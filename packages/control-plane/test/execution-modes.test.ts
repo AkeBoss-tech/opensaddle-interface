@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { policyForExecutionMode } from '../src/executionModes.js'
+import { applyTaskCapabilities, policyForExecutionMode } from '../src/executionModes.js'
 
 const projectPolicy = {
   sandbox: 'workspace-write' as const,
@@ -39,5 +39,22 @@ describe('per-run execution modes', () => {
       allowedTools: ['read_file'],
       deniedTools: ['delete_file'],
     })
+  })
+
+  it('narrows provider tools without broadening the admin network policy', () => {
+    const policy = applyTaskCapabilities(projectPolicy, ['Browser'])
+    assert.equal(policy.network, false)
+    assert.ok(policy.deniedTools.includes('WebFetch'))
+    assert.ok(policy.deniedTools.includes('create_vm'))
+    assert.ok(policy.deniedTools.includes('spawn_agent'))
+    assert.equal(policy.deniedTools.includes('mcp__browser__*'), false)
+    assert.ok(policy.deniedTools.includes('delete_file'))
+  })
+
+  it('leaves core repository tools to the sandbox execution mode', () => {
+    const policy = applyTaskCapabilities(projectPolicy, [])
+    assert.equal(policy.deniedTools.includes('Read'), false)
+    assert.equal(policy.deniedTools.includes('Edit'), false)
+    assert.equal(policy.deniedTools.includes('Bash'), false)
   })
 })

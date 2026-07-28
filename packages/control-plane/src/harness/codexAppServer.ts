@@ -7,6 +7,7 @@ import type {
   HarnessRunInput,
   HarnessRunResult,
 } from './types.js'
+import type { HarnessExecutionPolicy } from '../types.js'
 
 type RpcMessage = {
   id?: string | number
@@ -58,6 +59,67 @@ export function codexForkCheckpoint(
   return providerSessionMode === 'fork' && providerTurnId
     ? { lastTurnId: providerTurnId }
     : {}
+}
+
+export function codexThreadConfig(policy?: HarnessExecutionPolicy): Record<string, unknown> | undefined {
+  if (!policy) return undefined
+  const denied = new Set(policy.deniedTools.map((entry) => entry.trim().toLowerCase()))
+  const subagentsDisabled = [...denied].some((entry) =>
+    entry === 'task'
+    || entry === 'agent'
+    || entry === 'delegate'
+    || entry === 'spawn_agent',
+  )
+  return {
+    sandbox_workspace_write: { network_access: policy.network },
+    ...(!policy.network ? { web_search: 'disabled' } : {}),
+    features: { multi_agent: !subagentsDisabled },
+  }
+}
+
+export function codexSandboxMode(policy?: HarnessExecutionPolicy): 'read-only' | 'workspace-write' | 'danger-full-access' {
+  if (policy?.sandbox === 'read-only') return 'read-only'
+  // Codex's danger-full-access sandbox includes outbound network. When a user
+  // disables Network, prefer the narrower workspace sandbox so the toggle is
+  // an enforceable boundary rather than a visual-only preference.
+  if (policy?.sandbox === 'full-access' && policy.network) return 'danger-full-access'
+  return 'workspace-write'
+}
+
+function globMatches(pattern: string, candidate: string): boolean {
+  const escaped = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+  return new RegExp(`^${escaped}$`, 'i').test(candidate)
+}
+
+export function codexInteractionDeniedByPolicy(
+  message: RpcMessage,
+  policy?: HarnessExecutionPolicy,
+): string | undefined {
+  if (!policy || !message.method) return undefined
+  const params = message.params ?? {}
+  const permissions = params.permissions && typeof params.permissions === 'object' && !Array.isArray(params.permissions)
+    ? params.permissions as Record<string, unknown>
+    : undefined
+  if (!policy.network && (
+    params.networkApprovalContext != null
+    || permissions?.network != null
+  )) {
+    return 'Network is disabled for this task'
+  }
+
+  const toolName = typeof params.toolName === 'string' ? params.toolName : undefined
+  const serverName = typeof params.serverName === 'string' ? params.serverName : undefined
+  const candidates = [
+    toolName,
+    serverName,
+    serverName && toolName ? `mcp__${serverName}__${toolName}` : undefined,
+  ].filter((value): value is string => Boolean(value))
+  const deniedTool = policy.deniedTools.find((pattern) =>
+    candidates.some((candidate) => globMatches(pattern, candidate)),
+  )
+  return deniedTool ? `Tool ${candidates[0]} is disabled for this task` : undefined
 }
 
 function strings(value: unknown): string[] | undefined {
@@ -285,7 +347,18 @@ export class CodexAppServerAdapter implements HarnessAdapter {
 
         if (message.method && message.id !== undefined) {
           const interaction = codexInteractionRequest(message)
-          if (interaction && input.requestInteraction) {
+          const policyDenial = codexInteractionDeniedByPolicy(message, input.executionPolicy)
+          if (interaction && policyDenial) {
+            void input.emit('warning', {
+              title: 'Blocked disabled capability',
+              message: policyDenial,
+              method: message.method,
+            })
+            send({
+              id: message.id,
+              result: codexInteractionResult(message.method, { approved: false }, message.params),
+            })
+          } else if (interaction && input.requestInteraction) {
             void input.requestInteraction(interaction)
               .then((response) => send({
                 id: message.id,
@@ -316,9 +389,7 @@ export class CodexAppServerAdapter implements HarnessAdapter {
           const policy = input.executionPolicy
           const params: Record<string, unknown> = {
             cwd: input.workspacePath,
-            sandbox: policy?.sandbox === 'full-access'
-              ? 'danger-full-access'
-              : policy?.sandbox ?? 'workspace-write',
+            sandbox: codexSandboxMode(policy),
             approvalPolicy: policy?.approvals === 'always'
               ? 'untrusted'
               : policy?.approvals === 'on-request'
@@ -328,6 +399,8 @@ export class CodexAppServerAdapter implements HarnessAdapter {
             // can resume or fork the exact Codex thread.
             ephemeral: false,
           }
+          const config = codexThreadConfig(policy)
+          if (config) params.config = config
           // Auto/native routes deliberately omit model so Codex chooses the
           // model supported by the user's configured account/router.
           if (!input.route.nativeModelDefault && input.route.modelId) params.model = input.route.modelId
