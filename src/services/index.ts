@@ -1,5 +1,5 @@
 import { detectRuntimeMode, type RuntimeMode } from './capabilities'
-import type { FileStore, LocalProjectClient, PermissionClient, RuntimeClient, SandboxClient, ThreadClient, ToolClient, WorkspaceClient } from './contracts'
+import type { FileStore, LocalProjectClient, PermissionClient, RuntimeClient, SandboxClient, ThreadClient, ToolClient, WorkflowClient, WorkspaceClient } from './contracts'
 import { createFileStore } from './fileStore'
 import { MockRuntimeClient } from './mockRuntime'
 import { OpenSaddleRuntimeClient } from './opensaddleClient'
@@ -13,6 +13,7 @@ import { RemoteLocalProjectClient } from './remoteLocalProjects'
 import { WorkerSandboxClient } from './sandbox'
 import { MockOAuthToolClient } from './oauthTools'
 import { RemoteIntegrationToolClient } from './remoteIntegrations'
+import { RemoteWorkflowClient } from './remoteWorkflows'
 import { BrowserAgentRuntime } from './browserAgentRuntime'
 import type { PermissionGrant } from './contracts'
 
@@ -27,6 +28,7 @@ export interface ServiceBundle {
   workspace?: WorkspaceClient
   threads?: ThreadClient
   localProjects?: LocalProjectClient
+  workflows?: WorkflowClient
   controlPlane: {
     connected: boolean
     mode?: 'local' | 'company'
@@ -146,6 +148,9 @@ export function initServices(opts: {
             ? new RemoteLocalProjectClient(baseUrl, getUserId, token)
             : undefined
         : undefined
+      const workflows = backendAvailable && backendCapabilities.has('workflows')
+        ? new RemoteWorkflowClient(baseUrl, getUserId, token)
+        : undefined
       const tools = connection.mode === 'remote' && mode !== 'mock'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
         : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
@@ -168,6 +173,7 @@ export function initServices(opts: {
         workspace,
         threads,
         localProjects,
+        workflows,
         controlPlane: {
           connected: backendAvailable,
           mode: backendMode,

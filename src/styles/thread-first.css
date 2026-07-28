@@ -125,8 +125,8 @@
 .tf-work-list { overflow: hidden; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--card) 65%, transparent); }
 .tf-work-row { width: 100%; min-height: 57px; display: flex; align-items: center; gap: 11px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; text-align: left; }
 .tf-work-row-wrap { position: relative; }
-.tf-work-row-wrap.has-action .tf-work-row { padding-right: 80px; }
-.tf-work-row-action { position: absolute; right: 30px; top: 50%; transform: translateY(-50%); z-index: 1; }
+.tf-work-row-wrap.has-action .tf-work-row { padding-right: 160px; }
+.tf-work-row-actions { position: absolute; right: 30px; top: 50%; display: flex; align-items: center; gap: 5px; transform: translateY(-50%); z-index: 1; }
 .tf-work-row:last-child { border-bottom: 0; }
 .tf-work-row:hover { background: var(--card-hover); }
 .tf-target-row {

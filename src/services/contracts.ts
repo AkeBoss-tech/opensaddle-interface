@@ -83,6 +83,60 @@ export interface RuntimeRunSummary {
   lastEventType?: RunEventType
 }
 
+export interface WorkflowDefinition {
+  workflowId: string
+  name: string
+  status: 'active' | 'paused'
+  version: number
+  concurrencyLimit: number
+  trigger: Record<string, unknown>
+  task: Record<string, unknown>
+  budgetPolicy: Record<string, unknown>
+  permissionPolicy: Record<string, unknown>
+  approvalPolicy: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface WorkflowExecution {
+  executionId: string
+  workflowId: string
+  workflowVersion: number
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+  triggerKey?: string
+  triggerPayload: Record<string, unknown>
+  retryOfExecutionId?: string
+  attempt: number
+  workerId?: string
+  cancellationReason?: string
+  result?: Record<string, unknown>
+  queuedAt: number
+  startedAt?: number
+  finishedAt?: number
+}
+
+export interface WorkflowTimelineEvent {
+  timelineId: number
+  eventType: string
+  data: Record<string, unknown>
+  recordedAt: number
+}
+
+export interface WorkflowClient {
+  list(): Promise<WorkflowDefinition[]>
+  executions(input?: {
+    workflowId?: string
+    statuses?: WorkflowExecution['status'][]
+    limit?: number
+  }): Promise<WorkflowExecution[]>
+  pause(workflowId: string): Promise<WorkflowDefinition>
+  resume(workflowId: string): Promise<WorkflowDefinition>
+  trigger(workflowId: string): Promise<WorkflowExecution>
+  cancel(executionId: string, reason?: string): Promise<WorkflowExecution>
+  retry(executionId: string): Promise<WorkflowExecution>
+  timeline(executionId: string): Promise<WorkflowTimelineEvent[]>
+}
+
 export interface GitStatusResult {
   repository: string
   branch: string | null
