@@ -51,7 +51,7 @@ describe('HarnessCapabilityRegistry', () => {
       ],
       capabilities: {
         streaming: true, tools: true, mcp: true, skills: true, reasoningControls: true,
-        contextMetadata: true, cancellation: true,
+        contextMetadata: true, cancellation: true, policyControls: 'native',
       },
     })
     assert.equal(result.harnesses[1]?.unavailableReason, 'Executable "claude" was not found on PATH')
@@ -74,6 +74,7 @@ describe('HarnessCapabilityRegistry', () => {
     assert.equal(claude?.auth.state, 'not_detected')
     assert.equal(cursor?.availability, 'missing')
     assert.match(cursor?.unavailableReason ?? '', /cursor-agent/)
+    assert.equal(cursor?.capabilities.policyControls, 'sandbox-only')
   })
 
   it('does not fail discovery when a safe version probe fails', async () => {

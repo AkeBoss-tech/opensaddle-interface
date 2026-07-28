@@ -125,6 +125,30 @@ describe('Gemini ACP harness', () => {
     })
   })
 
+  it('matches wildcard policy denials against native ACP tool names', async () => {
+    const response = await resolveGeminiPermission(runInput('/tmp', {
+      executionPolicy: {
+        sandbox: 'workspace-write',
+        approvals: 'on-request',
+        network: true,
+        allowedTools: [],
+        deniedTools: ['mcp__browser__*'],
+      },
+    }), {
+      sessionId: 'session-1',
+      toolCall: {
+        toolCallId: 'tool-2',
+        name: 'mcp__browser__open',
+        title: 'Open browser page',
+      },
+      options: [
+        { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'deny', name: 'Deny', kind: 'reject_once' },
+      ],
+    })
+    assert.deepEqual(response, { outcome: { outcome: 'selected', optionId: 'deny' } })
+  })
+
   it('runs an ACP subprocess through output, tool permission, usage, and completion', async () => {
     const root = await mkdtemp(join(tmpdir(), 'opensaddle-gemini-acp-'))
     const executable = join(root, 'fake-gemini.mjs')

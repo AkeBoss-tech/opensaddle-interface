@@ -16,6 +16,8 @@ export interface HarnessCapabilities {
   reasoningControls: boolean
   contextMetadata: boolean
   cancellation: boolean
+  /** Strength of task-level execution policy OpenSaddle can enforce. */
+  policyControls: 'native' | 'sandbox-only' | 'provider-defined'
 }
 
 export interface HarnessModelCapability {
@@ -94,14 +96,15 @@ const DEFAULT_CAPABILITIES: HarnessCapabilities = {
   reasoningControls: false,
   contextMetadata: false,
   cancellation: false,
+  policyControls: 'provider-defined',
 }
 
 const KNOWN_CAPABILITIES: Readonly<Record<string, Partial<HarnessCapabilities>>> = {
-  opensaddle: { streaming: true, tools: true, mcp: true, skills: true, contextMetadata: true, cancellation: true },
-  codex: { streaming: true, tools: true, mcp: true, skills: true, reasoningControls: true, contextMetadata: true, cancellation: true },
-  claude: { streaming: true, tools: true, mcp: true, skills: true, contextMetadata: true, cancellation: true },
-  cursor: { tools: true, mcp: true, skills: true, contextMetadata: true, cancellation: true },
-  gemini: { streaming: true, tools: true, mcp: true, contextMetadata: true, cancellation: true },
+  opensaddle: { streaming: true, tools: true, mcp: true, skills: true, contextMetadata: true, cancellation: true, policyControls: 'native' },
+  codex: { streaming: true, tools: true, mcp: true, skills: true, reasoningControls: true, contextMetadata: true, cancellation: true, policyControls: 'native' },
+  claude: { streaming: true, tools: true, mcp: true, skills: true, contextMetadata: true, cancellation: true, policyControls: 'native' },
+  cursor: { tools: true, mcp: true, skills: true, contextMetadata: true, cancellation: true, policyControls: 'sandbox-only' },
+  gemini: { streaming: true, tools: true, mcp: true, contextMetadata: true, cancellation: true, policyControls: 'native' },
   opencode: { tools: true, mcp: true, skills: true, contextMetadata: true, cancellation: true },
   antigravity: { tools: true, contextMetadata: true, cancellation: true },
 }
@@ -252,6 +255,7 @@ function capabilitiesFor(profile: HarnessProfile): HarnessCapabilities {
           mcp: true,
           contextMetadata: true,
           cancellation: true,
+          policyControls: 'native' as const,
         }
       : {}),
     ...KNOWN_CAPABILITIES[profile.id],

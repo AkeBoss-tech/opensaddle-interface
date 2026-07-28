@@ -391,6 +391,12 @@ export function ChatPage() {
   const pickerProvider = providerOv === 'auto' ? 'auto' : providerOv
   const activeCustomHarness = project?.local?.harnesses.find((item) =>
     item.id === (agentProvider === 'custom' ? agentHarnessId : project.local?.defaultHarnessId))
+  const policyControlLabel = (capability: typeof harnessCapabilities[number] | undefined) =>
+    capability?.capabilities.policyControls === 'native'
+      ? 'Native policy'
+      : capability?.capabilities.policyControls === 'sandbox-only'
+        ? 'Sandbox controls'
+        : 'Provider policy'
   const liveHarnessOptions = useMemo(() => HARNESS_PICKER_OPTIONS.map((option) => {
     if (option.id === 'auto') return { ...option, available: true }
     if (option.id === 'custom') {
@@ -406,8 +412,8 @@ export function ChatPage() {
         shortLabel: activeCustomHarness?.label ?? option.shortLabel,
         detail: activeCustomHarness
           ? ready
-            ? `${activeCustomHarness.protocol === 'acp' ? 'ACP' : 'CLI'} · ${capability?.version ?? activeCustomHarness.command}`
-            : capability?.unavailableReason ?? 'Executable unavailable'
+            ? `${policyControlLabel(capability)} · ${activeCustomHarness.protocol === 'acp' ? 'ACP' : 'CLI'} · ${capability?.version ?? activeCustomHarness.command}`
+            : `${policyControlLabel(capability)} · ${capability?.unavailableReason ?? 'Executable unavailable'}`
           : 'Register in Local projects',
         reason: activeCustomHarness
           ? capability?.auth.message ?? capability?.unavailableReason ?? 'Project-local harness'
@@ -423,10 +429,10 @@ export function ChatPage() {
       ...option,
       label: capability.label,
       detail: ready
-        ? capability.version ?? 'Ready'
+        ? `${policyControlLabel(capability)} · ${capability.version ?? 'Ready'}`
         : capability.auth.setupCommand
-          ? `Setup required · ${capability.auth.setupCommand}`
-          : 'Unavailable',
+          ? `${policyControlLabel(capability)} · Setup required`
+          : `${policyControlLabel(capability)} · Unavailable`,
       reason,
       available: ready,
     }

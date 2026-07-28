@@ -342,6 +342,7 @@ export interface HarnessCapability {
     reasoningControls: boolean
     contextMetadata: boolean
     cancellation: boolean
+    policyControls: 'native' | 'sandbox-only' | 'provider-defined'
   }
 }
 

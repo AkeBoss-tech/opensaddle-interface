@@ -266,7 +266,12 @@ function matchesPolicyTool(
     .map((value) => value.trim().toLowerCase())
   return configured.some((entry) => {
     const normalized = entry.trim().toLowerCase()
-    return normalized === '*' || candidates.includes(normalized)
+    if (normalized === '*') return true
+    const escaped = normalized
+      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*')
+    const matcher = new RegExp(`^${escaped}$`, 'i')
+    return candidates.some((candidate) => matcher.test(candidate))
   })
 }
 
