@@ -72,6 +72,8 @@ export interface RuntimeRunSummary {
   parentRunId?: string
   queuedAfterRunId?: string
   status: 'queued' | 'provisioning' | 'running' | 'waiting' | 'awaiting_input' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'timed_out'
+  /** Whether the authoritative daemon still owns a live harness process. */
+  attached?: boolean
   route: RouteEstimate
   providerSessionId?: string
   providerSessionMode?: 'resume' | 'fork'

@@ -206,6 +206,8 @@ export interface AgentRunBlock {
   providerSessionMode?: 'resume' | 'fork'
   providerTurnId?: string
   providerKey?: CodingProvider
+  /** Whether the local daemon still owns the active harness process. */
+  runtimeAttached?: boolean
   kind: 'coding' | 'research' | 'browser' | 'ops'
   title: string
   model: string

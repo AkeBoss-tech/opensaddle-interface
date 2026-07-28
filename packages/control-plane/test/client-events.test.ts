@@ -99,6 +99,12 @@ describe('durable client event handling', () => {
       canStop: false,
       canRetry: true,
     })
+    const recoveredCodex = { ...codex, status: 'paused' as const, attached: false }
+    assert.equal(runtimeRunLifecycleControls(recoveredCodex).canResume, true)
+    assert.equal(
+      agentRunLifecycleControls(runtimeRunToAgentBlock(recoveredCodex)).canResume,
+      true,
+    )
   })
 
   it('keeps waiting and timed-out durable runs truthful after hydration', () => {

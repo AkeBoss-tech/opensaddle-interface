@@ -86,6 +86,7 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
     providerSessionMode: run.providerSessionMode,
     providerTurnId: run.providerTurnId,
     providerKey: run.route.providerKey,
+    runtimeAttached: run.attached,
     executionMode: run.executionMode,
     kind: run.route.harnessKey === 'coding'
       ? 'coding'

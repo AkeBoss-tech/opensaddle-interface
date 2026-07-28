@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync } from 'node:fs'
-import { readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -17,6 +17,7 @@ let opensaddleRestartTimer: NodeJS.Timeout | null = null
 let opensaddleHealthTimer: NodeJS.Timeout | null = null
 let opensaddleEnsurePromise: Promise<boolean> | null = null
 let opensaddleLaunchError: string | null = null
+let opensaddleOwnedPid: number | null = null
 let sidecarsStopPromise: Promise<void> | null = null
 let quitAfterSidecars = false
 
@@ -221,9 +222,126 @@ interface OpenSaddleLaunch {
   source: string
 }
 
-async function resolveOpenSaddleLaunch(): Promise<OpenSaddleLaunch | null> {
-  const stateDir = process.env.OPENSADDLE_DATA_DIR
+interface OpenSaddleSidecarOwnership {
+  version: 1
+  pid: number
+  ownerPid: number
+  url: string
+  stateDir: string
+  command: string
+  startedAt: string
+}
+
+function opensaddleStateDir(): string {
+  return process.env.OPENSADDLE_DATA_DIR
     ?? path.join(app.getPath('userData'), 'opensaddle-server')
+}
+
+function opensaddleOwnershipPath(): string {
+  return path.join(opensaddleStateDir(), 'desktop-sidecar.json')
+}
+
+function processIsRunning(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid <= 1) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function processCommandLine(pid: number): Promise<string> {
+  if (process.platform === 'win32') return ''
+  return new Promise((resolve) => {
+    const child = spawn('ps', ['-p', String(pid), '-o', 'command='], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    let output = ''
+    child.stdout?.on('data', (chunk) => { output += String(chunk) })
+    child.once('error', () => resolve(''))
+    child.once('close', (code) => resolve(code === 0 ? output.trim() : ''))
+  })
+}
+
+async function readOpenSaddleOwnership(): Promise<OpenSaddleSidecarOwnership | null> {
+  try {
+    const value = JSON.parse(await readFile(opensaddleOwnershipPath(), 'utf8')) as Partial<OpenSaddleSidecarOwnership>
+    if (
+      value.version !== 1
+      || !Number.isSafeInteger(value.pid)
+      || Number(value.pid) <= 1
+      || typeof value.ownerPid !== 'number'
+      || value.url !== OPENSADDLE_URL
+      || value.stateDir !== opensaddleStateDir()
+      || typeof value.command !== 'string'
+      || typeof value.startedAt !== 'string'
+    ) return null
+    return value as OpenSaddleSidecarOwnership
+  } catch {
+    return null
+  }
+}
+
+async function persistOpenSaddleOwnership(
+  pid: number,
+  command: string,
+): Promise<void> {
+  const stateDir = opensaddleStateDir()
+  mkdirSync(stateDir, { recursive: true })
+  const target = opensaddleOwnershipPath()
+  const temporary = `${target}.${process.pid}.tmp`
+  const record: OpenSaddleSidecarOwnership = {
+    version: 1,
+    pid,
+    ownerPid: process.pid,
+    url: OPENSADDLE_URL,
+    stateDir,
+    command,
+    startedAt: new Date().toISOString(),
+  }
+  await writeFile(temporary, JSON.stringify(record), { encoding: 'utf8', mode: 0o600 })
+  await rename(temporary, target)
+}
+
+async function clearOpenSaddleOwnership(expectedPid?: number): Promise<void> {
+  if (expectedPid !== undefined) {
+    const record = await readOpenSaddleOwnership()
+    if (record && record.pid !== expectedPid) return
+  }
+  await unlink(opensaddleOwnershipPath()).catch(() => undefined)
+}
+
+async function adoptOpenSaddleSidecar(): Promise<boolean> {
+  if (opensaddleProc || opensaddleOwnedPid) return true
+  const record = await readOpenSaddleOwnership()
+  if (!record) return false
+  if (!processIsRunning(record.pid)) {
+    await clearOpenSaddleOwnership(record.pid)
+    return false
+  }
+  if (process.platform !== 'win32') {
+    const commandLine = await processCommandLine(record.pid)
+    if (
+      !commandLine.includes('opensaddle')
+      || !commandLine.includes('serve-api')
+      || !commandLine.includes(record.stateDir)
+    ) {
+      await clearOpenSaddleOwnership(record.pid)
+      return false
+    }
+  }
+  opensaddleOwnedPid = record.pid
+  try {
+    await persistOpenSaddleOwnership(record.pid, record.command)
+  } catch {
+    // The live sidecar remains usable even if ownership metadata cannot refresh.
+  }
+  return true
+}
+
+async function resolveOpenSaddleLaunch(): Promise<OpenSaddleLaunch | null> {
+  const stateDir = opensaddleStateDir()
   mkdirSync(stateDir, { recursive: true })
   const serverArgs = [
     'serve-api',
@@ -286,16 +404,25 @@ async function launchOpenSaddle(): Promise<void> {
     return
   }
   opensaddleLaunchError = null
-  opensaddleProc = spawn(launch.command, launch.args, {
+  const child = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
     stdio: 'ignore',
     env: { ...process.env, OPENSADDLE_DESKTOP: '1' },
+    detached: process.platform !== 'win32',
   })
-  opensaddleProc.once('error', (error) => {
+  opensaddleProc = child
+  const childPid = child.pid
+  child.once('error', (error) => {
     opensaddleLaunchError = `Could not start ${launch.source}: ${error.message}`
+    if (childPid) void clearOpenSaddleOwnership(childPid)
   })
-  opensaddleProc.once('exit', (code, signal) => {
-    opensaddleProc = null
+  child.once('exit', (code, signal) => {
+    if (opensaddleProc === child) opensaddleProc = null
+    if (childPid && opensaddleOwnedPid === childPid) opensaddleOwnedPid = null
+    if (childPid && process.platform !== 'win32') {
+      try { process.kill(-childPid, 'SIGKILL') } catch { /* no descendant processes remain */ }
+    }
+    if (childPid) void clearOpenSaddleOwnership(childPid)
     if (code && code !== 0) {
       opensaddleLaunchError = `OpenSaddle backend exited with code ${code}${signal ? ` (${signal})` : ''}.`
     }
@@ -305,12 +432,27 @@ async function launchOpenSaddle(): Promise<void> {
       void ensureOpenSaddle()
     }, 1_500)
   })
+  if (childPid) {
+    opensaddleOwnedPid = childPid
+    try {
+      await persistOpenSaddleOwnership(childPid, launch.command)
+    } catch (error) {
+      opensaddleLaunchError = `Could not persist local server ownership: ${error instanceof Error ? error.message : String(error)}`
+    }
+    if (child.exitCode !== null) await clearOpenSaddleOwnership(childPid)
+  }
 }
 
 async function ensureOpenSaddle(): Promise<boolean> {
   if (opensaddleEnsurePromise) return opensaddleEnsurePromise
   const pending = (async () => {
+    const adopted = await adoptOpenSaddleSidecar()
     if (await opensaddleHealthy()) return true
+    if (adopted && opensaddleOwnedPid) {
+      await terminateOwnedSidecar(opensaddleOwnedPid)
+      opensaddleOwnedPid = null
+      await clearOpenSaddleOwnership()
+    }
     await launchOpenSaddle()
     const healthy = await waitForOpenSaddle()
     if (!healthy && !opensaddleLaunchError) {
@@ -375,6 +517,36 @@ async function terminateSidecar(child: ChildProcess | null, graceMs = 1_500): Pr
   })
 }
 
+function signalOwnedSidecar(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    if (process.platform !== 'win32') {
+      process.kill(-pid, signal)
+    } else {
+      process.kill(pid, signal)
+    }
+    return true
+  } catch {
+    try {
+      process.kill(pid, signal)
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+async function terminateOwnedSidecar(pid: number, graceMs = 1_500): Promise<void> {
+  if (!processIsRunning(pid)) return
+  signalOwnedSidecar(pid, 'SIGTERM')
+  const deadline = Date.now() + graceMs
+  while (processIsRunning(pid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  if (processIsRunning(pid)) {
+    signalOwnedSidecar(pid, 'SIGKILL')
+  }
+}
+
 async function stopSidecars(): Promise<void> {
   sidecarsShuttingDown = true
   if (opensaddleRestartTimer) clearTimeout(opensaddleRestartTimer)
@@ -382,13 +554,18 @@ async function stopSidecars(): Promise<void> {
   if (opensaddleHealthTimer) clearInterval(opensaddleHealthTimer)
   opensaddleHealthTimer = null
   const opensaddle = opensaddleProc
+  const ownedPid = opensaddleOwnedPid
   const krail = krailProc
   opensaddleProc = null
+  opensaddleOwnedPid = null
   krailProc = null
   await Promise.all([
-    terminateSidecar(opensaddle),
+    ownedPid
+      ? terminateOwnedSidecar(ownedPid)
+      : terminateSidecar(opensaddle),
     terminateSidecar(krail),
   ])
+  if (ownedPid) await clearOpenSaddleOwnership(ownedPid)
 }
 
 function createWindow() {

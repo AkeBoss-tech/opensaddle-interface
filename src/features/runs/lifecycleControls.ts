@@ -27,7 +27,7 @@ export function runtimeRunLifecycleControls(run: RuntimeRunSummary): RunLifecycl
   const signalCapable = supportsProcessSignals(provider)
   return {
     canPause: run.status === 'running' && signalCapable,
-    canResume: run.status === 'paused' && signalCapable,
+    canResume: run.status === 'paused' && (run.attached === false || signalCapable),
     canStop: !terminal,
     canRetry: terminal,
   }
@@ -39,7 +39,7 @@ export function agentRunLifecycleControls(run: AgentRunBlock): RunLifecycleContr
   const signalCapable = supportsProcessSignals(run.harness)
   return {
     canPause: !run.done && !paused && !waiting && signalCapable,
-    canResume: !run.done && paused && signalCapable,
+    canResume: !run.done && paused && (run.runtimeAttached === false || signalCapable),
     canStop: !run.done,
     canRetry: run.done,
   }

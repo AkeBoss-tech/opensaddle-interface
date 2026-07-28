@@ -244,6 +244,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       parent_run_id?: string
       queued_after_run_id?: string
       status: RuntimeRunSummary['status']
+      attached?: boolean
       route: ApiRouteEstimate
       provider_session_id?: string
       provider_session_mode?: 'resume' | 'fork'
@@ -266,6 +267,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       parentRunId: run.parent_run_id,
       queuedAfterRunId: run.queued_after_run_id,
       status: run.status,
+      attached: run.attached,
       route: routeFromApi(run.route) ?? {
         modelKey: 'sonnet',
         harnessKey: 'chat',
