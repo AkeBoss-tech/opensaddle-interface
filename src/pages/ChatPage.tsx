@@ -15,6 +15,7 @@ import { InlineAgentRequest } from '../features/runs/InlineAgentRequest'
 import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources } from '../features/runs/runRelations'
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
 import { buildPlanRevision } from '../features/thread/planRevision'
+import { selectPublishFlowStep } from '../features/git/publishFlow'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
   THREAD_INSPECTOR_STORAGE_KEY,
@@ -1431,6 +1432,66 @@ export function ChatPage() {
     }
   }
 
+  const preparePullRequestDraft = () => {
+    const latestUserPrompt = [...messages].reverse().find((message) => message.role === 'user')?.text.trim()
+    setPullRequestTitle(
+      chat?.title && chat.title !== 'New task'
+        ? chat.title
+        : latestUserPrompt?.split('\n')[0]?.slice(0, 120) || `Merge ${gitStatus?.branch ?? 'branch'}`,
+    )
+    const summary = latestRun?.output?.trim()
+    const checks = verificationChecks.map((check) => `- ${check[0]}: ${check[1] ?? check.at(-1)}`).join('\n')
+    setPullRequestBody([
+      '## Summary',
+      '',
+      summary || 'Changes prepared and reviewed in OpenSaddle.',
+      '',
+      '## Verification',
+      '',
+      checks || '- Not recorded',
+    ].join('\n'))
+    setPullRequestBase(defaultPullRequestBase)
+  }
+
+  const preparePublishFlow = (artifactPaths: string[] = []) => {
+    openInspector('overview')
+    const step = selectPublishFlowStep({
+      repositoryPath,
+      status: gitStatus,
+      defaultBase: defaultPullRequestBase,
+    })
+    setGitError('')
+    if (step === 'repository') {
+      if (!repositoryPath) void chooseRepository()
+      else toast('Loading Git state', 'The publish controls will be ready when repository status finishes loading.')
+      return
+    }
+    if (step === 'commit') {
+      const latestUserPrompt = [...messages].reverse().find((message) => message.role === 'user')?.text.trim()
+      setCommitMessage(
+        chat?.title && chat.title !== 'New task'
+          ? chat.title
+          : latestUserPrompt?.split('\n')[0]?.slice(0, 120) || 'Apply OpenSaddle changes',
+      )
+      const availablePaths = gitStatus?.files.map((file) => file.path) ?? []
+      const scopedPaths = artifactPaths.filter((path) => availablePaths.includes(path))
+      setCommitPaths(artifactPaths.length ? scopedPaths : availablePaths)
+      setGitAction('commit')
+      return
+    }
+    if (step === 'push') {
+      setGitAction('push')
+      return
+    }
+    if (step === 'branch') {
+      setBranchName('')
+      setGitAction('branch')
+      return
+    }
+    preparePullRequestDraft()
+    setGitAction('pull-request')
+  }
+
   const compareBranch = async () => {
     const repo = repositoryPath
     const client = services?.runtime
@@ -1614,6 +1675,7 @@ export function ChatPage() {
                     toast('Diff update failed', error instanceof Error ? error.message : String(error))
                   }
                 }} toast={toast} files={services?.files} density={density}
+                onPreparePullRequest={preparePublishFlow}
                 onRetry={() => {
                   const prompt = [...messages.slice(0, messageIndex + (m.role === 'user' ? 1 : 0))]
                     .reverse()
@@ -2233,24 +2295,7 @@ export function ChatPage() {
                     onClick={() => {
                       setGitAction((current) => {
                         if (current === 'pull-request') return null
-                        const latestUserPrompt = [...messages].reverse().find((message) => message.role === 'user')?.text.trim()
-                        setPullRequestTitle(
-                          chat.title !== 'New task'
-                            ? chat.title
-                            : latestUserPrompt?.split('\n')[0]?.slice(0, 120) || `Merge ${gitStatus?.branch ?? 'branch'}`,
-                        )
-                        const summary = latestRun?.output?.trim()
-                        const checks = verificationChecks.map((check) => `- ${check[0]}: ${check[1] ?? check.at(-1)}`).join('\n')
-                        setPullRequestBody([
-                          '## Summary',
-                          '',
-                          summary || 'Changes prepared and reviewed in OpenSaddle.',
-                          '',
-                          '## Verification',
-                          '',
-                          checks || '- Not recorded',
-                        ].join('\n'))
-                        setPullRequestBase(defaultPullRequestBase)
+                        preparePullRequestDraft()
                         return 'pull-request'
                       })
                       setGitError('')
@@ -2612,7 +2657,7 @@ function formatTokenCount(value: number): string {
   return String(value)
 }
 
-function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
+function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch, onPreparePullRequest }: {
   m: Message
   onHunk: (filePath: string, hunkIndex: number, id: string, s: 'accepted' | 'rejected') => void
   toast: (t: string, m: string) => void
@@ -2620,6 +2665,7 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
   density: 'summary' | 'normal' | 'verbose'
   onRetry?: () => void
   onBranch?: () => void
+  onPreparePullRequest?: (artifactPaths: string[]) => void
 }) {
   const runRegistry = useRunRegistry()
   const [planEditing, setPlanEditing] = useState(false)
@@ -2791,14 +2837,12 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
                   <span className="a-ico"><Icon name={a.type === 'diff' ? 'git' : a.type === 'table' ? 'chart' : 'file'} className="icon sm" /></span>
                   <span className="a-title"><strong>{a.title}</strong><span>{a.subtitle}</span></span>
                   <span className="a-actions">
-                    {a.type === 'diff' && <button className="secondary-btn" style={{ minHeight: 27 }} onClick={async () => {
-                      if (files) {
-                        await files.write(`artifacts/pr-${Date.now()}.md`, `# Simulated PR\n\nFrom message ${m.id}\n`)
-                        toast('Pull request artifact saved', 'Wrote to OPFS artifacts/')
-                      } else {
-                        toast('Pull request created', 'PR #1933 opened (simulated).')
-                      }
-                    }}>Create pull request</button>}
+                    {a.type === 'diff' && <button
+                      className="secondary-btn"
+                      style={{ minHeight: 27 }}
+                      disabled={!onPreparePullRequest}
+                      onClick={() => onPreparePullRequest?.(a.diff?.map((file) => file.path) ?? [])}
+                    >Create pull request</button>}
                     {a.type === 'report' && <button className="tiny-btn" onClick={async () => {
                       if (files && a.reportHtml) {
                         await files.write(`artifacts/report-${Date.now()}.html`, a.reportHtml)
