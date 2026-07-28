@@ -138,10 +138,11 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
         },
       }))
 
-      // `session.closed` is the canonical terminal boundary. Staying attached
-      // through it prevents final tool, usage, and closure evidence from being
-      // dropped when a provider completes several events in one burst.
-      if (event.type === 'session.closed') {
+      // Stay attached through the server's canonical terminal event so final
+      // output, usage, tool results, and closure evidence are not dropped.
+      // Cancelled runs terminate at `agent.cancelled`; completed and failed
+      // provider sessions terminate at `session.closed`.
+      if (event.type === 'session.closed' || event.type === 'agent.cancelled') {
         if (subscriptions.current.has(input.runId)) release(input.runId)
         else closedBeforeAttach = true
       }
@@ -366,7 +367,6 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   }, [appendMessage, createChat, services, threadHistoryHydrated, toast, track, updateMessage])
 
   const stop = useCallback(async (runId: string) => {
-    release(runId)
     await services?.runtime.cancel(runId)
     const current = runById.current.get(runId)
     if (current && !current.done) {
@@ -376,7 +376,10 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
       const messageId = runs[runId]?.messageId
       if (messageId) updateMessage(messageId, { run: stopped })
     }
-  }, [release, runs, services, updateMessage])
+    // Stay subscribed until the server's canonical terminal event.
+    // Cancellation can flush final output, usage, tool results, and closure
+    // evidence after the mutation response has already been returned.
+  }, [runs, services, updateMessage])
 
   const updateManagedRun = useCallback((runId: string, mutate: (run: AgentRunBlock) => AgentRunBlock) => {
     const current = runById.current.get(runId)

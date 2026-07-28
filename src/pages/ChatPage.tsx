@@ -2632,6 +2632,9 @@ function fallbackRunOutput(run: AgentRunBlock) {
   if (run.failure) {
     return `I couldn’t complete this run. ${run.failure.message}`
   }
+  if (/^(stopped|cancelled)/i.test(run.statusText)) {
+    return 'I stopped this run before it completed. Final harness activity remains available below.'
+  }
   if (/failed|unavailable|rejected|error/i.test(run.statusText)) {
     return `I couldn’t complete this run. ${run.statusText}`
   }

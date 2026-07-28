@@ -711,6 +711,44 @@ describe('durable client event handling', () => {
     assert.match(failed.failure?.recovery ?? '', /refresh harness availability/i)
   })
 
+  it('turns authoritative cancellation into a stopped run', () => {
+    const initial: AgentRunBlock = {
+      id: 'run-1',
+      kind: 'coding',
+      title: 'Coding run',
+      model: 'Codex',
+      harness: 'Codex',
+      runtime: 'Local',
+      statusText: 'Working',
+      done: false,
+      tools: [],
+      plan: [],
+      artifacts: [],
+      inputRequest: {
+        kind: 'approval',
+        id: 'approval-1',
+        prompt: 'Allow command?',
+      },
+    }
+    const cancelled = applyRunEvent(initial, {
+      ...event(4),
+      type: 'agent.cancelled',
+      payload: { reason: 'client_requested' },
+    })
+
+    assert.equal(cancelled.done, true)
+    assert.equal(cancelled.statusText, 'Stopped')
+    assert.equal(cancelled.inputRequest, undefined)
+    assert.equal(cancelled.failure, undefined)
+    assert.deepEqual(cancelled.activity?.at(-1), {
+      id: 'event-4',
+      kind: 'status',
+      label: 'Agent stopped',
+      detail: 'client requested',
+      timestamp: new Date(4).toISOString(),
+    })
+  })
+
   it('persists native context usage and runtime warnings for the visible run', () => {
     const initial: AgentRunBlock = {
       id: 'run-1',

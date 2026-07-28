@@ -892,6 +892,19 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       addActivity('error', next.failure.title, next.failure.message)
       break
     }
+    case 'agent.cancelled':
+      next.done = true
+      next.inputRequest = undefined
+      next.failure = undefined
+      next.statusText = 'Stopped'
+      addActivity(
+        'status',
+        'Agent stopped',
+        typeof event.payload.reason === 'string'
+          ? event.payload.reason.replaceAll('_', ' ')
+          : undefined,
+      )
+      break
     case 'session.closed':
       if (event.payload.status === 'completed') {
         next.done = true

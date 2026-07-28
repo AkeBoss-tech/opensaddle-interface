@@ -27,6 +27,7 @@ export type RunEventType =
   | 'agent.resumed'
   | 'agent.completed'
   | 'agent.failed'
+  | 'agent.cancelled'
   | 'plan.updated'
   | 'command.started'
   | 'command.output.delta'
