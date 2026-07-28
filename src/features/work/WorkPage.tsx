@@ -6,7 +6,7 @@ import { Button } from '../../ui'
 import type { RuntimeRunSummary } from '../../services/contracts'
 import { selectAttentionItems, type AttentionItem } from '../thread/domain'
 
-type WorkFilter = 'attention' | 'running' | 'scheduled' | 'completed'
+type WorkFilter = 'attention' | 'running' | 'scheduled' | 'completed' | 'archived'
 
 interface WorkRow {
   id: string
@@ -50,24 +50,29 @@ function Section({
   description,
   rows,
   onOpen,
+  onRestore,
 }: {
   title: string
   description: string
   rows: WorkRow[]
   onOpen: (row: WorkRow) => void
+  onRestore?: (row: WorkRow) => void
 }) {
   return (
     <section className="tf-work-section">
       <div className="tf-work-section-head"><div><h2>{title}</h2><p>{description}</p></div><span>{rows.length}</span></div>
       <div className="tf-work-list">
         {rows.map((row) => (
-          <button key={row.id} className="tf-work-row" onClick={() => onOpen(row)}>
-            <span className={`tf-work-icon ${row.kind}`}><Icon name={row.kind === 'approval' ? 'shield' : row.kind === 'workflow' ? 'activity' : row.kind === 'task' ? 'clock' : row.kind === 'run' ? 'terminal' : 'message'} className="icon sm" /></span>
-            <span className="tf-work-copy"><strong>{row.title}</strong><small>{row.subtitle}</small></span>
-            {row.progress !== undefined && <span className="tf-progress"><i style={{ width: `${row.progress}%` }} /></span>}
-            <span className={`tf-work-status ${row.status.toLowerCase().replaceAll(' ', '-')}`}>{row.status}</span>
-            <Icon name="chevron" className="icon xs tf-row-arrow" />
-          </button>
+          <div key={row.id} className={`tf-work-row-wrap ${onRestore ? 'has-action' : ''}`}>
+            <button className="tf-work-row" onClick={() => onOpen(row)}>
+              <span className={`tf-work-icon ${row.kind}`}><Icon name={row.kind === 'approval' ? 'shield' : row.kind === 'workflow' ? 'activity' : row.kind === 'task' ? 'clock' : row.kind === 'run' ? 'terminal' : 'message'} className="icon sm" /></span>
+              <span className="tf-work-copy"><strong>{row.title}</strong><small>{row.subtitle}</small></span>
+              {row.progress !== undefined && <span className="tf-progress"><i style={{ width: `${row.progress}%` }} /></span>}
+              <span className={`tf-work-status ${row.status.toLowerCase().replaceAll(' ', '-')}`}>{row.status}</span>
+              <Icon name="chevron" className="icon xs tf-row-arrow" />
+            </button>
+            {onRestore && <button className="tiny-btn tf-work-row-action" onClick={() => onRestore(row)}>Restore</button>}
+          </div>
         ))}
         {!rows.length && <div className="tf-work-empty"><Icon name="check" /><strong>Nothing here</strong><span>You are caught up.</span></div>}
       </div>
@@ -76,7 +81,7 @@ function Section({
 }
 
 export function WorkPage() {
-  const { data, createChat, setActiveChat, services } = useStore()
+  const { data, createChat, setActiveChat, setChatArchived, services, toast } = useStore()
   const navigate = useNavigate()
   const [filter, setFilter] = useState<WorkFilter | 'all'>('all')
   const [durableRuns, setDurableRuns] = useState<RuntimeRunSummary[]>([])
@@ -165,7 +170,23 @@ export function WorkPage() {
       .map(toWorkRow)
     completed.push(...standaloneRuns.filter((run) => ['Completed', 'Cancelled'].includes(run.status)).slice(0, 12))
 
-    return { attention, running, scheduled, completed }
+    const archived: WorkRow[] = data.chats
+      .filter((chat) => chat.archived)
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .map((chat) => {
+        const project = data.projects.find((candidate) => candidate.id === chat.projectId)
+        return {
+          id: chat.id,
+          title: chat.title,
+          subtitle: `${project?.name ?? chat.projectId} · complete task history preserved`,
+          projectId: chat.projectId,
+          status: 'Archived',
+          href: `/chat/${chat.id}`,
+          kind: 'thread' as const,
+        }
+      })
+
+    return { attention, running, scheduled, completed, archived }
   }, [data, durableRuns, services?.controlPlane.mode, services?.mode])
 
   const open = (row: WorkRow) => navigate(row.href ?? `/project/${row.projectId}`)
@@ -174,6 +195,7 @@ export function WorkPage() {
     { key: 'running' as const, title: 'Running', description: 'Active threads and background jobs', rows: rows.running },
     { key: 'scheduled' as const, title: 'Scheduled', description: 'Recurring tasks and armed monitors', rows: rows.scheduled },
     { key: 'completed' as const, title: 'Completed', description: 'Recent outcomes ready to revisit', rows: rows.completed },
+    { key: 'archived' as const, title: 'Archived', description: 'Hidden tasks with restorable history', rows: rows.archived },
   ]
 
   return (
@@ -188,7 +210,7 @@ export function WorkPage() {
       </header>
 
       <div className="tf-work-filters" role="tablist" aria-label="Work filters">
-        {(['all', 'attention', 'running', 'scheduled', 'completed'] as const).map((item) => (
+        {(['all', 'attention', 'running', 'scheduled', 'completed', 'archived'] as const).map((item) => (
           <button key={item} role="tab" aria-selected={filter === item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>
             {item === 'all' ? 'All work' : item === 'attention' ? 'Needs attention' : item[0]!.toUpperCase() + item.slice(1)}
             {item !== 'all' && <span>{rows[item].length}</span>}
@@ -198,7 +220,17 @@ export function WorkPage() {
 
       <div className="tf-work-sections">
         {sections.filter((section) => filter === 'all' || section.key === filter).map((section) => (
-          <Section key={section.key} title={section.title} description={section.description} rows={section.rows} onOpen={open} />
+          <Section
+            key={section.key}
+            title={section.title}
+            description={section.description}
+            rows={section.rows}
+            onOpen={open}
+            onRestore={section.key === 'archived' ? (row) => {
+              setChatArchived(row.id, false)
+              toast('Task restored', 'The task is visible in Recent again.')
+            } : undefined}
+          />
         ))}
       </div>
     </div>

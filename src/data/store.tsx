@@ -38,6 +38,7 @@ interface StoreApi {
   renameChat: (id: string, title: string) => void
   deleteChat: (id: string) => void
   archiveChat: (id: string) => void
+  setChatArchived: (id: string, archived: boolean) => void
   setChatVisibility: (id: string, visibility: Visibility, sharedWith?: string[]) => void
   branchChat: (id: string) => Chat | null
   branchChatFromMessage: (chatId: string, messageId: string) => Chat | null
@@ -657,6 +658,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     archiveChat: (id) => {
       patch((d) => { const c = d.chats.find((x) => x.id === id); if (c) c.archived = true; return d })
       void services?.threads?.update(id, { archived: true }).catch(reportThreadSyncError)
+    },
+    setChatArchived: (id, archived) => {
+      patch((d) => {
+        const chat = d.chats.find((candidate) => candidate.id === id)
+        if (chat) {
+          chat.archived = archived
+          chat.updatedAt = Date.now()
+        }
+        return d
+      })
+      void services?.threads?.update(id, { archived }).catch(reportThreadSyncError)
     },
     setChatVisibility: (id, visibility, sharedWith = []) => {
       patch((d) => {

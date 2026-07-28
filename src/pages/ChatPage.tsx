@@ -177,7 +177,7 @@ export function ChatPage() {
   const location = useLocation()
   const store = useStore()
   const runRegistry = useRunRegistry()
-  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, harnessCapabilities, refreshHarnessCapabilities } = store
+  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, setChatArchived, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, harnessCapabilities, refreshHarnessCapabilities } = store
   const chat = data.chats.find((c) => c.id === (chatId ?? data.activeChatId))
   const continuationAction = chat?.continuation?.mode === 'fork' ? 'Fork' : 'Resume'
   const project = data.projects.find((p) => p.id === chat?.projectId) ?? data.projects.find((p) => p.id === data.activeProjectId) ?? data.projects[0]
@@ -2023,6 +2023,11 @@ export function ChatPage() {
                     ))}
                   </div>
                   <button className="tiny-btn" style={{ marginTop: 8 }} onClick={() => { const t = prompt('Rename chat', chat.title); if (t) renameChat(chat.id, t) }}>Rename</button>
+                  <button className="tiny-btn" style={{ marginTop: 8, marginLeft: 6 }} onClick={() => {
+                    setChatArchived(chat.id, true)
+                    nav('/work')
+                    toast('Task archived', 'Its history is preserved and can be restored from Work.')
+                  }}>Archive</button>
                   <button className="tiny-btn" style={{ marginTop: 8, marginLeft: 6 }} onClick={() => { deleteChat(chat.id); nav('/'); toast('Chat deleted', '') }}>Delete</button>
                 </div>
               </div>
