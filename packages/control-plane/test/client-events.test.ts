@@ -14,6 +14,7 @@ import { appendTranscript } from '../../../src/features/runs/transcript.js'
 import { createOrderedEventEmitter } from '../../../src/services/orderedEvents.js'
 import { shouldStopRunReconciliation } from '../../../src/services/opensaddleClient.js'
 import { buildPlanRevision } from '../../../src/features/thread/planRevision.js'
+import { normalizeThreadStatus } from '../../../src/features/thread/domain/adapters.js'
 import type { RuntimeRunSummary, SessionEvent } from '../../../src/services/contracts.js'
 import { applyRunEvent } from '../../../src/lib/runEvents.js'
 import { adoptNativeContinuation } from '../../../src/lib/nativeContinuation.js'
@@ -22,7 +23,8 @@ import {
   parseThreadInspectorState,
   selectInspectorAttention,
 } from '../../../src/features/thread/inspectorState.js'
-import type { AgentRunBlock } from '../../../src/types/index.js'
+import type { AgentRunBlock, Message } from '../../../src/types/index.js'
+import type { RunPresentation } from '../../../src/features/thread/domain/contracts.js'
 
 function event(sequence: number, text = String(sequence)): SessionEvent {
   return {
@@ -104,6 +106,33 @@ describe('durable client event handling', () => {
     assert.equal(
       agentRunLifecycleControls(runtimeRunToAgentBlock(recoveredCodex)).canResume,
       true,
+    )
+  })
+
+  it('keeps an active turn ahead of its queued follow-up in thread status', () => {
+    const run = (
+      status: RunPresentation['status'],
+      isTerminal = false,
+    ) => ({ status, isTerminal }) as RunPresentation
+
+    assert.equal(
+      normalizeThreadStatus([], [run('running'), run('queued')]),
+      'running',
+    )
+    assert.equal(
+      normalizeThreadStatus([], [run('paused'), run('queued')]),
+      'paused',
+    )
+    assert.equal(
+      normalizeThreadStatus([], [run('completed', true), run('queued')]),
+      'ready_to_run',
+    )
+    assert.equal(
+      normalizeThreadStatus(
+        [{ role: 'assistant' } as Message],
+        [run('completed', true), run('completed', true)],
+      ),
+      'completed',
     )
   })
 

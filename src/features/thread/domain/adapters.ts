@@ -72,6 +72,14 @@ export function normalizeRunStatus(run: AgentRunBlock): NormalizedRunStatus {
 export function normalizeThreadStatus(messages: readonly Message[], runs: readonly RunPresentation[]): ThreadStatus {
   const latestRun = runs.at(-1)
   if (latestRun) {
+    // A queued follow-up is ordered after the active turn in the transcript,
+    // but it does not replace the thread's current operational state. Prefer
+    // the newest nonterminal run that is actually executing or waiting.
+    const activeRun = [...runs].reverse().find((run) =>
+      !run.isTerminal && run.status !== 'queued')
+    if (activeRun) {
+      return activeRun.status === 'queued' ? 'ready_to_run' : activeRun.status
+    }
     if (latestRun.status === 'queued') return 'ready_to_run'
     return latestRun.status
   }
