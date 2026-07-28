@@ -134,6 +134,8 @@ export function RunsPage() {
             || event.type === 'tool.completed'
             || event.type === 'session.continued'
             || event.type === 'agent.steered'
+            || event.type === 'approval.requested'
+            || event.type === 'approval.resolved'
             || event.type === 'warning'
             || event.type === 'verification.completed'
             || event.type === 'usage.updated')
@@ -167,12 +169,27 @@ export function RunsPage() {
                     const providerSessionId = typeof payload.provider_session_id === 'string'
                       ? payload.provider_session_id
                       : undefined
+                    const approvalDetail = event.type === 'approval.requested'
+                      ? typeof payload.prompt === 'string'
+                        ? payload.prompt
+                        : typeof payload.tool === 'string'
+                          ? `Allow ${payload.tool}`
+                          : 'Waiting for a decision'
+                      : event.type === 'approval.resolved'
+                        ? payload.allowed === false
+                          ? 'Denied'
+                          : `Allowed for this ${payload.scope === 'session' ? 'session' : 'tool call'}`
+                        : undefined
                     const label = event.type === 'warning'
                       ? 'Warning'
                       : event.type === 'session.continued'
                         ? 'Continued provider session'
                       : event.type === 'agent.steered'
                         ? 'Guidance delivered'
+                      : event.type === 'approval.requested'
+                        ? 'Approval requested'
+                      : event.type === 'approval.resolved'
+                        ? payload.allowed === false ? 'Approval denied' : 'Approval granted'
                       : event.type === 'verification.completed'
                         ? 'Verification completed'
                         : event.type === 'usage.updated'
@@ -182,8 +199,8 @@ export function RunsPage() {
                             : typeof payload.tool === 'string' ? payload.tool : 'Tool'
                     return (
                       <div className="local-run-activity-row" key={event.event_id}>
-                        <Icon name={event.type === 'warning' ? 'alert' : event.type.startsWith('command.') ? 'terminal' : 'activity'} className="icon sm" />
-                        <span><strong>{label}</strong><small>{message ?? providerSessionId ?? (checks !== undefined ? `${checks} check${checks === 1 ? '' : 's'}` : event.type.replaceAll('.', ' '))}</small></span>
+                        <Icon name={event.type === 'warning' ? 'alert' : event.type.startsWith('approval.') ? 'shield' : event.type.startsWith('command.') ? 'terminal' : 'activity'} className="icon sm" />
+                        <span><strong>{label}</strong><small>{approvalDetail ?? message ?? providerSessionId ?? (checks !== undefined ? `${checks} check${checks === 1 ? '' : 's'}` : event.type.replaceAll('.', ' '))}</small></span>
                       </div>
                     )
                   })}
