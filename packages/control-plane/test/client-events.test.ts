@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import {
+  isRecoverableRuntimeRun,
+  runtimeRunToAgentBlock,
+  selectOrphanedRuntimeRuns,
+} from '../../../src/features/runs/recovery.js'
 import { appendTranscript } from '../../../src/features/runs/transcript.js'
 import { createOrderedEventEmitter } from '../../../src/services/orderedEvents.js'
-import type { SessionEvent } from '../../../src/services/contracts.js'
+import type { RuntimeRunSummary, SessionEvent } from '../../../src/services/contracts.js'
 import { applyRunEvent } from '../../../src/lib/runEvents.js'
 import { adoptNativeContinuation } from '../../../src/lib/nativeContinuation.js'
 import type { AgentRunBlock } from '../../../src/types/index.js'
@@ -16,6 +21,31 @@ function event(sequence: number, text = String(sequence)): SessionEvent {
     timestamp: new Date(sequence).toISOString(),
     type: 'agent.output.delta',
     payload: { text },
+  }
+}
+
+function runtimeRun(status: RuntimeRunSummary['status']): RuntimeRunSummary {
+  return {
+    runId: 'run-recovered',
+    sessionId: 'session-recovered',
+    projectId: 'project-local',
+    task: 'Continue the durable task',
+    status,
+    route: {
+      modelKey: 'gpt',
+      modelId: 'gpt-5.6',
+      harnessKey: 'coding',
+      providerKey: 'codex',
+      runtimeKey: 'local',
+      reasons: ['test'],
+      cost: 'CLI provider metering',
+    },
+    providerSessionId: 'thread-native-123',
+    providerSessionMode: 'resume',
+    providerTurnId: 'turn-native-4',
+    executionMode: 'project',
+    createdAt: 1,
+    updatedAt: 2,
   }
 }
 
@@ -456,6 +486,31 @@ describe('durable client event handling', () => {
     assert.equal(recovered.statusText, 'Paused · ready to resume')
     assert.equal(recovered.activity?.at(-1)?.label, 'Run recovered after restart')
     assert.equal(recovered.activity?.at(-1)?.detail, 'Saved workspace and provider session retained')
+  })
+
+  it('reconstructs an orphaned server run as a native resumable conversation block', () => {
+    const summary = runtimeRun('paused')
+    assert.equal(isRecoverableRuntimeRun(summary), true)
+    assert.equal(isRecoverableRuntimeRun(runtimeRun('completed')), false)
+    assert.deepEqual(
+      selectOrphanedRuntimeRuns(
+        [summary, { ...runtimeRun('running'), runId: 'already-visible' }, runtimeRun('completed')],
+        new Set(['already-visible']),
+        new Set(['project-local']),
+      ).map((run) => run.runId),
+      ['run-recovered'],
+    )
+
+    const recovered = runtimeRunToAgentBlock(summary)
+    assert.equal(recovered.id, 'run-recovered')
+    assert.equal(recovered.done, false)
+    assert.equal(recovered.statusText, 'Paused · ready to resume')
+    assert.equal(recovered.harness, 'Codex')
+    assert.equal(recovered.runtime, 'Local desktop')
+    assert.equal(recovered.providerSessionId, 'thread-native-123')
+    assert.equal(recovered.providerTurnId, 'turn-native-4')
+    assert.equal(recovered.executionMode, 'project')
+    assert.equal(recovered.cost, 'CLI provider metering')
   })
 
   it('preserves resolved hunk state when the server refreshes the remaining diff', () => {

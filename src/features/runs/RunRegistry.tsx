@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useStore } from '../../data/store'
 import { applyRunEvent } from '../../lib/runEvents'
-import type { SessionEvent } from '../../services/contracts'
+import type { RuntimeRunSummary, SessionEvent } from '../../services/contracts'
 import type { AgentRunBlock } from '../../types'
+import { runtimeRunToAgentBlock, selectOrphanedRuntimeRuns } from './recovery'
 import { appendTranscript, eventText } from './transcript'
 
 export interface ManagedRun {
@@ -51,11 +52,25 @@ interface RunRegistryApi {
 const RunRegistryContext = createContext<RunRegistryApi | null>(null)
 
 export function RunRegistryProvider({ children }: { children: ReactNode }) {
-  const { data, services, appendMessage, updateMessage, adoptChatContinuation } = useStore()
+  const {
+    data,
+    services,
+    persistenceStatus,
+    threadHistoryHydrated,
+    createChat,
+    appendMessage,
+    updateMessage,
+    adoptChatContinuation,
+    toast,
+  } = useStore()
   const [runs, setRuns] = useState<Record<string, ManagedRun>>({})
   const subscriptions = useRef(new Map<string, () => void>())
   const textByRun = useRef(new Map<string, string>())
   const runById = useRef(new Map<string, AgentRunBlock>())
+  const dataRef = useRef(data)
+  const reconciledRuntime = useRef<object | null>(null)
+  const recoveringRuns = useRef(new Set<string>())
+  dataRef.current = data
 
   const release = useCallback((runId: string) => {
     subscriptions.current.get(runId)?.()
@@ -137,6 +152,93 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
       })
     }
   }, [data.messages, services, track])
+
+  // A server-owned run can outlive the renderer before its optimistic
+  // assistant message reaches thread storage. Once durable thread hydration is
+  // complete, reconstruct any active orphan as a background-created task and
+  // replay the full event snapshot into the normal conversation UI.
+  useEffect(() => {
+    const runtime = services?.runtime
+    if (
+      !runtime?.listRuns
+      || persistenceStatus !== 'synced'
+      || !threadHistoryHydrated
+      || reconciledRuntime.current === runtime
+    ) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        let durableRuns: RuntimeRunSummary[] | undefined
+        let lastError: unknown
+        for (let attempt = 0; attempt < 3 && !durableRuns && !cancelled; attempt += 1) {
+          try {
+            durableRuns = await runtime.listRuns!()
+          } catch (error) {
+            lastError = error
+            if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 500))
+          }
+        }
+        if (!durableRuns) throw lastError ?? new Error('The local runtime did not return durable runs')
+        if (cancelled) return
+        const snapshot = dataRef.current
+        const represented = new Set(snapshot.messages.flatMap((message) => message.run ? [message.run.id] : []))
+        const projectIds = new Set(snapshot.projects.map((project) => project.id))
+        for (const durableRun of selectOrphanedRuntimeRuns(durableRuns, represented, projectIds)) {
+          if (cancelled || recoveringRuns.current.has(durableRun.runId)) continue
+          recoveringRuns.current.add(durableRun.runId)
+          const provider = durableRun.route.providerKey
+          const project = snapshot.projects.find((candidate) => candidate.id === durableRun.projectId)
+          const continuation = durableRun.providerSessionId
+            && (provider === 'codex' || provider === 'claude' || provider === 'cursor' || provider === 'gemini')
+            ? {
+              provider,
+              sessionId: durableRun.providerSessionId,
+              checkpointId: durableRun.providerTurnId,
+              sourcePath: project?.local?.rootPath ?? `project:${durableRun.projectId}`,
+              authority: 'opensaddle_managed' as const,
+              mode: durableRun.providerSessionMode ?? 'resume',
+            }
+            : undefined
+          const chat = createChat(
+            durableRun.projectId,
+            durableRun.task.trim().slice(0, 80) || 'Recovered local task',
+            durableRun.agentId,
+            continuation,
+            false,
+          )
+          appendMessage({
+            chatId: chat.id,
+            role: 'user',
+            text: durableRun.task,
+            routingNote: 'Recovered from local runtime',
+          })
+          const initialRun = runtimeRunToAgentBlock(durableRun)
+          const message = appendMessage({
+            chatId: chat.id,
+            role: 'assistant',
+            text: '',
+            routingNote: `Recovered · ${initialRun.model} · ${initialRun.harness} · ${initialRun.runtime}`,
+            run: initialRun,
+          })
+          track({
+            runId: durableRun.runId,
+            threadId: chat.id,
+            messageId: message.id,
+            initialRun,
+            parentRunId: durableRun.parentRunId,
+          })
+          represented.add(durableRun.runId)
+        }
+        reconciledRuntime.current = runtime
+      })().catch((error: unknown) => {
+        if (!cancelled) toast('Task recovery unavailable', error instanceof Error ? error.message : String(error))
+      })
+    }, 700)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [appendMessage, createChat, persistenceStatus, services, threadHistoryHydrated, toast, track])
 
   const stop = useCallback(async (runId: string) => {
     release(runId)

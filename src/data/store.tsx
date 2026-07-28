@@ -33,7 +33,7 @@ interface StoreApi {
   updateSettings: (patch: Partial<SettingsState>) => void
   setActiveProject: (id: string) => void
   setActiveChat: (id: string | null) => void
-  createChat: (projectId: string, title?: string, agentId?: string, continuation?: Chat['continuation']) => Chat
+  createChat: (projectId: string, title?: string, agentId?: string, continuation?: Chat['continuation'], activate?: boolean) => Chat
   adoptChatContinuation: (id: string, sessionId: string, checkpointId?: string, provider?: NonNullable<Chat['continuation']>['provider']) => void
   renameChat: (id: string, title: string) => void
   updateChatRunConfig: (id: string, runConfig: NonNullable<Chat['runConfig']>) => void
@@ -90,6 +90,7 @@ interface StoreApi {
   rescanLocalProject: (projectId: string) => Promise<ProjectArtifactManifest | null>
   runtimeModeLabel: string
   persistenceStatus: 'local' | 'loading' | 'syncing' | 'synced' | 'needs_setup' | 'error'
+  threadHistoryHydrated: boolean
   lastSavedAt: number | null
   connection: ConnectionProfile
   connectToServer: (profile: Pick<ConnectionProfile, 'name' | 'baseUrl' | 'token'>) => Promise<void>
@@ -109,6 +110,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Array<{ id: string; title: string; message: string }>>([])
   const [services, setServices] = useState<ServiceBundle | null>(null)
   const [persistenceStatus, setPersistenceStatus] = useState<StoreApi['persistenceStatus']>('loading')
+  const [threadHistoryHydrated, setThreadHistoryHydrated] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [connection, setConnection] = useState<ConnectionProfile>(() => defaultConnectionProfile())
   const [harnessCapabilities, setHarnessCapabilities] = useState<HarnessCapability[]>([])
@@ -292,7 +294,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [localProjectKey, services])
 
   useEffect(() => {
-    if (!services?.threads || !workspaceHydratedRef.current || durableHydratedServiceRef.current === services.threads) return
+    if (!services?.threads) {
+      setThreadHistoryHydrated(true)
+      return
+    }
+    if (!workspaceHydratedRef.current || durableHydratedServiceRef.current === services.threads) return
+    setThreadHistoryHydrated(false)
     durableHydratedServiceRef.current = services.threads
     let cancelled = false
     void (async () => {
@@ -347,6 +354,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         next.messages = [...remoteMessages, ...next.messages.filter((message) => !remoteMessageIds.has(message.id))]
         return normalizeWorkspace(next)
       })
+      setThreadHistoryHydrated(true)
     })().catch((error: unknown) => {
       if (!cancelled) toast('Task history sync failed', error instanceof Error ? error.message : String(error))
     })
@@ -553,6 +561,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dismissToast,
     toast,
     persistenceStatus,
+    threadHistoryHydrated,
     lastSavedAt,
     connection,
     harnessCapabilities,
@@ -599,9 +608,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (id) d.recentChatIds = [id, ...d.recentChatIds.filter((x) => x !== id)].slice(0, 12)
       return d
     }),
-    createChat: (projectId, title = 'New chat', agentId, continuation) => {
+    createChat: (projectId, title = 'New chat', agentId, continuation, activate = true) => {
       const chat: Chat = { id: uid('chat'), projectId, title, visibility: 'private', createdAt: Date.now(), updatedAt: Date.now(), sharedWith: [], agentId, continuation }
-      patch((d) => { d.chats.unshift(chat); d.activeChatId = chat.id; d.activeProjectId = projectId; d.recentChatIds = [chat.id, ...d.recentChatIds].slice(0, 12); return d })
+      patch((d) => {
+        d.chats.unshift(chat)
+        if (activate) {
+          d.activeChatId = chat.id
+          d.activeProjectId = projectId
+        }
+        d.recentChatIds = [chat.id, ...d.recentChatIds].slice(0, 12)
+        return d
+      })
       if (services?.threads) {
         const pending = services.threads.create({
           id: chat.id,
@@ -1352,7 +1369,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     services,
     runtimeModeLabel: modeLabel(detectRuntimeMode()),
-  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, lastSavedAt, connection, harnessCapabilities, refreshHarnessCapabilities, localProjectManifests, rescanLocalProject, threadPayload, reportThreadSyncError, workspaceRecoveries])
+  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, threadHistoryHydrated, lastSavedAt, connection, harnessCapabilities, refreshHarnessCapabilities, localProjectManifests, rescanLocalProject, threadPayload, reportThreadSyncError, workspaceRecoveries])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

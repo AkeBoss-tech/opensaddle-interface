@@ -146,9 +146,10 @@ export function WorkPage() {
       }))
 
     attention.push(...items
-      .filter((item) => ['needs_input', 'needs_approval', 'blocked', 'failed'].includes(item.status))
+      .filter((item) => ['needs_input', 'needs_approval', 'blocked', 'failed', 'paused'].includes(item.status))
       .map(toWorkRow))
-    attention.push(...standaloneRuns.filter((run) => run.status === 'Needs input' || run.status === 'Failed'))
+    attention.push(...standaloneRuns.filter((run) =>
+      run.status === 'Needs input' || run.status === 'Failed' || run.status === 'Paused'))
 
     const scheduledIds = new Set(items
       .filter((item) => item.source.sourceType === 'task'
@@ -158,7 +159,7 @@ export function WorkPage() {
     const running = items
       .filter((item) => !scheduledIds.has(item.id) && (item.status === 'running' || item.status === 'ready'))
       .map(toWorkRow)
-    running.push(...standaloneRuns.filter((run) => ['Queued', 'Provisioning', 'Running', 'Paused'].includes(run.status)))
+    running.push(...standaloneRuns.filter((run) => ['Queued', 'Provisioning', 'Running'].includes(run.status)))
 
     const scheduled = items
       .filter((item) => scheduledIds.has(item.id) && !['needs_input', 'needs_approval', 'blocked', 'failed'].includes(item.status))
