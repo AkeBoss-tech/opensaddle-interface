@@ -246,9 +246,69 @@ describe('durable client event handling', () => {
     assert.equal(housekeepingCompleted.tools[0]?.output, '70 tests passed\n')
     assert.equal(housekeepingCompleted.tools[0]?.status, 'success')
     assert.equal(housekeepingCompleted.tools[0]?.duration, '1200ms')
+    assert.deepEqual(housekeepingCompleted.artifacts[0]?.table?.rows, [
+      ['Tests · npm test', 'pass', '1200ms'],
+    ])
+    assert.equal(housekeepingCompleted.activity?.find((item) => item.kind === 'check')?.label, 'Tests passed')
     assert.equal(housekeepingCompleted.tools[1]?.name, 'read_file')
     assert.match(housekeepingCompleted.tools[1]?.input ?? '', /src\/app\.ts/)
     assert.equal(housekeepingCompleted.tools[1]?.output, 'export {}')
+  })
+
+  it('promotes failed verification commands without treating ordinary shell commands as checks', () => {
+    const initial: AgentRunBlock = {
+      id: 'run-1',
+      kind: 'coding',
+      title: 'Coding run',
+      model: 'Claude',
+      harness: 'Claude Code',
+      runtime: 'Local',
+      statusText: 'Working',
+      done: false,
+      tools: [],
+      plan: [],
+      artifacts: [],
+    }
+    const failedTypecheck = applyRunEvent(initial, {
+      ...event(0),
+      type: 'command.completed',
+      payload: {
+        item: {
+          id: 'cmd-1',
+          command: 'pnpm run typecheck',
+          status: 'failed',
+          exitCode: 2,
+          durationMs: 840,
+        },
+      },
+    })
+    const ordinaryCommand = applyRunEvent(failedTypecheck, {
+      ...event(1),
+      type: 'command.completed',
+      payload: {
+        item: {
+          id: 'cmd-2',
+          command: 'git status --short',
+          status: 'completed',
+          exitCode: 0,
+        },
+      },
+    })
+    const explicitVerification = applyRunEvent(ordinaryCommand, {
+      ...event(2),
+      type: 'verification.completed',
+      payload: {
+        checks: [{ name: 'Workspace clean', ok: true, duration: '12ms' }],
+      },
+    })
+
+    assert.deepEqual(explicitVerification.artifacts[0]?.table?.rows, [
+      ['Typecheck · pnpm run typecheck', 'fail', '840ms'],
+      ['Workspace clean', 'pass', '12ms'],
+    ])
+    assert.equal(explicitVerification.artifacts[0]?.subtitle, 'Some checks failed')
+    assert.equal(explicitVerification.activity?.filter((item) => item.kind === 'check').length, 2)
+    assert.equal(explicitVerification.activity?.find((item) => item.kind === 'check')?.label, 'Typecheck failed')
   })
 
   it('shows provider-native checkpoint provenance in run activity', () => {

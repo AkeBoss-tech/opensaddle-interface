@@ -14,6 +14,12 @@ interface RawCheck {
   duration?: string
 }
 
+interface VerificationCheck {
+  name: string
+  ok: boolean
+  duration: string
+}
+
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -151,6 +157,78 @@ function commandName(event: SessionEvent): string {
     if (typeof args.command === 'string' && args.command) return args.command
   }
   return toolName(event, 'Command')
+}
+
+function displayCommand(command: string): string {
+  const shellWrapped = command.match(/^(?:\/(?:usr\/)?bin\/)?(?:ba|z|)sh\s+-lc\s+(['"])([\s\S]*)\1$/i)
+  return (shellWrapped?.[2] ?? command).trim().replace(/\s+/g, ' ').slice(0, 120)
+}
+
+function verificationLabel(command: string): string | undefined {
+  const normalized = displayCommand(command)
+  if (!normalized || /^(?:echo|printf)\b/i.test(normalized)) return undefined
+
+  const packageScript = /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?((?:test|typecheck|type-check|check:types|lint|build)(?::[\w-]+)?)\b/i.exec(normalized)?.[1]
+  let category: string | undefined
+  if (packageScript?.startsWith('test')) category = 'Tests'
+  else if (packageScript && /^(?:typecheck|type-check|check:types)/i.test(packageScript)) category = 'Typecheck'
+  else if (packageScript?.startsWith('lint')) category = 'Lint'
+  else if (packageScript?.startsWith('build')) category = 'Build'
+  else if (/\b(?:vitest|jest|pytest|go\s+test|cargo\s+test|rspec|mix\s+test|dotnet\s+test)\b/i.test(normalized)) category = 'Tests'
+  else if (/\b(?:tsc(?:\s+--noEmit|\s+-b)|pyright|mypy)\b/i.test(normalized)) category = 'Typecheck'
+  else if (/\b(?:eslint|oxlint|ruff\s+check|cargo\s+clippy|golangci-lint)\b/i.test(normalized)) category = 'Lint'
+  else if (/\b(?:cargo\s+check|dotnet\s+build)\b/i.test(normalized)) category = 'Build'
+
+  return category ? `${category} · ${normalized}` : undefined
+}
+
+function commandFailed(event: SessionEvent): boolean {
+  const payload = event.payload
+  const item = objectRecord(payload.item)
+  return payload.status === 'failed'
+    || payload.status === 'error'
+    || item.status === 'failed'
+    || item.status === 'error'
+    || payload.ok === false
+    || typeof payload.exit_code === 'number' && payload.exit_code !== 0
+    || typeof payload.exitCode === 'number' && payload.exitCode !== 0
+    || typeof item.exit_code === 'number' && item.exit_code !== 0
+    || typeof item.exitCode === 'number' && item.exitCode !== 0
+    || Boolean(payload.error)
+}
+
+function commandDuration(event: SessionEvent): string {
+  const payload = event.payload
+  const item = objectRecord(payload.item)
+  if (typeof payload.duration === 'string') return payload.duration
+  const durationMs = finiteNumber(payload.duration_ms, payload.durationMs, item.duration_ms, item.durationMs)
+  return durationMs === undefined ? '—' : `${durationMs}ms`
+}
+
+function mergeVerificationChecks(run: AgentRunBlock, runId: string, checks: VerificationCheck[]): void {
+  if (!checks.length) return
+  const id = `art-verify-${runId}`
+  const existing = run.artifacts.findIndex((artifact) => artifact.id === id)
+  const previousRows = existing >= 0 ? run.artifacts[existing]?.table?.rows ?? [] : []
+  const rows = [...previousRows]
+  for (const check of checks) {
+    const row = [check.name, check.ok ? 'pass' : 'fail', check.duration]
+    const rowIndex = rows.findIndex((candidate) => candidate[0] === check.name)
+    if (rowIndex >= 0) rows[rowIndex] = row
+    else rows.push(row)
+  }
+  const artifact = {
+    id,
+    type: 'table' as const,
+    title: 'Verification',
+    subtitle: rows.every((row) => row[1]?.toLowerCase() === 'pass') ? 'All checks passed' : 'Some checks failed',
+    table: {
+      headers: ['Check', 'Result', 'Duration'],
+      rows,
+    },
+  }
+  if (existing >= 0) run.artifacts[existing] = artifact
+  else run.artifacts.push(artifact)
 }
 
 function eventFilePaths(event: SessionEvent): string[] {
@@ -303,21 +381,10 @@ function startTool(run: AgentRunBlock, event: SessionEvent, name: string, icon: 
 
 function completeTool(run: AgentRunBlock, event: SessionEvent, name: string, icon: string): void {
   const index = findToolIndex(run, event, name, icon)
-  const payload = event.payload
-  const item = objectRecord(payload.item)
-  const failed = payload.status === 'failed'
-    || payload.status === 'error'
-    || item.status === 'failed'
-    || item.status === 'error'
-    || payload.ok === false
-    || payload.exit_code !== undefined && payload.exit_code !== 0
-    || item.exitCode !== undefined && item.exitCode !== 0
-    || Boolean(payload.error)
+  const failed = commandFailed(event)
   const output = toolOutput(event)
-  const duration = typeof payload.duration === 'string'
-    ? payload.duration
-    : typeof payload.duration_ms === 'number' ? `${payload.duration_ms}ms`
-      : typeof item.durationMs === 'number' ? `${item.durationMs}ms` : ''
+  const eventDuration = commandDuration(event)
+  const duration = eventDuration === '—' ? '' : eventDuration
   if (index >= 0) {
     const previous = run.tools[index]!
     run.tools[index] = {
@@ -557,7 +624,19 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
     case 'command.completed': {
       const command = commandName(event)
       completeTool(next, event, command, 'terminal')
-      addActivity('tool', 'Command completed')
+      const checkName = verificationLabel(command)
+      if (checkName) {
+        const ok = !commandFailed(event)
+        mergeVerificationChecks(next, event.run_id, [{
+          name: checkName,
+          ok,
+          duration: commandDuration(event),
+        }])
+        next.statusText = `${checkName.split(' · ')[0]} ${ok ? 'passed' : 'failed'}`
+        addActivity('check', `${checkName.split(' · ')[0]} ${ok ? 'passed' : 'failed'}`, displayCommand(command))
+      } else {
+        addActivity('tool', 'Command completed')
+      }
       break
     }
     case 'file.change.updated': {
@@ -746,20 +825,13 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
     case 'verification.completed': {
       const checks = Array.isArray(event.payload.checks) ? event.payload.checks as RawCheck[] : []
       if (checks.length) {
-        const existing = next.artifacts.findIndex((a) => a.id === `art-verify-${event.run_id}`)
-        const artifact = {
-          id: `art-verify-${event.run_id}`,
-          type: 'table' as const,
-          title: 'Verification',
-          subtitle: checks.every((c) => c.ok) ? 'All checks passed' : 'Some checks failed',
-          table: {
-            headers: ['Check', 'Result', 'Duration'],
-            rows: checks.map((c) => [c.name, c.ok ? 'pass' : 'fail', c.duration ?? '—']),
-          },
-        }
-        if (existing >= 0) next.artifacts[existing] = artifact
-        else next.artifacts.push(artifact)
-        addActivity('check', 'Verification completed', artifact.subtitle)
+        mergeVerificationChecks(next, event.run_id, checks.map((check) => ({
+          name: check.name,
+          ok: check.ok,
+          duration: check.duration ?? '—',
+        })))
+        const artifact = next.artifacts.find((candidate) => candidate.id === `art-verify-${event.run_id}`)
+        addActivity('check', 'Verification completed', artifact?.subtitle)
       }
       break
     }
