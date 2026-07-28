@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../data/store'
+import { connectionPresentation } from '../../lib/connectionPresentation'
 
 export function WorkspaceStatusBar() {
-  const { data, services, persistenceStatus } = useStore()
+  const { connection, data, services, persistenceStatus } = useStore()
   const navigate = useNavigate()
   const project = data.projects.find((item) => item.id === data.activeProjectId)
   const activeChat = data.chats.find((item) => item.id === data.activeChatId)
@@ -15,19 +16,32 @@ export function WorkspaceStatusBar() {
   )
   const diff = latestRun?.artifacts.find((artifact) => artifact.type === 'diff')?.diff ?? []
   const changeCount = diff.length
+  const connectionState = connectionPresentation({
+    connection,
+    controlPlane: services?.controlPlane ?? null,
+    desktop: Boolean(window.opensaddleDesktop),
+  })
 
   return (
     <footer className="tf-statusbar" aria-label="Workspace status">
-      <button onClick={() => navigate('/environments')}>
-        <span className={`tf-connection-dot ${services?.controlPlane.connected ? '' : 'offline'}`} />
-        {services?.controlPlane.connected ? 'Local' : 'Offline'}
+      <button onClick={() => navigate('/settings')} title={connectionState.title}>
+        <span className={`tf-connection-dot ${connectionState.connected ? '' : 'offline'}`} />
+        {connectionState.label}
       </button>
       <button onClick={() => project && navigate(`/project/${project.id}`)}>{project?.name ?? 'No project'}</button>
       {changeCount > 0 && <button onClick={() => activeChat && navigate(`/chat/${activeChat.id}`)}>{changeCount} change{changeCount === 1 ? '' : 's'}</button>}
       {latestRun?.cost && <span>{latestRun.cost}</span>}
       <span className="tf-statusbar-spacer" />
       <button onClick={() => navigate('/settings')}>
-        {persistenceStatus === 'syncing' ? 'Saving…' : persistenceStatus === 'error' ? 'Save error' : 'Connected'}
+        {!connectionState.connected
+          ? 'Waiting for server'
+          : persistenceStatus === 'syncing'
+            ? 'Saving…'
+            : persistenceStatus === 'error'
+              ? 'Save error'
+              : persistenceStatus === 'synced'
+                ? 'Saved'
+                : 'Connected'}
       </button>
     </footer>
   )

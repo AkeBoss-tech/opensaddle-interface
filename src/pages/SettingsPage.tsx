@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
+import { connectionPresentation } from '../lib/connectionPresentation'
 
 const SETTINGS_DESTINATIONS = [
   { id: 'settings-general', label: 'General', icon: 'settings', group: 'Personal' },
@@ -76,6 +77,12 @@ function SettingsContent() {
   } = useStore()
   const s = data.settings
   const controlPlane = services?.controlPlane
+  const connectionState = connectionPresentation({
+    connection,
+    controlPlane: controlPlane ?? null,
+    desktop: Boolean(window.opensaddleDesktop),
+  })
+  const recovering = connection.mode === 'remote' && !connectionState.connected
   const isOpenRouter = controlPlane?.modelProvider === 'openrouter'
   const [serverName, setServerName] = useState(connection.name)
   const [serverUrl, setServerUrl] = useState(connection.mode === 'remote' ? connection.baseUrl : '')
@@ -104,17 +111,23 @@ function SettingsContent() {
       <section className="settings-overview">
         <div className="settings-overview-copy">
           <div className="eyebrow">System status</div>
-          <h2>{controlPlane?.connected ? 'OpenSaddle is connected' : 'Running from browser cache'}</h2>
+          <h2>{controlPlane?.connected
+            ? 'OpenSaddle is connected'
+            : recovering
+              ? connectionState.label
+              : 'Running from browser cache'}</h2>
           <p>
             {controlPlane?.connected
               ? `${controlPlane.mode === 'company' ? 'Company' : 'Local'} control plane · ${controlPlane.storage ?? 'server'} persistence`
-              : 'Start the control plane to enable durable chats, server permissions, and real model routing.'}
+              : recovering
+                ? `OpenSaddle will adopt ${connection.baseUrl} as soon as it is available.`
+                : 'Start the control plane to enable durable chats, server permissions, and real model routing.'}
           </p>
         </div>
         <div className="settings-status-grid">
           <div className="settings-status-card">
             <span className={`status-light ${controlPlane?.connected ? 'online' : ''}`} />
-            <div><small>Control plane</small><strong>{controlPlane?.connected ? 'Online' : 'Offline'}</strong></div>
+            <div><small>Control plane</small><strong>{controlPlane?.connected ? 'Online' : recovering ? connectionState.label.replace('…', '') : 'Offline'}</strong></div>
           </div>
           <div className="settings-status-card">
             <Icon name="spark" className="icon sm" />
@@ -126,13 +139,13 @@ function SettingsContent() {
           </div>
           <div className="settings-status-card">
             <Icon name="refresh" className="icon sm" />
-            <div><small>Sync</small><strong>{persistenceStatus === 'synced' ? 'Saved' : persistenceStatus}</strong></div>
+            <div><small>Sync</small><strong>{recovering ? 'waiting' : persistenceStatus === 'synced' ? 'Saved' : persistenceStatus}</strong></div>
           </div>
         </div>
       </section>
 
       <section className="card connection-card" id="settings-connection">
-        <div className="card-header"><div><h3>OpenSaddle connection</h3><p>{connection.mode === 'remote' ? `${connection.name} · ${connection.baseUrl}` : 'Demo mode uses seeded data and simulated runs.'}</p></div><span className={`sync-badge ${controlPlane?.connected ? 'synced' : connection.mode === 'demo' ? 'local' : 'error'}`}>{connection.mode === 'remote' ? (controlPlane?.connected ? 'Connected' : 'Offline') : 'Demo'}</span></div>
+        <div className="card-header"><div><h3>OpenSaddle connection</h3><p>{connection.mode === 'remote' ? `${connection.name} · ${connection.baseUrl}` : 'Demo mode uses seeded data and simulated runs.'}</p></div><span className={`sync-badge ${controlPlane?.connected ? 'synced' : recovering || connection.mode === 'demo' ? 'local' : 'error'}`}>{connection.mode === 'remote' ? (controlPlane?.connected ? 'Connected' : connectionState.label) : 'Demo'}</span></div>
         <div className="card-body">
           <div className="form-row"><label>Connection name</label><input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="My OpenSaddle server" /></div>
           <div className="form-row"><label>Server URL</label><input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://opensaddle.example.com" /></div>
