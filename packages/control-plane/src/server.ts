@@ -3,7 +3,14 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
 import { authenticate, redactUrl } from './auth.js'
 import { loadConfig } from './config.js'
-import { applyTaskCapabilities, policyForExecutionMode, type RunExecutionMode, type TaskCapabilityId } from './executionModes.js'
+import {
+  applyTaskCapabilities,
+  policyForExecutionMode,
+  unsupportedTaskCapabilities,
+  type HarnessPolicyControls,
+  type RunExecutionMode,
+  type TaskCapabilityId,
+} from './executionModes.js'
 import { GitWorkspaceError, GitWorkspaceService } from './gitWorkspace.js'
 import { HarnessCapabilityRegistry } from './harness/capabilityRegistry.js'
 import { HarnessRegistry } from './harness/index.js'
@@ -1383,6 +1390,7 @@ app.post('/api/runs', async (request, reply) => {
     telemetry: store.routeTelemetry(projectId),
   }
   let route = estimateRoute(task, config, routeInput)
+  let selectedHarnessCapability: Awaited<ReturnType<typeof discoverHarnessCapabilities>>['harnesses'][number] | undefined
   if (providerSessionId) {
     if (config.mode !== 'local') {
       return reply.code(400).send({
@@ -1408,16 +1416,20 @@ app.post('/api/runs', async (request, reply) => {
         provider_key: route.providerKey,
       })
     }
-    const selected = snapshot.harnesses.find((capability) => capability.id === capabilityId)
-    if (!selected || selected.availability !== 'available' || selected.readiness !== 'ready') {
+    selectedHarnessCapability = snapshot.harnesses.find((capability) => capability.id === capabilityId)
+    if (!selectedHarnessCapability
+      || selectedHarnessCapability.availability !== 'available'
+      || selectedHarnessCapability.readiness !== 'ready') {
       const explicitlyPinned = requestedProvider !== undefined && requestedProvider !== 'auto'
       if (explicitlyPinned || route.providerKey === 'custom') {
-        const setup = selected?.auth.setupCommand ? ` Run ${selected.auth.setupCommand}.` : ''
+        const setup = selectedHarnessCapability?.auth.setupCommand
+          ? ` Run ${selectedHarnessCapability.auth.setupCommand}.`
+          : ''
         return reply.code(409).send({
           error: 'harness_not_ready',
-          reason: `${selected?.unavailableReason ?? selected?.auth.message ?? `${capabilityId} is not ready.`}${setup}`,
+          reason: `${selectedHarnessCapability?.unavailableReason ?? selectedHarnessCapability?.auth.message ?? `${capabilityId} is not ready.`}${setup}`,
           provider_key: route.providerKey,
-          setup_command: selected?.auth.setupCommand,
+          setup_command: selectedHarnessCapability?.auth.setupCommand,
         })
       }
       const fallback = snapshot.harnesses.find((capability) =>
@@ -1435,7 +1447,8 @@ app.post('/api/runs', async (request, reply) => {
         ...routeInput,
         providerKey: fallback.id as CodingProvider,
       })
-      route.reasons.push(`Selected ${fallback.label} because ${selected?.label ?? route.providerKey} is not ready`)
+      selectedHarnessCapability = fallback
+      route.reasons.push(`Selected ${fallback.label} because the requested harness is not ready`)
     }
   }
   const permission = evaluatePermissions(store.grants(), {
@@ -1466,6 +1479,23 @@ app.post('/api/runs', async (request, reply) => {
     ['Browser', 'Network', 'Secure VM', 'Subagents'].includes(capability))
   if (rawCapabilityIds && knownCapabilityIds?.length !== rawCapabilityIds.length) {
     return reply.code(400).send({ error: 'unknown_task_capability' })
+  }
+  if (knownCapabilityIds && route.harnessKey === 'coding') {
+    const controls = (selectedHarnessCapability?.capabilities.policyControls
+      ?? 'provider-defined') as HarnessPolicyControls
+    const unsupported = unsupportedTaskCapabilities(knownCapabilityIds, controls)
+    if (unsupported.length) {
+      const label = selectedHarnessCapability?.label ?? route.providerKey
+      return reply.code(409).send({
+        error: 'harness_capability_policy_unsupported',
+        provider_key: route.providerKey,
+        policy_controls: controls,
+        unsupported_capabilities: unsupported,
+        reason: controls === 'sandbox-only'
+          ? `${label} can enforce Network through its sandbox, but cannot enforce per-tool ${unsupported.join(', ')} restrictions. Enable those capabilities or choose a native-policy harness.`
+          : `${label} owns its capability policy and cannot accept OpenSaddle per-capability restrictions. Enable all capabilities or choose a native-policy harness.`,
+      })
+    }
   }
   const executionPolicy = applyTaskCapabilities(
     policyForExecutionMode(executionMode, localSettings.policy),

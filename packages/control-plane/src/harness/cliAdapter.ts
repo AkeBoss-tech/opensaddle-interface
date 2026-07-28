@@ -151,7 +151,7 @@ function buildArgs(
     if (executionPolicy.sandbox === 'read-only') {
       policyArgs.push('--mode', 'plan', '--sandbox', 'enabled')
     } else if (executionPolicy.sandbox === 'full-access' && executionPolicy.approvals === 'never') {
-      policyArgs.push('--force', '--sandbox', 'disabled')
+      policyArgs.push('--force', '--sandbox', executionPolicy.network ? 'disabled' : 'enabled')
     } else {
       policyArgs.push('--sandbox', 'enabled')
     }

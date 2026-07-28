@@ -125,6 +125,19 @@ describe('coding harness routing', () => {
     assert.equal(args.includes('--dangerously-skip-permissions'), false)
   })
 
+  it('keeps Cursor full-access edits sandboxed when Network is disabled', () => {
+    const cursor = BUILTIN_PROFILES.find((profile) => profile.id === 'cursor')!
+    const args = buildArgs(cursor, 'fix the bug', '/tmp/ws', undefined, {
+      sandbox: 'full-access',
+      approvals: 'never',
+      network: false,
+      allowedTools: [],
+      deniedTools: [],
+    })
+    assert.ok(args.includes('--force'))
+    assert.equal(args[args.indexOf('--sandbox') + 1], 'enabled')
+  })
+
   it('resumes a durable Claude session when one is available', async () => {
     const { buildArgs } = await import('../src/harness/cliAdapter.js')
     const claude = BUILTIN_PROFILES.find((profile) => profile.id === 'claude')!

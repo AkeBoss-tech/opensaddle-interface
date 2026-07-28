@@ -2,6 +2,7 @@ import type { HarnessExecutionPolicy } from './types.js'
 
 export type RunExecutionMode = 'plan' | 'review' | 'project' | 'full-access'
 export type TaskCapabilityId = 'Browser' | 'Network' | 'Secure VM' | 'Subagents'
+export type HarnessPolicyControls = 'native' | 'sandbox-only' | 'provider-defined'
 
 const CAPABILITY_DENIALS: Record<TaskCapabilityId, string[]> = {
   Browser: ['mcp__browser__*', 'mcp__chrome__*', 'browser_*', 'chrome_*'],
@@ -9,6 +10,7 @@ const CAPABILITY_DENIALS: Record<TaskCapabilityId, string[]> = {
   'Secure VM': ['mcp__opensaddle__create_vm', 'create_vm', 'provision_vm'],
   Subagents: ['Task', 'Agent', 'delegate', 'spawn_agent'],
 }
+const TASK_CAPABILITIES = Object.keys(CAPABILITY_DENIALS) as TaskCapabilityId[]
 
 const DEFAULT_PROJECT_POLICY: HarnessExecutionPolicy = {
   sandbox: 'workspace-write',
@@ -82,4 +84,20 @@ export function applyTaskCapabilities(
     allowedTools: [...policy.allowedTools],
     deniedTools: [...new Set([...policy.deniedTools, ...disabledPatterns])],
   }
+}
+
+/**
+ * Returns capability restrictions a harness cannot faithfully enforce.
+ * Sandbox-only harnesses can enforce Network at the command boundary, but
+ * cannot promise per-tool Browser, VM, or subagent rules.
+ */
+export function unsupportedTaskCapabilities(
+  enabled: readonly TaskCapabilityId[],
+  controls: HarnessPolicyControls,
+): TaskCapabilityId[] {
+  if (controls === 'native') return []
+  const disabled = TASK_CAPABILITIES.filter((capability) => !enabled.includes(capability))
+  return controls === 'sandbox-only'
+    ? disabled.filter((capability) => capability !== 'Network')
+    : disabled
 }

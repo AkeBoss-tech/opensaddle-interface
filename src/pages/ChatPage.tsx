@@ -76,6 +76,13 @@ function routedHarnessLabel(route: RouteEstimate | undefined, fallback: Harness)
 type PromptPermission = NonNullable<ReturnType<typeof needsPermission>>
 type PromptPermissionScope = 'once' | 'chat' | 'project' | 'always'
 const TASK_CAPABILITIES = ['Browser', 'Network', 'Secure VM', 'Subagents'] as const
+type TaskCapability = typeof TASK_CAPABILITIES[number]
+type HarnessPolicyControl = 'native' | 'sandbox-only' | 'provider-defined'
+
+function capabilitiesRequiredByHarnessPolicy(controls: HarnessPolicyControl): TaskCapability[] {
+  if (controls === 'sandbox-only') return ['Browser', 'Secure VM', 'Subagents']
+  return controls === 'provider-defined' ? [...TASK_CAPABILITIES] : []
+}
 
 function normalizeTaskCapabilities(values: Iterable<string>): Set<string> {
   const aliases: Record<string, string | undefined> = {
@@ -441,6 +448,16 @@ export function ChatPage() {
     ?? liveHarnessOptions[0]!
   const liveCapability = harnessCapabilities.find((item) =>
     item.id === (pickerProvider === 'custom' ? activeCustomHarness?.id : pickerProvider))
+  const selectedPolicyControls: HarnessPolicyControl = liveCapability?.capabilities.policyControls
+    ?? (pickerProvider === 'auto' ? 'native' : 'provider-defined')
+  const lockedTaskCapabilities = capabilitiesRequiredByHarnessPolicy(selectedPolicyControls)
+  useEffect(() => {
+    const required = capabilitiesRequiredByHarnessPolicy(selectedPolicyControls)
+    if (!required.length) return
+    setTools((current) => required.every((capability) => current.has(capability))
+      ? current
+      : new Set([...current, ...required]))
+  }, [selectedPolicyControls])
   const compatibleModelOptions = useMemo(() => {
     const fallback = MODEL_PICKER_OPTIONS[pickerProvider] ?? MODEL_PICKER_OPTIONS.auto!
     if (!liveCapability?.models.length || pickerProvider === 'auto') return fallback
@@ -1481,18 +1498,31 @@ export function ChatPage() {
                     <button onClick={() => setInspector(true)}><Icon name="panel" className="icon sm" /><span><strong>Run details</strong><small>Open the activity inspector</small></span></button>
                   </div>
                   <div className="popover-title popover-title-secondary">Available tools</div>
-                  {TASK_CAPABILITIES.map((t) => (
-                    <button key={t} className={`tool-option ${tools.has(t) ? 'enabled' : ''}`} onClick={() => {
-                      const next = new Set(tools)
-                      if (next.has(t)) next.delete(t); else next.add(t)
-                      setTools(next)
-                      toast(`${t} ${next.has(t) ? 'enabled' : 'disabled'}`, 'Applies to this chat.')
-                    }}>
-                      <span className="tool-icon-wrap"><Icon name={t === 'Secure VM' ? 'vm' : t === 'Network' ? 'api' : t === 'Subagents' ? 'code' : 'globe'} /></span>
-                      <span className="tool-copy"><strong>{t}</strong><small>{t === 'Browser' ? 'Browser and Chrome tools' : t === 'Network' ? 'Web fetch and search' : t === 'Secure VM' ? 'Provision external runtimes' : 'Delegate child runs'}</small></span>
-                      <span className="check"><Icon name="check" className="icon sm" /></span>
-                    </button>
-                  ))}
+                  {TASK_CAPABILITIES.map((t) => {
+                    const locked = lockedTaskCapabilities.includes(t)
+                    return (
+                      <button
+                        key={t}
+                        className={`tool-option ${tools.has(t) ? 'enabled' : ''}`}
+                        disabled={locked}
+                        title={locked
+                          ? selectedPolicyControls === 'sandbox-only'
+                            ? 'This harness exposes sandbox controls, not a separate switch for this capability.'
+                            : 'This harness owns this capability through its provider-defined policy.'
+                          : undefined}
+                        onClick={() => {
+                          const next = new Set(tools)
+                          if (next.has(t)) next.delete(t); else next.add(t)
+                          setTools(next)
+                          toast(`${t} ${next.has(t) ? 'enabled' : 'disabled'}`, 'Applies to this chat.')
+                        }}
+                      >
+                        <span className="tool-icon-wrap"><Icon name={t === 'Secure VM' ? 'vm' : t === 'Network' ? 'api' : t === 'Subagents' ? 'code' : 'globe'} /></span>
+                        <span className="tool-copy"><strong>{t}</strong><small>{locked ? 'Controlled by the selected harness' : t === 'Browser' ? 'Browser and Chrome tools' : t === 'Network' ? 'Web fetch and search' : t === 'Secure VM' ? 'Provision external runtimes' : 'Delegate child runs'}</small></span>
+                        <span className="check"><Icon name="check" className="icon sm" /></span>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
 
@@ -1531,6 +1561,14 @@ export function ChatPage() {
                           onClick={() => {
                             setProviderOv(option.id)
                             setHarnessOv(option.id === 'auto' ? 'auto' : 'coding')
+                            const nextCapability = harnessCapabilities.find((item) =>
+                              item.id === (option.id === 'custom' ? activeCustomHarness?.id : option.id))
+                            const controls = nextCapability?.capabilities.policyControls
+                              ?? (option.id === 'auto' ? 'native' : 'provider-defined')
+                            const required = capabilitiesRequiredByHarnessPolicy(controls)
+                            if (required.length) {
+                              setTools((current) => new Set([...current, ...required]))
+                            }
                             const nextModels = MODEL_PICKER_OPTIONS[option.id] ?? MODEL_PICKER_OPTIONS.auto!
                             if (!nextModels.some((model) => model.id === modelOv)) setModelOv('auto')
                             setAuto(option.id === 'auto' && modelOv === 'auto')

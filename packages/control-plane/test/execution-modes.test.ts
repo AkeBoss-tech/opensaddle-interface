@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { applyTaskCapabilities, policyForExecutionMode } from '../src/executionModes.js'
+import { applyTaskCapabilities, policyForExecutionMode, unsupportedTaskCapabilities } from '../src/executionModes.js'
 
 const projectPolicy = {
   sandbox: 'workspace-write' as const,
@@ -56,5 +56,21 @@ describe('per-run execution modes', () => {
     assert.equal(policy.deniedTools.includes('Read'), false)
     assert.equal(policy.deniedTools.includes('Edit'), false)
     assert.equal(policy.deniedTools.includes('Bash'), false)
+  })
+
+  it('fails closed when a harness cannot enforce selected restrictions', () => {
+    assert.deepEqual(unsupportedTaskCapabilities(
+      ['Browser', 'Network'],
+      'sandbox-only',
+    ), ['Secure VM', 'Subagents'])
+    assert.deepEqual(unsupportedTaskCapabilities(
+      ['Browser', 'Secure VM', 'Subagents'],
+      'sandbox-only',
+    ), [])
+    assert.deepEqual(unsupportedTaskCapabilities(
+      ['Browser', 'Network'],
+      'provider-defined',
+    ), ['Secure VM', 'Subagents'])
+    assert.deepEqual(unsupportedTaskCapabilities([], 'native'), [])
   })
 })
