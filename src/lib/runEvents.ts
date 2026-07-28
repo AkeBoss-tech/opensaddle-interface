@@ -496,6 +496,7 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
     artifacts: [...run.artifacts],
     activity: [...(run.activity ?? [])],
     sources: [...(run.sources ?? [])],
+    providerSubagents: [...(run.providerSubagents ?? [])],
     warnings: [...(run.warnings ?? [])],
   }
   const addActivity = (
@@ -515,6 +516,44 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
   const addSource = (id: string, label: string, detail?: string) => {
     if (next.sources?.some((source) => source.id === id)) return
     next.sources = [...(next.sources ?? []), { id, kind: 'file' as const, label, detail }].slice(-50)
+  }
+  const subagentId = () => {
+    for (const key of ['task_id', 'parent_tool_use_id', 'tool_id'] as const) {
+      const value = event.payload[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+    return undefined
+  }
+  const updateSubagent = (
+    update: Partial<NonNullable<AgentRunBlock['providerSubagents']>[number]>,
+  ) => {
+    if (event.payload.source !== 'subagent') return
+    const id = subagentId()
+    if (!id) return
+    const current = next.providerSubagents?.find((item) => item.id === id)
+    const incomingType = typeof event.payload.subagent_type === 'string'
+      ? event.payload.subagent_type.trim()
+      : ''
+    const type = incomingType && incomingType.toLowerCase() !== 'subagent'
+      ? incomingType
+      : current?.type ?? 'Claude'
+    const preserveTerminalState = current?.status === 'completed' && update.status === 'running'
+    const merged = {
+      id,
+      type,
+      status: current?.status ?? 'running' as const,
+      statusText: current?.statusText ?? 'Running',
+      ...current,
+      ...update,
+      ...(preserveTerminalState ? {
+        status: current.status,
+        statusText: current.statusText,
+      } : {}),
+    }
+    next.providerSubagents = [
+      ...(next.providerSubagents ?? []).filter((item) => item.id !== id),
+      merged,
+    ].slice(-20)
   }
 
   switch (event.type) {
@@ -571,10 +610,23 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
         next.statusText = status
         addActivity('status', status)
       }
+      if (event.payload.source === 'subagent') {
+        const text = typeof event.payload.text === 'string' ? event.payload.text.trim() : ''
+        updateSubagent({
+          status: 'running',
+          statusText: status ?? 'Working',
+          ...(text ? { output: text.slice(-4_000) } : {}),
+        })
+      }
       break
     }
     case 'tool.requested': {
       const tool = toolName(event, 'Tool')
+      updateSubagent({
+        status: 'running',
+        statusText: tool === 'Agent' ? 'Delegated task running' : `Running ${tool}`,
+        lastTool: tool,
+      })
       if (!inlineToolActivity(tool)) break
       next.statusText = `Running ${tool}`
       startTool(next, event, tool, 'tools')
@@ -583,6 +635,21 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
     }
     case 'tool.completed': {
       const tool = toolName(event, 'Tool')
+      const subagentOutput = typeof event.payload.output === 'string'
+        ? event.payload.output.trim().slice(-4_000)
+        : undefined
+      updateSubagent(tool === 'Agent'
+        ? {
+            status: 'completed',
+            statusText: 'Completed',
+            lastTool: tool,
+            ...(subagentOutput ? { output: subagentOutput } : {}),
+          }
+        : {
+            status: 'running',
+            statusText: `${tool} completed`,
+            lastTool: tool,
+          })
       if (tool === 'codex.thread.fork') {
         next.statusText = 'Codex thread forked'
         if (typeof event.payload.thread_id === 'string') next.providerSessionId = event.payload.thread_id
@@ -717,6 +784,10 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
       const message = typeof event.payload.message === 'string'
         ? event.payload.message.trim().slice(0, 2_000)
         : ''
+      updateSubagent({
+        status: 'failed',
+        statusText: message || 'Failed',
+      })
       if (message && !next.warnings?.some((warning) => warning.message === message)) {
         next.warnings = [...(next.warnings ?? []), {
           message,

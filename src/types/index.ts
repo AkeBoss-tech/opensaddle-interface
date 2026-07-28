@@ -196,6 +196,15 @@ export interface RunSourceRef {
   detail?: string
 }
 
+export interface ProviderSubagentState {
+  id: string
+  type: string
+  status: 'running' | 'completed' | 'failed'
+  statusText: string
+  lastTool?: string
+  output?: string
+}
+
 export interface AgentRunBlock {
   id: string
   parentRunId?: string
@@ -231,6 +240,9 @@ export interface AgentRunBlock {
   activity?: AgentActivityEntry[]
   /** Sources actually observed in this run, distinct from project availability. */
   sources?: RunSourceRef[]
+  /** Provider-native delegated work (for example Claude Code Agent tasks) that
+   * does not have a separate OpenSaddle child run. */
+  providerSubagents?: ProviderSubagentState[]
   inputRequest?: {
     kind: 'clarification' | 'approval'
     id?: string

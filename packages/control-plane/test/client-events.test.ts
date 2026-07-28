@@ -240,6 +240,76 @@ describe('durable client event handling', () => {
     ])
   })
 
+  it('tracks provider-native Claude subagents independently from child runs', () => {
+    const initial: AgentRunBlock = {
+      id: 'run-1',
+      kind: 'coding',
+      title: 'Claude run',
+      model: 'Claude',
+      harness: 'Claude Code',
+      runtime: 'Local',
+      statusText: 'Starting',
+      done: false,
+      tools: [],
+      plan: [],
+      artifacts: [],
+    }
+    const started = applyRunEvent(initial, {
+      ...event(0),
+      type: 'agent.output.delta',
+      payload: {
+        source: 'subagent',
+        task_id: 'task-1',
+        subagent_type: 'Explore',
+        status: 'Claude subagent started',
+      },
+    })
+    const usedTool = applyRunEvent(started, {
+      ...event(1),
+      type: 'tool.completed',
+      payload: {
+        source: 'subagent',
+        task_id: 'task-1',
+        parent_tool_use_id: 'agent-1',
+        subagent_type: 'Explore',
+        tool: 'Read',
+        tool_id: 'read-1',
+      },
+    })
+    const completed = applyRunEvent(usedTool, {
+      ...event(2),
+      type: 'tool.completed',
+      payload: {
+        source: 'subagent',
+        task_id: 'task-1',
+        parent_tool_use_id: 'agent-1',
+        subagent_type: 'Explore',
+        tool: 'Agent',
+        tool_id: 'agent-1',
+        output: 'Repository summary',
+      },
+    })
+    const forwardedAfterCompletion = applyRunEvent(completed, {
+      ...event(3),
+      type: 'agent.output.delta',
+      payload: {
+        source: 'subagent',
+        task_id: 'task-1',
+        subagent_type: 'subagent',
+        text: '**Claude subagent**\n\nFinal repository summary',
+      },
+    })
+
+    assert.deepEqual(forwardedAfterCompletion.providerSubagents, [{
+      id: 'task-1',
+      type: 'Explore',
+      status: 'completed',
+      statusText: 'Completed',
+      lastTool: 'Agent',
+      output: '**Claude subagent**\n\nFinal repository summary',
+    }])
+  })
+
   it('keeps thread inspectors quiet by default and prioritizes actionable evidence', () => {
     assert.deepEqual(parseThreadInspectorState(undefined), {
       open: false,

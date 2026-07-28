@@ -1212,6 +1212,50 @@ export function ChatPage() {
     ],
     events: relationEvents,
   }).filter((child) => !/^Queued follow-up$/i.test(child.title)) : []
+  const restoredProviderSubagents = latestRun && !latestRun.providerSubagents?.length
+    ? latestRun.tools.flatMap((tool) => {
+        if (tool.name !== 'Agent') return []
+        let input: Record<string, unknown> = {}
+        try {
+          const parsed = JSON.parse(tool.input)
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) input = parsed
+        } catch {
+          // Older provider events may store a compact non-JSON input preview.
+        }
+        const subagentType = typeof input.subagent_type === 'string' && input.subagent_type.trim()
+          ? input.subagent_type.trim()
+          : 'Claude'
+        return [{
+          id: tool.id,
+          type: subagentType,
+          status: tool.status === 'error'
+            ? 'failed' as const
+            : tool.status === 'success' ? 'completed' as const : 'running' as const,
+          statusText: tool.status === 'error'
+            ? 'Failed'
+            : tool.status === 'success' ? 'Completed' : 'Delegated task running',
+          lastTool: 'Agent',
+          output: tool.output || undefined,
+        }]
+      })
+    : []
+  const providerSubagents = latestRun
+    ? [...(latestRun.providerSubagents ?? []), ...restoredProviderSubagents].map((subagent) => ({
+        id: `native:${latestRun.id}:${subagent.id}`,
+        parentRunId: latestRun.id,
+        title: `${subagent.type} subagent`,
+        status: subagent.status,
+        statusText: [
+          subagent.statusText,
+          subagent.lastTool && subagent.lastTool !== 'Agent' ? `Last tool: ${subagent.lastTool}` : undefined,
+        ].filter(Boolean).join(' · '),
+        harness: 'Claude native',
+      }))
+    : []
+  const visibleSubagents = [
+    ...childRuns,
+    ...providerSubagents,
+  ]
   const usedSources = latestRun ? selectUsedRunSources({
     runId: latestRun.id,
     events: relationEvents,
@@ -2383,7 +2427,7 @@ export function ChatPage() {
                       <Icon name="plus" className="icon sm" />
                     </button>
                   </div>
-                  <ChildRunList runs={childRuns} onOpenRun={() => selectInspectorTab('activity')} />
+                  <ChildRunList runs={visibleSubagents} onOpenRun={() => selectInspectorTab('activity')} />
                   {delegateEditorOpen && (
                     <form className="tf-state-inline-form" onSubmit={(event) => { event.preventDefault(); void delegateSubtask(delegateDraft) }}>
                       <label htmlFor="delegate-task">Subagent task</label>
@@ -2401,7 +2445,7 @@ export function ChatPage() {
                       </div>
                     </form>
                   )}
-                  {!!projectSessions.length && !childRuns.length && (
+                  {!!projectSessions.length && !visibleSubagents.length && (
                     <div className="tf-state-sublabel">{projectSessions.length} other project agent{projectSessions.length === 1 ? '' : 's'} available</div>
                   )}
                 </section>
