@@ -17,6 +17,8 @@ let opensaddleRestartTimer: NodeJS.Timeout | null = null
 let opensaddleHealthTimer: NodeJS.Timeout | null = null
 let opensaddleEnsurePromise: Promise<boolean> | null = null
 let opensaddleLaunchError: string | null = null
+let sidecarsStopPromise: Promise<void> | null = null
+let quitAfterSidecars = false
 
 const OPENSADDLE_URL = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
 const KRAIL_URL = process.env.KRAIL_URL ?? 'http://127.0.0.1:8787'
@@ -340,16 +342,53 @@ async function startSidecars(): Promise<void> {
   }
 }
 
-function stopSidecars(): void {
+async function terminateSidecar(child: ChildProcess | null, graceMs = 1_500): Promise<void> {
+  if (!child || child.exitCode !== null) return
+  await new Promise<void>((resolve) => {
+    let finished = false
+    let forceTimer: NodeJS.Timeout | null = null
+    let settleTimer: NodeJS.Timeout | null = null
+    const finish = () => {
+      if (finished) return
+      finished = true
+      if (forceTimer) clearTimeout(forceTimer)
+      if (settleTimer) clearTimeout(settleTimer)
+      child.off('exit', finish)
+      resolve()
+    }
+    const force = () => {
+      if (finished || child.exitCode !== null) {
+        finish()
+        return
+      }
+      try { child.kill('SIGKILL') } catch { /* process already exited */ }
+      settleTimer = setTimeout(finish, 500)
+    }
+    child.once('exit', finish)
+    forceTimer = setTimeout(force, graceMs)
+    try {
+      if (!child.kill('SIGTERM')) force()
+    } catch {
+      force()
+    }
+    if (child.exitCode !== null) finish()
+  })
+}
+
+async function stopSidecars(): Promise<void> {
   sidecarsShuttingDown = true
   if (opensaddleRestartTimer) clearTimeout(opensaddleRestartTimer)
   opensaddleRestartTimer = null
   if (opensaddleHealthTimer) clearInterval(opensaddleHealthTimer)
   opensaddleHealthTimer = null
-  opensaddleProc?.kill()
+  const opensaddle = opensaddleProc
+  const krail = krailProc
   opensaddleProc = null
-  krailProc?.kill()
   krailProc = null
+  await Promise.all([
+    terminateSidecar(opensaddle),
+    terminateSidecar(krail),
+  ])
 }
 
 function createWindow() {
@@ -480,4 +519,13 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', stopSidecars)
+app.on('before-quit', (event) => {
+  if (quitAfterSidecars) return
+  event.preventDefault()
+  if (!sidecarsStopPromise) {
+    sidecarsStopPromise = stopSidecars().finally(() => {
+      quitAfterSidecars = true
+      app.quit()
+    })
+  }
+})
