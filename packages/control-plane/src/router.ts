@@ -13,6 +13,23 @@ const HARD = /\b(architect|architecture|design system|migrate|migration|security
 const EASY = /\b(typo|rename|comment|docstring|lint|format|one[- ]?liner|trivial|simple|quick|tiny|whitespace)\b/i
 const SHORT_TASK = 80
 
+export function selectReadyCodingProvider(
+  preferred: Exclude<CodingProvider, 'auto'>,
+  configured: string[],
+  capabilities: Array<{
+    id: string
+    availability: string
+    readiness: string
+  }>,
+): Exclude<CodingProvider, 'auto'> | undefined {
+  const isReady = (provider: string) => capabilities.some((capability) =>
+    capability.id === provider
+    && capability.availability === 'available'
+    && capability.readiness === 'ready')
+  if (configured.includes(preferred) && isReady(preferred)) return preferred
+  return configured.find(isReady) as Exclude<CodingProvider, 'auto'> | undefined
+}
+
 function configuredModel(config: ControlPlaneConfig, preferred: Exclude<ModelKey, 'auto'>): Exclude<ModelKey, 'auto'> {
   if (config.modelRoutes[preferred]) return preferred
   if (config.modelRoutes[config.defaultModel]) return config.defaultModel

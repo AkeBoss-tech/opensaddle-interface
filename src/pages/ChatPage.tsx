@@ -82,6 +82,20 @@ function routedHarnessLabel(route: RouteEstimate | undefined, fallback: Harness)
   return HARNESS_LABEL[route?.harnessKey ?? fallback]
 }
 
+function routeDecisionFromEstimate(estimate: RouteEstimate, fallback: RouteDecision): RouteDecision {
+  return {
+    klass: estimate.harnessKey === 'coding' ? 'coding'
+      : estimate.harnessKey === 'research' ? 'research'
+      : estimate.harnessKey === 'browser' ? 'browser'
+      : fallback.klass === 'ops' ? 'ops' : 'chat',
+    modelKey: estimate.modelKey,
+    harnessKey: estimate.harnessKey,
+    runtimeKey: estimate.runtimeKey,
+    reasons: estimate.reasons,
+    cost: estimate.cost,
+  }
+}
+
 type PromptPermission = NonNullable<ReturnType<typeof needsPermission>>
 type PromptPermissionScope = 'once' | 'chat' | 'project' | 'always'
 const TASK_CAPABILITIES = ['Browser', 'Network', 'Secure VM', 'Subagents'] as const
@@ -608,39 +622,40 @@ export function ChatPage() {
     return r
   }
 
+  const routeEstimatePreferences = useMemo(() => ({
+    projectId: project.id,
+    routingPref: data.settings.routingPref,
+    modelKey: modelOv === 'auto' && usesNativeCliRouter ? 'auto' as const : modelOv === 'auto' ? defaultModel : modelOv,
+    modelId: openRouterModelId || undefined,
+    harnessKey: harnessOv === 'auto' ? undefined : harnessOv,
+    providerKey: providerOv === 'auto' ? undefined : providerOv,
+    runtimeKey: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
+  }), [project.id, data.settings.routingPref, modelOv, usesNativeCliRouter, defaultModel, openRouterModelId, harnessOv, providerOv, runtimeOv, defaultRuntime])
+
+  const resolveRoute = async (prompt: string): Promise<RouteDecision> => {
+    const fallback = refreshRoute(prompt)
+    if (!serverRouting || !services) return fallback
+    const estimate = await services.runtime.estimate(prompt, routeEstimatePreferences)
+    const resolved = routeDecisionFromEstimate(estimate, fallback)
+    setRoute(resolved)
+    if (estimate.providerKey) setProviderKey(estimate.providerKey)
+    return resolved
+  }
+
   // Reflect the backend's actual route estimate in the pill while typing.
   useEffect(() => {
     if (!serverRouting || !services) return
     const task = (text || pending || 'general chat message').trim()
     const timer = window.setTimeout(() => {
-      void services.runtime.estimate(task, {
-        projectId: project.id,
-        routingPref: data.settings.routingPref,
-        modelKey: modelOv === 'auto' && usesNativeCliRouter ? 'auto' : modelOv === 'auto' ? defaultModel : modelOv,
-        modelId: openRouterModelId || undefined,
-        harnessKey: harnessOv === 'auto' ? undefined : harnessOv,
-        providerKey: providerOv === 'auto' ? defaultProvider : providerOv,
-        runtimeKey: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
-      })
+      void services.runtime.estimate(task, routeEstimatePreferences)
         .then((est) => {
-          setRoute((r) => ({
-            ...r,
-            klass: est.harnessKey === 'coding' ? 'coding'
-              : est.harnessKey === 'research' ? 'research'
-              : est.harnessKey === 'browser' ? 'browser'
-              : r.klass === 'ops' ? 'ops' : 'chat',
-            modelKey: est.modelKey,
-            harnessKey: est.harnessKey,
-            runtimeKey: est.runtimeKey,
-            reasons: est.reasons,
-            cost: est.cost,
-          }))
+          setRoute((current) => routeDecisionFromEstimate(est, current))
           if (est.providerKey) setProviderKey(est.providerKey)
         })
         .catch(() => undefined)
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [text, pending, serverRouting, services, data.settings.routingPref, modelOv, harnessOv, providerOv, runtimeOv, openRouterModelId, project.id, defaultModel, defaultProvider, defaultRuntime, usesNativeCliRouter])
+  }, [text, pending, serverRouting, services, routeEstimatePreferences])
 
   const send = async (forced?: string) => {
     const prompt = (forced ?? text).trim()
@@ -723,11 +738,17 @@ export function ChatPage() {
       setRouteOpen(true)
       return
     }
+    let r: RouteDecision
+    try {
+      r = await resolveRoute(prompt)
+    } catch (error) {
+      toast('Could not choose a ready harness', error instanceof Error ? error.message : String(error))
+      return
+    }
     setText('')
     setToolsOpen(false)
     setRouteOpen(false)
     appendMessage({ chatId: chat.id, role: 'user', text: prompt })
-    const r = refreshRoute(prompt)
     const permission = needsPermission(prompt)
     if (permission) {
       const matching = data.permissionGrants.filter((grant) =>
@@ -829,7 +850,7 @@ export function ChatPage() {
           modelKey: modelOv === 'auto' && usesNativeCliRouter ? 'auto' : modelOv === 'auto' ? defaultModel : modelOv,
           modelId: openRouterModelId || undefined,
           harnessKey: harnessOv === 'auto' ? undefined : harnessOv,
-          providerKey: providerOv === 'auto' ? defaultProvider : providerOv,
+          providerKey: providerOv === 'auto' ? undefined : providerOv,
           runtimeKey: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
           executionMode,
           capabilityIds: [...tools],
@@ -994,7 +1015,13 @@ export function ChatPage() {
       kind: 'info',
       t: 'now',
     }])
-    const r = refreshRoute(pending)
+    let r: RouteDecision
+    try {
+      r = await resolveRoute(pending)
+    } catch (error) {
+      toast('Could not choose a ready harness', error instanceof Error ? error.message : String(error))
+      return
+    }
     await runAgent(pending, r, chat.id, approvalId)
   }
 

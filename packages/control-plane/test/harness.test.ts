@@ -4,7 +4,7 @@ import { normalizeCliLine } from '../src/harness/normalizers.js'
 import { BUILTIN_PROFILES } from '../src/harness/profiles.js'
 import { buildArgs, emitStructuredCliEvent } from '../src/harness/cliAdapter.js'
 import { which } from '../src/harness/index.js'
-import { estimateRoute } from '../src/router.js'
+import { estimateRoute, selectReadyCodingProvider } from '../src/router.js'
 import { containsUnsupportedToolCall } from '../src/modelGateway.js'
 import {
   codexForkCheckpoint,
@@ -65,6 +65,31 @@ describe('coding harness routing', () => {
     assert.equal(route.harnessKey, 'coding')
     assert.equal(route.providerKey, 'codex')
     assert.equal(route.modelKey, 'sonnet')
+  })
+
+  it('selects the first configured ready provider when the preferred harness is unavailable', () => {
+    const selected = selectReadyCodingProvider(
+      'opensaddle',
+      ['opensaddle', 'codex', 'claude'],
+      [
+        { id: 'opensaddle', availability: 'available', readiness: 'unavailable' },
+        { id: 'codex', availability: 'available', readiness: 'ready' },
+        { id: 'claude', availability: 'available', readiness: 'ready' },
+      ],
+    )
+    assert.equal(selected, 'codex')
+  })
+
+  it('keeps a ready preferred coding provider', () => {
+    const selected = selectReadyCodingProvider(
+      'claude',
+      ['opensaddle', 'codex', 'claude'],
+      [
+        { id: 'codex', availability: 'available', readiness: 'ready' },
+        { id: 'claude', availability: 'available', readiness: 'ready' },
+      ],
+    )
+    assert.equal(selected, 'claude')
   })
 
   it('optimizes model by task complexity', () => {

@@ -21,7 +21,7 @@ import { ModelGateway } from './modelGateway.js'
 import { canDelegateToAgent, evaluatePermissions, requireAdmin } from './permissions.js'
 import { ProjectFilesystemError, ProjectFilesystemService } from './projectFilesystem.js'
 import { RuntimeProvisioner } from './provisioner.js'
-import { estimateRoute } from './router.js'
+import { estimateRoute, selectReadyCodingProvider } from './router.js'
 import { RunManager } from './runManager.js'
 import { StateStore } from './store.js'
 import type {
@@ -1111,15 +1111,32 @@ app.post('/api/routes/estimate', async (request) => {
   const body = objectBody(request)
   const projectId = optionalString(body, 'project_id', 200)
   const defaults = projectId ? projectRoutingDefaults(projectId) : {}
-  const route = estimateRoute(requiredString(body, 'task'), config, {
+  const task = requiredString(body, 'task')
+  const requestedProvider = enumValue(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom'] as const)
+  const routeInput = {
     routingPref: optionalString(body, 'routing_pref', 50),
     modelKey: enumValue(body, 'model_key', ['auto', 'gpt', 'claude', 'sonnet', 'gemini', 'llama'] as const) ?? defaults.modelKey,
     modelId: requestedModelId(body),
     harnessKey: enumValue(body, 'harness_key', ['chat', 'research', 'coding', 'browser', 'vm'] as const),
-    providerKey: enumValue(body, 'provider_key', ['auto', 'opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity', 'custom'] as const) ?? defaults.providerKey,
+    providerKey: requestedProvider ?? defaults.providerKey,
     runtimeKey: enumValue(body, 'runtime_key', ['local', 'browser', 'sandbox', 'vm', 'gpu', 'restricted'] as const) ?? defaults.runtimeKey,
     telemetry: store.routeTelemetry(projectId),
-  })
+  }
+  let route = estimateRoute(task, config, routeInput)
+  const explicitlyPinned = requestedProvider !== undefined && requestedProvider !== 'auto'
+  if (route.harnessKey === 'coding' && !explicitlyPinned && route.providerKey !== 'custom') {
+    const snapshot = await discoverHarnessCapabilities()
+    const readyProvider = selectReadyCodingProvider(
+      route.providerKey,
+      config.codingProviders,
+      snapshot.harnesses,
+    )
+    if (readyProvider && readyProvider !== route.providerKey) {
+      const preferred = route.providerKey
+      route = estimateRoute(task, config, { ...routeInput, providerKey: readyProvider })
+      route.reasons.push(`Selected ${readyProvider} because ${preferred} is not ready`)
+    }
+  }
   return {
     model_key: route.modelKey,
     model_id: route.modelId,
