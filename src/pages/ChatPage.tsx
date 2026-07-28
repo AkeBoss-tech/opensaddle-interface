@@ -162,12 +162,15 @@ function promptGrantApplies(
   return false
 }
 
-const MODEL_PICKER_OPTIONS: Partial<Record<CodingProvider, Array<{
+type ModelPickerOption = {
   id: ModelKey | 'auto'
   label: string
   detail: string
   logoLabel: string
-}>>> = {
+  nativeId?: string
+}
+
+const MODEL_PICKER_OPTIONS: Partial<Record<CodingProvider, ModelPickerOption[]>> = {
   auto: [
     { id: 'auto', label: 'Auto', detail: 'Harness decides', logoLabel: 'OpenSaddle' },
     { id: 'gpt', label: 'GPT', detail: 'Balanced', logoLabel: 'OpenAI' },
@@ -586,22 +589,36 @@ export function ChatPage() {
       ? current
       : new Set([...current, ...required]))
   }, [selectedPolicyControls])
-  const compatibleModelOptions = useMemo(() => {
+  const compatibleModelOptions = useMemo<ModelPickerOption[]>(() => {
     const fallback = MODEL_PICKER_OPTIONS[pickerProvider] ?? MODEL_PICKER_OPTIONS.auto!
-    if (!liveCapability?.models.length || pickerProvider === 'auto') return fallback
+    const usesAuthoritativeCatalog = Boolean(liveCapability)
+      && !['auto', 'opensaddle'].includes(pickerProvider)
+    if (!usesAuthoritativeCatalog) return fallback
     return [
-      { ...fallback[0]!, detail: 'Harness decides', nativeId: '' },
-      ...liveCapability.models.map((model, index) => ({
-        id: fallback[index + 1]?.id ?? 'auto' as const,
-        label: model.id,
-        detail: model.configured ? 'Configured locally' : 'Available in this harness',
+      {
+        id: 'auto',
+        label: 'Provider default',
+        detail: `Let ${harnessPickerOption.label} choose`,
+        logoLabel: harnessPickerOption.logoLabel,
+        nativeId: '',
+      },
+      ...liveCapability!.models.map((model) => ({
+        id: 'auto' as const,
+        label: model.displayName ?? model.id,
+        detail: model.isDefault
+          ? 'Account default'
+          : model.source === 'cli_alias'
+            ? 'Supported CLI alias'
+            : model.configured
+              ? 'Available to this account'
+              : 'Configured model',
         logoLabel: harnessPickerOption.logoLabel,
         nativeId: model.id,
       })),
     ]
-  }, [harnessPickerOption.logoLabel, liveCapability, pickerProvider])
+  }, [harnessPickerOption.label, harnessPickerOption.logoLabel, liveCapability, pickerProvider])
   const modelPickerOption = compatibleModelOptions.find((option) =>
-    openRouterModelId && 'nativeId' in option && option.nativeId === openRouterModelId)
+    openRouterModelId && option.nativeId === openRouterModelId)
     ?? compatibleModelOptions.find((option) => option.id === modelOv)
     ?? compatibleModelOptions[0]!
   const selectedModelLabel = pickerProvider === 'auto'
@@ -1832,6 +1849,7 @@ export function ChatPage() {
                           disabled={option.available === false}
                           title={'reason' in option ? option.reason : option.detail}
                           onClick={() => {
+                            const providerChanged = option.id !== pickerProvider
                             setProviderOv(option.id)
                             setHarnessOv(option.id === 'auto' ? 'auto' : 'coding')
                             const nextCapability = harnessCapabilities.find((item) =>
@@ -1842,10 +1860,11 @@ export function ChatPage() {
                             if (required.length) {
                               setTools((current) => new Set([...current, ...required]))
                             }
-                            const nextModels = MODEL_PICKER_OPTIONS[option.id] ?? MODEL_PICKER_OPTIONS.auto!
-                            if (!nextModels.some((model) => model.id === modelOv)) setModelOv('auto')
+                            if (providerChanged) {
+                              setModelOv('auto')
+                              setOpenRouterModelId('')
+                            }
                             setAuto(option.id === 'auto' && modelOv === 'auto')
-                            setOpenRouterModelId('')
                           }}
                         >
                           <span className="quick-logo"><HarnessVisual id={option.id} /></span>
@@ -1861,13 +1880,13 @@ export function ChatPage() {
                     <div className="model-quick-list">
                       {compatibleModelOptions.map((option) => (
                         <button
-                          key={'nativeId' in option && option.nativeId ? option.nativeId : option.id}
-                          className={(('nativeId' in option && option.nativeId)
+                          key={option.nativeId || option.id}
+                          className={(option.nativeId
                             ? openRouterModelId === option.nativeId
                             : !openRouterModelId && modelOv === option.id) ? 'active' : ''}
                           onClick={() => {
                             setModelOv(option.id)
-                            setOpenRouterModelId('nativeId' in option ? option.nativeId : '')
+                            setOpenRouterModelId(option.nativeId ?? '')
                             setAuto(option.id === 'auto' && providerOv === 'auto' && harnessOv === 'auto')
                             refreshRoute(text || pending || 'build a feature')
                             setRouteOpen(false)

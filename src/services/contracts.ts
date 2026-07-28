@@ -362,7 +362,17 @@ export interface HarnessCapability {
     message?: string
     setupCommand?: string
   }
-  models: Array<{ id: string; configured: boolean }>
+  models: Array<{
+    id: string
+    configured: boolean
+    displayName?: string
+    description?: string
+    isDefault?: boolean
+    source?: 'account' | 'cli_alias' | 'configured'
+    reasoningEfforts?: string[]
+    defaultReasoningEffort?: string
+    inputModalities?: string[]
+  }>
   capabilities: {
     streaming: boolean
     tools: boolean

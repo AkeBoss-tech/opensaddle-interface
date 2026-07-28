@@ -28,8 +28,20 @@ type DomainHarness = {
   installed: boolean
   executable_path?: string | null
   version?: string | null
-  auth_state?: 'configured' | 'not_detected' | 'unknown'
-  models?: Array<{ id: string }>
+  auth_state?: 'authenticated' | 'unauthenticated' | 'configured' | 'not_detected' | 'unknown'
+  readiness?: 'ready' | 'needs_auth' | 'unknown' | 'unavailable'
+  readiness_reason?: string | null
+  models?: Array<{
+    id: string
+    display_name?: string
+    description?: string | null
+    is_default?: boolean
+    configured?: boolean
+    source?: 'account' | 'cli_alias' | 'configured'
+    reasoning_efforts?: string[]
+    default_reasoning_effort?: string | null
+    input_modalities?: string[]
+  }>
   capabilities?: {
     streaming?: boolean | null
     tool_support?: boolean | null
@@ -52,13 +64,21 @@ const HARNESS_ID_ALIASES: Record<string, string> = {
 }
 
 function harnessFromDomain(value: DomainHarness): HarnessCapability {
-  const authState = value.auth_state === 'configured'
+  const authState = value.auth_state === 'configured' || value.auth_state === 'authenticated'
     ? 'configured'
-    : value.auth_state === 'not_detected'
+    : value.auth_state === 'not_detected' || value.auth_state === 'unauthenticated'
       ? 'not_detected'
       : 'unknown'
   const availability = value.installed ? 'available' : 'missing'
   const capability = value.capabilities ?? {}
+  const readiness = !value.installed
+    ? 'unavailable'
+    : value.readiness
+      ?? (authState === 'configured'
+        ? 'ready'
+        : authState === 'not_detected'
+          ? 'needs_auth'
+          : 'unknown')
   return {
     id: HARNESS_ID_ALIASES[value.id] ?? value.id,
     label: value.display_name,
@@ -67,22 +87,32 @@ function harnessFromDomain(value: DomainHarness): HarnessCapability {
       : `${value.display_name} is not installed on this machine.`,
     kind: 'cli',
     availability,
-    readiness: !value.installed
-      ? 'unavailable'
-      : authState === 'configured'
-        ? 'ready'
-        : authState === 'not_detected'
-          ? 'needs_auth'
-          : 'unknown',
+    readiness,
     command: value.executable_path?.split('/').at(-1),
     resolvedPath: value.executable_path ?? undefined,
     version: value.version ?? undefined,
-    unavailableReason: value.installed ? undefined : 'Executable was not found on PATH.',
+    unavailableReason: value.readiness_reason
+      ?? (value.installed ? undefined : 'Executable was not found on PATH.'),
     auth: {
       state: authState,
-      message: value.login_guidance ?? undefined,
+      message: readiness === 'unavailable'
+        ? value.readiness_reason ?? undefined
+        : value.login_guidance ?? undefined,
+      setupCommand: readiness === 'needs_auth'
+        ? value.login_guidance ?? undefined
+        : undefined,
     },
-    models: (value.models ?? []).map((model) => ({ id: model.id, configured: true })),
+    models: (value.models ?? []).map((model) => ({
+      id: model.id,
+      configured: model.configured ?? model.source !== 'cli_alias',
+      displayName: model.display_name,
+      description: model.description ?? undefined,
+      isDefault: model.is_default,
+      source: model.source,
+      reasoningEfforts: model.reasoning_efforts,
+      defaultReasoningEffort: model.default_reasoning_effort ?? undefined,
+      inputModalities: model.input_modalities,
+    })),
     capabilities: {
       streaming: capability.streaming === true,
       tools: capability.tool_support === true,
@@ -197,7 +227,11 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   }
 
   refreshHarnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }> {
-    return this.harnessCapabilities()
+    return this.request<{ harnesses?: DomainHarness[] }>('/api/harnesses?refresh=true')
+      .then((response) => ({
+        generatedAt: new Date().toISOString(),
+        harnesses: (response.harnesses ?? []).map(harnessFromDomain),
+      }))
   }
 
   async localSessions(_provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]> {

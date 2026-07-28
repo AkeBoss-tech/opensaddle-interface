@@ -19,9 +19,12 @@ test('adapts Python project-domain files, harnesses, and rescans without using l
       assert.deepEqual(JSON.parse(String(init.body)), { project_id: 'demo', root: '/work/demo' })
       return json({ project_id: 'demo', root: '/work/demo', created_at: '2026-01-01T00:00:00Z' }, 201)
     }
-    if (path === '/api/harnesses') return json({ harnesses: [{
-      id: 'claude-code', display_name: 'Claude Code', installed: true, executable_path: '/bin/claude', version: '1.2.3', auth_state: 'configured',
-      models: [{ id: 'claude-opus' }], capabilities: { streaming: true, tool_support: true, mcp: true, skills: true, reasoning_efforts: ['high'], context_limit: 200_000 },
+    if (path === '/api/harnesses' || path === '/api/harnesses?refresh=true') return json({ harnesses: [{
+      id: 'claude-code', display_name: 'Claude Code', installed: true, executable_path: '/bin/claude', version: '1.2.3', auth_state: 'authenticated', readiness: 'ready',
+      models: [{ id: 'opus', display_name: 'Opus', configured: false, source: 'cli_alias', reasoning_efforts: ['high'] }], capabilities: { streaming: true, tool_support: true, mcp: true, skills: true, reasoning_efforts: ['high'], context_limit: 200_000 },
+    }, {
+      id: 'cursor', display_name: 'Cursor', installed: true, executable_path: '/bin/cursor', version: '2.0.0', auth_state: 'authenticated', readiness: 'unavailable',
+      readiness_reason: 'Cursor is signed in, but this account exposes no CLI models.', models: [],
     }] })
     if (path === '/api/projects/demo') return json({ project_id: 'demo', root: '/work/demo', created_at: '2026-01-01T00:00:00Z' })
     if (path === '/api/projects/demo/files?path=docs') return json({ project_id: 'demo', path: 'docs', items: [{ path: 'docs/guide.md', kind: 'file', size: 4, modified_ns: 1_700_000_000_000_000_000 }] })
@@ -33,6 +36,24 @@ test('adapts Python project-domain files, harnesses, and rescans without using l
   const harnesses = await client.harnessCapabilities()
   assert.equal(harnesses.harnesses[0]?.id, 'claude')
   assert.equal(harnesses.harnesses[0]?.readiness, 'ready')
+  assert.deepEqual(harnesses.harnesses[0]?.models[0], {
+    id: 'opus',
+    configured: false,
+    displayName: 'Opus',
+    description: undefined,
+    isDefault: undefined,
+    source: 'cli_alias',
+    reasoningEfforts: ['high'],
+    defaultReasoningEffort: undefined,
+    inputModalities: undefined,
+  })
+  assert.equal(harnesses.harnesses[1]?.readiness, 'unavailable')
+  assert.equal(
+    harnesses.harnesses[1]?.unavailableReason,
+    'Cursor is signed in, but this account exposes no CLI models.',
+  )
+  await client.refreshHarnessCapabilities()
+  assert.equal(paths.includes('GET /api/harnesses?refresh=true'), true)
 
   assert.deepEqual(await client.registerProject('demo', '/work/demo'), { projectId: 'demo', root: '/work/demo' })
   const files = await client.listFiles('demo', { path: 'docs', limit: 1 })
