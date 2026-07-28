@@ -151,9 +151,15 @@ export function WorkPage() {
 
   useEffect(() => {
     let cancelled = false
+    let refreshing = false
     const refresh = async () => {
-      if (cancelled) return
-      await refreshDurableWork()
+      if (cancelled || refreshing) return
+      refreshing = true
+      try {
+        await refreshDurableWork()
+      } finally {
+        refreshing = false
+      }
     }
     void refresh().catch((error: unknown) => {
       if (!cancelled) toast('Could not refresh Work', error instanceof Error ? error.message : String(error))

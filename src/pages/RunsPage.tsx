@@ -70,14 +70,16 @@ export function RunsPage() {
       return
     }
     let cancelled = false
+    let refreshing = false
     const refresh = async () => {
-      const runs = await services.runtime.listRuns!()
-      if (cancelled) return
-      setLocalRuns(runs)
-      if (selectedRunId) {
-        window.setTimeout(() => {
-          document.getElementById(`local-run-${selectedRunId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-        }, 0)
+      if (cancelled || refreshing) return
+      refreshing = true
+      try {
+        const runs = await services.runtime.listRuns!()
+        if (cancelled) return
+        setLocalRuns(runs)
+      } finally {
+        refreshing = false
       }
     }
     void refresh().catch((error: unknown) => toast('Could not load local runs', error instanceof Error ? error.message : String(error)))
@@ -137,20 +139,7 @@ export function RunsPage() {
             .filter((event) => event.type === 'agent.output.delta')
             .map((event) => eventText(event.payload))
             .join('')
-          const activity = selectedRunEvents.filter((event) =>
-            event.type === 'command.started'
-            || event.type === 'command.completed'
-            || event.type === 'tool.requested'
-            || event.type === 'tool.completed'
-            || event.type === 'session.continued'
-            || event.type === 'agent.steered'
-            || event.type === 'approval.requested'
-            || event.type === 'approval.resolved'
-            || event.type === 'input.requested'
-            || event.type === 'user.input.submitted'
-            || event.type === 'warning'
-            || event.type === 'verification.completed'
-            || event.type === 'usage.updated')
+          const activity = selectedAgentRun?.activity ?? []
           return (
             <div className="card local-run-detail">
               <div className="card-header">
@@ -174,59 +163,25 @@ export function RunsPage() {
               {activity.length > 0 && (
                 <div className="local-run-activity">
                   <h4>Activity</h4>
-                  {activity.map((event) => {
-                    const payload = event.payload
-                    const command = typeof payload.command === 'string' ? payload.command : undefined
-                    const message = typeof payload.message === 'string' ? payload.message : undefined
-                    const checks = Array.isArray(payload.checks) ? payload.checks.length : undefined
-                    const providerSessionId = typeof payload.provider_session_id === 'string'
-                      ? payload.provider_session_id
-                      : undefined
-                    const approvalDetail = event.type === 'approval.requested'
-                      ? typeof payload.prompt === 'string'
-                        ? payload.prompt
-                        : typeof payload.tool === 'string'
-                          ? `Allow ${payload.tool}`
-                          : 'Waiting for a decision'
-                      : event.type === 'approval.resolved'
-                        ? payload.allowed === false
-                          ? 'Denied'
-                          : `Allowed for this ${payload.scope === 'session' ? 'session' : 'tool call'}`
-                        : undefined
-                    const inputDetail = event.type === 'input.requested'
-                      ? typeof payload.prompt === 'string'
-                        ? payload.prompt
-                        : 'Waiting for an answer'
-                      : event.type === 'user.input.submitted'
-                        ? typeof payload.answer_count === 'number'
-                          ? `${payload.answer_count} answer${payload.answer_count === 1 ? '' : 's'} sent`
-                          : 'Answer delivered to the agent'
-                        : undefined
-                    const label = event.type === 'warning'
-                      ? 'Warning'
-                      : event.type === 'session.continued'
-                        ? 'Continued provider session'
-                      : event.type === 'agent.steered'
-                        ? 'Guidance delivered'
-                      : event.type === 'approval.requested'
-                        ? 'Approval requested'
-                      : event.type === 'approval.resolved'
-                        ? payload.allowed === false ? 'Approval denied' : 'Approval granted'
-                      : event.type === 'input.requested'
-                        ? 'Question asked'
-                      : event.type === 'user.input.submitted'
-                        ? 'Answer submitted'
-                      : event.type === 'verification.completed'
-                        ? 'Verification completed'
-                        : event.type === 'usage.updated'
-                          ? 'Usage updated'
-                          : event.type.startsWith('command.')
-                            ? command ?? 'Command'
-                            : typeof payload.tool === 'string' ? payload.tool : 'Tool'
+                  {activity.map((item) => {
+                    const icon = item.kind === 'tool'
+                      ? 'terminal'
+                      : item.kind === 'change'
+                        ? 'file'
+                        : item.kind === 'check'
+                          ? 'check'
+                          : item.kind === 'review'
+                            ? 'review'
+                            : item.kind === 'error'
+                              ? 'alert'
+                              : 'activity'
                     return (
-                      <div className="local-run-activity-row" key={event.event_id}>
-                        <Icon name={event.type === 'warning' ? 'alert' : event.type.startsWith('approval.') ? 'shield' : event.type === 'input.requested' || event.type === 'user.input.submitted' ? 'message' : event.type.startsWith('command.') ? 'terminal' : 'activity'} className="icon sm" />
-                        <span><strong>{label}</strong><small>{approvalDetail ?? inputDetail ?? message ?? providerSessionId ?? (checks !== undefined ? `${checks} check${checks === 1 ? '' : 's'}` : event.type.replaceAll('.', ' '))}</small></span>
+                      <div className="local-run-activity-row" key={item.id}>
+                        <Icon name={icon} className="icon sm" />
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{item.detail ?? new Date(item.timestamp).toLocaleTimeString()}</small>
+                        </span>
                       </div>
                     )
                   })}
