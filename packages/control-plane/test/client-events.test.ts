@@ -8,6 +8,7 @@ import {
 import { appendTranscript } from '../../../src/features/runs/transcript.js'
 import { createOrderedEventEmitter } from '../../../src/services/orderedEvents.js'
 import { shouldStopRunReconciliation } from '../../../src/services/opensaddleClient.js'
+import { buildPlanRevision } from '../../../src/features/thread/planRevision.js'
 import type { RuntimeRunSummary, SessionEvent } from '../../../src/services/contracts.js'
 import { applyRunEvent } from '../../../src/lib/runEvents.js'
 import { adoptNativeContinuation } from '../../../src/lib/nativeContinuation.js'
@@ -64,6 +65,67 @@ describe('durable client event handling', () => {
     assert.equal(shouldStopRunReconciliation(200, 'cancelled'), true)
     assert.equal(shouldStopRunReconciliation(200, 'running'), false)
     assert.equal(shouldStopRunReconciliation(503), false)
+  })
+
+  it('turns edited plan lines into bounded same-turn steering guidance', () => {
+    const revision = buildPlanRevision('  - Inspect the existing flow  \n\n* Add coverage\nVerify the result')
+    assert.deepEqual(revision?.steps, [
+      'Inspect the existing flow',
+      'Add coverage',
+      'Verify the result',
+    ])
+    assert.equal(
+      revision?.prompt,
+      'Revise the active task plan to follow these steps:\n- Inspect the existing flow\n- Add coverage\n- Verify the result',
+    )
+    assert.equal(buildPlanRevision(' \n '), undefined)
+  })
+
+  it('keeps lifecycle activity out of the provider-authored task plan', () => {
+    const initial: AgentRunBlock = {
+      id: 'run-1',
+      kind: 'coding',
+      title: 'Coding run',
+      model: 'Codex',
+      harness: 'Codex',
+      runtime: 'Local',
+      statusText: 'Starting',
+      done: false,
+      tools: [],
+      plan: [],
+      artifacts: [],
+    }
+    const started = applyRunEvent(initial, {
+      ...event(0),
+      type: 'agent.started',
+      payload: { provider: 'codex' },
+    })
+    const working = applyRunEvent(started, {
+      ...event(1),
+      type: 'agent.output.delta',
+      payload: { status: 'Inspecting repository' },
+    })
+
+    assert.deepEqual(working.plan, [])
+    assert.equal(working.statusText, 'Inspecting repository')
+    assert.equal(working.activity?.at(-1)?.label, 'Inspecting repository')
+
+    const planned = applyRunEvent(working, {
+      ...event(2),
+      type: 'plan.updated',
+      payload: {
+        plan: [
+          { step: 'Inspect context', status: 'completed' },
+          { step: 'Incorporate user revision', status: 'inProgress' },
+          { step: 'Report result', status: 'pending' },
+        ],
+      },
+    })
+    assert.deepEqual(planned.plan, [
+      { label: 'Inspect context', status: 'done' },
+      { label: 'Incorporate user revision', status: 'active' },
+      { label: 'Report result', status: 'pending' },
+    ])
   })
 
   it('keeps thread inspectors quiet by default and prioritizes actionable evidence', () => {

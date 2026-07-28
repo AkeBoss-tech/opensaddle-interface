@@ -541,18 +541,12 @@ export function applyRunEvent(run: AgentRunBlock, event: SessionEvent): AgentRun
     }
     case 'agent.started':
       next.statusText = 'Agent started'
-      next.plan.push({ label: 'Agent started', status: 'active' })
       addActivity('status', 'Agent started', typeof event.payload.provider === 'string' ? event.payload.provider : undefined)
       break
     case 'agent.output.delta': {
       const status = typeof event.payload.status === 'string' ? event.payload.status : null
       if (status) {
         next.statusText = status
-        const current = [...next.plan].reverse().find((step) => step.status === 'active')
-        if (current?.label !== status) {
-          for (const step of next.plan) if (step.status === 'active') step.status = 'done'
-          if (next.plan.at(-1)?.label !== status) next.plan.push({ label: status, status: 'active' })
-        }
         addActivity('status', status)
       }
       break

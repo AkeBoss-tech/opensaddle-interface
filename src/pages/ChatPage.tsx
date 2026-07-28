@@ -13,6 +13,7 @@ import { sanitizeHtml } from '../lib/sanitizeHtml'
 import { useRunRegistry } from '../features/runs/RunRegistry'
 import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources } from '../features/runs/runRelations'
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
+import { buildPlanRevision } from '../features/thread/planRevision'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
   THREAD_INSPECTOR_STORAGE_KEY,
@@ -2519,6 +2520,9 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
   onBranch?: () => void
 }) {
   const runRegistry = useRunRegistry()
+  const [planEditing, setPlanEditing] = useState(false)
+  const [planDraft, setPlanDraft] = useState('')
+  const [planSubmitting, setPlanSubmitting] = useState(false)
   if (m.role === 'user') {
     return <div className="message user"><div className="message-body"><div className="message-text">{m.text}</div><MessageActions text={m.text} onRetry={onRetry} onBranch={onBranch} onCopyError={() => toast('Copy failed', 'Clipboard access is unavailable.')} /></div></div>
   }
@@ -2528,6 +2532,30 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
   const lastDecision = [...(run?.activity ?? [])].reverse().find((item) =>
     /^(?:Approval granted|Approval denied|Answer submitted|Guidance sent)$/.test(item.label))
   const agentOutput = m.text || run?.output || (run ? fallbackRunOutput(run) : '')
+  const canRevisePlan = Boolean(run && !run.done && !paused && run.id !== 'pending' && /codex/i.test(run.harness))
+  const beginPlanEdit = () => {
+    if (!run) return
+    setPlanDraft(run.plan.map((step) => step.label).join('\n'))
+    setPlanEditing(true)
+  }
+  const submitPlanRevision = async () => {
+    if (!run) return
+    const revision = buildPlanRevision(planDraft)
+    if (!revision) {
+      toast('Plan needs a step', 'Add at least one concrete step before updating it.')
+      return
+    }
+    setPlanSubmitting(true)
+    try {
+      await runRegistry.steer(run.id, revision.prompt)
+      setPlanEditing(false)
+      toast('Plan revision sent', 'Codex will reconcile the visible plan with your changes.')
+    } catch (error) {
+      toast('Plan update failed', error instanceof Error ? error.message : String(error))
+    } finally {
+      setPlanSubmitting(false)
+    }
+  }
   return (
     <div className="message assistant">
       {!run && (
@@ -2612,8 +2640,28 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch }: {
             {run.inputRequest && <InlineAgentRequest run={run} toast={toast} />}
             {density !== 'summary' && !!run.plan.length && (
               <div className="plan">
-                <div className="plan-head"><Icon name="review" className="icon sm" /> Task plan</div>
-                {run.plan.map((p, index) => (
+                <div className="plan-head">
+                  <span><Icon name="review" className="icon sm" /> Task plan</span>
+                  {canRevisePlan && !planEditing && <button className="plan-edit-btn" type="button" onClick={beginPlanEdit}>Edit plan</button>}
+                </div>
+                {planEditing ? (
+                  <div className="plan-editor">
+                    <textarea
+                      aria-label="Plan steps"
+                      value={planDraft}
+                      onChange={(event) => setPlanDraft(event.target.value)}
+                      rows={Math.min(8, Math.max(3, planDraft.split('\n').length))}
+                      maxLength={2_400}
+                    />
+                    <p>One step per line. Updating the plan steers the active Codex turn.</p>
+                    <div className="plan-editor-actions">
+                      <button className="tiny-btn" type="button" disabled={planSubmitting} onClick={() => setPlanEditing(false)}>Cancel</button>
+                      <button className="tiny-btn primary" type="button" disabled={planSubmitting} onClick={() => void submitPlanRevision()}>
+                        {planSubmitting ? 'Updating…' : 'Update plan'}
+                      </button>
+                    </div>
+                  </div>
+                ) : run.plan.map((p, index) => (
                   <div key={`${p.label}-${index}`} className={`plan-step ${p.status}`}><span className="pstate"><Icon name="check" className="icon sm" /></span>{p.label}</div>
                 ))}
               </div>
