@@ -162,6 +162,18 @@ function promptGrantApplies(
   return false
 }
 
+function reasoningEffortLabel(value: string) {
+  return {
+    minimal: 'Minimal',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'Extra high',
+    max: 'Max',
+    ultra: 'Ultra',
+  }[value] ?? value
+}
+
 type ModelPickerOption = {
   id: ModelKey | 'auto'
   label: string
@@ -310,6 +322,7 @@ export function ChatPage() {
   const [runtimeOv, setRuntimeOv] = useState<RuntimeKind | 'auto'>('auto')
   const [executionMode, setExecutionMode] = useState<RunExecutionMode>('project')
   const [openRouterModelId, setOpenRouterModelId] = useState('')
+  const [reasoningEffort, setReasoningEffort] = useState('')
   const [freeModels, setFreeModels] = useState<Array<{ id: string; name: string; contextLength?: number }>>([])
   const [route, setRoute] = useState<RouteDecision>(() => deriveRoute('', data.settings.routingPref))
   const [providerKey, setProviderKey] = useState<CodingProvider>('opensaddle')
@@ -435,6 +448,7 @@ export function ChatPage() {
     setRuntimeOv(config?.runtimeKey ?? 'auto')
     setExecutionMode(config?.executionMode ?? 'project')
     setOpenRouterModelId(config?.openRouterModelId ?? '')
+    setReasoningEffort(config?.reasoningEffort ?? '')
     setRunConfigReadyChatId(chat.id)
   }, [chat?.id, durableRunConfigKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -449,8 +463,9 @@ export function ChatPage() {
       executionMode,
       tools: [...tools].sort(),
       openRouterModelId: openRouterModelId || undefined,
+      reasoningEffort: reasoningEffort || undefined,
     })
-  }, [auto, providerOv, modelOv, harnessOv, runtimeOv, executionMode, tools, openRouterModelId, runConfigReadyChatId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [auto, providerOv, modelOv, harnessOv, runtimeOv, executionMode, tools, openRouterModelId, reasoningEffort, runConfigReadyChatId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!chatAgent || chat?.continuation || chat?.runConfig) return
@@ -468,6 +483,7 @@ export function ChatPage() {
         ? 'plan'
         : 'project')
     setOpenRouterModelId('')
+    setReasoningEffort('')
     setRoute((current) => ({
       ...current,
       modelKey: chatAgent.modelPolicy === 'auto' ? current.modelKey : chatAgent.modelPolicy,
@@ -485,6 +501,7 @@ export function ChatPage() {
     setRuntimeOv('local')
     setExecutionMode(chat.continuation.authority === 'source_managed' ? 'full-access' : 'project')
     setOpenRouterModelId('')
+    setReasoningEffort('')
     setRoute((current) => ({ ...current, harnessKey: 'coding', runtimeKey: 'local' }))
     setProviderKey(chat.continuation.provider)
     setAuto(false)
@@ -621,6 +638,19 @@ export function ChatPage() {
     openRouterModelId && option.nativeId === openRouterModelId)
     ?? compatibleModelOptions.find((option) => option.id === modelOv)
     ?? compatibleModelOptions[0]!
+  const selectedModelCapability = liveCapability?.models.find((model) =>
+    model.id === openRouterModelId)
+  const reasoningEffortOptions = selectedModelCapability?.reasoningEfforts?.length
+    ? selectedModelCapability.reasoningEfforts
+    : liveCapability?.capabilities.reasoningEfforts ?? []
+  const reasoningEffortOptionsKey = reasoningEffortOptions.join('\u0000')
+  const defaultReasoningEffort = selectedModelCapability?.defaultReasoningEffort
+  useEffect(() => {
+    if (!liveCapability || runConfigReadyChatId !== chat?.id) return
+    if (reasoningEffort && !reasoningEffortOptions.includes(reasoningEffort)) {
+      setReasoningEffort('')
+    }
+  }, [chat?.id, liveCapability?.id, reasoningEffort, reasoningEffortOptionsKey, runConfigReadyChatId]) // eslint-disable-line react-hooks/exhaustive-deps
   const selectedModelLabel = pickerProvider === 'auto'
     ? MODEL_LABEL[route.modelKey]
     : modelPickerOption.label
@@ -637,7 +667,7 @@ export function ChatPage() {
     const r = deriveRoute(prompt, data.settings.routingPref, {
       model: modelOv === 'auto' ? undefined : modelOv,
       harness: harnessOv === 'auto' ? undefined : harnessOv,
-      runtime: runtimeOv === 'auto' ? undefined : runtimeOv,
+      runtime: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
     })
     // When the control plane routes for real, don't overwrite its estimate
     // with the local mock — the debounced effect below keeps the pill honest.
@@ -650,10 +680,23 @@ export function ChatPage() {
     routingPref: data.settings.routingPref,
     modelKey: modelOv === 'auto' && usesNativeCliRouter ? 'auto' as const : modelOv === 'auto' ? defaultModel : modelOv,
     modelId: openRouterModelId || undefined,
+    reasoningEffort: reasoningEffort || undefined,
     harnessKey: harnessOv === 'auto' ? undefined : harnessOv,
     providerKey: providerOv === 'auto' ? undefined : providerOv,
     runtimeKey: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
-  }), [project.id, data.settings.routingPref, modelOv, usesNativeCliRouter, defaultModel, openRouterModelId, harnessOv, providerOv, runtimeOv, defaultRuntime])
+  }), [project.id, data.settings.routingPref, modelOv, usesNativeCliRouter, defaultModel, openRouterModelId, reasoningEffort, harnessOv, providerOv, runtimeOv, defaultRuntime])
+
+  // Manual harness/model choices disable server auto-routing. Keep the visible
+  // route aligned with the project's local runtime instead of falling back to
+  // the generic browser capability detected by the web bundle.
+  useEffect(() => {
+    if (serverRouting) return
+    setRoute(deriveRoute(text || pending || 'general chat message', data.settings.routingPref, {
+      model: modelOv === 'auto' ? undefined : modelOv,
+      harness: harnessOv === 'auto' ? undefined : harnessOv,
+      runtime: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
+    }))
+  }, [serverRouting, text, pending, data.settings.routingPref, modelOv, harnessOv, runtimeOv, defaultRuntime])
 
   const resolveRoute = async (prompt: string): Promise<RouteDecision> => {
     const fallback = refreshRoute(prompt)
@@ -868,7 +911,7 @@ export function ChatPage() {
     const runBlock: AgentRunBlock | undefined = r.klass === 'chat' ? undefined : {
       id: 'pending', kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
       executionMode,
-      title: 'Agent run', model: MODEL_LABEL[r.modelKey], harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
+      title: 'Agent run', model: MODEL_LABEL[r.modelKey], reasoningEffort: reasoningEffort || undefined, harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
       statusText: 'Planning', done: false, tools: [], plan: [], artifacts: [],
     }
     const placeholder = appendMessage({
@@ -891,6 +934,7 @@ export function ChatPage() {
           providerTurnId: chat?.continuation?.mode === 'fork' ? chat.continuation.checkpointId : undefined,
           modelKey: modelOv === 'auto' && usesNativeCliRouter ? 'auto' : modelOv === 'auto' ? defaultModel : modelOv,
           modelId: openRouterModelId || undefined,
+          reasoningEffort: reasoningEffort || undefined,
           harnessKey: harnessOv === 'auto' ? undefined : harnessOv,
           providerKey: providerOv === 'auto' ? undefined : providerOv,
           runtimeKey: runtimeOv === 'auto' ? defaultRuntime : runtimeOv,
@@ -940,7 +984,7 @@ export function ChatPage() {
           id: started.runId, kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
           executionMode,
           providerKey: actualProvider,
-          title: 'Agent run', model: actualModelLabel, harness: actualHarnessLabel, runtime: RUNTIME_LABEL[actualRuntime],
+          title: 'Agent run', model: actualModelLabel, reasoningEffort: started.route?.reasoningEffort ?? (reasoningEffort || undefined), harness: actualHarnessLabel, runtime: RUNTIME_LABEL[actualRuntime],
           statusText: mode.replace('_', ' '), done: false, tools: [], plan: [], artifacts: [],
           cost: started.route?.cost ?? r.cost,
         }
@@ -1863,6 +1907,7 @@ export function ChatPage() {
                             if (providerChanged) {
                               setModelOv('auto')
                               setOpenRouterModelId('')
+                              setReasoningEffort('')
                             }
                             setAuto(option.id === 'auto' && modelOv === 'auto')
                           }}
@@ -1889,7 +1934,6 @@ export function ChatPage() {
                             setOpenRouterModelId(option.nativeId ?? '')
                             setAuto(option.id === 'auto' && providerOv === 'auto' && harnessOv === 'auto')
                             refreshRoute(text || pending || 'build a feature')
-                            setRouteOpen(false)
                           }}
                         >
                           <span className="quick-logo sm">{option.id === 'auto'
@@ -1902,6 +1946,32 @@ export function ChatPage() {
                       ))}
                     </div>
                   </div>
+
+                  {!!reasoningEffortOptions.length && (
+                    <div className="compact-route-section reasoning-section">
+                      <span className="compact-route-label">Reasoning <small>provider native</small></span>
+                      <div className="reasoning-quick-list">
+                        <button
+                          className={!reasoningEffort ? 'active' : ''}
+                          onClick={() => setReasoningEffort('')}
+                        >
+                          <strong>Default</strong>
+                          <small>{defaultReasoningEffort
+                            ? reasoningEffortLabel(defaultReasoningEffort)
+                            : 'Provider selected'}</small>
+                        </button>
+                        {reasoningEffortOptions.map((effort) => (
+                          <button
+                            key={effort}
+                            className={reasoningEffort === effort ? 'active' : ''}
+                            onClick={() => setReasoningEffort(effort)}
+                          >
+                            <strong>{reasoningEffortLabel(effort)}</strong>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="compact-route-section execution-mode-section">
                     <span className="compact-route-label">Access <small>for this task</small></span>
@@ -2308,6 +2378,18 @@ export function ChatPage() {
                   {chat.continuation && <div className="kv"><span>{continuationAction} session</span><span title={chat.continuation.sessionId}>{PROVIDER_LABEL[chat.continuation.provider]} · {chat.continuation.sessionId.slice(0, 8)}</span></div>}
                   <div className="kv"><span>Harness</span><span>{latestRun?.harness ?? selectedHarnessLabel}</span></div>
                   <div className="kv"><span>Model</span><span>{latestRun?.model ?? selectedModelLabel}</span></div>
+                  {(latestRun?.reasoningEffort || reasoningEffortOptions.length > 0) && (
+                    <div className="kv">
+                      <span>Reasoning</span>
+                      <span>{latestRun?.reasoningEffort
+                        ? reasoningEffortLabel(latestRun.reasoningEffort)
+                        : reasoningEffort
+                          ? reasoningEffortLabel(reasoningEffort)
+                          : defaultReasoningEffort
+                            ? `${reasoningEffortLabel(defaultReasoningEffort)} default`
+                            : 'Provider default'}</span>
+                    </div>
+                  )}
                   <div className="kv"><span>Access</span><span>{EXECUTION_MODES.find((mode) => mode.id === (latestRun?.executionMode ?? executionMode))?.label}</span></div>
                   {(latestRun?.executionMode ?? executionMode) === 'review' && (
                     <div className="scope-box review-workspace-note">
@@ -2429,6 +2511,7 @@ export function ChatPage() {
                 <h4>Execution environment</h4>
                 <div className="scope-box"><strong>{latestRun?.runtime ?? RUNTIME_LABEL[route.runtimeKey]}</strong><p>Selected by Auto routing or your thread override.</p></div>
                 <div className="kv"><span>Model</span><span>{latestRun?.model ?? selectedModelLabel}</span></div>
+                {latestRun?.reasoningEffort && <div className="kv"><span>Reasoning</span><span>{reasoningEffortLabel(latestRun.reasoningEffort)}</span></div>}
                 <div className="kv"><span>Harness</span><span>{latestRun?.harness ?? selectedHarnessLabel}</span></div>
                 <button className="secondary-btn" style={{ width: '100%', marginTop: 10 }} onClick={() => nav('/environments')}>Manage environments</button>
               </div></div>

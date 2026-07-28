@@ -128,6 +128,7 @@ export interface Chat {
     executionMode: RunExecutionMode
     tools: string[]
     openRouterModelId?: string
+    reasoningEffort?: string
   }
   continuation?: {
     provider: 'codex' | 'claude' | 'cursor' | 'gemini'
@@ -208,6 +209,7 @@ export interface AgentRunBlock {
   kind: 'coding' | 'research' | 'browser' | 'ops'
   title: string
   model: string
+  reasoningEffort?: string
   harness: string
   runtime: string
   statusText: string

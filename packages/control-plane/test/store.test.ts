@@ -131,6 +131,7 @@ test('migrates legacy conversations and persists granular thread operations', as
           runtimeKey: 'local',
           executionMode: 'review',
           tools: ['Files'],
+          reasoningEffort: 'high',
         },
         createdAt: 10,
         updatedAt: 20,
@@ -148,6 +149,7 @@ test('migrates legacy conversations and persists granular thread operations', as
     assert.equal(migrated?.title, 'Legacy durable thread')
     assert.equal(migrated?.continuation?.sessionId, 'claude-session')
     assert.equal(migrated?.runConfig?.modelKey, 'opus')
+    assert.equal(migrated?.runConfig?.reasoningEffort, 'high')
     assert.equal(first.messages('chat-legacy')[0]?.text, 'Find this durable message')
 
     const durable = {
@@ -173,6 +175,7 @@ test('migrates legacy conversations and persists granular thread operations', as
         runtimeKey: 'local',
         executionMode: 'review' as const,
         tools: ['Files', 'Coding agent'],
+        reasoningEffort: 'max',
       },
       pinned: true,
       createdAt: 30,
@@ -209,6 +212,7 @@ test('migrates legacy conversations and persists granular thread operations', as
     assert.equal(first.threads({ projectId: 'project-1' })[0]?.id, 'thread-new')
     assert.equal(first.thread('thread-new')?.runConfig?.modelKey, 'opus')
     assert.deepEqual(first.thread('thread-new')?.runConfig?.tools, ['Files', 'Coding agent'])
+    assert.equal(first.thread('thread-new')?.runConfig?.reasoningEffort, 'max')
     const firstPage = first.threads({ projectId: 'project-1', limit: 1 })
     const secondPage = first.threads({
       projectId: 'project-1',
@@ -229,6 +233,7 @@ test('migrates legacy conversations and persists granular thread operations', as
     assert.equal(second.thread('thread-new')?.continuation?.mode, 'fork')
     assert.equal(second.thread('thread-new')?.continuation?.checkpointId, 'turn-before-branch')
     assert.equal(second.thread('thread-new')?.runConfig?.executionMode, 'review')
+    assert.equal(second.thread('thread-new')?.runConfig?.reasoningEffort, 'max')
     assert.equal(second.messages('thread-new')[0]?.payload?.runId, 'run-1')
     assert.equal(await second.removeThread('thread-new'), true)
     assert.equal(second.messages('thread-new').length, 0)

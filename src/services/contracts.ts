@@ -50,6 +50,7 @@ export interface SessionEvent {
 export interface RouteEstimate {
   modelKey: ModelKey
   modelId?: string
+  reasoningEffort?: string
   nativeModelDefault?: boolean
   harnessKey: Harness
   providerKey?: CodingProvider
@@ -123,6 +124,7 @@ export interface RuntimeClient {
     routingPref?: string
     modelKey?: ModelKey
     modelId?: string
+    reasoningEffort?: string
     harnessKey?: Harness
     providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
@@ -141,6 +143,7 @@ export interface RuntimeClient {
     providerTurnId?: string
     modelKey?: ModelKey
     modelId?: string
+    reasoningEffort?: string
     harnessKey?: Harness
     providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
@@ -275,6 +278,7 @@ export interface DurableThread {
     executionMode: RunExecutionMode
     tools: string[]
     openRouterModelId?: string
+    reasoningEffort?: string
   }
   continuation?: {
     provider: 'codex' | 'claude' | 'cursor' | 'gemini'
@@ -379,6 +383,7 @@ export interface HarnessCapability {
     mcp: boolean
     skills: boolean
     reasoningControls: boolean
+    reasoningEfforts?: string[]
     contextMetadata: boolean
     cancellation: boolean
     policyControls: 'native' | 'sandbox-only' | 'provider-defined'
@@ -428,9 +433,16 @@ export interface ManagedArtifactArchive {
   bytes: number
 }
 
+export interface RegisteredLocalProject {
+  projectId: string
+  root: string
+  createdAt: number
+}
+
 export interface LocalProjectClient {
   readonly supportsManagedArchives?: boolean
   registerProject?(projectId: string, root: string): Promise<{ projectId: string; root: string }>
+  listProjects?(): Promise<RegisteredLocalProject[]>
   harnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
   refreshHarnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
   localSessions(provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]>

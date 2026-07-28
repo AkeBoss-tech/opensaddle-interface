@@ -16,6 +16,7 @@ import { defaultConnectionProfile, initServices, resetServices, type ConnectionP
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
 import { adoptNativeContinuation } from '../lib/nativeContinuation'
+import { projectFromRegisteredLocalProject } from './registeredLocalProjects'
 import type {
   DurableThread,
   DurableThreadMessage,
@@ -263,10 +264,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       checking = true
       try {
         const response = await fetch(`${connection.baseUrl.replace(/\/$/, '')}/api/health`, {
-          headers: {
-            ...(connection.token ? { Authorization: `Bearer ${connection.token}` } : {}),
-            'X-OpenSaddle-User': currentUserRef.current,
-          },
+          headers: connection.token ? { Authorization: `Bearer ${connection.token}` } : undefined,
           signal: AbortSignal.timeout(1_200),
         })
         const connected = response.ok
@@ -327,6 +325,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(harnessRefreshTimer)
     }
   }, [localProjectKey, services])
+
+  useEffect(() => {
+    if (!services?.localProjects?.listProjects || !harnessCapabilities.length) return
+    let cancelled = false
+    const preferredHarness = ['codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity']
+      .find((id) => harnessCapabilities.some((capability) =>
+        capability.id === id
+        && capability.availability === 'available'
+        && capability.readiness === 'ready'))
+      ?? 'opensaddle'
+    void services.localProjects.listProjects()
+      .then((registrations) => {
+        if (cancelled || !registrations.length) return
+        setData((current) => {
+          const missing = registrations.filter((registration) =>
+            !current.projects.some((project) => project.id === registration.projectId))
+          if (!missing.length) return current
+          const next = structuredClone(current)
+          for (const registration of missing) {
+            next.projects.push(projectFromRegisteredLocalProject(registration, preferredHarness))
+            for (const action of ['read', 'write', 'execute', 'administer']) {
+              if (next.permissionGrants.some((grant) =>
+                grant.principalKind === 'user'
+                && grant.principalId === next.currentUserId
+                && grant.resourceKind === 'project'
+                && grant.resourceId === registration.projectId
+                && grant.action === action
+                && grant.effect === 'allow')) continue
+              next.permissionGrants.push({
+                id: uid('grant'),
+                principalKind: 'user',
+                principalId: next.currentUserId,
+                resourceKind: 'project',
+                resourceId: registration.projectId,
+                action,
+                effect: 'allow',
+                inheritance: 'direct',
+                createdAt: Date.now(),
+                createdBy: next.currentUserId,
+              })
+            }
+          }
+          return next
+        })
+      })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [harnessCapabilities, services])
 
   useEffect(() => {
     if (!services?.threads) {
@@ -625,10 +671,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const baseUrl = profile.baseUrl.trim().replace(/\/$/, '')
       if (!/^https?:\/\//i.test(baseUrl)) throw new Error('Server URL must start with http:// or https://')
       const response = await fetch(`${baseUrl}/api/health`, {
-        headers: {
-          ...(profile.token ? { Authorization: `Bearer ${profile.token}` } : {}),
-          'X-OpenSaddle-User': currentUserRef.current,
-        },
+        headers: profile.token ? { Authorization: `Bearer ${profile.token}` } : undefined,
         signal: AbortSignal.timeout(3000),
       })
       if (!response.ok) throw new Error(`OpenSaddle server returned HTTP ${response.status}`)
@@ -720,6 +763,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       void services?.threads?.update(id, { title }).catch(reportThreadSyncError)
     },
     updateChatRunConfig: (id, runConfig) => {
+      const current = data.chats.find((candidate) => candidate.id === id)?.runConfig
+      if (JSON.stringify(current ?? null) === JSON.stringify(runConfig)) return
       patch((d) => {
         const chat = d.chats.find((candidate) => candidate.id === id)
         if (chat) {

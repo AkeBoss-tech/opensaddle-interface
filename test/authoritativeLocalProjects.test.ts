@@ -19,6 +19,9 @@ test('adapts Python project-domain files, harnesses, and rescans without using l
       assert.deepEqual(JSON.parse(String(init.body)), { project_id: 'demo', root: '/work/demo' })
       return json({ project_id: 'demo', root: '/work/demo', created_at: '2026-01-01T00:00:00Z' }, 201)
     }
+    if (path === '/api/projects') return json({ projects: [
+      { project_id: 'demo', root: '/work/demo', created_at: '2026-01-01T00:00:00Z' },
+    ] })
     if (path === '/api/harnesses' || path === '/api/harnesses?refresh=true') return json({ harnesses: [{
       id: 'claude-code', display_name: 'Claude Code', installed: true, executable_path: '/bin/claude', version: '1.2.3', auth_state: 'authenticated', readiness: 'ready',
       models: [{ id: 'opus', display_name: 'Opus', configured: false, source: 'cli_alias', reasoning_efforts: ['high'] }], capabilities: { streaming: true, tool_support: true, mcp: true, skills: true, reasoning_efforts: ['high'], context_limit: 200_000 },
@@ -36,6 +39,7 @@ test('adapts Python project-domain files, harnesses, and rescans without using l
   const harnesses = await client.harnessCapabilities()
   assert.equal(harnesses.harnesses[0]?.id, 'claude')
   assert.equal(harnesses.harnesses[0]?.readiness, 'ready')
+  assert.deepEqual(harnesses.harnesses[0]?.capabilities.reasoningEfforts, ['high'])
   assert.deepEqual(harnesses.harnesses[0]?.models[0], {
     id: 'opus',
     configured: false,
@@ -56,6 +60,11 @@ test('adapts Python project-domain files, harnesses, and rescans without using l
   assert.equal(paths.includes('GET /api/harnesses?refresh=true'), true)
 
   assert.deepEqual(await client.registerProject('demo', '/work/demo'), { projectId: 'demo', root: '/work/demo' })
+  assert.deepEqual(await client.listProjects(), [{
+    projectId: 'demo',
+    root: '/work/demo',
+    createdAt: Date.parse('2026-01-01T00:00:00Z'),
+  }])
   const files = await client.listFiles('demo', { path: 'docs', limit: 1 })
   assert.equal(files.root, '/work/demo')
   assert.deepEqual(files.entries[0], { path: 'docs/guide.md', name: 'guide.md', kind: 'file', size: 4, modifiedAt: 1_700_000_000_000 })

@@ -115,6 +115,7 @@ export interface ThreadRecord {
     executionMode: RunExecutionMode
     tools: string[]
     openRouterModelId?: string
+    reasoningEffort?: string
   }
   continuation?: {
     provider: 'codex' | 'claude' | 'cursor' | 'gemini'

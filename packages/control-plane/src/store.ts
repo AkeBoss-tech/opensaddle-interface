@@ -619,5 +619,8 @@ function legacyThreadRunConfig(value: unknown): ThreadRecord['runConfig'] {
     openRouterModelId: typeof input.openRouterModelId === 'string'
       ? input.openRouterModelId.slice(0, 300)
       : undefined,
+    reasoningEffort: typeof input.reasoningEffort === 'string'
+      ? input.reasoningEffort.slice(0, 20)
+      : undefined,
   }
 }

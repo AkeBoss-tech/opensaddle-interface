@@ -90,6 +90,7 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
     model: run.route.nativeModelDefault
       ? `${providerLabel} default`
       : run.route.modelId ?? run.route.modelKey,
+    reasoningEffort: run.route.reasoningEffort,
     harness: providerLabel,
     runtime: RUNTIME_LABELS[run.route.runtimeKey] ?? run.route.runtimeKey,
     statusText,

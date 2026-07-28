@@ -79,10 +79,7 @@ export function initServices(opts: {
       if (connection.mode === 'remote' && mode !== 'mock') {
         try {
           const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/health`, {
-            headers: {
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-              'X-OpenSaddle-User': getUserId(),
-            },
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
             signal: AbortSignal.timeout(1200),
           })
           backendAvailable = response.ok

@@ -157,6 +157,7 @@ function threadRunConfig(value: unknown): ThreadRecord['runConfig'] {
     executionMode,
     tools,
     openRouterModelId: optionalString(input, 'openRouterModelId', 300),
+    reasoningEffort: optionalString(input, 'reasoningEffort', 20),
   }
 }
 

@@ -14,6 +14,8 @@ export class MockRuntimeClient implements RuntimeClient {
   async estimate(task: string, prefs?: {
     routingPref?: string
     modelKey?: ModelKey
+    modelId?: string
+    reasoningEffort?: string
     harnessKey?: Harness
     providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
@@ -50,6 +52,8 @@ export class MockRuntimeClient implements RuntimeClient {
     providerSessionMode?: 'resume' | 'fork'
     providerTurnId?: string
     modelKey?: ModelKey
+    modelId?: string
+    reasoningEffort?: string
     harnessKey?: Harness
     runtimeKey?: RuntimeKind
     executionMode?: RunExecutionMode

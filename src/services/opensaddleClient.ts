@@ -57,7 +57,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
   private async healthy(): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/api/health`, {
-        headers: this.headers(),
+        headers: this.token ? { Authorization: `Bearer ${this.token}` } : undefined,
         signal: AbortSignal.timeout(1200),
       })
       return res.ok
@@ -71,6 +71,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     routingPref?: string
     modelKey?: ModelKey
     modelId?: string
+    reasoningEffort?: string
     harnessKey?: Harness
     providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
@@ -141,6 +142,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     providerTurnId?: string
     modelKey?: ModelKey
     modelId?: string
+    reasoningEffort?: string
     harnessKey?: Harness
     providerKey?: CodingProvider
     runtimeKey?: RuntimeKind
@@ -180,6 +182,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
           provider_turn_id: input.providerTurnId,
           model_key: input.modelKey,
           model_id: input.modelId,
+          reasoning_effort: input.reasoningEffort,
           harness_key: input.harnessKey,
           provider_key: input.providerKey,
           runtime_key: input.runtimeKey,
@@ -199,6 +202,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         assistant_message_id?: string
         mode?: string
         route?: ApiRouteEstimate
+        estimate?: ApiRouteEstimate
       }
       return {
         runId: data.run_id,
@@ -207,7 +211,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         sourceMessageId: data.source_message_id,
         assistantMessageId: data.assistant_message_id,
         mode: data.mode,
-        route: routeFromApi(data.route),
+        route: routeFromApi(data.route ?? data.estimate),
       }
     } catch (error) {
       if (this.allowFallback && error instanceof TypeError) return this.fallback.startRun(input)
@@ -724,6 +728,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
 type ApiRouteEstimate = Omit<Partial<RouteEstimate>, 'alternatives'> & {
   model_key?: RouteEstimate['modelKey']
   model_id?: string
+  reasoning_effort?: string
   native_model_default?: boolean
   harness_key?: RouteEstimate['harnessKey']
   provider_key?: RouteEstimate['providerKey']
@@ -746,6 +751,7 @@ function routeFromApi(route: ApiRouteEstimate | undefined): RouteEstimate | unde
   return {
     modelKey,
     modelId: route.modelId ?? route.model_id,
+    reasoningEffort: route.reasoningEffort ?? route.reasoning_effort,
     nativeModelDefault: route.nativeModelDefault ?? route.native_model_default,
     harnessKey,
     providerKey: route.providerKey ?? route.provider_key,

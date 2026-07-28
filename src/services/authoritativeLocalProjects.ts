@@ -5,6 +5,7 @@ import type {
   ManagedArtifactArchive,
   ProjectArtifactManifest,
   ProjectFileEntry,
+  RegisteredLocalProject,
 } from './contracts'
 
 type Fetcher = typeof fetch
@@ -119,6 +120,7 @@ function harnessFromDomain(value: DomainHarness): HarnessCapability {
       mcp: capability.mcp === true,
       skills: capability.skills === true,
       reasoningControls: Boolean(capability.reasoning_efforts?.length),
+      reasoningEfforts: capability.reasoning_efforts,
       contextMetadata: capability.context_limit !== undefined && capability.context_limit !== null,
       cancellation: false,
       policyControls: capability.permission_modes?.length ? 'provider-defined' : 'provider-defined',
@@ -219,6 +221,19 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
     })
     this.roots.set(project.project_id, project.root)
     return { projectId: project.project_id, root: project.root }
+  }
+
+  async listProjects(): Promise<RegisteredLocalProject[]> {
+    const response = await this.request<{ projects?: DomainProject[] }>('/api/projects')
+    return (response.projects ?? []).map((project) => {
+      this.roots.set(project.project_id, project.root)
+      const createdAt = Date.parse(project.created_at)
+      return {
+        projectId: project.project_id,
+        root: project.root,
+        createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+      }
+    })
   }
 
   async harnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }> {
