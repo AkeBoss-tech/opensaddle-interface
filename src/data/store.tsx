@@ -435,7 +435,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const durableThreads: DurableThread[] = []
         let cursor: string | undefined
         do {
-          const page = await threads.list({ includeArchived: true, limit: 250, cursor })
+          const page = await threads.list({ includeArchived: true, limit: 100, cursor })
           durableThreads.push(...page.threads)
           cursor = page.nextCursor
         } while (cursor && durableThreads.length < 2_000)

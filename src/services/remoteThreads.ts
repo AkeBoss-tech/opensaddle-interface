@@ -93,7 +93,7 @@ export class RemoteThreadClient implements ThreadClient {
     const query = new URLSearchParams()
     if (input.projectId) query.set('project_id', input.projectId)
     if (input.includeArchived) query.set('include_archived', 'true')
-    if (input.limit) query.set('limit', String(input.limit))
+    if (input.limit) query.set('limit', String(Math.min(input.limit, 100)))
     if (input.cursor) query.set('cursor', input.cursor)
     const body = await this.request<{ threads: ApiThread[]; next_cursor?: string | null }>(
       `/api/threads${query.size ? `?${query}` : ''}`,
@@ -156,7 +156,7 @@ export class RemoteThreadClient implements ThreadClient {
 
   async messages(threadId: string, input: Parameters<ThreadClient['messages']>[1] = {}) {
     const query = new URLSearchParams()
-    if (input.limit) query.set('limit', String(input.limit))
+    if (input.limit) query.set('limit', String(Math.min(input.limit, 250)))
     if (input.cursor) query.set('cursor', input.cursor)
     const body = await this.request<{ messages: ApiMessage[]; next_cursor?: string | null }>(
       `/api/threads/${encodeURIComponent(threadId)}/messages${query.size ? `?${query}` : ''}`,
