@@ -537,6 +537,7 @@ export class StateStore {
         sharedWith,
         agentId: typeof chat.agentId === 'string' ? chat.agentId : undefined,
         continuation: legacyThreadContinuation(chat.continuation),
+        runConfig: legacyThreadRunConfig(chat.runConfig),
         branchedFromId: typeof chat.branchedFromId === 'string' ? chat.branchedFromId : undefined,
         pinned: chat.pinned === true,
         archivedAt: chat.archived === true ? updatedAt : undefined,
@@ -590,4 +591,33 @@ function legacyThreadContinuation(value: unknown): ThreadRecord['continuation'] 
   return provider && authority && sessionId && sourcePath
     ? { provider, authority, sessionId, sourcePath }
     : undefined
+}
+
+function legacyThreadRunConfig(value: unknown): ThreadRecord['runConfig'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const input = value as Record<string, unknown>
+  const executionMode = input.executionMode === 'plan'
+    || input.executionMode === 'project'
+    || input.executionMode === 'review'
+    || input.executionMode === 'full-access'
+    ? input.executionMode
+    : undefined
+  const requiredKeys = ['providerKey', 'modelKey', 'harnessKey', 'runtimeKey'] as const
+  if (typeof input.auto !== 'boolean' || !executionMode || requiredKeys.some((key) => typeof input[key] !== 'string')) {
+    return undefined
+  }
+  return {
+    auto: input.auto,
+    providerKey: String(input.providerKey).slice(0, 100),
+    modelKey: String(input.modelKey).slice(0, 200),
+    harnessKey: String(input.harnessKey).slice(0, 100),
+    runtimeKey: String(input.runtimeKey).slice(0, 100),
+    executionMode,
+    tools: Array.isArray(input.tools)
+      ? input.tools.filter((tool): tool is string => typeof tool === 'string').slice(0, 50)
+      : [],
+    openRouterModelId: typeof input.openRouterModelId === 'string'
+      ? input.openRouterModelId.slice(0, 300)
+      : undefined,
+  }
 }

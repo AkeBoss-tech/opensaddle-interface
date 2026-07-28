@@ -8,6 +8,7 @@ type ApiThread = {
   visibility: DurableThread['visibility']
   shared_with?: string[]
   agent_id?: string
+  run_config?: DurableThread['runConfig']
   continuation?: DurableThread['continuation']
   branched_from_id?: string
   pinned?: boolean
@@ -35,6 +36,7 @@ function threadFromApi(thread: ApiThread): DurableThread {
     visibility: thread.visibility,
     sharedWith: thread.shared_with ?? [],
     agentId: thread.agent_id,
+    runConfig: thread.run_config,
     continuation: thread.continuation,
     branchedFromId: thread.branched_from_id,
     pinned: thread.pinned === true,
@@ -118,6 +120,7 @@ export class RemoteThreadClient implements ThreadClient {
         visibility: input.visibility,
         shared_with: input.sharedWith,
         agent_id: input.agentId,
+        run_config: input.runConfig,
         continuation: input.continuation,
         branched_from_id: input.branchedFromId,
         pinned: input.pinned,
@@ -136,6 +139,7 @@ export class RemoteThreadClient implements ThreadClient {
         shared_with: input.sharedWith,
         agent_id: input.agentId,
         continuation: input.continuation,
+        run_config: input.runConfig,
         pinned: input.pinned,
         archived: input.archived,
       }),

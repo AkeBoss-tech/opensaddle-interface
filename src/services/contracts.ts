@@ -236,6 +236,16 @@ export interface DurableThread {
   visibility: 'private' | 'shared' | 'project'
   sharedWith: string[]
   agentId?: string
+  runConfig?: {
+    auto: boolean
+    providerKey: string
+    modelKey: string
+    harnessKey: string
+    runtimeKey: string
+    executionMode: RunExecutionMode
+    tools: string[]
+    openRouterModelId?: string
+  }
   continuation?: {
     provider: 'codex' | 'claude' | 'cursor' | 'gemini'
     sessionId: string
@@ -276,11 +286,12 @@ export interface ThreadClient {
     visibility?: DurableThread['visibility']
     sharedWith?: string[]
     agentId?: string
+    runConfig?: DurableThread['runConfig']
     continuation?: DurableThread['continuation']
     branchedFromId?: string
     pinned?: boolean
   }): Promise<DurableThread>
-  update(threadId: string, input: Partial<Pick<DurableThread, 'title' | 'visibility' | 'sharedWith' | 'agentId' | 'continuation' | 'pinned'>> & { archived?: boolean }): Promise<DurableThread>
+  update(threadId: string, input: Partial<Pick<DurableThread, 'title' | 'visibility' | 'sharedWith' | 'agentId' | 'continuation' | 'runConfig' | 'pinned'>> & { archived?: boolean }): Promise<DurableThread>
   remove(threadId: string): Promise<void>
   messages(threadId: string, input?: { limit?: number; cursor?: string }): Promise<{
     messages: DurableThreadMessage[]

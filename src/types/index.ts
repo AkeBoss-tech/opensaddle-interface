@@ -119,6 +119,16 @@ export interface Chat {
   sharedWith: string[]
   archived?: boolean
   agentId?: string
+  runConfig?: {
+    auto: boolean
+    providerKey: CodingProvider
+    modelKey: ModelKey | 'auto'
+    harnessKey: Harness | 'auto'
+    runtimeKey: RuntimeKind | 'auto'
+    executionMode: RunExecutionMode
+    tools: string[]
+    openRouterModelId?: string
+  }
   continuation?: {
     provider: 'codex' | 'claude' | 'cursor' | 'gemini'
     sessionId: string

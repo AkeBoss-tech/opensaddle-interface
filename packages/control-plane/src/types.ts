@@ -1,3 +1,5 @@
+import type { RunExecutionMode } from './executionModes.js'
+
 export type DeploymentMode = 'local' | 'company'
 export type ModelKey = 'auto' | 'gpt' | 'claude' | 'sonnet' | 'gemini' | 'llama'
 export type Harness = 'chat' | 'research' | 'coding' | 'browser' | 'vm'
@@ -104,6 +106,16 @@ export interface ThreadRecord {
   visibility: 'private' | 'shared' | 'project'
   sharedWith: string[]
   agentId?: string
+  runConfig?: {
+    auto: boolean
+    providerKey: string
+    modelKey: string
+    harnessKey: string
+    runtimeKey: string
+    executionMode: RunExecutionMode
+    tools: string[]
+    openRouterModelId?: string
+  }
   continuation?: {
     provider: 'codex' | 'claude' | 'cursor' | 'gemini'
     sessionId: string

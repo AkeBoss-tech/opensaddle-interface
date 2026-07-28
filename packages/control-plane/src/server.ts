@@ -131,6 +131,28 @@ function threadContinuation(value: unknown): ThreadRecord['continuation'] {
   return { provider, sessionId, sourcePath, authority, mode, checkpointId }
 }
 
+function threadRunConfig(value: unknown): ThreadRecord['runConfig'] {
+  if (value === undefined || value === null) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('run_config must be an object')
+  }
+  const input = value as Record<string, unknown>
+  const auto = optionalBoolean(input, 'auto')
+  const executionMode = enumValue(input, 'executionMode', ['plan', 'project', 'review', 'full-access'] as const)
+  const tools = stringArray(input, 'tools', 50, 100) ?? []
+  if (auto === undefined || !executionMode) throw new Error('run_config auto and executionMode are required')
+  return {
+    auto,
+    providerKey: requiredString(input, 'providerKey', 100),
+    modelKey: requiredString(input, 'modelKey', 200),
+    harnessKey: requiredString(input, 'harnessKey', 100),
+    runtimeKey: requiredString(input, 'runtimeKey', 100),
+    executionMode,
+    tools,
+    openRouterModelId: optionalString(input, 'openRouterModelId', 300),
+  }
+}
+
 function enumValue<T extends string>(
   body: Record<string, unknown>,
   key: string,
@@ -207,6 +229,7 @@ function apiThread(thread: ThreadRecord) {
     visibility: thread.visibility,
     shared_with: thread.sharedWith,
     agent_id: thread.agentId,
+    run_config: thread.runConfig,
     continuation: thread.continuation,
     branched_from_id: thread.branchedFromId,
     pinned: thread.pinned,
@@ -759,6 +782,7 @@ app.post('/api/threads', async (request, reply) => {
     visibility,
     sharedWith: stringArray(body, 'shared_with') ?? [],
     agentId: optionalString(body, 'agent_id', 200),
+    runConfig: threadRunConfig(body.run_config),
     continuation: threadContinuation(body.continuation),
     branchedFromId: optionalString(body, 'branched_from_id', 200),
     pinned: optionalBoolean(body, 'pinned') ?? false,
@@ -792,7 +816,9 @@ app.patch<{ Params: { threadId: string } }>('/api/threads/:threadId', async (req
   const agentId = optionalString(body, 'agent_id', 200)
   const hasAgentId = Object.hasOwn(body, 'agent_id')
   const hasContinuation = Object.hasOwn(body, 'continuation')
+  const hasRunConfig = Object.hasOwn(body, 'run_config')
   const continuation = hasContinuation ? threadContinuation(body.continuation) : undefined
+  const runConfig = hasRunConfig ? threadRunConfig(body.run_config) : undefined
   const updated: ThreadRecord = {
     ...thread,
     ...(title ? { title } : {}),
@@ -802,9 +828,10 @@ app.patch<{ Params: { threadId: string } }>('/api/threads/:threadId', async (req
     ...(sharedWith ? { sharedWith } : {}),
     ...(hasAgentId ? { agentId } : {}),
     ...(hasContinuation ? { continuation } : {}),
+    ...(hasRunConfig ? { runConfig } : {}),
     updatedAt: Date.now(),
   }
-  if (title === undefined && pinned === undefined && archived === undefined && !visibility && !sharedWith && !hasAgentId && !hasContinuation) {
+  if (title === undefined && pinned === undefined && archived === undefined && !visibility && !sharedWith && !hasAgentId && !hasContinuation && !hasRunConfig) {
     return reply.code(400).send({ error: 'thread_update_required' })
   }
   await store.saveThread(updated)

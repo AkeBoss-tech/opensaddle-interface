@@ -177,8 +177,9 @@ export function ChatPage() {
   const location = useLocation()
   const store = useStore()
   const runRegistry = useRunRegistry()
-  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, setChatArchived, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, harnessCapabilities, refreshHarnessCapabilities } = store
+  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, setChatArchived, updateChatRunConfig, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, harnessCapabilities, refreshHarnessCapabilities } = store
   const chat = data.chats.find((c) => c.id === (chatId ?? data.activeChatId))
+  const durableRunConfigKey = JSON.stringify(chat?.runConfig ?? null)
   const continuationAction = chat?.continuation?.mode === 'fork' ? 'Fork' : 'Resume'
   const project = data.projects.find((p) => p.id === chat?.projectId) ?? data.projects.find((p) => p.id === data.activeProjectId) ?? data.projects[0]
   const chatAgent = data.agents.find((agent) => agent.id === chat?.agentId)
@@ -231,6 +232,7 @@ export function ChatPage() {
   const [pullRequestBase, setPullRequestBase] = useState('main')
   const [pullRequestDraft, setPullRequestDraft] = useState(false)
   const [pullRequestResult, setPullRequestResult] = useState<{ number: number; url: string; title: string } | null>(null)
+  const [runConfigReadyChatId, setRunConfigReadyChatId] = useState<string | null>(null)
   const [repositoryEditorOpen, setRepositoryEditorOpen] = useState(false)
   const [repositoryDraft, setRepositoryDraft] = useState('')
   const [delegateEditorOpen, setDelegateEditorOpen] = useState(false)
@@ -275,7 +277,36 @@ export function ChatPage() {
   }, [location.pathname, location.state, nav])
 
   useEffect(() => {
-    if (!chatAgent || chat?.continuation) return
+    if (!chat) return
+    setRunConfigReadyChatId(null)
+    const config = chat.runConfig
+    setTools(new Set(config?.tools ?? ['Chrome', 'Files', 'API']))
+    setAuto(config?.auto ?? true)
+    setProviderOv(config?.providerKey ?? 'auto')
+    setModelOv(config?.modelKey ?? 'auto')
+    setHarnessOv(config?.harnessKey ?? 'auto')
+    setRuntimeOv(config?.runtimeKey ?? 'auto')
+    setExecutionMode(config?.executionMode ?? 'project')
+    setOpenRouterModelId(config?.openRouterModelId ?? '')
+    setRunConfigReadyChatId(chat.id)
+  }, [chat?.id, durableRunConfigKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!chat || runConfigReadyChatId !== chat.id) return
+    updateChatRunConfig(chat.id, {
+      auto,
+      providerKey: providerOv,
+      modelKey: modelOv,
+      harnessKey: harnessOv,
+      runtimeKey: runtimeOv,
+      executionMode,
+      tools: [...tools].sort(),
+      openRouterModelId: openRouterModelId || undefined,
+    })
+  }, [auto, providerOv, modelOv, harnessOv, runtimeOv, executionMode, tools, openRouterModelId, runConfigReadyChatId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!chatAgent || chat?.continuation || chat?.runConfig) return
     const builtinProviders: CodingProvider[] = ['opensaddle', 'codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity']
     const agentProvider = chatAgent.harnessId && builtinProviders.includes(chatAgent.harnessId as CodingProvider)
       ? chatAgent.harnessId as CodingProvider
@@ -301,7 +332,7 @@ export function ChatPage() {
   }, [chat?.id, chatAgent?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!chat?.continuation) return
+    if (!chat?.continuation || chat.runConfig) return
     setProviderOv(chat.continuation.provider)
     setHarnessOv('coding')
     setRuntimeOv('local')

@@ -36,6 +36,7 @@ interface StoreApi {
   createChat: (projectId: string, title?: string, agentId?: string, continuation?: Chat['continuation']) => Chat
   adoptChatContinuation: (id: string, sessionId: string, checkpointId?: string, provider?: NonNullable<Chat['continuation']>['provider']) => void
   renameChat: (id: string, title: string) => void
+  updateChatRunConfig: (id: string, runConfig: NonNullable<Chat['runConfig']>) => void
   deleteChat: (id: string) => void
   archiveChat: (id: string) => void
   setChatArchived: (id: string, archived: boolean) => void
@@ -329,6 +330,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sharedWith: thread.sharedWith,
           archived: Boolean(thread.archivedAt),
           agentId: thread.agentId,
+          runConfig: thread.runConfig as Chat['runConfig'],
           continuation: thread.continuation,
         }))
         const remoteMessages = durableMessages.map<Message>((message) => ({
@@ -466,6 +468,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sharedWith: thread.sharedWith,
           archived: Boolean(thread.archivedAt),
           agentId: thread.agentId,
+          runConfig: thread.runConfig as Chat['runConfig'],
           continuation: thread.continuation,
         }))
         const remoteMessages = changedMessages.map<Message>((message) => ({
@@ -608,6 +611,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sharedWith: chat.sharedWith,
           agentId,
           continuation,
+          runConfig: chat.runConfig,
         }).catch(reportThreadSyncError).finally(() => threadCreatePromisesRef.current.delete(chat.id))
         threadCreatePromisesRef.current.set(chat.id, pending)
       }
@@ -644,6 +648,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     renameChat: (id, title) => {
       patch((d) => { const c = d.chats.find((x) => x.id === id); if (c) { c.title = title; c.updatedAt = Date.now() } return d })
       void services?.threads?.update(id, { title }).catch(reportThreadSyncError)
+    },
+    updateChatRunConfig: (id, runConfig) => {
+      patch((d) => {
+        const chat = d.chats.find((candidate) => candidate.id === id)
+        if (chat) {
+          chat.runConfig = runConfig
+          chat.updatedAt = Date.now()
+        }
+        return d
+      })
+      void services?.threads?.update(id, { runConfig }).catch(reportThreadSyncError)
     },
     deleteChat: (id) => {
       patch((d) => {
@@ -691,6 +706,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         visibility: 'private',
         sharedWith: [],
         continuation: src.continuation ? { ...src.continuation, mode: 'fork' } : undefined,
+        runConfig: src.runConfig ? structuredClone(src.runConfig) : undefined,
       }
       const copied = dataRef.current.messages
         .filter((message) => message.chatId === id)
@@ -710,6 +726,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sharedWith: created.sharedWith,
           agentId: created.agentId,
           continuation: created.continuation,
+          runConfig: created.runConfig,
           branchedFromId: id,
         }).then(async () => {
           for (const message of copied) {
@@ -751,6 +768,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           checkpointId: providerCheckpoint?.providerTurnId,
           mode: 'fork',
         } : undefined,
+        runConfig: src.runConfig ? structuredClone(src.runConfig) : undefined,
       }
       const copied = sourceMessages.slice(0, targetIndex + 1).map((message) => ({
         ...message,
@@ -773,6 +791,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sharedWith: created.sharedWith,
           agentId: created.agentId,
           continuation: created.continuation,
+          runConfig: created.runConfig,
           branchedFromId: chatId,
         }).then(async () => {
           for (const message of copied) {
