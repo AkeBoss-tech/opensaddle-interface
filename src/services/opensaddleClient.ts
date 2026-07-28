@@ -560,11 +560,13 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     const controller = new AbortController()
     let fallbackStop: (() => void) | null = null
     let receivedEvents = 0
+    let snapshotCursor = 0
     // The authoritative Python run store numbers durable events from one.
     // Other event sources can retain the reconciler's zero-based default.
     const emit = createOrderedEventEmitter(
       (event) => {
         receivedEvents += 1
+        snapshotCursor = event.sequence
         onEvent(event)
       },
       1,
@@ -581,7 +583,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         void (async () => {
           while (!controller.signal.aborted) {
             try {
-              const snapshot = await fetch(`${this.baseUrl}/api/runs/${runId}`, {
+              const snapshot = await fetch(`${this.baseUrl}/api/runs/${runId}?after_sequence=${snapshotCursor}`, {
                 headers: this.headers(),
                 signal: controller.signal,
               })
@@ -628,7 +630,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         // A very fast local run can finish while the browser is attaching to
         // SSE. Reconcile once from durable state so no final deltas are lost.
         if (!controller.signal.aborted) {
-          const snapshot = await fetch(`${this.baseUrl}/api/runs/${runId}`, {
+          const snapshot = await fetch(`${this.baseUrl}/api/runs/${runId}?after_sequence=${snapshotCursor}`, {
             headers: this.headers(),
             signal: controller.signal,
           })

@@ -9,6 +9,18 @@ function json(value: unknown, status = 200): Response {
   })
 }
 
+function event(sequence: number) {
+  return {
+    event_id: `event-${sequence}`,
+    session_id: 'session-1',
+    run_id: 'run-1',
+    sequence,
+    timestamp: `2026-07-28T00:00:0${sequence}Z`,
+    type: 'agent.output.delta' as const,
+    payload: { text: `chunk-${sequence}` },
+  }
+}
+
 test('sends native reasoning effort and accepts the authoritative estimate route alias', async () => {
   const originalFetch = globalThis.fetch
   let startBody: Record<string, unknown> | undefined
@@ -123,5 +135,63 @@ test('adapts the authoritative repository API for the desktop Git panel', async 
     assert.equal(status.diffFiles[0]?.additions, 4)
   } finally {
     globalThis.fetch = originalFetch
+  }
+})
+
+test('reconciles only missing durable events after the delivered cursor', async () => {
+  const originalFetch = globalThis.fetch
+  const originalWindow = globalThis.window
+  const snapshotPaths: string[] = []
+  let snapshotCount = 0
+  Object.defineProperty(globalThis, 'window', {
+    value: globalThis,
+    configurable: true,
+    writable: true,
+  })
+  globalThis.fetch = async (input) => {
+    const path = input.toString().replace('http://daemon.test', '')
+    if (path === '/api/health') return json({ ok: true })
+    if (path === '/api/runs/run-1/events') {
+      return new Response(new ReadableStream())
+    }
+    if (path.startsWith('/api/runs/run-1?after_sequence=')) {
+      snapshotPaths.push(path)
+      snapshotCount += 1
+      return snapshotCount === 1
+        ? json({ status: 'running', events: [event(1), event(2)] })
+        : json({ status: 'completed', events: [event(3)] })
+    }
+    return json({ detail: `unexpected path ${path}` }, 404)
+  }
+
+  try {
+    const client = new OpenSaddleRuntimeClient('http://daemon.test', undefined, {
+      allowFallback: false,
+    })
+    const received: number[] = []
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('timed out waiting for reconciled events')), 2_000)
+      const stop = client.subscribe('run-1', (item) => {
+        received.push(item.sequence)
+        if (item.sequence === 3) {
+          clearTimeout(timeout)
+          stop()
+          resolve()
+        }
+      })
+    })
+
+    assert.deepEqual(received, [1, 2, 3])
+    assert.deepEqual(snapshotPaths.slice(0, 2), [
+      '/api/runs/run-1?after_sequence=0',
+      '/api/runs/run-1?after_sequence=2',
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: Window }).window
+    } else {
+      globalThis.window = originalWindow
+    }
   }
 })
