@@ -312,6 +312,7 @@ export function ChatPage() {
   const [providerKey, setProviderKey] = useState<CodingProvider>('opensaddle')
   const [perm, setPerm] = useState<ReturnType<typeof needsPermission>>(null)
   const [pending, setPending] = useState('')
+  const [pendingSourceMessageId, setPendingSourceMessageId] = useState<string | undefined>()
   const [permScope, setPermScope] = useState<PromptPermissionScope>('once')
   const [activity, setActivity] = useState<Array<{ title: string; sub: string; kind?: string; t: string }>>([])
   const [gitStatus, setGitStatus] = useState<GitStatusResult | null>(null)
@@ -680,7 +681,12 @@ export function ChatPage() {
         } else {
           const queued = await runRegistry.queue(activeManagedRun.runId, prompt)
           setText('')
-          const queuedPromptMessage = appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+          const queuedPromptMessage = appendMessage({
+            id: queued.sourceMessageId,
+            chatId: chat.id,
+            role: 'user',
+            text: prompt,
+          }, { persist: !queued.sourceMessageId })
           const queuedRun: AgentRunBlock = {
             id: queued.runId,
             parentRunId: queued.parentRunId ?? activeManagedRun.runId,
@@ -700,12 +706,14 @@ export function ChatPage() {
             cost: queued.route?.cost ?? activeManagedRun.run.cost,
           }
           const placeholder = appendMessage({
+            id: queued.assistantMessageId,
             chatId: chat.id,
             role: 'assistant',
             text: '',
+            runtimeRunId: queued.runId,
             routingNote: `Queued · ${queuedRun.model} · ${queuedRun.harness} · ${queuedRun.runtime}`,
             run: queuedRun,
-          })
+          }, { persist: !queued.assistantMessageId })
           runRegistry.track({
             runId: queued.runId,
             threadId: chat.id,
@@ -755,7 +763,7 @@ export function ChatPage() {
     setText('')
     setToolsOpen(false)
     setRouteOpen(false)
-    appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+    const sourceMessage = appendMessage({ chatId: chat.id, role: 'user', text: prompt })
     const permission = needsPermission(prompt)
     if (permission) {
       const matching = data.permissionGrants.filter((grant) =>
@@ -783,14 +791,15 @@ export function ChatPage() {
           kind: 'info',
           t: 'now',
         }])
-        await runAgent(prompt, r, chat.id)
+        await runAgent(prompt, r, chat.id, undefined, sourceMessage.id)
         return
       }
       setPending(prompt)
+      setPendingSourceMessageId(sourceMessage.id)
       setPerm(permission)
       return
     }
-    await runAgent(prompt, r, chat.id)
+    await runAgent(prompt, r, chat.id, undefined, sourceMessage.id)
   }
 
   useEffect(() => {
@@ -807,7 +816,13 @@ export function ChatPage() {
     }
   }, [chatId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const runAgent = async (prompt: string, r: RouteDecision, cid: string, approvalId?: string) => {
+  const runAgent = async (
+    prompt: string,
+    r: RouteDecision,
+    cid: string,
+    approvalId?: string,
+    sourceMessageId?: string,
+  ) => {
     const agentId = chat?.agentId
     const exec = evaluatePermissions(data.permissionGrants, {
       userId: data.currentUserId,
@@ -843,13 +858,15 @@ export function ChatPage() {
       chatId: cid, role: 'assistant', text: '',
       routingNote: `Auto · ${MODEL_LABEL[r.modelKey]} · ${HARNESS_LABEL[r.harnessKey]} · ${RUNTIME_LABEL[r.runtimeKey]}`,
       run: runBlock,
-    })
+    }, { persist: !services?.runtime })
 
     if (services?.runtime) {
       try {
         const started = await services.runtime.startRun({
           projectId: project.id,
           threadId: cid,
+          sourceMessageId,
+          assistantMessageId: placeholder.id,
           task: prompt,
           agentId,
           providerSessionId: chat?.continuation?.sessionId,
@@ -878,6 +895,7 @@ export function ChatPage() {
           ? ` · ${PROVIDER_LABEL[actualProvider]}`
           : ''
         updateMessage(placeholder.id, {
+          runtimeRunId: started.runId,
           routingNote: `${started.route ? 'Server' : 'Auto'} · ${actualModelLabel} · ${HARNESS_LABEL[actualHarness]}${providerNote} · ${RUNTIME_LABEL[actualRuntime]}`,
         })
         // Keep the composer pill consistent with what the server actually ran.
@@ -1030,13 +1048,16 @@ export function ChatPage() {
       toast('Could not choose a ready harness', error instanceof Error ? error.message : String(error))
       return
     }
-    await runAgent(pending, r, chat.id, approvalId)
+    const sourceMessageId = pendingSourceMessageId
+    setPendingSourceMessageId(undefined)
+    await runAgent(pending, r, chat.id, approvalId, sourceMessageId)
   }
 
   const denyPromptPermission = async (persist: boolean) => {
     const request = perm
     if (!request || !chat) return
     setPerm(null)
+    setPendingSourceMessageId(undefined)
     const scope: PromptPermissionScope = persist ? permScope : 'once'
     try {
       let grant = await savePromptDecision(request, 'deny', scope)
@@ -1398,16 +1419,25 @@ export function ChatPage() {
       plan: [],
       artifacts: [],
     }
+    const sourceMessage = appendMessage({
+      chatId: chat.id,
+      role: 'user',
+      text: task,
+      routingNote: 'Delegated subtask',
+    })
     const message = appendMessage({
       chatId: chat.id,
       role: 'assistant',
-      text: `Delegated subtask: ${task}`,
+      text: '',
       routingNote: `Subagent · ${initial.model} · ${initial.runtime}`,
       run: initial,
-    })
+    }, { persist: false })
     try {
       const started = await services.runtime.startRun({
         projectId: project.id,
+        threadId: chat.id,
+        sourceMessageId: sourceMessage.id,
+        assistantMessageId: message.id,
         task,
         agentId: chat.agentId,
         parentRunId: rootRun.id,
@@ -1424,7 +1454,7 @@ export function ChatPage() {
         runtime: RUNTIME_LABEL[started.route?.runtimeKey ?? requestedRoute.runtimeKey],
         statusText: started.mode?.replaceAll('_', ' ') ?? 'Queued',
       }
-      updateMessage(message.id, { run: child })
+      updateMessage(message.id, { runtimeRunId: started.runId, run: child })
       if (started.mode === 'mock' || started.mode === 'mock_with_repo') {
         await simulateAgentRun(task, requestedRoute, (run) => {
           updateMessage(message.id, { text: run.output ?? '', run: { ...run, id: started.runId, parentRunId: rootRun.id, title: initial.title, executionMode } })

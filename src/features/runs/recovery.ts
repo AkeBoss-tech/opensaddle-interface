@@ -40,6 +40,17 @@ export function selectOrphanedRuntimeRuns(
     && projectIds.has(run.projectId))
 }
 
+export function selectThreadLinkedRuntimeRuns(
+  runs: readonly RuntimeRunSummary[],
+  representedRunIds: ReadonlySet<string>,
+  threadIds: ReadonlySet<string>,
+): RuntimeRunSummary[] {
+  return runs.filter((run) =>
+    !representedRunIds.has(run.runId)
+    && typeof run.threadId === 'string'
+    && threadIds.has(run.threadId))
+}
+
 export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
   const provider = run.route.providerKey && run.route.providerKey !== 'auto'
     ? run.route.providerKey
@@ -76,7 +87,9 @@ export function runtimeRunToAgentBlock(run: RuntimeRunSummary): AgentRunBlock {
           ? 'browser'
           : 'ops',
     title: `${providerLabel} run`,
-    model: run.route.modelId ?? run.route.modelKey,
+    model: run.route.nativeModelDefault
+      ? `${providerLabel} default`
+      : run.route.modelId ?? run.route.modelKey,
     harness: providerLabel,
     runtime: RUNTIME_LABELS[run.route.runtimeKey] ?? run.route.runtimeKey,
     statusText,

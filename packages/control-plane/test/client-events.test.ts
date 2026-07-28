@@ -4,6 +4,7 @@ import {
   isRecoverableRuntimeRun,
   runtimeRunToAgentBlock,
   selectOrphanedRuntimeRuns,
+  selectThreadLinkedRuntimeRuns,
 } from '../../../src/features/runs/recovery.js'
 import { appendTranscript } from '../../../src/features/runs/transcript.js'
 import { createOrderedEventEmitter } from '../../../src/services/orderedEvents.js'
@@ -36,6 +37,8 @@ function runtimeRun(status: RuntimeRunSummary['status']): RuntimeRunSummary {
     runId: 'run-recovered',
     sessionId: 'session-recovered',
     projectId: 'project-local',
+    threadId: 'thread-durable',
+    sourceMessageId: 'message-source',
     task: 'Continue the durable task',
     status,
     route: {
@@ -772,6 +775,14 @@ describe('durable client event handling', () => {
       ).map((run) => run.runId),
       ['run-recovered'],
     )
+    assert.deepEqual(
+      selectThreadLinkedRuntimeRuns(
+        [summary, { ...runtimeRun('completed'), runId: 'completed-linked' }],
+        new Set(['run-recovered']),
+        new Set(['thread-durable']),
+      ).map((run) => run.runId),
+      ['completed-linked'],
+    )
 
     const recovered = runtimeRunToAgentBlock(summary)
     assert.equal(recovered.id, 'run-recovered')
@@ -783,6 +794,13 @@ describe('durable client event handling', () => {
     assert.equal(recovered.providerTurnId, 'turn-native-4')
     assert.equal(recovered.executionMode, 'project')
     assert.equal(recovered.cost, 'CLI provider metering')
+    assert.equal(
+      runtimeRunToAgentBlock({
+        ...summary,
+        route: { ...summary.route, nativeModelDefault: true },
+      }).model,
+      'Codex default',
+    )
   })
 
   it('preserves resolved hunk state when the server refreshes the remaining diff', () => {

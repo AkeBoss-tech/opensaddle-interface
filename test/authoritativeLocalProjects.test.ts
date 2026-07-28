@@ -4,6 +4,7 @@ import {
   AuthoritativeLocalProjectClient,
   UnsupportedAuthoritativeProjectOperationError,
 } from '../src/services/authoritativeLocalProjects.ts'
+import { AuthoritativeThreadClient } from '../src/services/authoritativeThreads.ts'
 
 function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
@@ -52,4 +53,149 @@ test('does not simulate unsupported legacy local-project features', async () => 
   await assert.rejects(client.localSessions('codex'), UnsupportedAuthoritativeProjectOperationError)
   await assert.rejects(client.archiveManagedArtifact('demo', '.codex/skills/review/SKILL.md'), UnsupportedAuthoritativeProjectOperationError)
   await assert.rejects(client.searchFiles('demo', 'review'), UnsupportedAuthoritativeProjectOperationError)
+})
+
+test('refreshes the authoritative thread version before metadata updates', async () => {
+  const originalFetch = globalThis.fetch
+  let reads = 0
+  const patches: Array<Record<string, unknown>> = []
+  globalThis.fetch = async (input, init) => {
+    const path = input.toString().replace('http://daemon.test', '')
+    if (path === '/api/threads/thread-1' && (!init?.method || init.method === 'GET')) {
+      reads += 1
+      return json({
+        thread_id: 'thread-1',
+        title: 'Durable task',
+        version: reads === 1 ? 2 : 7,
+        archived: false,
+        pinned: false,
+        metadata: { project_id: 'project-1', owner_id: 'local-admin' },
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      })
+    }
+    if (path === '/api/threads/thread-1' && init?.method === 'PATCH') {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      patches.push(body)
+      return json({
+        thread_id: 'thread-1',
+        title: 'Durable task',
+        version: 8,
+        archived: false,
+        pinned: false,
+        metadata: body.metadata,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:01Z',
+      })
+    }
+    return json({ detail: `unexpected path ${path}` }, 404)
+  }
+  try {
+    const client = new AuthoritativeThreadClient('http://daemon.test', () => 'local-admin')
+    await client.get('thread-1')
+    await client.update('thread-1', { runConfig: { executionMode: 'project' } })
+    assert.equal(reads, 2)
+    assert.equal(patches.length, 1)
+    assert.equal(patches[0]?.expected_version, 7)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('rebases a thread update once when a run appends concurrently', async () => {
+  const originalFetch = globalThis.fetch
+  let reads = 0
+  let patches = 0
+  globalThis.fetch = async (input, init) => {
+    const path = input.toString().replace('http://daemon.test', '')
+    if (path === '/api/threads/thread-2' && (!init?.method || init.method === 'GET')) {
+      reads += 1
+      return json({
+        thread_id: 'thread-2',
+        title: 'Concurrent task',
+        version: reads === 1 ? 4 : 5,
+        archived: false,
+        pinned: false,
+        metadata: { project_id: 'project-1' },
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      })
+    }
+    if (path === '/api/threads/thread-2' && init?.method === 'PATCH') {
+      patches += 1
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      if (patches === 1) {
+        assert.equal(body.expected_version, 4)
+        return json({ detail: 'invalid thread version: expected 4, found 5' }, 409)
+      }
+      assert.equal(body.expected_version, 5)
+      return json({
+        thread_id: 'thread-2',
+        title: 'Concurrent task',
+        version: 6,
+        archived: false,
+        pinned: false,
+        metadata: body.metadata,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:01Z',
+      })
+    }
+    return json({ detail: `unexpected path ${path}` }, 404)
+  }
+  try {
+    const client = new AuthoritativeThreadClient('http://daemon.test', () => 'local-admin')
+    const updated = await client.update('thread-2', { pinned: true })
+    assert.equal(updated.pinned, false)
+    assert.equal(reads, 2)
+    assert.equal(patches, 2)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('serializes concurrent metadata updates for one thread', async () => {
+  const originalFetch = globalThis.fetch
+  let version = 1
+  const calls: string[] = []
+  globalThis.fetch = async (input, init) => {
+    const path = input.toString().replace('http://daemon.test', '')
+    if (path !== '/api/threads/thread-3') return json({ detail: 'unexpected path' }, 404)
+    if (!init?.method || init.method === 'GET') {
+      calls.push(`GET:${version}`)
+      return json({
+        thread_id: 'thread-3',
+        title: 'Queued updates',
+        version,
+        archived: false,
+        pinned: false,
+        metadata: { project_id: 'project-1' },
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      })
+    }
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>
+    calls.push(`PATCH:${String(body.expected_version)}`)
+    assert.equal(body.expected_version, version)
+    version += 1
+    return json({
+      thread_id: 'thread-3',
+      title: 'Queued updates',
+      version,
+      archived: false,
+      pinned: Boolean(body.pinned),
+      metadata: body.metadata,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:01Z',
+    })
+  }
+  try {
+    const client = new AuthoritativeThreadClient('http://daemon.test', () => 'local-admin')
+    await Promise.all([
+      client.update('thread-3', { pinned: true }),
+      client.update('thread-3', { runConfig: { executionMode: 'plan' } }),
+    ])
+    assert.deepEqual(calls, ['GET:1', 'PATCH:1', 'GET:2', 'PATCH:2'])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })

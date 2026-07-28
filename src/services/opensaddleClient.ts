@@ -130,6 +130,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
   async startRun(input: {
     projectId: string
     threadId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
     task: string
     agentId?: string
     parentRunId?: string
@@ -147,7 +149,15 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     repo?: string
     approvalId?: string
     reviewProviderKey?: CodingProvider
-  }): Promise<{ runId: string; sessionId: string; mode?: string; route?: RouteEstimate }> {
+  }): Promise<{
+    runId: string
+    sessionId: string
+    threadId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
+    mode?: string
+    route?: RouteEstimate
+  }> {
     if (!(await this.healthy())) {
       if (this.allowFallback) return this.fallback.startRun(input)
       throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
@@ -159,6 +169,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         body: JSON.stringify({
           project_id: input.projectId,
           thread_id: input.threadId,
+          source_message_id: input.sourceMessageId,
+          assistant_message_id: input.assistantMessageId,
           task: input.task,
           agent_id: input.agentId,
           parent_run_id: input.parentRunId,
@@ -182,10 +194,21 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       const data = await res.json() as {
         run_id: string
         session_id: string
+        thread_id?: string
+        source_message_id?: string
+        assistant_message_id?: string
         mode?: string
         route?: ApiRouteEstimate
       }
-      return { runId: data.run_id, sessionId: data.session_id, mode: data.mode, route: routeFromApi(data.route) }
+      return {
+        runId: data.run_id,
+        sessionId: data.session_id,
+        threadId: data.thread_id,
+        sourceMessageId: data.source_message_id,
+        assistantMessageId: data.assistant_message_id,
+        mode: data.mode,
+        route: routeFromApi(data.route),
+      }
     } catch (error) {
       if (this.allowFallback && error instanceof TypeError) return this.fallback.startRun(input)
       throw error
@@ -200,6 +223,9 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       run_id: string
       session_id: string
       project_id: string
+      thread_id?: string
+      source_message_id?: string
+      assistant_message_id?: string
       task: string
       agent_id?: string
       parent_run_id?: string
@@ -219,6 +245,9 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       runId: run.run_id,
       sessionId: run.session_id,
       projectId: run.project_id,
+      threadId: run.thread_id,
+      sourceMessageId: run.source_message_id,
+      assistantMessageId: run.assistant_message_id,
       task: run.task,
       agentId: run.agent_id,
       parentRunId: run.parent_run_id,
@@ -552,7 +581,15 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     if (!res.ok) throw await this.responseError(res)
   }
 
-  async retry(runId: string): Promise<{ runId: string; sessionId: string; parentRunId?: string; route?: RouteEstimate }> {
+  async retry(runId: string): Promise<{
+    runId: string
+    sessionId: string
+    threadId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
+    parentRunId?: string
+    route?: RouteEstimate
+  }> {
     if (!(await this.healthy())) return this.fallback.retry(runId)
     const res = await fetch(`${this.baseUrl}/api/runs/${runId}/retry`, {
       method: 'POST',
@@ -562,12 +599,18 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     const payload = await res.json() as {
       run_id: string
       session_id: string
+      thread_id?: string
+      source_message_id?: string
+      assistant_message_id?: string
       parent_run_id?: string
       route?: RouteEstimate
     }
     return {
       runId: payload.run_id,
       sessionId: payload.session_id,
+      threadId: payload.thread_id,
+      sourceMessageId: payload.source_message_id,
+      assistantMessageId: payload.assistant_message_id,
       parentRunId: payload.parent_run_id,
       route: payload.route,
     }
@@ -586,6 +629,9 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
   async queue(runId: string, text: string): Promise<{
     runId: string
     sessionId: string
+    threadId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
     parentRunId?: string
     queuedAfterRunId?: string
     route?: RouteEstimate
@@ -600,6 +646,9 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     const payload = await res.json() as {
       run_id: string
       session_id: string
+      thread_id?: string
+      source_message_id?: string
+      assistant_message_id?: string
       parent_run_id?: string
       queued_after_run_id?: string
       route?: RouteEstimate
@@ -607,6 +656,9 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     return {
       runId: payload.run_id,
       sessionId: payload.session_id,
+      threadId: payload.thread_id,
+      sourceMessageId: payload.source_message_id,
+      assistantMessageId: payload.assistant_message_id,
       parentRunId: payload.parent_run_id,
       queuedAfterRunId: payload.queued_after_run_id,
       route: payload.route,

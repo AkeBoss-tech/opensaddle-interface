@@ -27,6 +27,37 @@ function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+function messageFromDurable(message: DurableThreadMessage): Message {
+  const payload = message.payload ?? {}
+  return {
+    ...payload,
+    id: message.id,
+    chatId: message.threadId,
+    role: message.role,
+    text: message.text,
+    createdAt: message.createdAt,
+    runtimeRunId: typeof payload.runtime_run_id === 'string'
+      ? payload.runtime_run_id
+      : typeof payload.runtimeRunId === 'string'
+        ? payload.runtimeRunId
+        : undefined,
+  } as Message
+}
+
+function mergeRuntimeProjection(remote: Message, existing: Message | undefined): Message {
+  if (
+    !existing?.run
+    || !remote.runtimeRunId
+    || (existing.runtimeRunId !== remote.runtimeRunId && existing.run.id !== remote.runtimeRunId)
+  ) return remote
+  return {
+    ...remote,
+    run: existing.run,
+    routingNote: remote.routingNote ?? existing.routingNote,
+    lightHtml: remote.lightHtml ?? existing.lightHtml,
+  }
+}
+
 interface StoreApi {
   data: AppData
   setTheme: (t: Theme) => void
@@ -43,7 +74,10 @@ interface StoreApi {
   setChatVisibility: (id: string, visibility: Visibility, sharedWith?: string[]) => void
   branchChat: (id: string) => Chat | null
   branchChatFromMessage: (chatId: string, messageId: string) => Chat | null
-  appendMessage: (msg: Omit<Message, 'id' | 'createdAt'> & { id?: string }) => Message
+  appendMessage: (
+    msg: Omit<Message, 'id' | 'createdAt'> & { id?: string },
+    options?: { persist?: boolean },
+  ) => Message
   updateMessage: (id: string, patch: Partial<Message>) => void
   createProject: (name: string, parentId: string | null, description: string) => string
   importLocalProject: (input: { name: string; description: string; local: LocalProjectSettings }) => string
@@ -370,14 +404,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           runConfig: thread.runConfig as Chat['runConfig'],
           continuation: thread.continuation,
         }))
-        const remoteMessages = durableMessages.map<Message>((message) => ({
-          ...(message.payload ?? {}),
-          id: message.id,
-          chatId: message.threadId,
-          role: message.role,
-          text: message.text,
-          createdAt: message.createdAt,
-        }) as Message)
+        const remoteMessages = durableMessages.map(messageFromDurable)
+          .map((message) => mergeRuntimeProjection(
+            message,
+            next.messages.find((existing) => existing.id === message.id),
+          ))
         const remoteChatIds = new Set(remoteChats.map((thread) => thread.id))
         const remoteMessageIds = new Set(remoteMessages.map((message) => message.id))
         next.chats = [...remoteChats, ...next.chats.filter((thread) => !remoteChatIds.has(thread.id))]
@@ -403,20 +434,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const refresh = async () => {
       const page = await threads.messages(threadId, { limit: 250 })
       if (cancelled) return
-      const remote = page.messages.map<Message>((message) => ({
-        ...(message.payload ?? {}),
-        id: message.id,
-        chatId: message.threadId,
-        role: message.role,
-        text: message.text,
-        createdAt: message.createdAt,
-      }) as Message)
+      const durable = page.messages.map(messageFromDurable)
       setData((current) => {
         const currentById = new Map(
           current.messages
             .filter((message) => message.chatId === threadId)
             .map((message) => [message.id, message]),
         )
+        const remote = durable.map((message) => mergeRuntimeProjection(
+          message,
+          currentById.get(message.id),
+        ))
         const changed = remote.some((message) => {
           const existing = currentById.get(message.id)
           return !existing
@@ -509,25 +537,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           runConfig: thread.runConfig as Chat['runConfig'],
           continuation: thread.continuation,
         }))
-        const remoteMessages = changedMessages.map<Message>((message) => ({
-          ...(message.payload ?? {}),
-          id: message.id,
-          chatId: message.threadId,
-          role: message.role,
-          text: message.text,
-          createdAt: message.createdAt,
-        }) as Message)
-        setData((current) => normalizeWorkspace({
-          ...current,
-          chats: [
-            ...remoteChats,
-            ...current.chats.filter((chat) => !changedIds.has(chat.id)),
-          ],
-          messages: [
-            ...remoteMessages,
-            ...current.messages.filter((message) => !changedIds.has(message.chatId)),
-          ],
-        }))
+        const remoteMessages = changedMessages.map(messageFromDurable)
+        setData((current) => {
+          const currentById = new Map(current.messages.map((message) => [message.id, message]))
+          return normalizeWorkspace({
+            ...current,
+            chats: [
+              ...remoteChats,
+              ...current.chats.filter((chat) => !changedIds.has(chat.id)),
+            ],
+            messages: [
+              ...remoteMessages.map((message) => mergeRuntimeProjection(
+                message,
+                currentById.get(message.id),
+              )),
+              ...current.messages.filter((message) => !changedIds.has(message.chatId)),
+            ],
+          })
+        })
       } finally {
         refreshing = false
       }
@@ -577,6 +604,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ...(message.routingNote ? { routingNote: message.routingNote } : {}),
     ...(message.run ? { run: message.run } : {}),
     ...(message.lightHtml ? { lightHtml: message.lightHtml } : {}),
+    ...(message.runtimeRunId ? { runtime_run_id: message.runtimeRunId } : {}),
   }), [])
 
   const reportThreadSyncError = useCallback((error: unknown) => {
@@ -854,7 +882,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return created
     },
-    appendMessage: (msg) => {
+    appendMessage: (msg, options) => {
       const full: Message = { ...msg, id: msg.id ?? uid('msg'), createdAt: Date.now() }
       // Make the optimistic message immediately available to follow-up
       // updateMessage calls. A runtime can start emitting before React has
@@ -869,7 +897,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         return d
       })
-      if (services?.threads) {
+      if (services?.threads && options?.persist !== false) {
         const prior = threadMessageTailRef.current.get(full.chatId) ?? Promise.resolve()
         const pending = prior.catch(() => undefined).then(async () => {
           await threadCreatePromisesRef.current.get(full.chatId)

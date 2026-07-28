@@ -78,6 +78,7 @@ export class AuthoritativeThreadClient implements ThreadClient {
   private readonly token?: string
   private readonly versions = new Map<string, number>()
   private readonly metadata = new Map<string, Record<string, unknown>>()
+  private readonly updateTails = new Map<string, Promise<void>>()
 
   constructor(baseUrl: string, getUserId: () => string, token?: string) {
     this.baseUrl = baseUrl.replace(/\/$/, '')
@@ -161,27 +162,56 @@ export class AuthoritativeThreadClient implements ThreadClient {
   }
 
   async update(threadId: string, input: Parameters<ThreadClient['update']>[1]): Promise<DurableThread> {
-    if (!this.versions.has(threadId)) await this.get(threadId)
-    const metadata = {
-      ...(this.metadata.get(threadId) ?? {}),
-      ...(input.visibility === undefined ? {} : { visibility: input.visibility }),
-      ...(input.sharedWith === undefined ? {} : { shared_with: input.sharedWith }),
-      ...(input.agentId === undefined ? {} : { agent_id: input.agentId }),
-      ...(input.runConfig === undefined ? {} : { run_config: input.runConfig }),
-      ...(input.continuation === undefined ? {} : { continuation: input.continuation }),
+    const prior = this.updateTails.get(threadId) ?? Promise.resolve()
+    const operation = prior.catch(() => undefined).then(
+      () => this.updateAuthoritative(threadId, input),
+    )
+    const tail = operation.then(() => undefined, () => undefined)
+    this.updateTails.set(threadId, tail)
+    try {
+      return await operation
+    } finally {
+      if (this.updateTails.get(threadId) === tail) this.updateTails.delete(threadId)
     }
-    const thread = await this.request<DomainThread>(`/api/threads/${encodeURIComponent(threadId)}`, {
-      method: 'PATCH',
-      headers: this.headers(true),
-      body: JSON.stringify({
-        expected_version: this.versions.get(threadId),
-        title: input.title,
-        pinned: input.pinned,
-        archived: input.archived,
-        metadata,
-      }),
-    })
-    return this.remember(thread)
+  }
+
+  private async updateAuthoritative(
+    threadId: string,
+    input: Parameters<ThreadClient['update']>[1],
+  ): Promise<DurableThread> {
+    // Runs can append messages while the renderer is idle—or between our read
+    // and patch—advancing the thread version. Rebase one metadata mutation on
+    // the latest authoritative thread rather than surfacing a transient 409.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await this.get(threadId)
+      const metadata = {
+        ...(this.metadata.get(threadId) ?? {}),
+        ...(input.visibility === undefined ? {} : { visibility: input.visibility }),
+        ...(input.sharedWith === undefined ? {} : { shared_with: input.sharedWith }),
+        ...(input.agentId === undefined ? {} : { agent_id: input.agentId }),
+        ...(input.runConfig === undefined ? {} : { run_config: input.runConfig }),
+        ...(input.continuation === undefined ? {} : { continuation: input.continuation }),
+      }
+      try {
+        const thread = await this.request<DomainThread>(`/api/threads/${encodeURIComponent(threadId)}`, {
+          method: 'PATCH',
+          headers: this.headers(true),
+          body: JSON.stringify({
+            expected_version: this.versions.get(threadId),
+            title: input.title,
+            pinned: input.pinned,
+            archived: input.archived,
+            metadata,
+          }),
+        })
+        return this.remember(thread)
+      } catch (error) {
+        if (attempt === 1 || !(error instanceof Error) || !error.message.includes('invalid thread version')) {
+          throw error
+        }
+      }
+    }
+    throw new Error('Thread update did not complete')
   }
 
   async remove(threadId: string): Promise<void> {

@@ -276,6 +276,8 @@ export interface Message {
   text: string
   createdAt: number
   routingNote?: string
+  /** Durable server run projected through this conversation message. */
+  runtimeRunId?: string
   run?: AgentRunBlock
   lightHtml?: string
 }

@@ -3,7 +3,12 @@ import { useStore } from '../../data/store'
 import { applyRunEvent } from '../../lib/runEvents'
 import type { RuntimeRunSummary, SessionEvent } from '../../services/contracts'
 import type { AgentRunBlock } from '../../types'
-import { isRecoverableRuntimeRun, runtimeRunToAgentBlock, selectOrphanedRuntimeRuns } from './recovery'
+import {
+  isRecoverableRuntimeRun,
+  runtimeRunToAgentBlock,
+  selectOrphanedRuntimeRuns,
+  selectThreadLinkedRuntimeRuns,
+} from './recovery'
 import { appendTranscript, eventText } from './transcript'
 
 export interface ManagedRun {
@@ -36,6 +41,9 @@ interface RunRegistryApi {
   queue: (runId: string, text: string) => Promise<{
     runId: string
     sessionId: string
+    threadId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
     parentRunId?: string
     queuedAfterRunId?: string
     route?: import('../../services/contracts').RouteEstimate
@@ -56,7 +64,6 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   const {
     data,
     services,
-    persistenceStatus,
     threadHistoryHydrated,
     createChat,
     appendMessage,
@@ -69,7 +76,6 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   const textByRun = useRef(new Map<string, string>())
   const runById = useRef(new Map<string, AgentRunBlock>())
   const dataRef = useRef(data)
-  const reconciledRuntime = useRef<object | null>(null)
   const recoveringRuns = useRef(new Set<string>())
   const validatedStoredRuns = useRef(new Set<string>())
   dataRef.current = data
@@ -220,37 +226,81 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
     }
   }, [data.messages, services, track, updateMessage])
 
-  // A server-owned run can outlive the renderer before its optimistic
-  // assistant message reaches thread storage. Once durable thread hydration is
-  // complete, reconstruct any active orphan as a background-created task and
-  // replay the full event snapshot into the normal conversation UI.
+  // A server-owned run can begin outside the current renderer. Continuously
+  // adopt it into its declared durable thread, or recover a legacy active run
+  // into a new task, then replay the full event snapshot into conversation UI.
   useEffect(() => {
     const runtime = services?.runtime
     if (
       !runtime?.listRuns
-      || persistenceStatus !== 'synced'
       || !threadHistoryHydrated
-      || reconciledRuntime.current === runtime
     ) return
     let cancelled = false
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        let durableRuns: RuntimeRunSummary[] | undefined
-        let lastError: unknown
-        for (let attempt = 0; attempt < 3 && !durableRuns && !cancelled; attempt += 1) {
-          try {
-            durableRuns = await runtime.listRuns!()
-          } catch (error) {
-            lastError = error
-            if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 500))
-          }
-        }
-        if (!durableRuns) throw lastError ?? new Error('The local runtime did not return durable runs')
+    let refreshing = false
+    let reportedFailure = false
+    const reconcile = async () => {
+      if (refreshing) return
+      refreshing = true
+      try {
+        const durableRuns: RuntimeRunSummary[] = await runtime.listRuns!()
         if (cancelled) return
         const snapshot = dataRef.current
-        const represented = new Set(snapshot.messages.flatMap((message) => message.run ? [message.run.id] : []))
+        const represented = new Set(snapshot.messages.flatMap((message) => [
+          ...(message.run ? [message.run.id] : []),
+          ...(message.runtimeRunId ? [message.runtimeRunId] : []),
+        ]))
+        const threadIds = new Set(snapshot.chats.map((chat) => chat.id))
         const projectIds = new Set(snapshot.projects.map((project) => project.id))
-        for (const durableRun of selectOrphanedRuntimeRuns(durableRuns, represented, projectIds)) {
+        const durableById = new Map(durableRuns.map((run) => [run.runId, run]))
+
+        // Thread hydration intentionally stores only durable provider output
+        // and the runtime identity. Reconstruct the interactive run card from
+        // the authoritative runtime snapshot, then replay its complete event
+        // history into the same message.
+        for (const message of snapshot.messages) {
+          if (
+            message.run
+            || !message.runtimeRunId
+          ) continue
+          const durableRun = durableById.get(message.runtimeRunId)
+          if (!durableRun || durableRun.threadId !== message.chatId) continue
+          recoveringRuns.current.add(durableRun.runId)
+          const initialRun = runtimeRunToAgentBlock(durableRun)
+          const routingNote = `Server · ${initialRun.model} · ${initialRun.harness} · ${initialRun.runtime}`
+          updateMessage(message.id, { run: initialRun, routingNote })
+          track({
+            runId: durableRun.runId,
+            threadId: message.chatId,
+            messageId: message.id,
+            initialRun,
+            initialText: message.text,
+            parentRunId: durableRun.parentRunId,
+          })
+        }
+
+        for (const durableRun of selectThreadLinkedRuntimeRuns(durableRuns, represented, threadIds)) {
+          if (cancelled || recoveringRuns.current.has(durableRun.runId) || !durableRun.threadId) continue
+          recoveringRuns.current.add(durableRun.runId)
+          const initialRun = runtimeRunToAgentBlock(durableRun)
+          const message = appendMessage({
+            id: durableRun.assistantMessageId,
+            chatId: durableRun.threadId,
+            role: 'assistant',
+            text: '',
+            runtimeRunId: durableRun.runId,
+            routingNote: `Server · ${initialRun.model} · ${initialRun.harness} · ${initialRun.runtime}`,
+            run: initialRun,
+          }, { persist: !durableRun.assistantMessageId })
+          track({
+            runId: durableRun.runId,
+            threadId: durableRun.threadId,
+            messageId: message.id,
+            initialRun,
+            parentRunId: durableRun.parentRunId,
+          })
+          represented.add(durableRun.runId)
+        }
+        for (const durableRun of selectOrphanedRuntimeRuns(durableRuns, represented, projectIds).filter((run) => !run.threadId)) {
           if (cancelled || recoveringRuns.current.has(durableRun.runId)) continue
           recoveringRuns.current.add(durableRun.runId)
           const provider = durableRun.route.providerKey
@@ -296,16 +346,24 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
           })
           represented.add(durableRun.runId)
         }
-        reconciledRuntime.current = runtime
-      })().catch((error: unknown) => {
-        if (!cancelled) toast('Task recovery unavailable', error instanceof Error ? error.message : String(error))
-      })
-    }, 700)
+        reportedFailure = false
+      } catch (error) {
+        if (!cancelled && !reportedFailure) {
+          reportedFailure = true
+          toast('Task recovery unavailable', error instanceof Error ? error.message : String(error))
+        }
+      } finally {
+        refreshing = false
+      }
+    }
+    const kickoff = window.setTimeout(() => void reconcile(), 700)
+    const timer = window.setInterval(() => void reconcile(), 2_500)
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
+      window.clearTimeout(kickoff)
+      window.clearInterval(timer)
     }
-  }, [appendMessage, createChat, persistenceStatus, services, threadHistoryHydrated, toast, track])
+  }, [appendMessage, createChat, services, threadHistoryHydrated, toast, track, updateMessage])
 
   const stop = useCallback(async (runId: string) => {
     release(runId)
@@ -363,12 +421,14 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
       lastSequence: undefined,
     }
     const message = appendMessage({
+      id: started.assistantMessageId,
       chatId: threadId,
       role: 'assistant',
       text: '',
+      runtimeRunId: started.runId,
       routingNote: `Retry · ${previousRun.model} · ${previousRun.harness} · ${previousRun.runtime}`,
       run: nextRun,
-    })
+    }, { persist: !started.assistantMessageId })
     track({
       runId: started.runId,
       threadId,

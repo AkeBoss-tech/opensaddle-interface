@@ -63,6 +63,9 @@ export interface RuntimeRunSummary {
   runId: string
   sessionId: string
   projectId: string
+  threadId?: string
+  sourceMessageId?: string
+  assistantMessageId?: string
   task: string
   agentId?: string
   parentRunId?: string
@@ -127,6 +130,8 @@ export interface RuntimeClient {
   startRun(input: {
     projectId: string
     threadId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
     task: string
     agentId?: string
     parentRunId?: string
@@ -144,17 +149,36 @@ export interface RuntimeClient {
     repo?: string
     approvalId?: string
     reviewProviderKey?: CodingProvider
-  }): Promise<{ runId: string; sessionId: string; mode?: string; route?: RouteEstimate }>
+  }): Promise<{
+    runId: string
+    sessionId: string
+    threadId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
+    mode?: string
+    route?: RouteEstimate
+  }>
   listRuns?(): Promise<RuntimeRunSummary[]>
   subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void
   cancel(runId: string): Promise<void>
   pause(runId: string): Promise<void>
   resume(runId: string): Promise<void>
-  retry(runId: string): Promise<{ runId: string; sessionId: string; parentRunId?: string; route?: RouteEstimate }>
+  retry(runId: string): Promise<{
+    runId: string
+    sessionId: string
+    threadId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
+    parentRunId?: string
+    route?: RouteEstimate
+  }>
   steer(runId: string, text: string): Promise<void>
   queue(runId: string, text: string): Promise<{
     runId: string
     sessionId: string
+    threadId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
     parentRunId?: string
     queuedAfterRunId?: string
     route?: RouteEstimate
