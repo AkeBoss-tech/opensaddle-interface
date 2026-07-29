@@ -8,8 +8,13 @@ export function WorkflowsPage() {
   const [searchParams] = useSearchParams()
   const selectedRunId = searchParams.get('run')
   const { data, createWorkflow, updateWorkflowStatus, runWorkflow, toast } = useStore()
-  const [name, setName] = useState('New workflow')
   const [runningId, setRunningId] = useState<string | null>(null)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiInput, setAiInput] = useState('')
+  const [aiLog, setAiLog] = useState<Array<{ role: 'user' | 'agent'; text: string }>>([
+    { role: 'agent', text: 'Tell me what should trigger this workflow, what the agent should do, and where a human approval belongs. I’ll turn it into reviewable Krail YAML.' },
+  ])
+  const [generatedWorkflow, setGeneratedWorkflow] = useState<{ name: string; yaml: string; prompt: string } | null>(null)
 
   const workflows = useMemo(
     () => data.workflows.filter((w) => !projectId || w.projectId === projectId),
@@ -43,6 +48,80 @@ export function WorkflowsPage() {
     }, 0)
   }, [selectedRunId])
 
+  const askWorkflowAI = () => {
+    const prompt = aiInput.trim()
+    if (!prompt) return
+    const project = data.projects.find((item) => item.id === (projectId ?? data.activeProjectId))
+    const agents = data.agents.filter((item) => item.projectId === (project?.id ?? data.activeProjectId))
+    const workflowName = prompt
+      .replace(/[^\w\s-]/g, '')
+      .split(/\s+/)
+      .slice(0, 7)
+      .join(' ')
+      .replace(/^\w/, (letter) => letter.toUpperCase()) || 'AI generated workflow'
+    const agent = agents[0]
+    const needsApproval = /send|publish|write|update|delete|customer|external/i.test(prompt)
+    const yaml = `apiVersion: krail.dev/v1
+kind: Workflow
+metadata:
+  name: ${workflowName.toLowerCase().replace(/\s+/g, '-')}
+  project: ${project?.name ?? 'workspace'}
+spec:
+  trigger:
+    type: manual
+  inputs:
+    request:
+      type: string
+      required: true
+  steps:
+    - id: gather-context
+      uses: opensaddle.context
+      with:
+        project: ${project?.id ?? data.activeProjectId}
+    - id: run-agent
+      uses: opensaddle.agent
+      with:
+        agent: ${agent?.name ?? 'auto'}
+        task: "${prompt.replaceAll('"', '\\"')}"
+${needsApproval ? `    - id: human-approval
+      uses: opensaddle.approval
+      with:
+        required: true
+        scope: external-write
+` : ''}  policy:
+    maxRuntime: 15m
+    auditTrace: required
+    onFailure: notify-owner`
+    setAiLog((log) => [...log, { role: 'user', text: prompt }, { role: 'agent', text: `I drafted “${workflowName}” in Krail YAML. Review the trigger, agent, approval boundary, and failure policy below before creating it.` }])
+    setGeneratedWorkflow({ name: workflowName, yaml, prompt })
+    setAiInput('')
+  }
+
+  const createGeneratedWorkflow = () => {
+    if (!generatedWorkflow) return
+    const project = projectId ?? data.activeProjectId
+    const agent = data.agents.find((item) => item.projectId === project)
+    const needsApproval = /send|publish|write|update|delete|customer|external/i.test(generatedWorkflow.prompt)
+    createWorkflow({
+      projectId: project,
+      name: generatedWorkflow.name,
+      description: `AI-authored from Krail YAML: ${generatedWorkflow.prompt}`,
+      trigger: 'manual',
+      agentIds: agent ? [agent.id] : [],
+      steps: [
+        { id: 'gather-context', label: 'Gather project context', kind: 'context' },
+        { id: 'run-agent', label: `Run ${agent?.name ?? 'auto-selected agent'}`, kind: 'agent' },
+        ...(needsApproval ? [{ id: 'human-approval', label: 'Human approval for external write', kind: 'approval' }] : []),
+      ],
+      status: 'draft',
+      approvalRequired: needsApproval,
+    })
+    toast('Workflow draft created', `${generatedWorkflow.name} · Krail YAML`)
+    setAiOpen(false)
+    setGeneratedWorkflow(null)
+    setAiLog([{ role: 'agent', text: 'Tell me what should trigger this workflow, what the agent should do, and where a human approval belongs. I’ll turn it into reviewable Krail YAML.' }])
+  }
+
   return (
     <div className="content-page">
       <div className="page-header">
@@ -52,25 +131,7 @@ export function WorkflowsPage() {
           <p>Scheduled and event-driven agent pipelines — separate from chats, with their own run history and approvals.</p>
         </div>
         <div className="page-header-actions">
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="primary-btn" onClick={() => {
-            const project = projectId ?? data.activeProjectId
-            createWorkflow({
-              projectId: project,
-              name,
-              description: 'Manual workflow created from the workflows area.',
-              trigger: 'manual',
-              agentIds: data.agents.filter((a) => a.projectId === project).slice(0, 1).map((a) => a.id),
-              steps: [
-                { id: 's1', label: 'Gather context', kind: 'context' },
-                { id: 's2', label: 'Run agent', kind: 'agent' },
-              ],
-              status: 'draft',
-              approvalRequired: false,
-            })
-            toast('Workflow created', name)
-            setName('New workflow')
-          }}>Create workflow</button>
+          <button className="primary-btn" onClick={() => setAiOpen(true)}><Icon name="spark" className="icon sm" />Create with AI</button>
         </div>
       </div>
 
@@ -139,6 +200,39 @@ export function WorkflowsPage() {
           </div>
         </div>
       </div>
+
+      {aiOpen && (
+        <div className="modal-backdrop open" onClick={(event) => { if (event.target === event.currentTarget) setAiOpen(false) }}>
+          <div className="modal workflow-ai-modal">
+            <div className="modal-head">
+              <div className="modal-icon"><Icon name="spark" /></div>
+              <div><h3>Build a workflow with AI</h3><p>Describe the outcome conversationally, then review the generated Krail YAML.</p></div>
+              <button className="icon-btn" onClick={() => setAiOpen(false)}><Icon name="x" className="icon sm" /></button>
+            </div>
+            <div className="modal-body workflow-ai-body">
+              <div className="workflow-ai-chat">
+                <div className="workflow-ai-log">
+                  {aiLog.map((message, index) => <div className={`workflow-ai-message ${message.role}`} key={`${message.role}-${index}`}>{message.role === 'agent' && <Icon name="spark" className="icon sm" />}<p>{message.text}</p></div>)}
+                </div>
+                <div className="workflow-ai-composer">
+                  <textarea value={aiInput} onChange={(event) => setAiInput(event.target.value)} onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); askWorkflowAI() }
+                  }} placeholder="Example: Every weekday, summarize failed claims automations and ask an admin to approve any customer follow-up…" />
+                  <button className="primary-btn" disabled={!aiInput.trim()} onClick={askWorkflowAI}><Icon name="arrow" className="icon sm" />Send</button>
+                </div>
+              </div>
+              <div className="workflow-yaml-preview">
+                <header><div><span>KRAIL YAML</span><strong>{generatedWorkflow?.name ?? 'Workflow preview'}</strong></div><span className={generatedWorkflow ? 'ready' : ''}>{generatedWorkflow ? 'Ready to review' : 'Waiting for your description'}</span></header>
+                {generatedWorkflow ? <pre>{generatedWorkflow.yaml}</pre> : <div className="workflow-yaml-empty"><Icon name="code" /><p>The generated definition will appear here with triggers, agent steps, approvals, budgets, and failure policy.</p></div>}
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="ghost-btn" onClick={() => setAiOpen(false)}>Cancel</button>
+              <button className="primary-btn" disabled={!generatedWorkflow} onClick={createGeneratedWorkflow}>Create draft from YAML</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

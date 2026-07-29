@@ -1,23 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="OpenSaddle">
   <defs>
-    <radialGradient id="os-ground" cx="50%" cy="40%" r="75%">
-      <stop stop-color="#171A25"/>
-      <stop offset="1" stop-color="#07080C"/>
+    <radialGradient id="os-ground" cx="50%" cy="38%" r="76%">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EFF1F7"/>
     </radialGradient>
     <linearGradient id="os-sun" x1="12" y1="4" x2="12" y2="13">
-      <stop stop-color="#FF6A00"/>
-      <stop offset="1" stop-color="#FFD83D"/>
+      <stop stop-color="#F75C00"/>
+      <stop offset="1" stop-color="#FFC928"/>
     </linearGradient>
     <linearGradient id="os-water" x1="8" y1="12" x2="16" y2="14">
-      <stop stop-color="#35F0D4"/>
-      <stop offset="1" stop-color="#18BFE7"/>
+      <stop stop-color="#00D4BE"/>
+      <stop offset="1" stop-color="#069FD8"/>
     </linearGradient>
     <linearGradient id="os-saddle" x1="5" y1="10" x2="16" y2="20">
-      <stop stop-color="#FF377C"/>
-      <stop offset="1" stop-color="#7A1767"/>
+      <stop stop-color="#FF2D75"/>
+      <stop offset="1" stop-color="#651250"/>
     </linearGradient>
   </defs>
   <rect width="24" height="24" rx="5.5" fill="url(#os-ground)"/>
+  <rect x=".5" y=".5" width="23" height="23" rx="5" fill="none" stroke="#24283B" stroke-opacity=".14"/>
   <circle cx="12" cy="8.7" r="4.5" fill="url(#os-sun)"/>
   <path d="M8.6 12.6Q12 12 15.4 12.6Q14.3 14.2 12 14.4Q9.7 14.2 8.6 12.6Z" fill="url(#os-water)"/>
   <path d="M4.7 10.4C7 9.2 8 13.2 12 14.2C16 13.2 17 9.2 19.3 10.4C18.6 16 15.7 18.8 12 19.3C8.3 18.8 5.4 16 4.7 10.4Z" fill="url(#os-saddle)"/>

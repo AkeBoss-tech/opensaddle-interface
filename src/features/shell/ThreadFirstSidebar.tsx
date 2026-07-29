@@ -1,10 +1,35 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
-import { selectThreadSummaries, type ThreadSummary } from '../thread/domain'
-import type { AppData, Project } from '../../types'
-import type { ProjectArtifactManifest } from '../../services/contracts'
+import type { Project } from '../../types'
+import { selectThreadSummaries } from '../thread/domain'
+import '../../styles/team-shell.css'
+
+const TEAM_COLORS_KEY = 'opensaddle.team-colors'
+const PINNED_THREADS_KEY = 'opensaddle.pinned-threads'
+const PINNED_SHORTCUTS_KEY = 'opensaddle.pinned-shortcuts'
+const SEEN_THREADS_KEY = 'opensaddle.seen-threads'
+const HIDDEN_TEAMS_KEY = 'opensaddle.hidden-teams'
+const PROJECT_ACCESS_KEY = 'opensaddle.project-access'
+
+function readLocalRecord(key: string): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+
+function readLocalList(key: string): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? '[]')
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
 
 function relativeTime(timestamp: number) {
   const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000))
@@ -15,359 +40,720 @@ function relativeTime(timestamp: number) {
   return `${Math.round(hours / 24)}d`
 }
 
-function threadTone(status: ThreadSummary['status']) {
-  if (status === 'running' || status === 'planning' || status === 'reviewing') return 'running'
-  if (status === 'paused') return 'paused'
-  if (status === 'blocked' || status === 'failed' || status === 'needs_approval' || status === 'needs_input') return 'blocked'
-  return 'ready'
+function teamInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
 }
 
-function ProjectTree({
-  projects,
-  parentId,
-  activeProjectId,
-  data,
-  manifests,
-  expanded,
-  locationPath,
-  onOpen,
-  onToggle,
-  onOpenWiki,
-  onOpenSites,
-  onOpenSite,
-  onOpenLocalArtifact,
-}: {
-  projects: Project[]
-  parentId: string | null
-  activeProjectId: string
-  data: AppData
-  manifests: Record<string, ProjectArtifactManifest>
-  expanded: Set<string>
-  locationPath: string
-  onOpen: (project: Project) => void
-  onToggle: (projectId: string) => void
-  onOpenWiki: (project: Project) => void
-  onOpenSites: (project: Project) => void
-  onOpenSite: (project: Project, siteId: string) => void
-  onOpenLocalArtifact: (project: Project, tab: 'documentation' | 'agents' | 'skills') => void
-}) {
-  const children = projects.filter((project) => project.parentId === parentId)
-  if (!children.length) return null
-  return (
-    <div className={parentId ? 'tf-project-children' : 'tf-project-tree'}>
-      {children.map((project) => {
-        const sites = data.sites.filter((site) => site.projectId === project.id)
-        const wikiCount = data.wikiSummaries.filter((summary) => summary.projectId === project.id).length
-        const agents = data.agents.filter((agent) => agent.projectId === project.id)
-        const documents = project.local?.documents ?? []
-        const skills = project.local?.skills ?? []
-        const manifest = manifests[project.id]
-        const isOpen = expanded.has(project.id)
-        return (
-          <div key={project.id} className="tf-project-node">
-            <div className="tf-project-row-wrap">
-              <button
-                className="tf-project-disclosure"
-                aria-label={isOpen ? `Collapse ${project.name}` : `Expand ${project.name}`}
-                aria-expanded={isOpen}
-                onClick={() => onToggle(project.id)}
-              >
-                <Icon name="chevron" className={`icon xs tf-chevron ${isOpen ? 'open' : ''}`} />
-              </button>
-              <button
-                className={`tf-project-row ${activeProjectId === project.id ? 'active' : ''}`}
-                onClick={() => onOpen(project)}
-              >
-                <Icon name="folder" className={`icon sm ${project.workspaceKind === 'local' ? 'tf-local-folder' : ''}`} />
-                <span>{project.name}</span>
-                {project.workspaceKind === 'local' && <small className="tf-project-kind">Local</small>}
-              </button>
-            </div>
-            {isOpen && (
-              <div className="tf-project-artifacts">
-                <button
-                  className={`tf-artifact-row ${locationPath === '/wiki' && data.wikiSettings.selectedProjectId === project.id ? 'active' : ''}`}
-                  onClick={() => onOpenWiki(project)}
-                >
-                  <Icon name="book" className="icon sm tf-artifact-icon wiki" />
-                  <span>Wiki</span>
-                  <small>{wikiCount || manifest?.artifacts.filter((artifact) => artifact.path.toLowerCase().includes('wiki')).length || '—'}</small>
-                </button>
-                <button className={`tf-artifact-row ${locationPath === '/sites' && activeProjectId === project.id ? 'active' : ''}`} onClick={() => onOpenSites(project)}>
-                  <Icon name="globe" className="icon sm tf-artifact-icon site" />
-                  <span>Sites</span>
-                  <small>{sites.length + (manifest?.counts.site ?? 0)}</small>
-                </button>
-                {sites.map((site) => (
-                  <button
-                    key={site.id}
-                    className={`tf-artifact-row ${locationPath === `/site/${site.id}` ? 'active' : ''}`}
-                    onClick={() => onOpenSite(project, site.id)}
-                  >
-                    <Icon name="globe" className="icon sm tf-artifact-icon site" />
-                    <span>{site.name}</span>
-                    <small>Site</small>
-                  </button>
-                ))}
-                {project.local && (
-                  <>
-                    <button className="tf-artifact-row" onClick={() => onOpenLocalArtifact(project, 'documentation')}>
-                      <Icon name="file" className="icon sm tf-artifact-icon docs" />
-                      <span>Documentation</span>
-                      <small>{manifest?.counts.documentation ?? documents.length}</small>
-                    </button>
-                    <button
-                      className={`tf-artifact-row ${locationPath === `/project/${project.id}/agents` ? 'active' : ''}`}
-                      onClick={() => onOpenLocalArtifact(project, 'agents')}
-                    >
-                      <Icon name="spark" className="icon sm tf-artifact-icon agents" />
-                      <span>Agents</span>
-                      <small>{agents.length + (manifest?.counts.agent ?? 0)}</small>
-                    </button>
-                    <button
-                      className={`tf-artifact-row ${locationPath === `/project/${project.id}/skills` ? 'active' : ''}`}
-                      onClick={() => onOpenLocalArtifact(project, 'skills')}
-                    >
-                      <Icon name="plugin" className="icon sm tf-artifact-icon skills" />
-                      <span>Skills</span>
-                      <small>{manifest?.counts.skill ?? skills.length}</small>
-                    </button>
-                  </>
-                )}
-                <ProjectTree
-                  projects={projects}
-                  parentId={project.id}
-                  activeProjectId={activeProjectId}
-                  data={data}
-                  manifests={manifests}
-                  expanded={expanded}
-                  locationPath={locationPath}
-                  onOpen={onOpen}
-                  onToggle={onToggle}
-                  onOpenWiki={onOpenWiki}
-                  onOpenSites={onOpenSites}
-                  onOpenSite={onOpenSite}
-                  onOpenLocalArtifact={onOpenLocalArtifact}
-                />
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
+function projectScope(projects: Project[], rootId: string) {
+  const ids = new Set([rootId])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const project of projects) {
+      if (project.parentId && ids.has(project.parentId) && !ids.has(project.id)) {
+        ids.add(project.id)
+        changed = true
+      }
+    }
+  }
+  return ids
+}
+
+function teamForProject(projects: Project[], teams: Project[], projectId: string) {
+  const teamIds = new Set(teams.map((team) => team.id))
+  let current = projects.find((project) => project.id === projectId)
+  while (current) {
+    if (teamIds.has(current.id)) return current
+    current = projects.find((project) => project.id === current?.parentId)
+  }
+  return teams[0]
 }
 
 export function ThreadFirstSidebar({
   collapsed,
+  globalMode,
   onCollapsedChange,
-  onCreateProject,
   onResizeStart,
   onResetWidth,
 }: {
   collapsed: boolean
+  globalMode: boolean
   onCollapsedChange: (collapsed: boolean) => void
   onCreateProject: () => void
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void
   onResetWidth: () => void
 }) {
-  const store = useStore()
-  const { data, createChat, setActiveChat, setActiveProject, services, localProjectManifests } = store
+  const {
+    data,
+    archiveChat,
+    branchChat,
+    createChat,
+    setActiveChat,
+    setActiveProject,
+    services,
+    removeLocalProject,
+    toast,
+    updateProject,
+    updateWikiSettings,
+  } = useStore()
   const navigate = useNavigate()
   const location = useLocation()
   const [projectsOpen, setProjectsOpen] = useState(true)
-  const [localProjectsOpen, setLocalProjectsOpen] = useState(true)
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set(
-    data.projects.filter((project) => project.workspaceKind === 'local').map((project) => project.id),
-  ))
+  const [channelsOpen, setChannelsOpen] = useState(true)
+  const [adminOpen, setAdminOpen] = useState(true)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [agentChooserOpen, setAgentChooserOpen] = useState(false)
+  const [configureTeam, setConfigureTeam] = useState<Project | null>(null)
+  const [teamName, setTeamName] = useState('')
+  const [teamColor, setTeamColor] = useState('#73a8dd')
+  const [teamColors, setTeamColors] = useState<Record<string, string>>(() => readLocalRecord(TEAM_COLORS_KEY))
+  const [pinnedThreadIds, setPinnedThreadIds] = useState<string[]>(() => readLocalList(PINNED_THREADS_KEY))
+  const [pinnedShortcutIds, setPinnedShortcutIds] = useState<string[]>(() => readLocalList(PINNED_SHORTCUTS_KEY))
+  const [seenThreads, setSeenThreads] = useState<Record<string, string>>(() => readLocalRecord(SEEN_THREADS_KEY))
+  const [threadMenu, setThreadMenu] = useState<{ chatId: string; projectId: string; x: number; y: number } | null>(null)
+  const [teamMenu, setTeamMenu] = useState<{ team: Project; x: number; y: number } | null>(null)
+  const [hiddenTeamIds, setHiddenTeamIds] = useState<string[]>(() => readLocalList(HIDDEN_TEAMS_KEY))
+  const [projectAccess, setProjectAccess] = useState<Record<string, string>>(() => readLocalRecord(PROJECT_ACCESS_KEY))
+  const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
 
-  const recent = useMemo(() => selectThreadSummaries(data).slice(0, 9), [data])
-  const localProjects = useMemo(() => data.projects.filter((project) => project.workspaceKind === 'local'), [data.projects])
-  const workspaceProjects = useMemo(() => data.projects.filter((project) => project.workspaceKind !== 'local'), [data.projects])
+  const organizationRoots = useMemo(
+    () => data.projects.filter((project) => project.parentId === null && project.workspaceKind !== 'local'),
+    [data.projects],
+  )
+  const enterpriseTeams = useMemo(() => {
+    if (organizationRoots.length !== 1) return organizationRoots
+    const root = organizationRoots[0]
+    const directTeams = data.projects.filter((project) => project.parentId === root?.id && project.workspaceKind !== 'local')
+    return root ? [root, ...directTeams] : directTeams
+  }, [data.projects, organizationRoots])
+  const localTeams = useMemo(
+    () => data.projects.filter((project) => project.parentId === null && project.workspaceKind === 'local'),
+    [data.projects],
+  )
+  const teams = useMemo(
+    () => [...enterpriseTeams, ...localTeams].filter((team) => !hiddenTeamIds.includes(team.id)),
+    [enterpriseTeams, hiddenTeamIds, localTeams],
+  )
+  const activeTeam = teamForProject(data.projects, teams, data.activeProjectId) ?? data.projects[0]
+  const scopedProjectIds = useMemo(
+    () => projectScope(data.projects, activeTeam?.id ?? data.activeProjectId),
+    [activeTeam?.id, data.activeProjectId, data.projects],
+  )
+  const scopedProjects = useMemo(
+    () => data.projects
+      .filter((project) => scopedProjectIds.has(project.id))
+      .sort((a, b) => Number(projectAccess[b.id] ?? 0) - Number(projectAccess[a.id] ?? 0)),
+    [data.projects, projectAccess, scopedProjectIds],
+  )
+  const channels = useMemo(
+    () => selectThreadSummaries(data)
+      .filter((thread) => scopedProjectIds.has(thread.projectId) && thread.visibility !== 'private')
+      .slice(0, 5),
+    [data, scopedProjectIds],
+  )
+  const recent = useMemo(
+    () => selectThreadSummaries(data).filter((thread) => scopedProjectIds.has(thread.projectId)).slice(0, 5),
+    [data, scopedProjectIds],
+  )
+  const pinnedThreads = useMemo(
+    () => selectThreadSummaries(data).filter((thread) => pinnedThreadIds.includes(thread.chatId) && scopedProjectIds.has(thread.projectId)),
+    [data, pinnedThreadIds, scopedProjectIds],
+  )
+  const scopedAgents = useMemo(
+    () => data.agents.filter((agent) => scopedProjectIds.has(agent.projectId)),
+    [data.agents, scopedProjectIds],
+  )
+  const me = data.members.find((member) => member.id === data.currentUserId)
+  const isAdmin = me?.role === 'Admin'
+  const closeMobileNavigation = () => document.getElementById('sidebar')?.classList.remove('mobile-open')
+  const openTeamRoute = (href: string) => {
+    setActiveProject(activeTeam.id)
+    navigate(href)
+    closeMobileNavigation()
+  }
+  const shortcuts = [
+    {
+      id: `${activeTeam.id}:wiki`,
+      label: 'Wiki',
+      icon: 'book',
+      href: '/wiki',
+      active: location.pathname === '/wiki',
+      open: () => {
+        updateWikiSettings({ selectedProjectId: activeTeam.id })
+        openTeamRoute('/wiki')
+      },
+    },
+    {
+      id: `${activeTeam.id}:agents`,
+      label: 'Agents',
+      icon: 'spark',
+      href: `/agents/${activeTeam.id}`,
+      active: location.pathname.startsWith('/agents'),
+      open: () => openTeamRoute(`/agents/${activeTeam.id}`),
+    },
+    {
+      id: `${activeTeam.id}:automations`,
+      label: 'Automations',
+      icon: 'activity',
+      href: `/workflows/${activeTeam.id}`,
+      active: location.pathname.startsWith('/workflows'),
+      open: () => openTeamRoute(`/workflows/${activeTeam.id}`),
+    },
+    {
+      id: `${activeTeam.id}:sites`,
+      label: 'Apps & sites',
+      icon: 'globe',
+      href: '/sites',
+      active: location.pathname === '/sites' || location.pathname.startsWith('/site/'),
+      open: () => openTeamRoute('/sites'),
+    },
+    ...(isAdmin ? [
+      {
+        id: `${activeTeam.id}:knowledge`,
+        label: 'Knowledge',
+        icon: 'db',
+        href: `/project/${activeTeam.id}/manage`,
+        active: location.pathname === `/project/${activeTeam.id}/manage`,
+        open: () => openTeamRoute(`/project/${activeTeam.id}/manage`),
+      },
+      {
+        id: `${activeTeam.id}:files`,
+        label: 'Files',
+        icon: 'file',
+        href: '/files',
+        active: location.pathname === '/files',
+        open: () => openTeamRoute('/files'),
+      },
+      {
+        id: `${activeTeam.id}:access`,
+        label: 'Access',
+        icon: 'shield',
+        href: `/permissions/${activeTeam.id}`,
+        active: location.pathname.startsWith('/permissions'),
+        open: () => openTeamRoute(`/permissions/${activeTeam.id}`),
+      },
+    ] : []),
+  ]
+  const toggleShortcutPinned = (id: string) => {
+    const next = pinnedShortcutIds.includes(id)
+      ? pinnedShortcutIds.filter((item) => item !== id)
+      : [id, ...pinnedShortcutIds]
+    setPinnedShortcutIds(next)
+    localStorage.setItem(PINNED_SHORTCUTS_KEY, JSON.stringify(next))
+  }
+  const renderShortcut = (shortcut: typeof shortcuts[number]) => (
+    <div className="tf-nav-pinnable" key={shortcut.id}>
+      <button className={shortcut.active ? 'active' : ''} onClick={shortcut.open}>
+        <Icon name={shortcut.icon} className="icon sm" /><span>{shortcut.label}</span>
+      </button>
+      <button
+        className={`tf-nav-pin ${pinnedShortcutIds.includes(shortcut.id) ? 'pinned' : ''}`}
+        onClick={() => toggleShortcutPinned(shortcut.id)}
+        aria-label={`${pinnedShortcutIds.includes(shortcut.id) ? 'Unpin' : 'Pin'} ${shortcut.label}`}
+        title={`${pinnedShortcutIds.includes(shortcut.id) ? 'Unpin' : 'Pin'} ${shortcut.label}`}
+      >
+        <Icon name="pin" className="icon xs" />
+      </button>
+    </div>
+  )
 
-  const newTask = () => {
-    const chat = createChat(data.activeProjectId, 'New task')
-    setActiveChat(chat.id)
-    navigate(`/chat/${chat.id}`)
+  useEffect(() => {
+    const closeMenus = () => {
+      setThreadMenu(null)
+      setTeamMenu(null)
+      setProfileOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setThreadMenu(null)
+      setTeamMenu(null)
+      setAgentChooserOpen(false)
+      setConfigureTeam(null)
+    }
+    window.addEventListener('click', closeMenus)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('click', closeMenus)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
+  useEffect(() => {
+    // Establish a local baseline. A dot only appears after a known thread changes
+    // or the user explicitly marks it unread.
+    setSeenThreads((current) => {
+      let changed = false
+      const next = { ...current }
+      for (const thread of recent) {
+        if (!(thread.chatId in next)) {
+          next[thread.chatId] = String(thread.updatedAt)
+          changed = true
+        }
+      }
+      if (changed) localStorage.setItem(SEEN_THREADS_KEY, JSON.stringify(next))
+      return changed ? next : current
+    })
+  }, [recent])
+
+  const selectTeam = (team: Project) => {
+    setActiveProject(team.id)
+    const nextAccess = { ...projectAccess, [team.id]: String(Date.now()) }
+    setProjectAccess(nextAccess)
+    localStorage.setItem(PROJECT_ACCESS_KEY, JSON.stringify(nextAccess))
+    navigate(`/project/${team.id}`)
+    closeMobileNavigation()
   }
 
   const openProject = (project: Project) => {
     setActiveProject(project.id)
+    const nextAccess = { ...projectAccess, [project.id]: String(Date.now()) }
+    setProjectAccess(nextAccess)
+    localStorage.setItem(PROJECT_ACCESS_KEY, JSON.stringify(nextAccess))
     navigate(project.workspaceKind === 'local' ? `/local?project=${project.id}` : `/project/${project.id}`)
+    closeMobileNavigation()
   }
 
-  const toggleProject = (projectId: string) => {
-    setExpandedProjects((current) => {
-      const next = new Set(current)
-      if (next.has(projectId)) next.delete(projectId)
-      else next.add(projectId)
-      return next
-    })
+  const startTask = (agentId?: string) => {
+    const targetProjectId = scopedProjectIds.has(data.activeProjectId) ? data.activeProjectId : activeTeam.id
+    const agent = agentId ? data.agents.find((item) => item.id === agentId) : undefined
+    const chat = createChat(targetProjectId, agent ? `${agent.name} task` : 'New task', agentId)
+    setActiveChat(chat.id)
+    navigate(`/chat/${chat.id}`)
+    setAgentChooserOpen(false)
+    closeMobileNavigation()
   }
 
-  const openWiki = (project: Project) => {
-    setActiveProject(project.id)
-    store.updateWikiSettings({ selectedProjectId: project.id })
-    navigate('/wiki')
+  const openThread = (chatId: string, projectId: string) => {
+    const thread = selectThreadSummaries(data).find((item) => item.chatId === chatId)
+    const nextSeen = { ...seenThreads, [chatId]: String(thread?.updatedAt ?? Date.now()) }
+    setSeenThreads(nextSeen)
+    localStorage.setItem(SEEN_THREADS_KEY, JSON.stringify(nextSeen))
+    setActiveProject(projectId)
+    setActiveChat(chatId)
+    navigate(`/chat/${chatId}`)
+    closeMobileNavigation()
   }
 
-  const openSite = (project: Project, siteId: string) => {
-    setActiveProject(project.id)
-    navigate(`/site/${siteId}`)
+  const togglePinned = (chatId: string) => {
+    const next = pinnedThreadIds.includes(chatId)
+      ? pinnedThreadIds.filter((id) => id !== chatId)
+      : [chatId, ...pinnedThreadIds]
+    setPinnedThreadIds(next)
+    localStorage.setItem(PINNED_THREADS_KEY, JSON.stringify(next))
+    setThreadMenu(null)
   }
 
-  const openSites = (project: Project) => {
-    setActiveProject(project.id)
-    navigate(`/sites?project=${project.id}`)
+  const markUnread = (chatId: string) => {
+    const next = { ...seenThreads, [chatId]: '0' }
+    setSeenThreads(next)
+    localStorage.setItem(SEEN_THREADS_KEY, JSON.stringify(next))
+    setThreadMenu(null)
   }
 
-  const openLocalArtifact = (project: Project, tab: 'documentation' | 'agents' | 'skills') => {
-    setActiveProject(project.id)
-    if (tab === 'agents' || tab === 'skills') {
-      navigate(`/project/${project.id}/${tab}`)
+  const openConfigureTeam = (team: Project) => {
+    setTeamName(team.name)
+    setTeamColor(teamColors[team.id] ?? team.iconColor)
+    setConfigureTeam(team)
+  }
+
+  const saveTeamConfiguration = () => {
+    if (!configureTeam) return
+    const name = teamName.trim()
+    if (name && name !== configureTeam.name) updateProject(configureTeam.id, { name })
+    const nextColors = { ...teamColors, [configureTeam.id]: teamColor }
+    setTeamColors(nextColors)
+    localStorage.setItem(TEAM_COLORS_KEY, JSON.stringify(nextColors))
+    setConfigureTeam(null)
+  }
+
+  const leaveTeam = (team: Project) => {
+    if (!window.confirm(`Leave ${team.name}? You can restore it by resetting local workspace preferences.`)) return
+    const next = [...hiddenTeamIds, team.id]
+    setHiddenTeamIds(next)
+    localStorage.setItem(HIDDEN_TEAMS_KEY, JSON.stringify(next))
+    const fallback = teams.find((candidate) => candidate.id !== team.id)
+    if (fallback) selectTeam(fallback)
+    else navigate('/start')
+    setTeamMenu(null)
+    toast('Team left', `${team.name} was removed from your team rail.`)
+  }
+
+  const removeLocalTeam = (team: Project) => {
+    if (!window.confirm(`Remove local project “${team.name}” from OpenSaddle? Files on disk will not be deleted.`)) return
+    removeLocalProject(team.id)
+    setTeamMenu(null)
+    navigate('/start')
+    toast('Local project removed', 'The folder remains unchanged on your computer.')
+  }
+
+  const projectThreads = (projectId: string) => selectThreadSummaries(data)
+    .filter((thread) => thread.projectId === projectId)
+    .slice(0, 4)
+
+  const toggleProjectExpanded = (project: Project) => {
+    const expanded = expandedProjectIds.includes(project.id)
+    if (expanded) {
+      openProject(project)
       return
     }
-    navigate(`/local?project=${project.id}&tab=${tab}`)
+    setExpandedProjectIds((current) => [...current, project.id])
+    setActiveProject(project.id)
+    const nextAccess = { ...projectAccess, [project.id]: String(Date.now()) }
+    setProjectAccess(nextAccess)
+    localStorage.setItem(PROJECT_ACCESS_KEY, JSON.stringify(nextAccess))
   }
 
-  const openThread = (thread: ThreadSummary) => {
-    setActiveProject(thread.projectId)
-    setActiveChat(thread.chatId)
-    navigate(`/chat/${thread.chatId}`)
-  }
+  const isUnseen = (chatId: string, updatedAt: number) =>
+    Number(seenThreads[chatId] ?? updatedAt) < updatedAt
 
-  const me = data.members.find((member) => member.id === data.currentUserId)
+  const renderThreadRow = (thread: (typeof recent)[number], pinned = false) => (
+    <div
+      className="tf-thread-row"
+      key={thread.id}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        setThreadMenu({ chatId: thread.chatId, projectId: thread.projectId, x: event.clientX, y: event.clientY })
+      }}
+    >
+      <button className="tf-thread-open" onClick={() => openThread(thread.chatId, thread.projectId)}>
+        {isUnseen(thread.chatId, thread.updatedAt) && <i className="tf-unseen-dot" aria-label="Unread update" />}
+        <span>{thread.title}</span>
+        <small>{relativeTime(thread.updatedAt)}</small>
+      </button>
+      <button
+        className={`tf-thread-pin ${pinned ? 'pinned' : ''}`}
+        onClick={() => togglePinned(thread.chatId)}
+        aria-label={`${pinned ? 'Unpin' : 'Pin'} ${thread.title}`}
+        title={pinned ? 'Unpin' : 'Pin'}
+      >
+        <Icon name="pin" className="icon xs" />
+      </button>
+    </div>
+  )
+
+  if (!activeTeam) return null
 
   return (
-    <aside className={`tf-sidebar ${collapsed ? 'collapsed' : ''}`} id="sidebar" aria-label="Workspace navigation">
-      <div className="tf-sidebar-head">
-        <button className="tf-workspace" onClick={() => navigate('/work')} title="OpenSaddle workspace">
-          <span className="tf-workspace-logo"><Icon name="saddle" className="icon sm" /></span>
-          {!collapsed && <span><strong>OpenSaddle</strong><small>{services?.mode === 'desktop' || services?.controlPlane.mode === 'local' ? 'Local desktop workspace' : data.workspaceName}</small></span>}
+    <aside className={`tf-sidebar tf-team-shell ${collapsed ? 'collapsed' : ''} ${globalMode ? 'global-mode' : ''} ${services?.mode === 'desktop' ? 'desktop-mode' : ''}`} id="sidebar" aria-label="OpenSaddle navigation">
+      <nav className="tf-team-rail" aria-label="Teams">
+        <button className="tf-team-brand" onClick={() => navigate('/start')} aria-label="OpenSaddle home">
+          <Icon name="saddle" className="icon sm" />
         </button>
-        <button className="tf-icon-button" onClick={() => onCollapsedChange(!collapsed)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-          <Icon name="panel" className="icon sm" />
-        </button>
-      </div>
-
-      <div className="tf-sidebar-scroll">
-        <div className="tf-nav-block tf-primary-actions">
-          <button className="tf-nav-row" onClick={newTask}>
-            <Icon name="plus" className="icon sm" /><span>New task</span>
-          </button>
-          <button className="tf-nav-row" onClick={() => window.dispatchEvent(new CustomEvent('opensaddle:palette'))}>
-            <Icon name="search" className="icon sm" /><span>Search</span>{!collapsed && <kbd>⌘ K</kbd>}
+        <span className="os-sr-only">Teams</span>
+        <div className="tf-team-list">
+          {teams.map((team) => (
+            <button
+              key={team.id}
+              className={`tf-team-switch ${team.id === activeTeam.id ? 'active' : ''}`}
+              style={{ '--team-color': teamColors[team.id] ?? team.iconColor } as React.CSSProperties}
+              onClick={() => selectTeam(team)}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                setTeamMenu({ team, x: event.clientX, y: event.clientY })
+              }}
+              aria-label={`Switch to ${team.name}`}
+              aria-current={team.id === activeTeam.id ? 'page' : undefined}
+              title={team.name}
+            >
+              {teamInitials(team.name)}
+            </button>
+          ))}
+          <button className="tf-team-switch tf-add-team" onClick={() => navigate('/local')} aria-label="Add local team" title="Add team from a folder or Git repository">
+            <Icon name="plus" className="icon sm" />
           </button>
         </div>
+        <div className="tf-rail-spacer" />
+        <button
+          className="tf-rail-profile"
+          aria-label={`${data.settings.displayName} profile and settings`}
+          title={data.settings.displayName}
+          onClick={(event) => {
+            event.stopPropagation()
+            setProfileOpen((value) => !value)
+          }}
+        >
+          {me?.initials ?? teamInitials(data.settings.displayName)}
+        </button>
+      </nav>
 
-        <nav className="tf-nav-block" aria-label="Primary">
-          <NavLink to="/work" className={({ isActive }) => `tf-nav-row ${isActive ? 'active' : ''}`}>
-            <Icon name="clock" className="icon sm" /><span>Work</span>
-            {!collapsed && services?.mode !== 'desktop' && services?.controlPlane.mode !== 'local' && data.notifications.some((item) => !item.read) && <span className="tf-attention-dot" />}
-          </NavLink>
-          {(window.opensaddleDesktop || services?.controlPlane.mode === 'local' || localProjects.length > 0) && (
-            <>
-              <button className={`tf-nav-row ${location.pathname === '/local' ? 'active' : ''}`} onClick={() => setLocalProjectsOpen((value) => !value)}>
-                <Icon name="terminal" className="icon sm" /><span>Local projects</span>
-                {!collapsed && <small className="tf-local-tag">Admin</small>}
-                {!collapsed && <Icon name="chevron" className={`icon xs tf-chevron ${localProjectsOpen ? 'open' : ''}`} />}
+      {!collapsed && !globalMode && (
+        <section className="tf-selected-team" aria-label={`Selected team: ${activeTeam.name}`}>
+          <header className="tf-selected-team-head">
+            <div>
+              <strong>{activeTeam.name}</strong>
+            </div>
+            <button className="tf-icon-button" onClick={() => openConfigureTeam(activeTeam)} aria-label="Configure team name and appearance" title="Configure team">
+              <Icon name="settings" className="icon sm" />
+            </button>
+            <button
+              className="tf-icon-button"
+              onClick={() => {
+                if (window.matchMedia('(max-width: 820px)').matches) closeMobileNavigation()
+                else onCollapsedChange(true)
+              }}
+              aria-label="Close or collapse selected team navigation"
+            >
+              <Icon name="x" className="icon sm tf-mobile-nav-close" />
+              <Icon name="panel" className="icon sm tf-desktop-nav-collapse" />
+            </button>
+          </header>
+
+          <div className="tf-selected-team-scroll">
+            <div className="tf-team-primary-actions">
+              <button className="tf-team-new-task" onClick={() => setAgentChooserOpen(true)}>
+                <Icon name="plus" className="icon sm" />
+                <span>New task</span>
               </button>
-              {!collapsed && localProjectsOpen && (
-                <div className="tf-projects-wrap tf-local-projects-wrap">
-                  <ProjectTree
-                    projects={localProjects}
-                    parentId={null}
-                    activeProjectId={data.activeProjectId}
-                    data={data}
-                    manifests={localProjectManifests}
-                    expanded={expandedProjects}
-                    locationPath={location.pathname}
-                    onOpen={openProject}
-                    onToggle={toggleProject}
-                    onOpenWiki={openWiki}
-                    onOpenSites={openSites}
-                    onOpenSite={openSite}
-                    onOpenLocalArtifact={openLocalArtifact}
-                  />
-                  <button className="tf-add-project" onClick={() => navigate('/local')}>
-                    <Icon name="plus" className="icon xs" /> Add folder
-                  </button>
-                  <button className={`tf-add-project ${location.pathname === '/sessions' ? 'active' : ''}`} onClick={() => navigate('/sessions')}>
-                    <Icon name="terminal" className="icon xs" /> Codex / Claude sessions
-                  </button>
+              <button className="tf-icon-button" onClick={() => window.dispatchEvent(new CustomEvent('opensaddle:palette'))} aria-label="Search">
+                <Icon name="search" className="icon sm" />
+              </button>
+            </div>
+
+            <nav className="tf-team-nav" aria-label={`${activeTeam.name} navigation`}>
+              <button className={location.pathname === `/project/${activeTeam.id}` ? 'active' : ''} onClick={() => openProject(activeTeam)}>
+                <Icon name="layout" className="icon sm" /><span>Team overview</span>
+              </button>
+              <NavLink
+                to="/work"
+                className={({ isActive }) => isActive ? 'active' : ''}
+                onClick={() => {
+                  setActiveProject(activeTeam.id)
+                  closeMobileNavigation()
+                }}
+              >
+                <Icon name="clock" className="icon sm" /><span>Work</span>
+                {services?.mode !== 'desktop' && data.notifications.some((item) => !item.read) && <i className="tf-attention-dot" />}
+              </NavLink>
+              {shortcuts.slice(0, 4).map(renderShortcut)}
+            </nav>
+
+            {(pinnedThreads.length > 0 || shortcuts.some((shortcut) => pinnedShortcutIds.includes(shortcut.id))) && (
+              <div className="tf-team-section tf-team-pinned">
+                <div className="tf-team-section-label static"><span>Pinned</span></div>
+                <div className="tf-team-section-list">
+                  {shortcuts.filter((shortcut) => pinnedShortcutIds.includes(shortcut.id)).map((shortcut) => (
+                    <div className="tf-thread-row" key={`pinned:${shortcut.id}`}>
+                      <button className="tf-thread-open tf-shortcut-open" onClick={shortcut.open}>
+                        <Icon name={shortcut.icon} className="icon xs" />
+                        <span>{shortcut.label}</span>
+                      </button>
+                      <button className="tf-thread-pin pinned" onClick={() => toggleShortcutPinned(shortcut.id)} aria-label={`Unpin ${shortcut.label}`}>
+                        <Icon name="pin" className="icon xs" />
+                      </button>
+                    </div>
+                  ))}
+                  {pinnedThreads.map((thread) => renderThreadRow(thread, true))}
+                </div>
+              </div>
+            )}
+
+            <div className="tf-team-section">
+              <button className="tf-team-section-label" onClick={() => setChannelsOpen((value) => !value)} aria-expanded={channelsOpen}>
+                <span>Team channels</span>
+                <Icon name="chevron" className={`icon xs tf-chevron ${channelsOpen ? 'open' : ''}`} />
+              </button>
+              {channelsOpen && (
+                <div className="tf-team-section-list">
+                  {channels.map((channel) => (
+                    <button key={channel.id} onClick={() => openThread(channel.chatId, channel.projectId)}>
+                      <span className="tf-channel-mark">#</span>
+                      <span>{channel.title}</span>
+                    </button>
+                  ))}
+                  {!channels.length && <p>No shared channels yet.</p>}
                 </div>
               )}
-            </>
-          )}
-          <button className={`tf-nav-row ${location.pathname.startsWith('/project/') ? 'active' : ''}`} onClick={() => setProjectsOpen((value) => !value)}>
-            <Icon name="folder" className="icon sm" /><span>Projects</span>
-            {!collapsed && <Icon name="chevron" className={`icon xs tf-chevron ${projectsOpen ? 'open' : ''}`} />}
-          </button>
-          {!collapsed && projectsOpen && (
-            <div className="tf-projects-wrap">
-              <ProjectTree
-                projects={workspaceProjects}
-                parentId={null}
-                activeProjectId={data.activeProjectId}
-                data={data}
-                manifests={localProjectManifests}
-                expanded={expandedProjects}
-                locationPath={location.pathname}
-                onOpen={openProject}
-                onToggle={toggleProject}
-                onOpenWiki={openWiki}
-                onOpenSites={openSites}
-                onOpenSite={openSite}
-                onOpenLocalArtifact={openLocalArtifact}
-              />
-              <button className="tf-add-project" onClick={onCreateProject}><Icon name="plus" className="icon xs" /> New project</button>
             </div>
-          )}
-        </nav>
 
-        {!collapsed && (
-          <div className="tf-nav-block tf-recent-block">
-            <div className="tf-section-label">Recent</div>
-            {recent.map((thread) => {
-              const tone = threadTone(thread.status)
-              return (
-                <button key={thread.id} className={`tf-thread-row ${location.pathname === `/chat/${thread.chatId}` ? 'active' : ''}`} onClick={() => openThread(thread)}>
-                  <span className={`tf-thread-state ${tone}`} title={thread.statusLabel} />
-                  <span className="tf-thread-copy"><strong>{thread.title}</strong><small>{thread.project.name}</small></span>
-                  <span className="tf-thread-time">{relativeTime(thread.updatedAt)}</span>
+            <div className="tf-team-section">
+              <button className="tf-team-section-label" onClick={() => setProjectsOpen((value) => !value)} aria-expanded={projectsOpen}>
+                <span>Work streams</span>
+                <Icon name="chevron" className={`icon xs tf-chevron ${projectsOpen ? 'open' : ''}`} />
+              </button>
+              {projectsOpen && (
+                <div className="tf-team-section-list tf-project-tree">
+                  {scopedProjects.slice(0, 8).map((project) => {
+                    const relatedThreads = projectThreads(project.id)
+                    const expanded = expandedProjectIds.includes(project.id)
+                    return (
+                      <div className="tf-project-tree-node" key={project.id}>
+                        <button
+                          className={data.activeProjectId === project.id ? 'active' : ''}
+                          onClick={() => toggleProjectExpanded(project)}
+                          aria-expanded={expanded}
+                        >
+                          <Icon name="folder" className="icon sm" />
+                          <span>{project.name}</span>
+                          {(relatedThreads.length > 0 || data.projects.some((child) => child.parentId === project.id)) && (
+                            <Icon name="chevron" className={`icon xs tf-chevron ${expanded ? 'open' : ''}`} />
+                          )}
+                        </button>
+                        {expanded && (
+                          <div className="tf-project-tree-children">
+                            {relatedThreads.length > 0 && <span className="tf-project-tree-child-label">Channels & agent threads</span>}
+                            {relatedThreads.map((thread) => (
+                              <button key={thread.id} onClick={() => openThread(thread.chatId, thread.projectId)}>
+                                {thread.visibility !== 'private'
+                                  ? <span className="tf-project-channel-mark" aria-label="Channel">#</span>
+                                  : <Icon name={thread.status === 'running' ? 'activity' : 'message'} className="icon xs" />}
+                                <span>{thread.title}</span>
+                              </button>
+                            ))}
+                            <button className="tf-project-open-page" onClick={() => openProject(project)}>
+                              <Icon name="forward" className="icon xs" /><span>Open work stream overview</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {isAdmin && (
+              <div className="tf-team-section">
+                <button className="tf-team-section-label" onClick={() => setAdminOpen((value) => !value)} aria-expanded={adminOpen}>
+                  <span>Admin</span>
+                  <Icon name="chevron" className={`icon xs tf-chevron ${adminOpen ? 'open' : ''}`} />
                 </button>
-              )
-            })}
-            {!recent.length && <p className="tf-empty-copy">Your recent tasks will appear here.</p>}
-          </div>
-        )}
-      </div>
+                {adminOpen && <div className="tf-team-section-list">{shortcuts.slice(4).map(renderShortcut)}</div>}
+              </div>
+            )}
 
-      <div className="tf-sidebar-foot">
-        <button className="tf-profile" onClick={() => setProfileOpen((value) => !value)}>
-          <span className="avatar">{me?.initials ?? 'OS'}</span>
-          {!collapsed && <span><strong>{data.settings.displayName}</strong><small>{me?.role ?? 'Member'}</small></span>}
-          {!collapsed && <Icon name="chevron" className="icon xs" />}
-        </button>
-        {profileOpen && (
-          <div className="tf-profile-menu">
-            <button onClick={() => { setProfileOpen(false); navigate('/settings') }}><Icon name="settings" className="icon sm" />Settings</button>
-            <button onClick={() => { setProfileOpen(false); navigate('/admin') }}><Icon name="users" className="icon sm" />Admin</button>
-            <button onClick={() => { setProfileOpen(false); navigate('/usage') }}><Icon name="chart" className="icon sm" />Usage</button>
-            <button onClick={() => { setProfileOpen(false); navigate('/plugins') }}><Icon name="plugin" className="icon sm" />Tools & plugins</button>
+            <div className="tf-team-section tf-team-recent">
+              <div className="tf-team-section-label static"><span>Recent work</span></div>
+              <div className="tf-team-section-list">
+                {recent.map((thread) => renderThreadRow(thread, pinnedThreadIds.includes(thread.chatId)))}
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-      {!collapsed && (
+
+          <div
+            className="tf-sidebar-resizer"
+            role="separator"
+            aria-label="Resize selected team navigation"
+            aria-orientation="vertical"
+            onPointerDown={onResizeStart}
+            onDoubleClick={onResetWidth}
+          />
+        </section>
+      )}
+
+      {profileOpen && createPortal(
+        <div className="tf-profile-menu tf-rail-profile-menu" onClick={(event) => event.stopPropagation()}>
+          <div className="tf-profile-menu-head"><span>{me?.initials ?? teamInitials(data.settings.displayName)}</span><div><strong>{data.settings.displayName}</strong><small>{me?.role ?? 'Member'}</small></div></div>
+          <button onClick={() => navigate('/settings')}><Icon name="settings" className="icon sm" />Settings</button>
+          <button onClick={() => navigate('/settings/icon-packs')}><Icon name="spark" className="icon sm" />Icon lab</button>
+          {isAdmin && <button onClick={() => navigate('/admin')}><Icon name="users" className="icon sm" />Admin</button>}
+          <button onClick={() => navigate('/usage')}><Icon name="chart" className="icon sm" />Usage</button>
+          <button onClick={() => navigate('/plugins')}><Icon name="plugin" className="icon sm" />Tools & plugins</button>
+        </div>,
+        document.body,
+      )}
+
+      {teamMenu && (
         <div
-          className="tf-sidebar-resizer"
-          role="separator"
-          aria-label="Resize navigation sidebar"
-          aria-orientation="vertical"
-          onPointerDown={onResizeStart}
-          onDoubleClick={onResetWidth}
-        />
+          className="tf-thread-context-menu tf-team-context-menu"
+          role="menu"
+          style={{ left: Math.min(teamMenu.x, window.innerWidth - 220), top: Math.min(teamMenu.y, window.innerHeight - 180) }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="tf-context-menu-title">{teamMenu.team.name}</div>
+          <button role="menuitem" onClick={() => { openConfigureTeam(teamMenu.team); setTeamMenu(null) }}><Icon name="settings" className="icon sm" />Name &amp; appearance</button>
+          <button role="menuitem" onClick={() => openProject(teamMenu.team)}><Icon name="folder" className="icon sm" />Open team</button>
+          <div role="separator" />
+          {teamMenu.team.workspaceKind === 'local'
+            ? <button className="danger" role="menuitem" onClick={() => removeLocalTeam(teamMenu.team)}><Icon name="archive" className="icon sm" />Remove local project</button>
+            : <button className="danger" role="menuitem" onClick={() => leaveTeam(teamMenu.team)}><Icon name="x" className="icon sm" />Leave team</button>}
+        </div>
+      )}
+
+      {agentChooserOpen && (
+        <div className="tf-shell-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAgentChooserOpen(false) }}>
+          <section className="tf-shell-dialog" role="dialog" aria-modal="true" aria-labelledby="tf-agent-chooser-title">
+            <header>
+              <div><span>New task</span><h2 id="tf-agent-chooser-title">Choose how to start</h2></div>
+              <button className="tf-icon-button" onClick={() => setAgentChooserOpen(false)} aria-label="Close agent chooser"><Icon name="x" className="icon sm" /></button>
+            </header>
+            <div className="tf-agent-options">
+              <button onClick={() => startTask()}>
+                <Icon name="plus" className="icon sm" />
+                <span><strong>Blank task</strong><small>Start without a predefined agent</small></span>
+              </button>
+              {scopedAgents.map((agent) => (
+                <button key={agent.id} onClick={() => startTask(agent.id)}>
+                  <Icon name="spark" className="icon sm" />
+                  <span><strong>{agent.name}</strong><small>{agent.description}</small></span>
+                </button>
+              ))}
+              {!scopedAgents.length && <p>No agents have been created in this team yet.</p>}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {configureTeam && (
+        <div className="tf-shell-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfigureTeam(null) }}>
+          <section className="tf-shell-dialog tf-configure-team" role="dialog" aria-modal="true" aria-labelledby="tf-configure-team-title">
+            <header>
+              <div><span>Team settings</span><h2 id="tf-configure-team-title">Name &amp; appearance</h2></div>
+              <button className="tf-icon-button" onClick={() => setConfigureTeam(null)} aria-label="Close team settings"><Icon name="x" className="icon sm" /></button>
+            </header>
+            <label>
+              <span>Display name</span>
+              <input autoFocus value={teamName} onChange={(event) => setTeamName(event.target.value)} />
+            </label>
+            <label>
+              <span>Team color</span>
+              <div className="tf-color-field">
+                <input type="color" value={teamColor} onChange={(event) => setTeamColor(event.target.value)} />
+                <code>{teamColor.toUpperCase()}</code>
+              </div>
+            </label>
+            <div className="tf-dialog-actions">
+              <button onClick={() => setConfigureTeam(null)}>Cancel</button>
+              <button className="primary" onClick={saveTeamConfiguration} disabled={!teamName.trim()}>Save changes</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {threadMenu && (() => {
+        const thread = selectThreadSummaries(data).find((item) => item.chatId === threadMenu.chatId)
+        const pinned = pinnedThreadIds.includes(threadMenu.chatId)
+        return (
+          <div
+            className="tf-thread-context-menu"
+            role="menu"
+            style={{ left: Math.min(threadMenu.x, window.innerWidth - 210), top: Math.min(threadMenu.y, window.innerHeight - 180) }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button role="menuitem" onClick={() => togglePinned(threadMenu.chatId)}><Icon name="pin" className="icon sm" />{pinned ? 'Unpin' : 'Pin'}</button>
+            <button role="menuitem" onClick={() => markUnread(threadMenu.chatId)}><Icon name="bell" className="icon sm" />Mark as unread</button>
+            <button role="menuitem" onClick={() => { archiveChat(threadMenu.chatId); setThreadMenu(null) }}><Icon name="archive" className="icon sm" />Archive</button>
+            <div role="separator" />
+            <button role="menuitem" onClick={() => {
+              const branched = branchChat(threadMenu.chatId)
+              if (branched) openThread(branched.id, branched.projectId)
+              setThreadMenu(null)
+            }} disabled={!thread}>
+              <Icon name="branch" className="icon sm" />Continue in new chat
+            </button>
+          </div>
+        )
+      })()}
+
+      {collapsed && !globalMode && (
+        <button className="tf-expand-team-rail" onClick={() => onCollapsedChange(false)} aria-label="Expand selected team navigation" title="Show selected team">
+          <Icon name="panel" className="icon sm" />
+        </button>
       )}
     </aside>
   )

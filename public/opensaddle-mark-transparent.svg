@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="OpenSaddle">
+  <defs>
+    <linearGradient id="sun" x1="512" y1="218" x2="512" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF6A00"/>
+      <stop offset=".58" stop-color="#FF9D0A"/>
+      <stop offset="1" stop-color="#FFD83D"/>
+    </linearGradient>
+    <linearGradient id="horizon" x1="370" y1="560" x2="650" y2="638" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#35F0D4"/>
+      <stop offset="1" stop-color="#18BFE7"/>
+    </linearGradient>
+    <linearGradient id="saddle" x1="208" y1="444" x2="690" y2="824" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF377C"/>
+      <stop offset=".54" stop-color="#C42875"/>
+      <stop offset="1" stop-color="#761563"/>
+    </linearGradient>
+    <filter id="glass-contrast" x="-24%" y="-24%" width="148%" height="158%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#05060A" flood-opacity=".34"/>
+      <feDropShadow dx="0" dy="-2" stdDeviation="3" flood-color="#FFFFFF" flood-opacity=".32"/>
+    </filter>
+  </defs>
+  <g filter="url(#glass-contrast)">
+    <circle cx="512" cy="403" r="190" fill="url(#sun)" stroke="#FFFFFF" stroke-opacity=".28" stroke-width="10"/>
+    <path d="M376 567Q512 544 648 567Q604 633 512 640Q420 633 376 567Z" fill="url(#horizon)" stroke="#FFFFFF" stroke-opacity=".3" stroke-width="10" paint-order="stroke"/>
+    <path d="M206 474C299 427 341 581 512 620C683 581 725 427 818 474C790 678 671 786 512 807C353 786 234 678 206 474Z" fill="url(#saddle)" stroke="#FFFFFF" stroke-opacity=".3" stroke-width="12" paint-order="stroke"/>
+  </g>
+</svg>

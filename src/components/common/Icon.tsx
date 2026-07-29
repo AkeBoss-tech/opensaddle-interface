@@ -1,3 +1,102 @@
+import { useId, useSyncExternalStore, type ComponentType } from 'react'
+import {
+  Activity, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Check, ChevronRight,
+  Clock3, Code2, Database, FileText, Folder, Globe2, Info, LayoutDashboard, MessageSquare,
+  MoreHorizontal, Paperclip, Pin, Plus, RefreshCw, Search, Settings, ShieldCheck,
+  Sparkles, Terminal, Users, Wrench, X,
+} from 'lucide-react'
+import {
+  ArrowLeft as PhArrowLeft, ArrowRight as PhArrowRight, ArrowUp as PhArrowUp,
+  Bell as PhBell, BookOpen as PhBookOpen, CaretRight, ChatCircle, Check as PhCheck,
+  Clock as PhClock, Code as PhCode, Database as PhDatabase, DotsThree, FileText as PhFileText,
+  Folder as PhFolder, Gear, Globe as PhGlobe, Info as PhInfo, MagnifyingGlass, Paperclip as PhPaperclip,
+  Plus as PhPlus, Pulse, PushPin, ShieldCheck as PhShieldCheck, Sparkle, SquaresFour,
+  Terminal as PhTerminal, Users as PhUsers, Wrench as PhWrench, X as PhX,
+  ArrowsClockwise,
+} from '@phosphor-icons/react'
+import {
+  IconActivity, IconArrowLeft, IconArrowRight, IconArrowUp, IconBell, IconBook2,
+  IconCheck, IconChevronRight, IconClock, IconCode, IconDatabase, IconDots,
+  IconFileText, IconFolder, IconInfoCircle, IconLayoutDashboard, IconMessageCircle, IconPaperclip,
+  IconPin, IconPlus, IconRefresh, IconSearch, IconSettings, IconShieldCheck,
+  IconSparkles, IconTerminal2, IconTool, IconUsers, IconWorld, IconX,
+} from '@tabler/icons-react'
+import {
+  ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, BarsArrowUpIcon, BellIcon, BookOpenIcon,
+  ChatBubbleLeftRightIcon, CheckIcon, ChevronRightIcon, CircleStackIcon, ClockIcon,
+  CodeBracketIcon, Cog6ToothIcon, DocumentTextIcon, EllipsisHorizontalIcon, FolderIcon,
+  GlobeAltIcon, InformationCircleIcon, MagnifyingGlassIcon, MapPinIcon, PaperClipIcon, PlusIcon,
+  RectangleGroupIcon, ShieldCheckIcon, SparklesIcon, UserGroupIcon,
+  WrenchScrewdriverIcon, XMarkIcon, ArrowPathIcon, CommandLineIcon,
+} from '@heroicons/react/24/outline'
+
+export type IconPackId = 'lucide' | 'phosphor' | 'tabler' | 'heroicons'
+type PackIcon = ComponentType<Record<string, unknown>>
+
+const ICON_PACK_KEY = 'opensaddle.icon-pack-candidate'
+const PACK_IDS: IconPackId[] = ['lucide', 'phosphor', 'tabler', 'heroicons']
+let activePack: IconPackId = (() => {
+  if (typeof window === 'undefined') return 'lucide'
+  const saved = window.localStorage.getItem(ICON_PACK_KEY) as IconPackId | null
+  return saved && PACK_IDS.includes(saved) ? saved : 'lucide'
+})()
+const iconPackListeners = new Set<() => void>()
+
+export function setActiveIconPack(pack: IconPackId) {
+  activePack = pack
+  window.localStorage.setItem(ICON_PACK_KEY, pack)
+  document.body.dataset.iconPack = pack
+  iconPackListeners.forEach((listener) => listener())
+}
+
+export function getActiveIconPack() {
+  return activePack
+}
+
+if (typeof document !== 'undefined') document.body.dataset.iconPack = activePack
+
+const PACK_ICONS: Record<IconPackId, Record<string, PackIcon>> = {
+  lucide: {
+    activity: Activity, arrow: ArrowUp, back: ArrowLeft, bell: Bell, book: BookOpen,
+    check: Check, chevron: ChevronRight, clock: Clock3, code: Code2, db: Database,
+    file: FileText, folder: Folder, forward: ArrowRight, globe: Globe2, info: Info,
+    layout: LayoutDashboard, message: MessageSquare, more: MoreHorizontal,
+    paperclip: Paperclip, pin: Pin, plus: Plus, refresh: RefreshCw, search: Search,
+    settings: Settings, shield: ShieldCheck, spark: Sparkles, terminal: Terminal,
+    tools: Wrench, users: Users, x: X, close: X,
+  },
+  phosphor: {
+    activity: Pulse, arrow: PhArrowUp, back: PhArrowLeft, bell: PhBell, book: PhBookOpen,
+    check: PhCheck, chevron: CaretRight, clock: PhClock, code: PhCode, db: PhDatabase,
+    file: PhFileText, folder: PhFolder, forward: PhArrowRight, globe: PhGlobe, info: PhInfo,
+    layout: SquaresFour, message: ChatCircle, more: DotsThree, paperclip: PhPaperclip,
+    pin: PushPin, plus: PhPlus, refresh: ArrowsClockwise, search: MagnifyingGlass,
+    settings: Gear, shield: PhShieldCheck, spark: Sparkle, terminal: PhTerminal,
+    tools: PhWrench, users: PhUsers, x: PhX, close: PhX,
+  },
+  tabler: {
+    activity: IconActivity, arrow: IconArrowUp, back: IconArrowLeft, bell: IconBell,
+    book: IconBook2, check: IconCheck, chevron: IconChevronRight, clock: IconClock,
+    code: IconCode, db: IconDatabase, file: IconFileText, folder: IconFolder,
+    forward: IconArrowRight, globe: IconWorld, info: IconInfoCircle, layout: IconLayoutDashboard,
+    message: IconMessageCircle, more: IconDots, paperclip: IconPaperclip, pin: IconPin,
+    plus: IconPlus, refresh: IconRefresh, search: IconSearch, settings: IconSettings,
+    shield: IconShieldCheck, spark: IconSparkles, terminal: IconTerminal2,
+    tools: IconTool, users: IconUsers, x: IconX, close: IconX,
+  },
+  heroicons: {
+    activity: BarsArrowUpIcon, arrow: ArrowUpIcon, back: ArrowLeftIcon, bell: BellIcon,
+    book: BookOpenIcon, check: CheckIcon, chevron: ChevronRightIcon, clock: ClockIcon,
+    code: CodeBracketIcon, db: CircleStackIcon, file: DocumentTextIcon, folder: FolderIcon,
+    forward: ArrowRightIcon, globe: GlobeAltIcon, info: InformationCircleIcon, layout: RectangleGroupIcon,
+    message: ChatBubbleLeftRightIcon, more: EllipsisHorizontalIcon, paperclip: PaperClipIcon,
+    pin: MapPinIcon, plus: PlusIcon, refresh: ArrowPathIcon, search: MagnifyingGlassIcon,
+    settings: Cog6ToothIcon, shield: ShieldCheckIcon, spark: SparklesIcon,
+    terminal: CommandLineIcon, tools: WrenchScrewdriverIcon, users: UserGroupIcon,
+    x: XMarkIcon, close: XMarkIcon,
+  },
+}
+
 const PATHS: Record<string, string> = {
   plus: 'M12 5v14M5 12h14',
   search: 'M11 11m-6.5 0a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0M16 16l4 4',
@@ -9,7 +108,7 @@ const PATHS: Record<string, string> = {
   activity: 'M3 12h4l2-6 4 12 2-6h6',
   plugin: 'M8 3v4M16 3v4M6 7h12v4a6 6 0 0 1-6 6v4M9 21h6',
   chart: 'M5 19V9M12 19V5M19 19v-7',
-  settings: 'M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0',
+  settings: 'M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M19.1 4.9l-1.6 1.6M6.5 17.5l-1.6 1.6',
   sliders: 'M4 7h9M17 7h3M4 17h3M11 17h9',
   code: 'm8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16',
   review: 'M5 4h10v4h4v12H5V4ZM15 4v4h4M8 12h8M8 16h5',
@@ -28,6 +127,7 @@ const PATHS: Record<string, string> = {
   bell: 'M6 17h12l-1.4-2V10a4.6 4.6 0 0 0-9.2 0v5L6 17ZM10 20h4',
   menu: 'M4 7h16M4 12h16M4 17h16',
   x: 'm6 6 12 12M18 6 6 18',
+  info: 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 10v6M12 7h.01',
   check: 'm6 12 4 4 8-9',
   lock: 'M5 10h14v11H5zM8 10V7a4 4 0 0 1 8 0v3',
   users: 'M9 8m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M3.5 19c.5-3.6 2.4-5 5.5-5s5 1.4 5.5 5',
@@ -50,13 +150,54 @@ const PATHS: Record<string, string> = {
   sun: 'M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 2v2M12 20v2M4 12H2M22 12h-2',
   trace: 'M6 6m-2.4 0a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0-4.8 0M18 12m-2.4 0a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0-4.8 0M6 18m-2.4 0a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0-4.8 0',
   layout: 'M4 4h16v16H4zM4 10h16M10 10v10',
-  pin: 'M9 3h6M10 3v5.5L6.5 12h11L14 8.5V3M12 12v8',
-  // OpenSaddle brand mark: saddle seat with pommel/cantle rises + stirrup.
-  saddle: 'M4 8c0 4.4 3.6 7 8 7s8-2.6 8-7M4 8V5.6M20 8V5M12 15v3.4M12 20.1m-1.7 0a1.7 1.7 0 1 0 3.4 0a1.7 1.7 0 1 0-3.4 0',
+  pin: 'm9 3 6 0-1 5 3 3v2H7v-2l3-3-1-5ZM12 13v8',
   book: 'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2V5ZM8 7h8M8 11h6',
 }
 
 export function Icon({ name, className = 'icon' }: { name: string; className?: string }) {
+  const gradientId = useId().replace(/:/g, '')
+  const pack = useSyncExternalStore(
+    (listener) => {
+      iconPackListeners.add(listener)
+      return () => iconPackListeners.delete(listener)
+    },
+    getActiveIconPack,
+    (): IconPackId => 'lucide',
+  )
+  if (name === 'saddle') {
+    return (
+      <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id={`${gradientId}-sun`} x1="12" y1="3.8" x2="12" y2="13.2" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#ff6a00" />
+            <stop offset="1" stopColor="#ffd83d" />
+          </linearGradient>
+          <linearGradient id={`${gradientId}-water`} x1="8.5" y1="12" x2="15.5" y2="14.5" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#35f0d4" />
+            <stop offset="1" stopColor="#18bfe7" />
+          </linearGradient>
+          <linearGradient id={`${gradientId}-saddle`} x1="4.7" y1="9.2" x2="16.8" y2="19.3" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#ff377c" />
+            <stop offset="1" stopColor="#7a1767" />
+          </linearGradient>
+        </defs>
+        <circle cx="12" cy="8.7" r="4.5" fill={`url(#${gradientId}-sun)`} />
+        <path d="M8.6 12.6Q12 12 15.4 12.6Q14.3 14.2 12 14.4Q9.7 14.2 8.6 12.6Z" fill={`url(#${gradientId}-water)`} />
+        <path d="M4.7 10.4C7 9.2 8 13.2 12 14.2C16 13.2 17 9.2 19.3 10.4C18.6 16 15.7 18.8 12 19.3C8.3 18.8 5.4 16 4.7 10.4Z" fill={`url(#${gradientId}-saddle)`} />
+      </svg>
+    )
+  }
+  const PackComponent = PACK_ICONS[pack][name]
+  if (PackComponent) {
+    const packProps = pack === 'phosphor'
+      ? { weight: name === 'spark' || name === 'shield' ? 'duotone' : 'regular' }
+      : pack === 'lucide'
+        ? { strokeWidth: 1.75 }
+        : pack === 'tabler'
+          ? { stroke: 1.8 }
+          : {}
+    return <PackComponent className={className} aria-hidden="true" {...packProps} />
+  }
   const d = PATHS[name] ?? PATHS.spark
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden="true">

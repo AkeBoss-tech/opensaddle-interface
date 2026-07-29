@@ -1,0 +1,37 @@
+.icon-lab { width: min(1240px, calc(100% - 44px)); margin: 0 auto; padding: 52px 0 90px; }
+.icon-lab-header { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 30px; }
+.icon-lab-header > div { max-width: 720px; }
+.icon-lab-header span:first-child { color: var(--accent); font-size: 8px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.icon-lab-header h1 { margin: 8px 0 10px; font-size: clamp(30px, 4vw, 48px); letter-spacing: -.045em; }
+.icon-lab-header p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.icon-lab-selection { padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); border-radius: 999px; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); color: var(--accent); font-size: 8.5px; white-space: nowrap; }
+.icon-context-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; overflow: hidden; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--border); }
+.icon-context-strip div { display: grid; gap: 3px; padding: 12px; background: var(--bg-elevated); }
+.icon-context-strip strong { font-size: 9px; }
+.icon-context-strip span { color: var(--dim); font-size: 8px; }
+.icon-pack-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+.icon-pack-card { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 12px 36px rgba(0,0,0,.06); }
+.icon-pack-card.selected { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent), 0 16px 44px rgba(0,0,0,.08); }
+.icon-pack-card > header { display: flex; align-items: start; justify-content: space-between; gap: 15px; }
+.icon-pack-card > header span { color: var(--dim); font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.icon-pack-card h2 { margin: 4px 0 0; font-size: 20px; }
+.icon-pack-card > header button { height: 30px; padding: 0 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 8.5px; }
+.icon-pack-card.selected > header button { border-color: var(--accent); background: var(--accent); color: white; }
+.icon-pack-card > p { min-height: 48px; margin: 13px 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.icon-pack-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 17px; }
+.icon-pack-meta span { padding: 4px 7px; border-radius: 999px; background: var(--surface-2); color: var(--dim); font-size: 7.5px; }
+.icon-sample-grid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; }
+.icon-sample-grid > div { min-width: 0; display: grid; justify-items: center; gap: 6px; padding: 11px 3px 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-elevated); color: var(--muted); }
+.icon-sample-grid > div:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 36%, var(--border)); }
+.icon-sample-grid > div > span { width: 28px; height: 28px; display: grid; place-items: center; }
+.icon-sample-grid svg,
+.icon-pack-in-context svg { width: 22px !important; height: 22px !important; max-width: 22px; max-height: 22px; flex: 0 0 auto; }
+.icon-pack-in-context svg { width: 18px !important; height: 18px !important; max-width: 18px; max-height: 18px; }
+.icon-sample-grid small { max-width: 100%; overflow: hidden; color: var(--dim); font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.icon-sample-grid.heroicons svg { stroke-width: 1.5; }
+.icon-pack-in-context { display: grid; gap: 4px; margin-top: 17px; padding-top: 14px; border-top: 1px solid var(--border); }
+.icon-pack-in-context > strong { margin-bottom: 4px; color: var(--dim); font-size: 7.5px; text-transform: uppercase; letter-spacing: .08em; }
+.icon-pack-in-context button { height: 31px; display: flex; align-items: center; gap: 9px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); text-align: left; font-size: 9px; }
+.icon-pack-in-context button:first-of-type { background: var(--surface-2); color: var(--text); }
+@media (max-width: 900px) { .icon-pack-grid { grid-template-columns: 1fr; } }
+@media (max-width: 650px) { .icon-lab { width: calc(100% - 28px); padding-top: 30px; } .icon-lab-header { align-items: start; flex-direction: column; } .icon-context-strip { grid-template-columns: repeat(2,1fr); } }

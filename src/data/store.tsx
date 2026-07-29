@@ -83,6 +83,7 @@ interface StoreApi {
   createProject: (name: string, parentId: string | null, description: string) => string
   importLocalProject: (input: { name: string; description: string; local: LocalProjectSettings }) => string
   updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description' | 'routingDefaults' | 'workspaceKind' | 'local'>>) => void
+  removeLocalProject: (id: string) => void
   setPinnedArtifacts: (items: PinnedArtifact[]) => void
   createAgent: (input: Omit<CustomAgent, 'id' | 'createdAt'>) => CustomAgent
   updateAgent: (id: string, patch: Partial<Omit<CustomAgent, 'id' | 'projectId' | 'createdAt'>>) => void
@@ -1083,6 +1084,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateProject: (id, projectPatch) => patch((d) => {
       const project = d.projects.find((item) => item.id === id)
       if (project) Object.assign(project, projectPatch)
+      return d
+    }),
+    removeLocalProject: (id) => patch((d) => {
+      const project = d.projects.find((item) => item.id === id)
+      if (!project || project.workspaceKind !== 'local') return d
+      const removeIds = new Set([id])
+      let changed = true
+      while (changed) {
+        changed = false
+        d.projects.forEach((candidate) => {
+          if (candidate.parentId && removeIds.has(candidate.parentId) && !removeIds.has(candidate.id)) {
+            removeIds.add(candidate.id)
+            changed = true
+          }
+        })
+      }
+      const removedChatIds = new Set(d.chats.filter((chat) => removeIds.has(chat.projectId)).map((chat) => chat.id))
+      d.projects = d.projects.filter((candidate) => !removeIds.has(candidate.id))
+      d.chats = d.chats.filter((chat) => !removedChatIds.has(chat.id))
+      d.messages = d.messages.filter((message) => !removedChatIds.has(message.chatId))
+      d.agents = d.agents.filter((agent) => !removeIds.has(agent.projectId))
+      d.activeProjectId = d.projects[0]?.id ?? ''
+      if (d.activeChatId && removedChatIds.has(d.activeChatId)) d.activeChatId = null
       return d
     }),
     setPinnedArtifacts: (items) => patch((d) => {

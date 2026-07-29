@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { StoreProvider, useStore } from './data/store'
 import { Topbar } from './components/layout/Topbar'
@@ -32,6 +32,9 @@ import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
 import './styles/app.css'
 import './styles/thread-first.css'
+import './styles/liquid-glass.css'
+
+const IconPacksPage = lazy(() => import('./pages/IconPacksPage').then((module) => ({ default: module.IconPacksPage })))
 
 function Shell() {
   const { data, createChat, createProject, setTheme, resetData, toast, setActiveProject } = useStore()
@@ -45,12 +48,13 @@ function Shell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('opensaddle-sidebar-collapsed') === 'true')
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = Number(localStorage.getItem('opensaddle-sidebar-width'))
-    return Number.isFinite(saved) ? Math.max(220, Math.min(420, saved)) : 248
+    return Number.isFinite(saved) ? Math.max(280, Math.min(420, saved)) : 292
   })
   const workspaceRef = useRef<HTMLDivElement>(null)
   const nav = useNavigate()
   const loc = useLocation()
   const settingsFocused = loc.pathname === '/settings'
+  const globalStart = loc.pathname === '/start'
 
   useEffect(() => {
     const open = () => setPalette(true)
@@ -109,8 +113,8 @@ function Shell() {
   }, [loc.pathname, data.chats, data.projects])
 
   const cycleTheme = useCallback(() => {
-    const order = ['dark', 'light', 'hc'] as const
-    setTheme(order[(order.indexOf(data.settings.theme) + 1) % 3])
+    const order = ['dark', 'light', 'liquid', 'hc'] as const
+    setTheme(order[(order.indexOf(data.settings.theme) + 1) % order.length])
   }, [data.settings.theme, setTheme])
 
   const beginBrowserResize = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -132,7 +136,7 @@ function Shell() {
     if (sidebarCollapsed) return
     event.preventDefault()
     const resize = (move: PointerEvent) => {
-      const width = Math.max(220, Math.min(420, move.clientX))
+      const width = Math.max(280, Math.min(420, move.clientX))
       setSidebarWidth(width)
       localStorage.setItem('opensaddle-sidebar-width', String(width))
     }
@@ -184,18 +188,19 @@ function Shell() {
 
   return (
     <div
-      className={`app ${settingsFocused ? 'settings-focus' : ''}`}
-      style={{ '--sidebar-w': `${sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
+      className={`app ${settingsFocused ? 'settings-focus' : ''} ${globalStart ? 'global-start' : ''}`}
+      style={{ '--sidebar-w': `${globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
     >
       {!settingsFocused && (
         <ThreadFirstSidebar
           collapsed={sidebarCollapsed}
+          globalMode={globalStart}
           onCollapsedChange={setSidebarCollapsed}
           onCreateProject={() => { setProjParent(data.activeProjectId); setProjectModal(true) }}
           onResizeStart={beginSidebarResize}
           onResetWidth={() => {
-            setSidebarWidth(248)
-            localStorage.setItem('opensaddle-sidebar-width', '248')
+            setSidebarWidth(292)
+            localStorage.setItem('opensaddle-sidebar-width', '292')
           }}
         />
       )}
@@ -230,6 +235,7 @@ function Shell() {
             <Route path="/plugins" element={<PluginsPage />} />
             <Route path="/usage" element={<UsagePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings/icon-packs" element={<Suspense fallback={<div className="content-page"><div className="empty-state">Loading icon lab…</div></div>}><IconPacksPage /></Suspense>} />
             <Route path="/admin" element={data.members.find((m) => m.id === data.currentUserId)?.role === 'Admin' ? <AdminPage /> : <Navigate to="/settings" replace />} />
             <Route path="/sites" element={<SitesPage />} />
             <Route path="/agent/:agentId" element={<AgentDetailPage />} />

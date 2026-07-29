@@ -2,14 +2,17 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
+import '../styles/wiki-reader.css'
 
-type WikiTab = 'overview' | 'people' | 'pages' | 'sources'
-type WikiPerspective = 'business' | 'engineering'
+type WikiPageId = 'overview' | 'architecture' | 'agents' | 'incidents' | 'directory'
 
-const PERSPECTIVE_COPY: Record<WikiPerspective, { label: string; description: string }> = {
-  business: { label: 'Business', description: 'Customer operations, delivery health, budgets, and governed automation.' },
-  engineering: { label: 'Engineering', description: 'Runtime reliability, agent tooling, security, and delivery throughput.' },
-}
+const PAGE_LABELS: Array<{ id: WikiPageId; label: string; detail: string }> = [
+  { id: 'overview', label: 'Team overview', detail: 'Priorities, decisions, and current focus' },
+  { id: 'architecture', label: 'Runtime architecture', detail: 'How work is routed and executed' },
+  { id: 'agents', label: 'Agent provider guide', detail: 'Choosing agents, models, and tools' },
+  { id: 'incidents', label: 'Incident response runbook', detail: 'Diagnose, contain, and recover' },
+  { id: 'directory', label: 'Project directory', detail: 'Projects and connected knowledge' },
+]
 
 function relativeTime(timestamp: number) {
   const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000))
@@ -20,241 +23,189 @@ function relativeTime(timestamp: number) {
 }
 
 export function WikiPage() {
-  const {
-    data,
-    updateWikiSettings,
-    refreshWikiSummaries,
-    createChat,
-    appendMessage,
-    toast,
-  } = useStore()
+  const { data, updateWikiSettings, refreshWikiSummaries, createChat, appendMessage, toast } = useStore()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<WikiTab>('overview')
-  const [perspective, setPerspective] = useState<WikiPerspective>('engineering')
+  const [selectedPage, setSelectedPage] = useState<WikiPageId>('overview')
+  const [query, setQuery] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const selectedProjectId = data.wikiSettings.selectedProjectId
   const project = data.projects.find((item) => item.id === selectedProjectId) ?? data.projects[0]
-  const teamSummary = data.wikiSummaries.find((item) => item.projectId === project.id && item.scope === 'team')
-  const peopleSummaries = data.wikiSummaries.filter((item) => item.projectId === project.id && item.scope === 'member')
+  const summary = data.wikiSummaries.find((item) => item.projectId === project.id && item.scope === 'team')
 
   const sources = useMemo(() => {
     const sourceIds = new Set(data.wikiSummaries.filter((item) => item.projectId === project.id).flatMap((item) => item.sourceIds))
     return [
-      ...data.services.filter((source) => sourceIds.has(source.id)).map((source) => ({
-        id: source.id,
-        name: source.name,
-        kind: 'Connected service',
-        status: source.status,
-        detail: source.subtitle,
-        logo: source.logo,
-      })),
-      ...data.knowledge.filter((source) => sourceIds.has(source.id)).map((source) => ({
-        id: source.id,
-        name: source.name,
-        kind: source.kind,
-        status: source.status,
-        detail: `${source.items.toLocaleString()} items · synced ${source.lastSync}`,
-        logo: '',
-      })),
+      ...data.services.filter((source) => sourceIds.has(source.id)).map((source) => source.name),
+      ...data.knowledge.filter((source) => sourceIds.has(source.id)).map((source) => source.name),
     ]
   }, [data.knowledge, data.services, data.wikiSummaries, project.id])
+
+  const visiblePages = PAGE_LABELS.filter((page) =>
+    `${page.label} ${page.detail}`.toLowerCase().includes(query.trim().toLowerCase()),
+  )
 
   const refresh = () => {
     setRefreshing(true)
     window.setTimeout(() => {
       refreshWikiSummaries(project.id)
       setRefreshing(false)
-      toast('Team wiki refreshed', `Synthesized ${sources.length} connected sources for ${project.name}.`)
-    }, 900)
+      toast('Wiki updated', `Re-synthesized ${sources.length} approved sources for ${project.name}.`)
+    }, 700)
   }
 
   const askAgent = () => {
-    const chat = createChat(project.id, `${project.name} team pulse`, 'agent-research')
+    const page = PAGE_LABELS.find((item) => item.id === selectedPage)?.label ?? 'Team overview'
+    const chat = createChat(project.id, `Ask about ${page}`, 'agent-research')
     appendMessage({
       chatId: chat.id,
       role: 'user',
-      text: `Summarize what the ${project.name} team is working on. Use the connected Jira, GitHub, Slack, and knowledge sources, cite every claim, and call out blockers.`,
+      text: `Answer questions about the ${project.name} wiki page “${page}”. Use only approved team sources and cite factual claims.`,
     })
     navigate(`/chat/${chat.id}`)
   }
 
+  const pageTitle = PAGE_LABELS.find((item) => item.id === selectedPage)?.label ?? 'Team overview'
+  const intro = selectedPage === 'overview'
+    ? summary?.overview
+    : selectedPage === 'architecture'
+      ? `This page explains how ${project.name} turns a request into governed work. Routing selects an agent, model, and runtime, then applies the project’s inherited access policy before execution begins.`
+      : selectedPage === 'agents'
+        ? 'Agents are reusable team entry points. Each one combines a prompt, a preferred harness, tools, knowledge, and an explicit permission boundary.'
+        : selectedPage === 'incidents'
+          ? 'Use this runbook when an agent run fails, produces an unexpected result, or requests access outside the expected boundary.'
+          : `The ${project.name} workspace is organized as a team with projects beneath it. Projects inherit approved knowledge and policies while keeping their work, artifacts, and agents discoverable.`
+
   return (
-    <div className="content-page">
-      <div className="page-header">
-        <div className="page-header-copy">
-          <div className="eyebrow">OpenSaddle knowledge base</div>
-          <h1>Team wiki</h1>
-          <p>A source-grounded reference for this team’s priorities, decisions, risks, and connected systems.</p>
+    <div className="wiki-reader">
+      <aside className="wiki-reader-nav">
+        <div className="wiki-reader-brand">
+          <span><Icon name="book" /></span>
+          <div><strong>{project.name} wiki</strong><small>{PAGE_LABELS.length} maintained pages</small></div>
         </div>
-        <div className="page-header-actions">
-          <select
-            aria-label="Team wiki project"
-            value={project.id}
-            onChange={(event) => updateWikiSettings({ selectedProjectId: event.target.value })}
-          >
-            {data.projects.filter((item) => data.wikiSummaries.some((summary) => summary.projectId === item.id && summary.scope === 'team')).map((item) => (
+        <label className="wiki-reader-search">
+          <Icon name="search" className="icon sm" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search documentation…" />
+        </label>
+        <span className="wiki-reader-label">Contents</span>
+        <nav aria-label="Wiki contents">
+          {visiblePages.map((page, index) => (
+            <button key={page.id} className={selectedPage === page.id ? 'active' : ''} onClick={() => setSelectedPage(page.id)}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <div><strong>{page.label}</strong><small>{page.detail}</small></div>
+            </button>
+          ))}
+        </nav>
+        <div className="wiki-reader-nav-actions">
+          <button onClick={refresh} disabled={refreshing}><Icon name="refresh" className={`icon sm ${refreshing ? 'spin' : ''}`} />{refreshing ? 'Updating…' : 'Update from sources'}</button>
+          <button onClick={() => navigate(`/project/${project.id}/manage`)}><Icon name="settings" className="icon sm" />Wiki settings</button>
+        </div>
+        <div className="wiki-reader-context">
+          <section>
+            <span>On this page</span>
+            <a href="#top">{pageTitle}</a>
+            <a href="#details">Details and guidance</a>
+            <a href="#sources">Source material</a>
+          </section>
+          <section id="sources">
+            <span>Source material</span>
+            <strong>{sources.length} approved sources</strong>
+            {sources.slice(0, 5).map((source) => <small key={source}>{source}</small>)}
+          </section>
+          <section className="wiki-reader-progress">
+            <span>Documentation health</span>
+            <strong>Current</strong>
+            <small>Updated {relativeTime(summary?.updatedAt ?? Date.now())}</small>
+          </section>
+        </div>
+      </aside>
+
+      <main className="wiki-reader-document">
+        <div className="wiki-reader-toolbar">
+          <select value={project.id} aria-label="Wiki team" onChange={(event) => updateWikiSettings({ selectedProjectId: event.target.value })}>
+            {data.projects.filter((item) => data.wikiSummaries.some((candidate) => candidate.projectId === item.id && candidate.scope === 'team')).map((item) => (
               <option key={item.id} value={item.id}>{item.name}</option>
             ))}
           </select>
-          <div className="seg wiki-perspective" aria-label="Wiki perspective">
-            {(Object.entries(PERSPECTIVE_COPY) as Array<[WikiPerspective, { label: string; description: string }]>).map(([id, copy]) => (
-              <button key={id} className={perspective === id ? 'active' : ''} title={copy.description} onClick={() => setPerspective(id)}>{copy.label}</button>
-            ))}
-          </div>
-          <button className="secondary-btn" onClick={askAgent}><Icon name="message" className="icon sm" />Ask the team agent</button>
-          <button className="primary-btn" onClick={refresh} disabled={refreshing}>
-            <Icon name="refresh" className={`icon sm ${refreshing ? 'spin' : ''}`} />
-            {refreshing ? 'Synthesizing…' : 'Refresh summary'}
-          </button>
+          <span>Last updated {relativeTime(summary?.updatedAt ?? Date.now())}</span>
+          <button onClick={() => navigator.clipboard?.writeText(window.location.href)}><Icon name="paperclip" className="icon sm" />Copy link</button>
         </div>
-      </div>
 
-      <div className="wiki-article-note"><Icon name="review" className="icon sm" /><span>This page is maintained from {sources.length} approved sources. Summaries are read-only and keep their citations.</span></div>
+        <article className="wiki-markdown">
+          <p className="wiki-section-meta">SECTION {String(PAGE_LABELS.findIndex((item) => item.id === selectedPage) + 1).padStart(2, '0')} · 8 MIN READ</p>
+          <h1>{pageTitle}</h1>
+          <p className="wiki-deck">{intro}</p>
 
-      <div className="tabs" role="tablist" aria-label="Team wiki sections">
-        {([
-          ['overview', 'Overview'],
-          ['people', 'People'],
-          ['pages', 'Pages'],
-          ['sources', `Sources · ${sources.length}`],
-        ] as Array<[WikiTab, string]>).map(([id, label]) => (
-          <button key={id} className={`tab ${tab === id ? 'active' : ''}`} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>
-        ))}
-      </div>
-
-      {tab === 'overview' && teamSummary && (
-        <>
-          <div className="task-summary">
-            <div className="summary-card"><span className="label">Connected sources</span><strong>{sources.length}</strong><span className="metric-sub">Jira + knowledge</span></div>
-            <div className="summary-card"><span className="label">Active priorities</span><strong>{teamSummary.highlights.length}</strong><span className="metric-sub">Across this team</span></div>
-            <div className="summary-card"><span className="label">Open blockers</span><strong>{teamSummary.blockers.length}</strong><span className="metric-sub">Needs attention</span></div>
-            <div className="summary-card"><span className="label">Last synthesized</span><strong className="wiki-time">{relativeTime(teamSummary.updatedAt)}</strong><span className="metric-sub">Read-only workflow</span></div>
-          </div>
-
-          <div className="wiki-layout">
-            <article className="card wiki-brief">
-              <div className="card-header">
-                <div><span className="eyebrow">This week</span><h3>{teamSummary.headline}</h3></div>
-                <span className="status-pill">AI-generated</span>
-              </div>
-              <div className="card-body">
-                <p className="wiki-lead">{teamSummary.overview}</p>
-                <div className="wiki-section">
-                  <h4>Current priorities</h4>
-                  {teamSummary.highlights.map((item) => <div className="wiki-bullet" key={item}><Icon name="check" className="icon sm" /><span>{item}</span></div>)}
-                </div>
-                <div className="wiki-section">
-                  <h4>Risks & blockers</h4>
-                  {teamSummary.blockers.map((item) => <div className="wiki-bullet risk" key={item}><Icon name="activity" className="icon sm" /><span>{item}</span></div>)}
-                </div>
-                <div className="wiki-citations">
-                  <Icon name="review" className="icon sm" />
-                  <span>Grounded in {sources.map((source) => source.name).join(', ')}</span>
-                </div>
-              </div>
-            </article>
-
-            <aside className="card">
-              <div className="card-header"><div><h3>Workflow controls</h3><p>Privacy-aware team reporting</p></div></div>
-              <div className="card-body">
-                <div className="setting-row">
-                  <div className="setting-copy"><strong>Individual work summaries</strong><span>Show per-person activity only when explicitly enabled.</span></div>
-                  <button
-                    aria-label="Toggle individual work summaries"
-                    aria-pressed={data.wikiSettings.individualSummariesEnabled}
-                    className={`switch ${data.wikiSettings.individualSummariesEnabled ? 'on' : ''}`}
-                    onClick={() => updateWikiSettings({ individualSummariesEnabled: !data.wikiSettings.individualSummariesEnabled })}
-                  />
-                </div>
-                <div className="form-row">
-                  <label>Refresh cadence</label>
-                  <select value={data.wikiSettings.refreshCadence} onChange={(event) => updateWikiSettings({ refreshCadence: event.target.value as typeof data.wikiSettings.refreshCadence })}>
-                    <option value="manual">Manual</option>
-                    <option value="daily">Daily at 8:00 AM</option>
-                    <option value="weekly">Weekly on Monday</option>
-                  </select>
-                </div>
-                <div className="scope-box">
-                  <strong>Privacy boundary</strong>
-                  <p>Only work visible to this project is summarized. Private chats, direct messages, and unapproved sources are excluded.</p>
-                </div>
-              </div>
-            </aside>
-          </div>
-        </>
-      )}
-
-      {tab === 'people' && (
-        <div>
-          {!data.wikiSettings.individualSummariesEnabled ? (
-            <div className="empty-state wiki-empty">
-              <Icon name="lock" />
-              <h3>Individual summaries are off</h3>
-              <p>Enable them to show source-grounded work summaries for team members. This setting is intentionally opt-in.</p>
-              <button className="primary-btn" onClick={() => updateWikiSettings({ individualSummariesEnabled: true })}>Enable individual summaries</button>
-            </div>
-          ) : (
-            <div className="wiki-people-grid">
-              {peopleSummaries.map((summary) => {
-                const member = data.members.find((item) => item.id === summary.memberId)
-                if (!member) return null
-                return (
-                  <article className="card wiki-person" key={summary.id}>
-                    <div className="card-header">
-                      <div className="wiki-person-head"><span className="avatar">{member.initials}</span><div><h3>{member.name}</h3><p>{member.role} · Updated {relativeTime(summary.updatedAt)}</p></div></div>
-                    </div>
-                    <div className="card-body">
-                      <strong className="wiki-person-title">{summary.headline}</strong>
-                      <p className="wiki-person-copy">{summary.overview}</p>
-                      {summary.highlights.map((item) => <div className="wiki-bullet" key={item}><Icon name="check" className="icon sm" /><span>{item}</span></div>)}
-                      {summary.blockers.map((item) => <div className="wiki-bullet risk" key={item}><Icon name="activity" className="icon sm" /><span>{item}</span></div>)}
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
+          {selectedPage === 'overview' && (
+            <>
+              <h2>{summary?.headline ?? `${project.name} at a glance`}</h2>
+              <p>The wiki is the human-readable memory of this team. It explains what the team owns, how decisions are made, and where to look before starting new work.</p>
+              <h3>Current priorities</h3>
+              <ul>{summary?.highlights.map((item) => <li key={item}>{item}</li>)}</ul>
+              <h3>Risks and blockers</h3>
+              <ul className="wiki-risk-list">{summary?.blockers.map((item) => <li key={item}>{item}</li>)}</ul>
+              <blockquote>Ask AI can explain this summary, find the underlying source, or turn any section into a concrete task.</blockquote>
+            </>
           )}
-        </div>
-      )}
 
-      {tab === 'sources' && (
-        <div className="knowledge-card-grid">
-          {sources.map((source) => (
-            <article className="knowledge-card" key={source.id}>
-              <div className="knowledge-card-top">
-                <div className="row-icon">
-                  {source.logo ? <img className="plugin-logo" src={`${import.meta.env.BASE_URL}assets/${source.logo}`} alt="" /> : <Icon name="db" className="icon sm" />}
-                </div>
-                <div><h4>{source.name}</h4><span className="row-sub">{source.kind}</span></div>
+          {selectedPage === 'architecture' && (
+            <>
+              <h2>From request to governed execution</h2>
+              <p>A request begins in chat. OpenSaddle resolves team context, identifies an eligible agent, and prepares the smallest permission set needed for the work.</p>
+              <div className="wiki-flow" aria-label="Request execution flow">
+                {['Request', 'Team context', 'Agent + model', 'Runtime', 'Artifact'].map((item, index) => <span key={item}>{item}{index < 4 && <Icon name="forward" className="icon sm" />}</span>)}
               </div>
-              <p>{source.detail}</p>
-              <div className="knowledge-card-footer"><span className="status-pill green">{source.status}</span><span>Used in cited summaries</span></div>
-            </article>
-          ))}
-        </div>
-      )}
+              <h3>Runtime selection</h3>
+              <p>Read-only questions can remain local. Repository changes use an isolated coding workspace. Sensitive or long-running jobs move to a governed VM with an auditable trace.</p>
+              <pre><code>{`route = policy.resolve({\n  task,\n  team: "${project.name}",\n  requireAudit: true\n})`}</code></pre>
+            </>
+          )}
 
-      {tab === 'pages' && (
-        <div className="wiki-pages-grid">
-          {[
-            perspective === 'engineering'
-              ? ['Runtime architecture', 'How local, browser, VM, and GPU runtimes are selected, provisioned, and audited.', 'Engineering', 'Runtime policy · Updated today']
-              : ['Customer operations handbook', 'Claims intake, outreach review, and human approval patterns for customer-facing workflows.', 'Business', 'Operations · Updated today'],
-            perspective === 'engineering'
-              ? ['Agent provider guide', 'When to use Codex App Server, Claude Code, Cursor, Gemini, or the native OpenSaddle agent.', 'Engineering', 'Model routing · Updated yesterday']
-              : ['Workflow governance', 'How teams request access, review protected writes, and measure automation quality.', 'Business', 'Governance · Updated yesterday'],
-            perspective === 'engineering'
-              ? ['Incident response runbook', 'Debugging failed runs, inspecting tool timelines, and recovering from unavailable providers.', 'Engineering', 'Runbooks · Updated 2d ago']
-              : ['Weekly operating brief', 'A concise view of priorities, blockers, service health, and recent workflow activity.', 'Business', 'Leadership · Updated 2d ago'],
-            ['Project directory', `Pages and source-grounded notes for ${project.name}.`, PERSPECTIVE_COPY[perspective].label, 'Reference · Maintained continuously'],
-          ].map(([title, body, group, meta]) => (
-            <article className="card wiki-page-card" key={title}>
-              <div className="card-header"><div><span className="eyebrow">{group}</span><h3>{title}</h3></div><Icon name="file" className="icon sm" /></div>
-              <div className="card-body"><p>{body}</p><div className="wiki-page-meta"><span>{meta}</span><button className="tiny-btn" onClick={() => toast('Wiki page opened', title)}>Open page</button></div></div>
-            </article>
-          ))}
-        </div>
-      )}
+          {selectedPage === 'agents' && (
+            <>
+              <h2>Choose an entry point, not just a model</h2>
+              <p>People start with a team agent because it carries the right instructions and tools. Model choice remains an implementation detail unless a task needs a specific capability.</p>
+              <h3>Agent checklist</h3>
+              <ul>
+                <li>Give the agent one clear responsibility and a recognizable name.</li>
+                <li>Attach only the knowledge sources needed for that responsibility.</li>
+                <li>Default to read access and elevate writes at the point of action.</li>
+                <li>Return an artifact and trace link when work completes.</li>
+              </ul>
+            </>
+          )}
+
+          {selectedPage === 'incidents' && (
+            <>
+              <h2>Respond in four phases</h2>
+              <ol>
+                <li><strong>Observe.</strong> Open the trace and identify the first failed decision or tool call.</li>
+                <li><strong>Contain.</strong> Pause the run and revoke temporary credentials if the boundary is uncertain.</li>
+                <li><strong>Recover.</strong> Retry from a known checkpoint or continue in a clean workspace.</li>
+                <li><strong>Learn.</strong> Capture the resolution here and link the relevant artifact.</li>
+              </ol>
+              <blockquote>Never copy secrets, personal contact information, or raw production records into a wiki page.</blockquote>
+            </>
+          )}
+
+          {selectedPage === 'directory' && (
+            <>
+              <h2>Projects in this team</h2>
+              <p>Projects are narrower workspaces inside the team. They may represent a repository, product surface, operational process, or long-running initiative.</p>
+              <div className="wiki-project-directory">
+                {data.projects.filter((item) => item.id === project.id || item.parentId === project.id).map((item) => (
+                  <button key={item.id} onClick={() => navigate(`/project/${item.id}`)}>
+                    <Icon name={item.workspaceKind === 'local' ? 'terminal' : 'folder'} />
+                    <span><strong>{item.name}</strong><small>{item.description}</small></span>
+                    <Icon name="forward" className="icon sm" />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </article>
+      </main>
+
+      <button className="wiki-ask-ai" onClick={askAgent}><Icon name="spark" />Ask AI</button>
     </div>
   )
 }

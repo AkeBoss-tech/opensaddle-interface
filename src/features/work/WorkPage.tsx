@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
-import { Button } from '../../ui'
+import { Button, Dialog, Drawer } from '../../ui'
 import type {
   RuntimeRunSummary,
   WorkflowDefinition,
@@ -20,12 +20,25 @@ interface WorkRow {
   subtitle: string
   projectId: string
   status: string
+  owner?: string
+  priority?: AttentionItem['priority']
+  timeSignal?: string
   progress?: number
   href?: string
   kind: 'thread' | 'task' | 'workflow' | 'approval' | 'run'
   workflowId?: string
   executionId?: string
   actions?: Array<{ id: WorkAction; label: string }>
+}
+
+function relativeTime(timestamp?: number) {
+  if (!timestamp) return undefined
+  const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000))
+  if (minutes < 1) return 'Updated now'
+  if (minutes < 60) return `Updated ${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `Updated ${hours}h ago`
+  return `Updated ${Math.round(hours / 24)}d ago`
 }
 
 function statusLabel(status: AttentionItem['status']) {
@@ -45,9 +58,12 @@ function toWorkRow(item: AttentionItem): WorkRow {
   return {
     id: item.id,
     title: item.title,
-    subtitle: `${item.projectName} · ${item.detail}`,
+    subtitle: item.detail,
     projectId: item.projectId,
     status: statusLabel(item.status),
+    owner: item.projectName,
+    priority: item.priority,
+    timeSignal: relativeTime(item.updatedAt),
     progress: item.progress,
     href: item.href,
     kind: item.kind === 'workflow_run' ? 'workflow' : item.kind === 'agent_session' ? 'thread' : item.kind,
@@ -73,51 +89,52 @@ function taskProjectId(workflow: WorkflowDefinition, fallback: string): string {
   return typeof value === 'string' && value ? value : fallback
 }
 
+function descendantProjectIds(projects: Array<{ id: string; parentId: string | null }>, rootId: string) {
+  const ids = new Set([rootId])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const project of projects) {
+      if (project.parentId && ids.has(project.parentId) && !ids.has(project.id)) {
+        ids.add(project.id)
+        changed = true
+      }
+    }
+  }
+  return ids
+}
+
 function Section({
   title,
   description,
   rows,
   onOpen,
-  onRestore,
-  onAction,
-  busyAction,
 }: {
   title: string
   description: string
   rows: WorkRow[]
   onOpen: (row: WorkRow) => void
-  onRestore?: (row: WorkRow) => void
-  onAction?: (row: WorkRow, action: WorkAction) => void
-  busyAction?: string | null
 }) {
   return (
     <section className="tf-work-section">
       <div className="tf-work-section-head"><div><h2>{title}</h2><p>{description}</p></div><span>{rows.length}</span></div>
       <div className="tf-work-list">
         {rows.map((row) => (
-          <div key={row.id} className={`tf-work-row-wrap ${onRestore || row.actions?.length ? 'has-action' : ''}`}>
-            <button className="tf-work-row" onClick={() => onOpen(row)}>
+          <div key={row.id} className="tf-work-row-wrap">
+            <button className="tf-work-row" onClick={() => onOpen(row)} aria-label={`Open details for ${row.title}`}>
               <span className={`tf-work-icon ${row.kind}`}><Icon name={row.kind === 'approval' ? 'shield' : row.kind === 'workflow' ? 'activity' : row.kind === 'task' ? 'clock' : row.kind === 'run' ? 'terminal' : 'message'} className="icon sm" /></span>
-              <span className="tf-work-copy"><strong>{row.title}</strong><small>{row.subtitle}</small></span>
+              <span className="tf-work-copy">
+                <strong>{row.title}</strong>
+                <small>{row.subtitle}</small>
+                <span className="tf-work-card-meta">
+                  {row.owner && <span>{row.owner}</span>}
+                  {row.timeSignal && <span>{row.timeSignal}</span>}
+                </span>
+              </span>
               {row.progress !== undefined && <span className="tf-progress"><i style={{ width: `${row.progress}%` }} /></span>}
               <span className={`tf-work-status ${row.status.toLowerCase().replaceAll(' ', '-')}`}>{row.status}</span>
               <Icon name="chevron" className="icon xs tf-row-arrow" />
             </button>
-            {(row.actions?.length || onRestore) && (
-              <div className="tf-work-row-actions">
-                {row.actions?.map((action) => (
-                  <button
-                    key={action.id}
-                    className="tiny-btn"
-                    disabled={busyAction !== null}
-                    onClick={() => onAction?.(row, action.id)}
-                  >
-                    {busyAction === `${row.id}:${action.id}` ? 'Working…' : action.label}
-                  </button>
-                ))}
-                {onRestore && <button className="tiny-btn" disabled={busyAction !== null} onClick={() => onRestore(row)}>Restore</button>}
-              </div>
-            )}
           </div>
         ))}
         {!rows.length && <div className="tf-work-empty"><Icon name="check" /><strong>Nothing here</strong><span>You are caught up.</span></div>}
@@ -136,6 +153,7 @@ export function WorkPage() {
   const [timeline, setTimeline] = useState<WorkflowTimelineEvent[]>([])
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>()
   const [selectedExecutionId, setSelectedExecutionId] = useState<string>()
+  const [selectedRow, setSelectedRow] = useState<WorkRow>()
   const [busyAction, setBusyAction] = useState<string | null>(null)
 
   const refreshDurableWork = useCallback(async () => {
@@ -194,8 +212,10 @@ export function WorkPage() {
         return {
           id: `run-${run.runId}`,
           title: run.task,
-          subtitle: `${project?.name ?? run.projectId} · ${provider} · ${run.executionMode ?? 'project'} access`,
+          subtitle: `${provider} agent using ${run.executionMode ?? 'project'} access`,
           projectId: run.projectId,
+          owner: project?.name ?? run.projectId,
+          timeSignal: relativeTime(run.updatedAt),
           status: awaitingInteraction || run.status === 'waiting'
             ? 'Needs input'
             : run.status[0]!.toUpperCase() + run.status.slice(1),
@@ -210,6 +230,7 @@ export function WorkPage() {
         title: notification.title,
         subtitle: notification.body,
         projectId: data.activeProjectId,
+        owner: 'OpenSaddle',
         status: 'Needs input',
         href: notification.href,
         kind: 'approval',
@@ -227,8 +248,10 @@ export function WorkPage() {
       return {
         id: `workflow-${workflow.workflowId}`,
         title: workflow.name,
-        subtitle: `${data.projects.find((project) => project.id === projectId)?.name ?? projectId} · ${workflowSchedule(workflow.trigger)} · v${workflow.version}`,
+        subtitle: `${workflowSchedule(workflow.trigger)} workflow`,
         projectId,
+        owner: data.projects.find((project) => project.id === projectId)?.name ?? projectId,
+        timeSignal: `Definition v${workflow.version}`,
         status: workflow.status === 'paused' ? 'Paused' : 'Scheduled',
         kind: 'workflow',
         workflowId: workflow.workflowId,
@@ -252,8 +275,10 @@ export function WorkPage() {
         return {
           id: `workflow-execution-${execution.executionId}`,
           title: workflow?.name ?? execution.workflowId,
-          subtitle: `${data.projects.find((project) => project.id === projectId)?.name ?? projectId} · attempt ${execution.attempt} · ${new Date(execution.queuedAt).toLocaleString()}`,
+          subtitle: `Workflow execution · attempt ${execution.attempt}`,
           projectId,
+          owner: data.projects.find((project) => project.id === projectId)?.name ?? projectId,
+          timeSignal: relativeTime(execution.queuedAt),
           status,
           kind: 'workflow' as const,
           workflowId: execution.workflowId,
@@ -299,15 +324,25 @@ export function WorkPage() {
         return {
           id: chat.id,
           title: chat.title,
-          subtitle: `${project?.name ?? chat.projectId} · complete task history preserved`,
+          subtitle: 'Complete task history preserved',
           projectId: chat.projectId,
+          owner: project?.name ?? chat.projectId,
+          timeSignal: relativeTime(chat.updatedAt),
           status: 'Archived',
           href: `/chat/${chat.id}`,
           kind: 'thread' as const,
         }
       })
 
-    return { attention, running, scheduled, completed, archived }
+    const scopedProjectIds = descendantProjectIds(data.projects, data.activeProjectId)
+    const inSelectedTeam = (row: WorkRow) => scopedProjectIds.has(row.projectId)
+    return {
+      attention: attention.filter(inSelectedTeam),
+      running: running.filter(inSelectedTeam),
+      scheduled: scheduled.filter(inSelectedTeam),
+      completed: completed.filter(inSelectedTeam),
+      archived: archived.filter(inSelectedTeam),
+    }
   }, [data, durableRuns, executions, services?.controlPlane.mode, services?.mode, workflows])
 
   const selectedWorkflow = workflows.find((workflow) => workflow.workflowId === selectedWorkflowId)
@@ -322,18 +357,23 @@ export function WorkPage() {
     }
   }, [services, toast])
   const open = (row: WorkRow) => {
-    if (row.href) {
-      navigate(row.href)
-      return
-    }
-    if (!row.workflowId) {
-      navigate(`/project/${row.projectId}`)
-      return
-    }
+    setSelectedRow(row)
     setSelectedWorkflowId(row.workflowId)
     setSelectedExecutionId(row.executionId)
     setTimeline([])
     if (row.executionId) void loadTimeline(row.executionId)
+  }
+  const closeDetails = () => {
+    setSelectedRow(undefined)
+    setSelectedWorkflowId(undefined)
+    setSelectedExecutionId(undefined)
+    setTimeline([])
+  }
+  const openSelectedWork = () => {
+    if (!selectedRow) return
+    const destination = selectedRow.href ?? `/project/${selectedRow.projectId}`
+    closeDetails()
+    navigate(destination)
   }
   const runWorkAction = async (row: WorkRow, action: WorkAction) => {
     if (!services?.workflows) {
@@ -385,11 +425,103 @@ export function WorkPage() {
     { key: 'completed' as const, title: 'Completed', description: 'Recent outcomes ready to revisit', rows: rows.completed },
     { key: 'archived' as const, title: 'Archived', description: 'Hidden tasks with restorable history', rows: rows.archived },
   ]
+  const selectedProject = selectedRow
+    ? data.projects.find((project) => project.id === selectedRow.projectId)
+    : undefined
+  const detailBody = selectedRow ? (
+    <div className="tf-work-detail">
+      <div className="tf-work-detail-summary">
+        <span className={`tf-work-icon ${selectedRow.kind}`}>
+          <Icon name={selectedRow.kind === 'approval' ? 'shield' : selectedRow.kind === 'workflow' ? 'activity' : selectedRow.kind === 'run' ? 'terminal' : 'message'} className="icon sm" />
+        </span>
+        <div>
+          <span className={`tf-work-status ${selectedRow.status.toLowerCase().replaceAll(' ', '-')}`}>{selectedRow.status}</span>
+          <p>{selectedRow.subtitle}</p>
+        </div>
+      </div>
+      <dl className="tf-work-detail-grid">
+        <div><dt>Team area</dt><dd>{selectedProject?.name ?? selectedRow.projectId}</dd></div>
+        <div><dt>Owner or agent</dt><dd>{selectedRow.owner ?? 'OpenSaddle agent'}</dd></div>
+        <div><dt>Priority</dt><dd>{selectedRow.priority ? selectedRow.priority[0]!.toUpperCase() + selectedRow.priority.slice(1) : 'Normal'}</dd></div>
+        <div><dt>Last signal</dt><dd>{selectedRow.timeSignal ?? 'Current status'}</dd></div>
+      </dl>
+
+      {selectedWorkflow && (
+        <section className="tf-work-detail-section">
+          <div className="tf-work-detail-section-head">
+            <div>
+              <span className="tf-eyebrow">{selectedExecution ? 'Workflow execution' : 'Scheduled workflow'}</span>
+              <h3>Workflow details</h3>
+            </div>
+            <span className={`status-pill ${selectedExecution?.status === 'succeeded' || (!selectedExecution && selectedWorkflow.status === 'active') ? 'green' : selectedExecution?.status === 'failed' ? 'red' : 'yellow'}`}>
+              {selectedExecution?.status ?? selectedWorkflow.status}
+            </span>
+          </div>
+          <div className="tf-work-detail-grid">
+            <div><dt>Trigger</dt><dd>{workflowSchedule(selectedWorkflow.trigger)}</dd></div>
+            <div><dt>Definition</dt><dd>Version {selectedWorkflow.version}</dd></div>
+            <div><dt>Concurrency</dt><dd>{selectedWorkflow.concurrencyLimit}</dd></div>
+            <div><dt>Approval</dt><dd>{Object.keys(selectedWorkflow.approvalPolicy).length ? 'Policy attached' : 'No additional gate'}</dd></div>
+          </div>
+          {selectedExecution && (
+            <div className="local-run-activity">
+              <h4>Durable timeline</h4>
+              {timeline.map((event) => (
+                <div className="local-run-activity-row" key={event.timelineId}>
+                  <Icon name="activity" className="icon sm" />
+                  <span><strong>{event.eventType.replaceAll('_', ' ')}</strong><small>{new Date(event.recordedAt).toLocaleString()}</small></span>
+                </div>
+              ))}
+              {!timeline.length && <div className="tf-work-empty"><Icon name="activity" /><strong>No timeline events yet</strong><span>The execution is queued or has not been inspected.</span></div>}
+            </div>
+          )}
+        </section>
+      )}
+
+      {selectedRow.actions?.length ? (
+        <section className="tf-work-detail-section">
+          <span className="tf-eyebrow">Available actions</span>
+          <div className="tf-work-detail-actions">
+            {selectedRow.actions.map((action) => (
+              <Button
+                key={action.id}
+                variant="secondary"
+                size="sm"
+                disabled={busyAction !== null}
+                onClick={() => void runWorkAction(selectedRow, action.id)}
+              >
+                {busyAction === `${selectedRow.id}:${action.id}` ? 'Working…' : action.label}
+              </Button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  ) : null
+  const detailFooter = selectedRow ? (
+    <div className="tf-work-detail-footer">
+      {selectedRow.status === 'Archived' && (
+        <Button variant="secondary" size="sm" onClick={() => {
+          setChatArchived(selectedRow.id, false)
+          toast('Task restored', 'The task is visible in Recent again.')
+          closeDetails()
+        }}>Restore task</Button>
+      )}
+      <Button variant="ghost" size="sm" onClick={closeDetails}>Close</Button>
+      <Button variant="primary" size="sm" onClick={openSelectedWork}>
+        {selectedRow.kind === 'approval' ? 'Review request' : 'Open work'}
+      </Button>
+    </div>
+  ) : null
 
   return (
     <div className="tf-work-page">
       <header className="tf-work-header">
-        <div><span className="tf-eyebrow">Workspace</span><h1>Work</h1><p>Everything moving across your projects, ordered by what needs you next.</p></div>
+        <div>
+          <span className="tf-eyebrow">Team workspace · {data.projects.find((project) => project.id === data.activeProjectId)?.name ?? 'OpenSaddle'}</span>
+          <h1>Work</h1>
+          <p>Active work for this team, ordered by what needs you next.</p>
+        </div>
         <Button variant="primary" size="sm" leadingIcon={<Icon name="plus" className="icon sm" />} onClick={() => {
           const chat = createChat(data.activeProjectId, 'New task')
           setActiveChat(chat.id)
@@ -406,48 +538,6 @@ export function WorkPage() {
         ))}
       </div>
 
-      {selectedWorkflow && (
-        <section className="card local-run-detail">
-          <div className="card-header">
-            <div>
-              <span className="eyebrow">{selectedExecution ? 'Workflow execution' : 'Scheduled workflow'}</span>
-              <h3>{selectedWorkflow.name}</h3>
-              <p>{workflowSchedule(selectedWorkflow.trigger)} · definition v{selectedWorkflow.version} · concurrency {selectedWorkflow.concurrencyLimit}</p>
-            </div>
-            <div className="row-actions">
-              <span className={`status-pill ${selectedExecution?.status === 'succeeded' || (!selectedExecution && selectedWorkflow.status === 'active') ? 'green' : selectedExecution?.status === 'failed' ? 'red' : 'yellow'}`}>
-                {selectedExecution?.status ?? selectedWorkflow.status}
-              </span>
-              <button className="tiny-btn" onClick={() => {
-                setSelectedWorkflowId(undefined)
-                setSelectedExecutionId(undefined)
-                setTimeline([])
-              }}>Close</button>
-            </div>
-          </div>
-          <div className="card-body">
-            <div className="session-preview-grid">
-              <span>Trigger<strong>{workflowSchedule(selectedWorkflow.trigger)}</strong></span>
-              <span>Task<strong>{String(selectedWorkflow.task.kind ?? selectedWorkflow.task.prompt ?? 'Agent workflow')}</strong></span>
-              <span>Permissions<strong>{Object.keys(selectedWorkflow.permissionPolicy).length ? 'Policy attached' : 'Default policy'}</strong></span>
-              <span>Approval<strong>{Object.keys(selectedWorkflow.approvalPolicy).length ? 'Policy attached' : 'No additional gate'}</strong></span>
-            </div>
-            {selectedExecution && (
-              <div className="local-run-activity">
-                <h4>Durable timeline</h4>
-                {timeline.map((event) => (
-                  <div className="local-run-activity-row" key={event.timelineId}>
-                    <Icon name="activity" className="icon sm" />
-                    <span><strong>{event.eventType.replaceAll('_', ' ')}</strong><small>{new Date(event.recordedAt).toLocaleString()}</small></span>
-                  </div>
-                ))}
-                {!timeline.length && <div className="tf-work-empty"><Icon name="activity" /><strong>No timeline events yet</strong><span>The execution is queued or has not been inspected.</span></div>}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
       <div className="tf-work-sections">
         {sections.filter((section) => filter === 'all' || section.key === filter).map((section) => (
           <Section
@@ -456,15 +546,34 @@ export function WorkPage() {
             description={section.description}
             rows={section.rows}
             onOpen={open}
-            onAction={(row, action) => void runWorkAction(row, action)}
-            busyAction={busyAction}
-            onRestore={section.key === 'archived' ? (row) => {
-              setChatArchived(row.id, false)
-              toast('Task restored', 'The task is visible in Recent again.')
-            } : undefined}
           />
         ))}
       </div>
+
+      {selectedRow?.kind === 'approval' ? (
+        <Dialog
+          open
+          onClose={closeDetails}
+          title={selectedRow.title}
+          description="Approval or review request"
+          size="lg"
+          className="tf-work-approval-sheet"
+          footer={detailFooter}
+        >
+          {detailBody}
+        </Dialog>
+      ) : (
+        <Drawer
+          open={Boolean(selectedRow)}
+          onClose={closeDetails}
+          title={selectedRow?.title ?? 'Work details'}
+          description={selectedRow ? `${selectedRow.status} · ${selectedProject?.name ?? selectedRow.projectId}` : undefined}
+          className="tf-work-drawer"
+          footer={detailFooter}
+        >
+          {detailBody}
+        </Drawer>
+      )}
     </div>
   )
 }

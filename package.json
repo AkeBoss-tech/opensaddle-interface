@@ -23,6 +23,10 @@
     "desktop:package": "VITE_APP_BASE=./ npm run build && npm run package:mac --prefix electron"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@tabler/icons-react": "^3.46.0",
+    "lucide-react": "^1.27.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1"

@@ -147,6 +147,7 @@ export function SiteExperiencePage() {
   const [editPages, setEditPages] = useState<Site['pages']>([])
   const [settingsPanel, setSettingsPanel] = useState<'versions' | 'agent' | 'details' | null>(null)
   const [previewFullscreen, setPreviewFullscreen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   const project = data.projects.find((p) => p.id === site?.projectId)
   const agent = data.agents.find((a) => a.id === site?.agentId)
@@ -251,24 +252,32 @@ export function SiteExperiencePage() {
   )
 
   return (
-    <div className={`content-page site-experience ${previewFullscreen ? 'site-experience-fullscreen' : ''}`} style={{ maxWidth: 1280 }}>
-      <div className="page-header">
-        <div className="page-header-copy">
-          <div className="eyebrow">Site · {project.name}</div>
-          <h1>{site.name}</h1>
-          <p>{site.description}</p>
+    <div className={`content-page site-experience ${previewFullscreen ? 'site-experience-fullscreen' : ''}`} style={{ maxWidth: 1380 }}>
+      <div className="site-experience-toolbar">
+        <div>
+          <span>Site · {project.name}</span>
+          <strong>{site.name}</strong>
+          <small>{site.description}</small>
         </div>
-        <div className="page-header-actions">
-          <button className="secondary-btn" onClick={() => {
-            void navigator.clipboard.writeText(shareUrl).then(() => toast('Share link copied', shareUrl)).catch(() => toast('Copy failed', 'Open the preview link manually.'))
-          }}><Icon name="globe" className="icon sm" />Share</button>
-          <button className="secondary-btn" onClick={() => setSettingsPanel('versions')}><Icon name="clock" className="icon sm" />Versions</button>
-          <button className="secondary-btn" onClick={() => setSettingsPanel('agent')}><Icon name="spark" className="icon sm" />Agent</button>
-          <button className="secondary-btn" onClick={() => setSettingsPanel('details')}><Icon name="info" className="icon sm" />Details</button>
-          <button className="secondary-btn" aria-pressed={previewFullscreen} onClick={() => setPreviewFullscreen((value) => !value)}><Icon name="layout" className="icon sm" />{previewFullscreen ? 'Exit full screen' : 'Full screen'}</button>
-          <a className="secondary-btn" href={shareUrl} target="_blank" rel="noreferrer"><Icon name="globe" className="icon sm" />Open preview</a>
+        <div className="site-toolbar-actions">
+          <a className="secondary-btn" href={shareUrl} target="_blank" rel="noreferrer"><Icon name="forward" className="icon sm" />Open site</a>
           <button className="primary-btn" onClick={openEditor}><Icon name="sliders" className="icon sm" />Edit site</button>
-          <Link className="secondary-btn" to={`/project/${site.projectId}`}><Icon name="folder" className="icon sm" />Project</Link>
+          <div className="site-more-wrap">
+            <button className="secondary-btn site-more-button" aria-label="Show more site options" aria-expanded={moreOpen} onClick={() => setMoreOpen((value) => !value)}><Icon name="more" className="icon sm" /></button>
+            {moreOpen && (
+              <div className="site-more-menu" role="menu">
+                <button onClick={() => {
+                  setMoreOpen(false)
+                  void navigator.clipboard.writeText(shareUrl).then(() => toast('Share link copied', shareUrl)).catch(() => toast('Copy failed', 'Open the preview link manually.'))
+                }}><Icon name="globe" className="icon sm" /><span><strong>Share</strong><small>Copy the published URL</small></span></button>
+                <button onClick={() => { setSettingsPanel('versions'); setMoreOpen(false) }}><Icon name="clock" className="icon sm" /><span><strong>Versions</strong><small>Draft, publish, or roll back</small></span></button>
+                <button onClick={() => { setSettingsPanel('agent'); setMoreOpen(false) }}><Icon name="spark" className="icon sm" /><span><strong>Embedded agent</strong><small>Agent and placement settings</small></span></button>
+                <button onClick={() => { setSettingsPanel('details'); setMoreOpen(false) }}><Icon name="info" className="icon sm" /><span><strong>Details</strong><small>URL, visibility, and access</small></span></button>
+                <button onClick={() => { setPreviewFullscreen((value) => !value); setMoreOpen(false) }}><Icon name="layout" className="icon sm" /><span><strong>{previewFullscreen ? 'Exit full screen' : 'Full screen'}</strong><small>Focus on the site preview</small></span></button>
+                <Link to={`/project/${site.projectId}`} onClick={() => setMoreOpen(false)}><Icon name="folder" className="icon sm" /><span><strong>Open work stream</strong><small>{project.name}</small></span></Link>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -282,9 +291,21 @@ export function SiteExperiencePage() {
             </div>
             <div className="modal-body">
               {settingsPanel === 'versions' && (
-                <div className="row-list">
-                  {site.versions.map((version) => <button key={version.id} className="version-main" onClick={() => { setPreviewVersionId(version.id); setSettingsPanel(null) }}><div className="version-title"><strong>{version.label}</strong><span className={`status-pill ${version.status === 'published' ? 'green' : version.status === 'draft' ? 'yellow' : ''}`}>{version.status}</span></div><span className="version-sub">{version.summary}</span></button>)}
-                </div>
+                <>
+                  <div className="site-modal-toolbar"><p>Select a version to preview, or create a new draft from the current site.</p><button className="primary-btn" onClick={() => guardWrite(() => {
+                    const label = `v${site.versions.length + 1}`
+                    const version = createSiteVersion(site.id, label, 'New draft from current pages')
+                    if (version) { setPreviewVersionId(version.id); toast('Draft created', `${site.name} · ${label}`) }
+                  })}><Icon name="plus" className="icon sm" />New draft</button></div>
+                  <div className="row-list">
+                    {site.versions.map((version) => (
+                      <div key={version.id} className={`version-row ${preview?.id === version.id ? 'previewing' : ''}`}>
+                        <button className="version-main" onClick={() => { setPreviewVersionId(version.id); setSettingsPanel(null) }}><div className="version-title"><strong>{version.label}</strong><span className={`status-pill ${version.status === 'published' ? 'green' : version.status === 'draft' ? 'yellow' : ''}`}>{version.status}</span></div><span className="version-sub">{version.summary}</span><span className="version-meta">{relativeTime(version.createdAt)}</span></button>
+                        {version.status !== 'published' && <button className="tiny-btn" onClick={() => guardWrite(() => { publishSiteVersion(site.id, version.id); setPreviewVersionId(null); toast('Published', `${site.name} ${version.label} is live`) })}>{version.status === 'draft' ? 'Publish' : 'Restore'}</button>}
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
               {settingsPanel === 'agent' && (
                 <>
@@ -307,6 +328,7 @@ export function SiteExperiencePage() {
           <div className="site-browser-bar">
             <span className="pf-dot" /><span className="pf-dot" /><span className="pf-dot" />
             <span className="site-url">{shareUrl}</span>
+            <a className="site-open-external" href={shareUrl} target="_blank" rel="noreferrer" aria-label="Open published site in a new tab" title="Open in new tab"><Icon name="forward" className="icon sm" /></a>
             <span className={`status-pill ${viewingDraft ? 'yellow' : 'green'}`}>{viewingDraft ? `Previewing ${preview?.label ?? 'draft'}` : `Live · ${preview?.label}`}</span>
           </div>
           <div className="site-canvas">
@@ -330,12 +352,38 @@ export function SiteExperiencePage() {
               </div>
               <div className="site-blocks">
                 {(page.sections?.length ? page.sections : [
-                  { id: 'project', title: `Powered by ${project.name}`, body: `This experience is generated from project knowledge and stays in sync with version ${preview?.label ?? '—'}.` },
-                  { id: 'approval', title: 'Human in the loop', body: `Anything the embedded agent writes back is gated by the project's approval rules.` },
+                  { id: 'project', title: 'Guided claim intake', body: 'Capture loss details, policy information, supporting documents, and preferred contact method in one governed flow.' },
+                  { id: 'approval', title: 'Human review before sending', body: `The ${agent?.name ?? 'claims assistant'} drafts a response, but an authorized adjuster approves every external write.` },
+                  { id: 'sla', title: 'SLA-aware triage', body: 'Urgent bodily-injury, fraud, and coverage-risk signals are highlighted immediately and routed to the right queue.' },
+                  { id: 'sources', title: 'Source-grounded answers', body: `Guidance stays tied to ${project.name} knowledge, current policy language, and the published ${preview?.label ?? 'version'}.` },
                 ]).map((section) => (
                   <div className="site-block" key={section.id}><strong>{section.title}</strong><p>{section.body}</p></div>
                 ))}
               </div>
+              <section className="site-demo-dashboard">
+                <div className="site-demo-heading"><div><span>CLAIMS OPERATIONS</span><h3>What happens after submission</h3></div><span className="site-demo-live"><i /> Systems healthy</span></div>
+                <div className="site-demo-metrics">
+                  <article><span>OPEN INTAKES</span><strong>12</strong><small>4 awaiting documents</small></article>
+                  <article><span>MEDIAN RESPONSE</span><strong>18m</strong><small>6m faster this week</small></article>
+                  <article><span>AI DRAFT ACCEPTANCE</span><strong>94%</strong><small>After human review</small></article>
+                </div>
+                <div className="site-demo-flow">
+                  {[
+                    ['1', 'Submit update', 'Structured details and attachments'],
+                    ['2', 'Validate coverage', 'Policy and knowledge checks'],
+                    ['3', 'Draft response', `${agent?.name ?? 'Claims assistant'} prepares the next action`],
+                    ['4', 'Human approval', 'Adjuster reviews before anything is sent'],
+                  ].map(([number, title, detail]) => <article key={number}><span>{number}</span><div><strong>{title}</strong><small>{detail}</small></div></article>)}
+                </div>
+                <div className="site-demo-activity">
+                  <div><strong>Recent activity</strong><button onClick={() => setChatOpen(true)}>Ask the claims assistant</button></div>
+                  <table><thead><tr><th>Claim</th><th>Update</th><th>Owner</th><th>Status</th></tr></thead><tbody>
+                    <tr><td>CLM-2048</td><td>Repair estimate received</td><td>Maya Chen</td><td><span className="site-table-status ready">Ready for review</span></td></tr>
+                    <tr><td>CLM-2044</td><td>Coverage clarification requested</td><td>Claims Assistant</td><td><span className="site-table-status working">Drafting</span></td></tr>
+                    <tr><td>CLM-2039</td><td>Response approved and sent</td><td>Jordan Lee</td><td><span className="site-table-status done">Complete</span></td></tr>
+                  </tbody></table>
+                </div>
+              </section>
             </div>
 
             {agent && site.agentPlacement === 'rail' && <div className="site-rail">{agentWidget}</div>}
@@ -351,74 +399,6 @@ export function SiteExperiencePage() {
           </div>
         </div>
 
-        <div className="site-side">
-          <div className="card">
-            <div className="card-header">
-              <div><h3>Versions</h3><p>Draft, publish, and roll back</p></div>
-              <button className="tiny-btn right" onClick={() => guardWrite(() => {
-                const label = `v${site.versions.length + 1}`
-                const v = createSiteVersion(site.id, label, 'New draft from current pages')
-                if (v) { setPreviewVersionId(v.id); toast('Draft created', `${site.name} · ${label}`) }
-              })}>New draft</button>
-            </div>
-            <div className="card-body row-list">
-              {site.versions.map((v) => (
-                <div key={v.id} className={`version-row ${preview?.id === v.id ? 'previewing' : ''}`}>
-                  <button className="version-main" onClick={() => setPreviewVersionId(v.id)}>
-                    <div className="version-title">
-                      <strong>{v.label}</strong>
-                      <span className={`status-pill ${v.status === 'published' ? 'green' : v.status === 'draft' ? 'yellow' : ''}`}>{v.status}</span>
-                    </div>
-                    <span className="version-sub">{v.summary}</span>
-                    <span className="version-meta">{data.members.find((m) => m.id === v.createdBy)?.name ?? v.createdBy} · {relativeTime(v.createdAt)}</span>
-                  </button>
-                  {v.status === 'draft' && (
-                    <button className="tiny-btn" onClick={() => guardWrite(() => { publishSiteVersion(site.id, v.id); setPreviewVersionId(null); toast('Published', `${site.name} ${v.label} is live`) })}>Publish</button>
-                  )}
-                  {v.status === 'archived' && (
-                    <button className="tiny-btn" onClick={() => guardWrite(() => { publishSiteVersion(site.id, v.id); setPreviewVersionId(null); toast('Rolled back', `${site.name} restored to ${v.label}`) })}>Restore</button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header"><div><h3>Embedded agent</h3><p>AI that lives inside the site</p></div></div>
-            <div className="card-body">
-              <div className="form-row"><label>Agent</label>
-                <select value={site.agentId ?? ''} onChange={(e) => guardWrite(() => { updateSite(site.id, { agentId: e.target.value || undefined }); toast('Agent updated', e.target.value ? 'Embedded agent changed' : 'Agent removed') })}>
-                  <option value="">None</option>
-                  {projectAgents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
-              <div className="form-row" style={{ marginBottom: 10 }}><label>Placement</label>
-                <div className="seg">
-                  <button className={site.agentPlacement === 'bubble' ? 'active' : ''} onClick={() => guardWrite(() => updateSite(site.id, { agentPlacement: 'bubble' }))}>Floating bubble</button>
-                  <button className={site.agentPlacement === 'rail' ? 'active' : ''} onClick={() => guardWrite(() => updateSite(site.id, { agentPlacement: 'rail' }))}>Side rail</button>
-                </div>
-              </div>
-              <div className="scope-box">
-                <strong>Scope</strong>
-                <p>The embedded agent runs with {project.name}'s permission grants. Site visitors get read-only scope; writes route through the project's approval rules.</p>
-              </div>
-              {agent && (
-                <button className="secondary-btn" style={{ width: '100%', marginTop: 10 }} onClick={() => nav(`/agent/${agent.id}`)}><Icon name="spark" className="icon sm" />Open {agent.name}</button>
-              )}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header"><div><h3>Details</h3></div></div>
-            <div className="card-body">
-              <div className="kv"><span>Project</span><span>{project.name}</span></div>
-              <div className="kv"><span>Visibility</span><span>{site.visibility}</span></div>
-              <div className="kv"><span>Created</span><span>{new Date(site.createdAt).toLocaleDateString()}</span></div>
-              <div className="kv"><span>Updated</span><span>{relativeTime(site.updatedAt)}</span></div>
-              <div className="kv"><span>Your access</span><span>{canWrite.allowed ? 'Can edit & publish' : 'View only'}</span></div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {editorOpen && (

@@ -27,6 +27,7 @@ import {
   type ThreadInspectorTab,
 } from '../features/thread/inspectorState'
 import type { GitComparisonResult, GitStatusResult, RouteEstimate } from '../services/contracts'
+import '../styles/team-channel.css'
 
 const HARNESS_PICKER_OPTIONS: Array<{
   id: CodingProvider
@@ -359,6 +360,17 @@ export function ChatPage() {
   const [repositoryDraft, setRepositoryDraft] = useState('')
   const [delegateEditorOpen, setDelegateEditorOpen] = useState(false)
   const [delegateDraft, setDelegateDraft] = useState('')
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [channelView, setChannelView] = useState<'messages' | 'canvas' | 'files'>('messages')
+  const [channelSearchOpen, setChannelSearchOpen] = useState(false)
+  const [channelSearch, setChannelSearch] = useState('')
+  const [channelPanel, setChannelPanel] = useState<'members' | 'details' | null>(null)
+  const [channelAddOpen, setChannelAddOpen] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<{ id: string; name: string } | null>(null)
+  const [messageMenuId, setMessageMenuId] = useState<string | null>(null)
+  const [channelReactions, setChannelReactions] = useState<Record<string, number>>({})
+  const [savedChannelMessages, setSavedChannelMessages] = useState<Set<string>>(new Set())
+  const channelComposerRef = useRef<HTMLTextAreaElement>(null)
   const attachRef = useRef<HTMLInputElement>(null)
   const persistInspector = (state: Partial<ThreadInspectorState>) => {
     const next = {
@@ -736,6 +748,43 @@ export function ChatPage() {
   const send = async (forced?: string) => {
     const prompt = (forced ?? text).trim()
     if (!prompt || !chat) return
+    const mentionedAgent = chat.visibility !== 'private'
+      ? data.agents.find((agent) => {
+        if (agent.projectId !== project.id) return false
+        const mention = `@${agent.name}`.toLowerCase()
+        return prompt.toLowerCase().includes(mention)
+          || prompt.toLowerCase().includes(`@${agent.name.replaceAll(' ', '')}`.toLowerCase())
+      })
+      : undefined
+    if (mentionedAgent && chat.agentId !== mentionedAgent.id) {
+      setText('')
+      setMentionOpen(false)
+      appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+      const taskPrompt = prompt
+        .replace(new RegExp(`@${mentionedAgent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'ig'), '')
+        .trim()
+      const agentThread = createChat(
+        project.id,
+        `${mentionedAgent.name} · ${taskPrompt || 'Channel request'}`,
+        mentionedAgent.id,
+        undefined,
+        false,
+      )
+      appendMessage({
+        chatId: chat.id,
+        role: 'assistant',
+        text: '',
+        lightHtml: `<div class="team-channel-agent-response"><p><strong>${mentionedAgent.name}</strong> picked this up in a focused agent thread.</p><p>${taskPrompt || 'The requested task'} is queued with the team’s tools and permissions.</p><div><a href="/opensaddle-interface/chat/${agentThread.id}">Open task thread</a><span>Trace starts when the thread runs</span><span>Artifacts will be linked here</span></div></div>`,
+        routingNote: `Channel delegation · ${mentionedAgent.name}`,
+      })
+      toast('Agent thread created', `${mentionedAgent.name} is ready to work on the channel request.`)
+      return
+    }
+    if (chat.visibility !== 'private') {
+      setText('')
+      appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+      return
+    }
     if (forced === undefined && activeManagedRun) {
       try {
         if (activeSendMode === 'steer' && steerableRun) {
@@ -1661,6 +1710,271 @@ export function ChatPage() {
   }
 
   if (!chat) return <div className="content-page"><div className="empty-state"><h3>No chat selected</h3></div></div>
+  const isTeamChannel = chat.visibility !== 'private'
+  const channelAgents = data.agents.filter((agent) => agent.projectId === project.id)
+  const demoChannelFeed = [
+    {
+      id: 'demo-maya',
+      role: 'user' as const,
+      name: 'Maya Chen',
+      initials: 'MC',
+      createdAt: Date.now() - 58 * 60 * 1000,
+      text: 'I pulled the secure VM acceptance criteria into one place. The remaining question is whether background sessions should pause or terminate when a permission expires.',
+    },
+    {
+      id: 'demo-jordan',
+      role: 'user' as const,
+      name: 'Jordan Lee',
+      initials: 'JL',
+      createdAt: Date.now() - 51 * 60 * 1000,
+      text: 'Pause feels safer and gives the user a clear recovery path. @Secure Coding Agent can you verify that against the current runtime policy?',
+    },
+    {
+      id: 'demo-agent-run',
+      role: 'assistant' as const,
+      name: channelAgents[0]?.name ?? 'Secure Coding Agent',
+      initials: 'AI',
+      createdAt: Date.now() - 48 * 60 * 1000,
+      text: 'Checked the runtime and permission policies. Expired grants pause the VM, preserve the encrypted workspace, and create an approval request for the owner.',
+      demoRun: {
+        title: 'Permission-expiry policy review',
+        status: 'Completed in 8.4s · 3 sources · Open agent thread',
+      },
+    },
+    {
+      id: 'demo-akash',
+      role: 'user' as const,
+      name: 'Akash Dubey',
+      initials: 'AD',
+      createdAt: Date.now() - 34 * 60 * 1000,
+      text: 'Great. Let’s use that behavior in the demo and link the full agent thread from the release note.',
+    },
+  ]
+  const liveChannelFeed = messages.map((message) => {
+    const member = message.role === 'user'
+      ? data.members.find((item) => item.id === data.currentUserId)
+      : undefined
+    const agent = message.role === 'assistant'
+      ? data.agents.find((item) => item.id === chat.agentId) ?? channelAgents[0]
+      : undefined
+    return {
+      id: message.id,
+      role: message.role,
+      name: member?.name ?? agent?.name ?? (message.role === 'assistant' ? 'OpenSaddle Agent' : 'Team member'),
+      initials: member?.initials ?? (agent ? 'AI' : 'TM'),
+      createdAt: message.createdAt,
+      text: message.text,
+      lightHtml: message.lightHtml,
+      run: message.run,
+    }
+  })
+  const channelFeed = [...demoChannelFeed, ...liveChannelFeed]
+    .filter((message) => !channelSearch.trim() || `${message.name} ${message.text}`.toLowerCase().includes(channelSearch.trim().toLowerCase()))
+
+  if (isTeamChannel) {
+    return (
+      <section className="slack-channel" aria-label={`${chat.title} team channel`}>
+        <header className="slack-channel-header">
+          <div className="slack-channel-heading">
+            <span>#</span>
+            <div><h1>{chat.title}</h1><p>People and AI agents working together in {project.name}</p></div>
+          </div>
+          <div className="slack-channel-actions">
+            <div className="slack-channel-people" aria-label="Channel participants">
+              {data.members.slice(0, 3).map((member) => (
+                <button key={member.id} title={member.name} onClick={() => setChannelPanel('members')}>{member.initials}</button>
+              ))}
+              {channelAgents.slice(0, 2).map((agent) => (
+                <button key={agent.id} title={agent.name} onClick={() => setChannelPanel('members')}><Icon name="spark" className="icon xs" /></button>
+              ))}
+            </div>
+            <button className={channelSearchOpen ? 'active' : ''} aria-label="Search channel" onClick={() => setChannelSearchOpen((value) => !value)}><Icon name="search" className="icon sm" /></button>
+            <button className={channelPanel === 'details' ? 'active' : ''} aria-label="Channel details" onClick={() => setChannelPanel((value) => value === 'details' ? null : 'details')}><Icon name="more" className="icon sm" /></button>
+          </div>
+        </header>
+        <nav className="slack-channel-tabs" aria-label="Channel views">
+          <button className={channelView === 'messages' ? 'active' : ''} onClick={() => setChannelView('messages')}><Icon name="message" className="icon sm" />Messages</button>
+          <button className={channelView === 'canvas' ? 'active' : ''} onClick={() => setChannelView('canvas')}><Icon name="file" className="icon sm" />Canvas</button>
+          <button className={channelView === 'files' ? 'active' : ''} onClick={() => setChannelView('files')}><Icon name="paperclip" className="icon sm" />Files &amp; links</button>
+          <button className={channelAddOpen ? 'active' : ''} aria-label="Add channel tab" onClick={() => setChannelAddOpen((value) => !value)}><Icon name="plus" className="icon sm" /></button>
+          {channelAddOpen && (
+            <div className="slack-add-tab-menu" role="menu">
+              <button onClick={() => { setChannelView('canvas'); setChannelAddOpen(false); toast('Canvas added', 'The shared canvas is ready for this channel.') }}><Icon name="file" className="icon xs" />Shared canvas</button>
+              <button onClick={() => { setChannelView('files'); setChannelAddOpen(false); toast('Files view added', 'Channel files and links are now visible.') }}><Icon name="paperclip" className="icon xs" />Files &amp; links</button>
+              <button onClick={() => { setChannelAddOpen(false); toast('Workflow added', 'Demo triage workflow attached to this channel.') }}><Icon name="activity" className="icon xs" />Workflow</button>
+            </div>
+          )}
+        </nav>
+
+        {channelSearchOpen && (
+          <div className="slack-channel-search">
+            <Icon name="search" className="icon sm" />
+            <input autoFocus value={channelSearch} onChange={(event) => setChannelSearch(event.target.value)} placeholder={`Search #${chat.title}`} />
+            {channelSearch && <span>{channelFeed.length} results</span>}
+            <button aria-label="Close search" onClick={() => { setChannelSearchOpen(false); setChannelSearch('') }}>×</button>
+          </div>
+        )}
+
+        {channelView === 'messages' && (
+          <div className="slack-channel-scroll">
+            <div className="slack-channel-intro">
+              <span>#</span>
+              <h2>{chat.title}</h2>
+              <p>A shared space for people and AI to coordinate. Agent reasoning stays in linked agent threads, while decisions and results remain readable here.</p>
+            </div>
+            <div className="slack-day-divider"><span>Today</span></div>
+            <div className="slack-message-list">
+              {channelFeed.map((message, index) => (
+                <article className={`slack-message ${message.role === 'assistant' ? 'agent' : ''}`} key={message.id}>
+                  <span
+                    className="slack-message-avatar"
+                    style={message.role === 'assistant' ? undefined : {
+                      '--message-avatar': ['#536de8', '#b15fba', '#d4674c', '#2d9b82', '#c18a32'][index % 5],
+                    } as React.CSSProperties}
+                  >{message.role === 'assistant' ? <Icon name="spark" className="icon sm" /> : message.initials}</span>
+                  <div>
+                    <header><strong>{message.name}</strong>{message.role === 'assistant' && <span>APP</span>}<time>{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></header>
+                    {message.text && <p>{message.text}</p>}
+                    {'lightHtml' in message && message.lightHtml && <div className="slack-agent-card" dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.lightHtml) }} />}
+                    {'run' in message && message.run && (
+                      <button className="slack-run-card" onClick={() => openInspector()}>
+                        <Icon name={message.run.done ? 'check' : 'activity'} />
+                        <span><strong>{message.run.title}</strong><small>{message.run.statusText} · Open agent thread</small></span>
+                        <Icon name="forward" className="icon sm" />
+                      </button>
+                    )}
+                    {'demoRun' in message && message.demoRun && (
+                      <button className="slack-run-card" onClick={() => toast('Agent thread opened', 'The complete model reasoning, output, sources, and trace live in the agent thread.')}>
+                        <Icon name="check" />
+                        <span><strong>{message.demoRun.title}</strong><small>{message.demoRun.status}</small></span>
+                        <Icon name="forward" className="icon sm" />
+                      </button>
+                    )}
+                    {Boolean(channelReactions[message.id]) && (
+                      <button className="slack-reaction-chip" onClick={() => setChannelReactions((current) => ({ ...current, [message.id]: Math.max(0, (current[message.id] ?? 0) - 1) }))}>👍 {channelReactions[message.id]}</button>
+                    )}
+                  </div>
+                  <div className="slack-message-hover" aria-label={`Actions for message ${index + 1}`}>
+                    <button title="Add reaction" onClick={() => setChannelReactions((current) => ({ ...current, [message.id]: (current[message.id] ?? 0) + 1 }))}>☺</button>
+                    <button title="Reply" onClick={() => { setReplyingTo({ id: message.id, name: message.name }); channelComposerRef.current?.focus() }}><Icon name="message" className="icon xs" /></button>
+                    <button title="More" onClick={() => setMessageMenuId((value) => value === message.id ? null : message.id)}><Icon name="more" className="icon xs" /></button>
+                  </div>
+                  {messageMenuId === message.id && (
+                    <div className="slack-message-menu">
+                      <button onClick={() => { void navigator.clipboard?.writeText(message.text); setMessageMenuId(null); toast('Message copied', 'Copied to your clipboard.') }}>Copy text</button>
+                      <button onClick={() => {
+                        setSavedChannelMessages((current) => {
+                          const next = new Set(current)
+                          if (next.has(message.id)) next.delete(message.id)
+                          else next.add(message.id)
+                          return next
+                        })
+                        setMessageMenuId(null)
+                      }}>{savedChannelMessages.has(message.id) ? 'Remove from saved' : 'Save for later'}</button>
+                      <button onClick={() => { setReplyingTo({ id: message.id, name: message.name }); setMessageMenuId(null); channelComposerRef.current?.focus() }}>Reply in thread</button>
+                    </div>
+                  )}
+                </article>
+              ))}
+              {!channelFeed.length && <div className="slack-empty-results">No messages match “{channelSearch}”.</div>}
+            </div>
+          </div>
+        )}
+
+        {channelView === 'canvas' && (
+          <div className="slack-channel-view">
+            <header><span>CHANNEL CANVAS</span><h2>Secure VM launch brief</h2><p>A living summary of decisions, owners, and work across this channel.</p></header>
+            <div className="slack-canvas-grid">
+              <section><span>DECISION</span><h3>Pause on permission expiry</h3><p>Background VMs retain their encrypted workspace and request renewed approval instead of terminating.</p></section>
+              <section><span>OWNER</span><h3>Runtime platform</h3><p>Jordan owns the policy change. Maya owns the user-facing recovery flow.</p></section>
+              <section><span>NEXT MILESTONE</span><h3>Demo-ready by Friday</h3><p>Finish the recovery prompt, run the threat-model checklist, and publish the release note.</p></section>
+              <section className="agent-note"><Icon name="spark" className="icon sm" /><div><h3>AI-maintained summary</h3><p>Updated from channel messages and 2 linked agent threads.</p></div><button onClick={() => toast('Canvas refreshed', 'The summary now includes the latest channel activity.')}>Refresh</button></section>
+            </div>
+          </div>
+        )}
+
+        {channelView === 'files' && (
+          <div className="slack-channel-view">
+            <header><span>SHARED CONTEXT</span><h2>Files &amp; links</h2><p>Artifacts shared directly or produced by agent runs in this channel.</p></header>
+            <div className="slack-file-list">
+              {[
+                ['file', 'secure-vm-acceptance-criteria.md', 'Maya Chen · 38 minutes ago', 'Document'],
+                ['git', 'Permission-expiry policy review', 'Secure Coding Agent · Agent thread', 'Trace'],
+                ['shield', 'Runtime threat model', 'Jordan Lee · Yesterday', 'Artifact'],
+                ['forward', 'OPS-184 · Background VM recovery', 'Linear · Updated today', 'Link'],
+              ].map(([icon, title, meta, kind]) => (
+                <button key={title} onClick={() => toast(kind === 'Trace' ? 'Agent thread opened' : `${kind} opened`, title)}>
+                  <span><Icon name={icon} className="icon sm" /></span><div><strong>{title}</strong><small>{meta}</small></div><em>{kind}</em><Icon name="forward" className="icon sm" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {channelPanel && (
+          <aside className="slack-channel-panel" aria-label={channelPanel === 'members' ? 'Channel members' : 'Channel details'}>
+            <header><strong>{channelPanel === 'members' ? 'People & agents' : 'Channel details'}</strong><button onClick={() => setChannelPanel(null)}>×</button></header>
+            {channelPanel === 'members' ? (
+              <div className="slack-member-list">
+                {data.members.slice(0, 5).map((member) => <button key={member.id}><span>{member.initials}</span><div><strong>{member.name}</strong><small>Team member</small></div></button>)}
+                {channelAgents.map((agent) => <button key={agent.id}><span className="agent"><Icon name="spark" className="icon xs" /></span><div><strong>{agent.name}</strong><small>AI agent · available</small></div></button>)}
+              </div>
+            ) : (
+              <div className="slack-detail-list">
+                <section><span>ABOUT</span><p>Coordinate the secure background VM milestone across people and AI agents.</p></section>
+                <section><span>WORKSPACE</span><p>{project.name}</p></section>
+                <section><span>MEMBERS</span><p>{data.members.length} people · {channelAgents.length} agents</p></section>
+                <button onClick={() => { setChannelPanel('members') }}>View all participants</button>
+                <button onClick={() => toast('Notifications updated', `You’ll receive mentions and agent-run updates from #${chat.title}.`)}>Notification settings</button>
+              </div>
+            )}
+          </aside>
+        )}
+
+        {channelView === 'messages' && <div className="slack-composer-wrap">
+          {mentionOpen && (
+            <div className="slack-agent-picker" aria-label="Mention an agent">
+              <span>Assign work to</span>
+              {channelAgents.map((agent) => (
+                <button key={agent.id} onClick={() => {
+                  setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@${agent.name} `)
+                  setMentionOpen(false)
+                }}><Icon name="spark" className="icon xs" />{agent.name}</button>
+              ))}
+            </div>
+          )}
+          <div className="slack-composer">
+            {replyingTo && <div className="slack-reply-context"><span>Replying to <strong>{replyingTo.name}</strong></span><button onClick={() => setReplyingTo(null)}>×</button></div>}
+            <div className="slack-format-row">
+              <button title="Bold"><strong>B</strong></button><button title="Italic"><em>I</em></button><button title="Link"><Icon name="paperclip" className="icon xs" /></button><button title="Code"><Icon name="code" className="icon xs" /></button>
+            </div>
+            <textarea
+              ref={channelComposerRef}
+              aria-label={`Message #${chat.title}`}
+              placeholder={`Message #${chat.title}`}
+              value={text}
+              rows={3}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  void send()
+                }
+              }}
+            />
+            <div className="slack-compose-actions">
+              <div>
+                <button title="Attach" aria-label="Attach" onClick={() => { setChannelView('files'); toast('Files view opened', 'Choose a file or paste a link to share it with the channel.') }}><Icon name="plus" className="icon sm" /></button>
+                <button title="Mention agent" aria-label="Mention agent" onClick={() => setMentionOpen((value) => !value)}>@</button>
+                <button title="Emoji" aria-label="Emoji" onClick={() => { setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}👍`); channelComposerRef.current?.focus() }}>☺</button>
+              </div>
+              <button className="slack-send" disabled={!text.trim()} onClick={() => void send()} aria-label="Send channel message"><Icon name="arrow" className="icon sm" /></button>
+            </div>
+          </div>
+        </div>}
+      </section>
+    )
+  }
 
   return (
     <section className="page active" style={{ height: '100%' }}>
@@ -1669,6 +1983,21 @@ export function ChatPage() {
         style={{ '--inspector-w': `${inspectorWidth}px` } as React.CSSProperties}
       >
         <div className="chat-main">
+          {isTeamChannel && (
+            <header className="team-channel-header">
+              <div className="team-channel-title">
+                <span>#</span>
+                <div><strong>{chat.title}</strong><small>People and AI agents working in one shared thread</small></div>
+              </div>
+              <div className="team-channel-participants" aria-label="Channel participants">
+                {data.members.slice(0, 3).map((member) => <span key={member.id} className="avatar" title={member.name}>{member.initials}</span>)}
+                {channelAgents.slice(0, 2).map((agent) => <span key={agent.id} className="team-channel-agent-avatar" title={agent.name}><Icon name="spark" className="icon xs" /></span>)}
+              </div>
+              <button type="button" onClick={() => setMentionOpen((value) => !value)}>
+                <Icon name="spark" className="icon sm" /> Mention agent
+              </button>
+            </header>
+          )}
           {!!messages.length && (
             <div className="tf-thread-toolbar">
               <div className="tf-density-control" aria-label="Activity detail">
@@ -1758,6 +2087,24 @@ export function ChatPage() {
           />
 
           <div className="composer-wrap">
+            {isTeamChannel && mentionOpen && (
+              <div className="team-channel-mentions" aria-label="Mention an agent">
+                <span>Assign in channel</span>
+                {channelAgents.map((agent) => (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    onClick={() => {
+                      setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@${agent.name} `)
+                      setMentionOpen(false)
+                    }}
+                  >
+                    <Icon name="spark" className="icon xs" />{agent.name}
+                  </button>
+                ))}
+                {!channelAgents.length && <button type="button" onClick={() => nav(`/agents/${project.id}`)}>Create the first team agent</button>}
+              </div>
+            )}
             {!!queuedManagedRuns.length && (
               <div className="queued-followups" aria-label="Queued follow-ups">
                 <div className="queued-followups-head">
@@ -1858,7 +2205,7 @@ export function ChatPage() {
                   ? activeSendMode === 'steer' && steerableRun
                     ? 'Steer the active Codex run'
                     : 'Queue a follow-up'
-                  : 'Message your agent'}
+                  : isTeamChannel ? 'Message the channel or @mention an agent' : 'Message your agent'}
                 rows={1}
               />
               <div className="composer-bottom">
@@ -2775,9 +3122,9 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch, onPr
         {m.lightHtml && <div className="message-text" dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.lightHtml) }} />}
         {!m.lightHtml && agentOutput && (
           <div className={`message-text ${run ? 'tf-agent-transcript' : ''}`}>
-            {!run?.done && <span className="tf-live-label"><i /> Live agent output</span>}
+            {run && !run.done && <span className="tf-live-label"><i /> Live agent output</span>}
             {agentOutput}
-            {!run?.done && <span className="streaming-cursor" aria-hidden="true" />}
+            {run && !run.done && <span className="streaming-cursor" aria-hidden="true" />}
           </div>
         )}
         {!run && !m.lightHtml && !m.text && <div className="message-thinking stale"><strong>Run unavailable</strong><span>Configure OpenRouter or an OpenAI-compatible model endpoint in Settings.</span></div>}

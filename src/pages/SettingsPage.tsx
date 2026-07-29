@@ -14,16 +14,65 @@ const SETTINGS_DESTINATIONS = [
   { id: 'settings-data', label: 'Data & recovery', icon: 'db', group: 'OpenSaddle' },
 ] as const
 
+type SettingsDestinationId = typeof SETTINGS_DESTINATIONS[number]['id']
+
+const SETTINGS_COPY: Record<SettingsDestinationId, { title: string; description: string; help: string }> = {
+  'settings-general': {
+    title: 'General',
+    description: 'See the health of OpenSaddle and the services that power your workspace.',
+    help: 'This page is read-only status. Use the other tabs to change a specific part of OpenSaddle.',
+  },
+  'settings-profile': {
+    title: 'Profile',
+    description: 'Manage the identity, contact details, and timezone used across your teams.',
+    help: 'Your display name appears in shared channels and agent work traces.',
+  },
+  'settings-appearance': {
+    title: 'Appearance',
+    description: 'Choose how OpenSaddle looks and how much workspace context it displays.',
+    help: 'Theme changes apply immediately and remain on this device.',
+  },
+  'settings-notifications': {
+    title: 'Notifications',
+    description: 'Decide which work updates should interrupt you and where they should appear.',
+    help: 'Team pages only show that team’s notifications; the start page combines every team.',
+  },
+  'settings-connection': {
+    title: 'Connection',
+    description: 'Connect this interface to a local or hosted OpenSaddle control plane.',
+    help: 'Remote servers remain authoritative. Tokens entered here stay in this browser session.',
+  },
+  'settings-models': {
+    title: 'Models & routing',
+    description: 'Configure model providers and set the defaults OpenSaddle uses to route work.',
+    help: 'Routing preferences are defaults. A team or task policy can still narrow the allowed models.',
+  },
+  'settings-data': {
+    title: 'Data & recovery',
+    description: 'Control retention, export workspace data, and restore preserved snapshots.',
+    help: 'Reset and restore actions can replace current data. OpenSaddle creates recovery snapshots when possible.',
+  },
+}
+
+function SettingsHelp({ text }: { text: string }) {
+  return (
+    <button type="button" className="settings-help" aria-label={text} title={text}>
+      <Icon name="info" className="icon sm" />
+    </button>
+  )
+}
+
+function humanizeSetting(value: string) {
+  return value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (letter) => letter.toUpperCase())
+}
+
 export function SettingsPage() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
-  const [active, setActive] = useState('settings-general')
+  const [active, setActive] = useState<SettingsDestinationId>('settings-general')
   const destinations = SETTINGS_DESTINATIONS.filter((item) =>
     item.label.toLowerCase().includes(query.trim().toLowerCase()))
-  const open = (id: string) => {
-    setActive(id)
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  const open = (id: SettingsDestinationId) => setActive(id)
 
   return (
     <div className="codex-settings-shell">
@@ -41,7 +90,7 @@ export function SettingsPage() {
             <div className="codex-settings-nav-group" key={group}>
               <span>{group}</span>
               {items.map((item) => (
-                <button key={item.id} className={active === item.id ? 'active' : ''} onClick={() => open(item.id)}>
+                <button key={item.id} className={active === item.id ? 'active' : ''} onClick={() => open(item.id)} title={SETTINGS_COPY[item.id].description}>
                   <Icon name={item.icon} className="icon sm" />{item.label}
                 </button>
               ))}
@@ -50,13 +99,14 @@ export function SettingsPage() {
         })}
       </aside>
       <main className="codex-settings-main">
-        <SettingsContent />
+        <SettingsContent active={active} />
       </main>
     </div>
   )
 }
 
-function SettingsContent() {
+function SettingsContent({ active }: { active: SettingsDestinationId }) {
+  const navigate = useNavigate()
   const {
     data,
     updateSettings,
@@ -73,6 +123,8 @@ function SettingsContent() {
     workspaceRecoveries,
     restoreWorkspaceRecovery,
     discardWorkspaceRecovery,
+    createChat,
+    appendMessage,
     toast,
   } = useStore()
   const s = data.settings
@@ -88,6 +140,8 @@ function SettingsContent() {
   const [serverUrl, setServerUrl] = useState(connection.mode === 'remote' ? connection.baseUrl : '')
   const [serverToken, setServerToken] = useState(connection.token ?? '')
   const [connecting, setConnecting] = useState(false)
+  const activeCopy = SETTINGS_COPY[active]
+  const activeProject = data.projects.find((project) => project.id === data.activeProjectId) ?? data.projects[0]
   useEffect(() => {
     setServerName(connection.name)
     setServerUrl(connection.mode === 'remote' ? connection.baseUrl : '')
@@ -102,13 +156,28 @@ function SettingsContent() {
     a.click()
   }
 
+  const askAi = () => {
+    if (!activeProject) return
+    const chat = createChat(activeProject.id, `Help with ${activeCopy.title} settings`, 'agent-research')
+    appendMessage({
+      chatId: chat.id,
+      role: 'user',
+      text: `Help me understand or change my OpenSaddle ${activeCopy.title} settings. Explain the relevant rules, call out tradeoffs, and ask before making any consequential change.`,
+    })
+    navigate(`/chat/${chat.id}`)
+  }
+
   return (
-    <div className="content-page settings-page">
-      <div className="page-header" id="settings-general">
-        <div className="page-header-copy"><div className="eyebrow">Workspace control center</div><h1>Settings</h1><p>Connect models, verify local storage, and manage the preferences that shape every run.</p></div>
+    <div className="content-page settings-page" data-active={active}>
+      <div className="page-header settings-page-header">
+        <div className="page-header-copy"><div className="eyebrow">Workspace control center</div><h1>{activeCopy.title}</h1><p>{activeCopy.description}</p></div>
+        <div className="settings-page-header-actions">
+          <SettingsHelp text={activeCopy.help} />
+          <button className="settings-ask-ai" type="button" onClick={askAi}><Icon name="spark" className="icon sm" />Ask AI</button>
+        </div>
       </div>
 
-      <section className="settings-overview">
+      <section className="settings-overview" hidden={active !== 'settings-general'}>
         <div className="settings-overview-copy">
           <div className="eyebrow">System status</div>
           <h2>{controlPlane?.connected
@@ -144,7 +213,7 @@ function SettingsContent() {
         </div>
       </section>
 
-      <section className="card connection-card" id="settings-connection">
+      <section className="card connection-card" id="settings-connection" hidden={active !== 'settings-connection'}>
         <div className="card-header"><div><h3>OpenSaddle connection</h3><p>{connection.mode === 'remote' ? `${connection.name} · ${connection.baseUrl}` : 'Demo mode uses seeded data and simulated runs.'}</p></div><span className={`sync-badge ${controlPlane?.connected ? 'synced' : recovering || connection.mode === 'demo' ? 'local' : 'error'}`}>{connection.mode === 'remote' ? (controlPlane?.connected ? 'Connected' : connectionState.label) : 'Demo'}</span></div>
         <div className="card-body">
           <div className="form-row"><label>Connection name</label><input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="My OpenSaddle server" /></div>
@@ -159,7 +228,7 @@ function SettingsContent() {
         </div>
       </section>
 
-      <section className="provider-setup card" id="settings-models">
+      <section className="provider-setup card" id="settings-models" hidden={active !== 'settings-models'}>
         <div className="provider-setup-icon"><Icon name="key" /></div>
         <div className="provider-setup-copy">
           <div className="eyebrow">Model provider</div>
@@ -175,50 +244,50 @@ function SettingsContent() {
       </section>
 
       <div className="grid-2">
-        <div className="card" id="settings-profile"><div className="card-header"><div><h3>Profile</h3></div></div><div className="card-body">
+        <div className="card" id="settings-profile" hidden={active !== 'settings-profile'}><div className="card-header"><div><h3>Profile</h3></div><SettingsHelp text="These details identify you in team channels, task traces, and notifications." /></div><div className="card-body">
           <div className="form-row"><label>Display name</label><input value={s.displayName} onChange={(e) => updateSettings({ displayName: e.target.value })} /></div>
           <div className="form-row"><label>Email</label><input value={s.email} onChange={(e) => updateSettings({ email: e.target.value })} /></div>
           <div className="form-row" style={{ marginBottom: 0 }}><label>Timezone</label><select value={s.timezone} onChange={(e) => updateSettings({ timezone: e.target.value })}><option>America/New_York</option><option>America/Los_Angeles</option><option>UTC</option></select></div>
         </div></div>
 
-        <div className="card" id="settings-appearance"><div className="card-header"><div><h3>Appearance</h3></div></div><div className="card-body">
+        <div className="card" id="settings-appearance" hidden={active !== 'settings-appearance'}><div className="card-header"><div><h3>Appearance</h3></div><SettingsHelp text="Cycle through Dark, Light, Liquid Glass, and High Contrast themes." /></div><div className="card-body">
           <div className="setting-row"><div className="setting-copy"><strong>Theme</strong><span>{s.theme}</span></div>
-            <button className="tiny-btn" onClick={() => { const order = ['dark', 'light', 'hc'] as const; setTheme(order[(order.indexOf(s.theme) + 1) % 3]); }}>Cycle</button>
+            <button className="tiny-btn" onClick={() => { const order = ['dark', 'light', 'liquid', 'hc'] as const; setTheme(order[(order.indexOf(s.theme) + 1) % order.length]); }}>Cycle</button>
           </div>
-          <div className="setting-row"><div className="setting-copy"><strong>Demo mode banner</strong></div><button className={`switch ${s.demoMode ? 'on' : ''}`} onClick={() => updateSettings({ demoMode: !s.demoMode })} /></div>
+          <div className="setting-row"><div className="setting-copy"><strong>Demo mode banner</strong><span>Show when the workspace is using sample data</span></div><button aria-label="Toggle demo mode banner" className={`switch ${s.demoMode ? 'on' : ''}`} onClick={() => updateSettings({ demoMode: !s.demoMode })} /></div>
         </div></div>
 
-        <div className="card"><div className="card-header"><div><h3>Model routing</h3></div></div><div className="card-body">
+        <div className="card" hidden={active !== 'settings-models'}><div className="card-header"><div><h3>Model routing</h3></div><SettingsHelp text="These preferences guide automatic routing but never override team access policies." /></div><div className="card-body">
           <div className="form-row"><label>Default preference</label>
             <select value={s.routingPref} onChange={(e) => updateSettings({ routingPref: e.target.value as typeof s.routingPref })}>
               <option value="quality">Highest quality</option><option value="fast">Fastest</option><option value="cost">Lowest cost</option><option value="local">Keep data local</option><option value="enterprise">Enterprise models only</option>
             </select>
           </div>
           <div className="form-row"><label>Ask before models over ($/run)</label><input type="number" min="0" step="0.1" value={s.askAboveCost} onChange={(e) => updateSettings({ askAboveCost: Math.max(0, Number(e.target.value) || 0) })} /></div>
-          <div className="setting-row"><div className="setting-copy"><strong>Enterprise models only</strong></div><button className={`switch ${s.enterpriseModelsOnly ? 'on' : ''}`} onClick={() => updateSettings({ enterpriseModelsOnly: !s.enterpriseModelsOnly })} /></div>
-          <div className="setting-row"><div className="setting-copy"><strong>Prefer local runtime</strong></div><button className={`switch ${s.keepDataLocal ? 'on' : ''}`} onClick={() => updateSettings({ keepDataLocal: !s.keepDataLocal })} /></div>
+          <div className="setting-row"><div className="setting-copy"><strong>Enterprise models only</strong><span>Exclude community and personal providers</span></div><button aria-label="Toggle enterprise models only" className={`switch ${s.enterpriseModelsOnly ? 'on' : ''}`} onClick={() => updateSettings({ enterpriseModelsOnly: !s.enterpriseModelsOnly })} /></div>
+          <div className="setting-row"><div className="setting-copy"><strong>Prefer local runtime</strong><span>Keep eligible work on this device</span></div><button aria-label="Toggle preferred local runtime" className={`switch ${s.keepDataLocal ? 'on' : ''}`} onClick={() => updateSettings({ keepDataLocal: !s.keepDataLocal })} /></div>
         </div></div>
 
-        <div className="card" id="settings-notifications"><div className="card-header"><div><h3>Notifications</h3></div></div><div className="card-body">
+        <div className="card" id="settings-notifications" hidden={active !== 'settings-notifications'}><div className="card-header"><div><h3>Notifications</h3></div><SettingsHelp text="Turn individual notification channels on or off. Changes save immediately." /></div><div className="card-body">
           {(Object.keys(s.notifications) as Array<keyof typeof s.notifications>).map((k) => (
-            <div key={k} className="setting-row"><div className="setting-copy"><strong>{k}</strong></div><button className={`switch ${s.notifications[k] ? 'on' : ''}`} onClick={() => updateSettings({ notifications: { ...s.notifications, [k]: !s.notifications[k] } })} /></div>
+            <div key={k} className="setting-row"><div className="setting-copy"><strong>{humanizeSetting(k)}</strong><span>Notify me about {humanizeSetting(k).toLowerCase()}</span></div><button aria-label={`Toggle ${humanizeSetting(k)}`} className={`switch ${s.notifications[k] ? 'on' : ''}`} onClick={() => updateSettings({ notifications: { ...s.notifications, [k]: !s.notifications[k] } })} /></div>
           ))}
         </div></div>
 
-        <div className="card" id="settings-data"><div className="card-header"><div><h3>Data & retention</h3><p>{controlPlane?.storage === 'sqlite' ? 'Durable SQLite database' : 'Local browser cache'}</p></div></div><div className="card-body">
+        <div className="card" id="settings-data" hidden={active !== 'settings-data'}><div className="card-header"><div><h3>Data & retention</h3><p>{controlPlane?.storage === 'sqlite' ? 'Durable SQLite database' : 'Local browser cache'}</p></div><SettingsHelp text="Retention limits how long chats and detailed tool output remain available." /></div><div className="card-body">
           <div className="form-row"><label>Chat retention (days)</label><input type="number" min="1" value={s.retentionDays} onChange={(e) => updateSettings({ retentionDays: Math.max(1, Number(e.target.value) || 1) })} /></div>
           <div className="form-row"><label>Tool output retention</label><input type="number" min="1" value={s.toolRetentionDays} onChange={(e) => updateSettings({ toolRetentionDays: Math.max(1, Number(e.target.value) || 1) })} /></div>
           <div className="form-row"><label>Region</label><select value={s.region} onChange={(e) => updateSettings({ region: e.target.value })}><option>United States</option><option>EU</option></select></div>
-          <div className="setting-row"><div className="setting-copy"><strong>Disable provider training</strong></div><button className={`switch ${s.trainingDisabled ? 'on' : ''}`} onClick={() => updateSettings({ trainingDisabled: !s.trainingDisabled })} /></div>
+          <div className="setting-row"><div className="setting-copy"><strong>Disable provider training</strong><span>Request no-training handling from eligible providers</span></div><button aria-label="Toggle provider training" className={`switch ${s.trainingDisabled ? 'on' : ''}`} onClick={() => updateSettings({ trainingDisabled: !s.trainingDisabled })} /></div>
           <div className="setting-row"><div className="setting-copy"><strong>Last database save</strong><span>{lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString() : 'Waiting for first sync'}</span></div><span className={`sync-badge ${persistenceStatus}`}>{persistenceStatus}</span></div>
         </div></div>
 
-        <div className="card"><div className="card-header"><div><h3>Demo data</h3></div></div><div className="card-body">
+        <div className="card" hidden={active !== 'settings-data'}><div className="card-header"><div><h3>Workspace data</h3></div><SettingsHelp text="Export a portable backup before resetting this demo workspace." /></div><div className="card-body">
           <div className="setting-row"><div className="setting-copy"><strong>Export workspace JSON</strong><span>Portable backup of the current workspace</span></div><button className="tiny-btn" onClick={download}>Export</button></div>
           <div className="setting-row"><div className="setting-copy"><strong>Reset to seed</strong><span>Restores the full demo workspace</span></div><button className="danger-btn" onClick={() => { if (confirm('Reset all local demo data?')) resetData() }}>Reset</button></div>
         </div></div>
 
-        <div className="card"><div className="card-header"><div><h3>Workspace recovery</h3><p>Raw snapshots preserved before migration, reset, or recovery.</p></div><span className="sync-badge local">{workspaceRecoveries.length}</span></div><div className="card-body">
+        <div className="card" hidden={active !== 'settings-data'}><div className="card-header"><div><h3>Workspace recovery</h3><p>Raw snapshots preserved before migration, reset, or recovery.</p></div><div className="settings-card-meta"><span className="sync-badge local">{workspaceRecoveries.length}</span><SettingsHelp text="Restoring replaces the current workspace after first preserving a backup." /></div></div><div className="card-body">
           {workspaceRecoveries.length === 0
             ? <div className="setting-row"><div className="setting-copy"><strong>No recovery snapshots</strong><span>OpenSaddle will preserve incompatible or unreadable data instead of silently replacing it.</span></div><Icon name="shield" className="icon sm" /></div>
             : workspaceRecoveries.map((recovery) => (

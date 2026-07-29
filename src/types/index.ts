@@ -1,4 +1,4 @@
-export type Theme = 'dark' | 'light' | 'hc'
+export type Theme = 'dark' | 'light' | 'liquid' | 'hc'
 export type Visibility = 'private' | 'shared' | 'project'
 export type Inheritance = 'org' | 'parent' | 'override' | 'denied'
 export type Harness = 'chat' | 'research' | 'coding' | 'browser' | 'vm'
