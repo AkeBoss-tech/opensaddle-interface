@@ -462,6 +462,63 @@ export interface LocalSessionSummary {
   branch?: string
 }
 
+export interface ProjectSessionSummary {
+  projectId: string
+  root: string
+  inspectionMode: 'metadata_only'
+  sessions: LocalSessionSummary[]
+  availableActions: Array<'resume' | 'fork'>
+  authorityModes: Array<'source_managed' | 'opensaddle_managed' | 'hybrid'>
+}
+
+export interface KrailKnowledgeStatus {
+  projectId: string
+  provider: 'krail'
+  detected: boolean
+  inspectionMode: 'read_only'
+  root: string
+  status: 'ready' | 'not_configured' | 'invalid'
+  manifestPath?: string
+  manifestVersion?: string | number
+  error?: string
+  project?: {
+    name?: string
+    slug?: string
+    description?: string
+    mode?: string
+  }
+  runtime: {
+    installed: boolean
+    version?: string | null
+    cliAvailable: boolean
+  }
+  workspace?: {
+    collections: Array<{
+      kind: string
+      path: string
+      exists: boolean
+      fileCount: number
+      truncated: boolean
+    }>
+  }
+  capabilities: Array<{
+    id: string
+    mode: 'read' | 'effectful'
+    enabled: boolean
+  }>
+  mcp?: {
+    transport: 'stdio'
+    command: string
+    args: string[]
+    available: boolean
+  }
+  workflowBridge?: {
+    format: string
+    claudeImportSupported: boolean
+    executionRequiresExplicitAction: boolean
+  }
+}
+
 export interface ProjectFileEntry {
   path: string
   name: string
@@ -507,6 +564,8 @@ export interface LocalProjectClient {
   harnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
   refreshHarnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
   localSessions(provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]>
+  projectSessions?(projectId: string, provider?: LocalSessionSummary['provider']): Promise<ProjectSessionSummary>
+  knowledgeStatus?(projectId: string): Promise<KrailKnowledgeStatus>
   listFiles(projectId: string, input?: { path?: string; limit?: number }): Promise<{
     root: string
     path: string

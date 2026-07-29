@@ -226,6 +226,7 @@ function Shell() {
             <Route path="/workflows/:projectId" element={<WorkflowsPage />} />
             <Route path="/harness" element={<HarnessPage />} />
             <Route path="/sessions" element={<SessionBridgePage />} />
+            <Route path="/project/:projectId/sessions" element={<SessionBridgePage />} />
             <Route path="/local" element={<LocalProjectsPage />} />
             <Route path="/browser-runtime" element={<BrowserRuntimePage />} />
             <Route path="/files" element={<FilesPage />} />

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
-import type { LocalSessionSummary } from '../services/contracts'
+import type { KrailKnowledgeStatus, LocalSessionSummary } from '../services/contracts'
 import type { Chat } from '../types'
 
 type Authority = NonNullable<Chat['continuation']>['authority']
@@ -17,6 +17,12 @@ function providerLabel(provider: LocalSessionSummary['provider']) {
   return provider === 'codex' ? 'Codex' : 'Claude Code'
 }
 
+function isWithinProject(cwd: string | undefined, root: string | undefined) {
+  if (!cwd || !root) return false
+  const normalizedRoot = root.replace(/\/+$/, '')
+  return cwd === normalizedRoot || cwd.startsWith(`${normalizedRoot}/`)
+}
+
 export function SessionBridgePage() {
   const {
     data,
@@ -29,12 +35,15 @@ export function SessionBridgePage() {
     refreshHarnessCapabilities,
   } = useStore()
   const navigate = useNavigate()
+  const { projectId: scopedProjectId } = useParams()
   const [provider, setProvider] = useState<LocalSessionSummary['provider']>('codex')
   const [sessions, setSessions] = useState<LocalSessionSummary[]>([])
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState('')
-  const [projectId, setProjectId] = useState(data.activeProjectId)
+  const [projectId, setProjectId] = useState(scopedProjectId ?? data.activeProjectId)
   const [mode, setMode] = useState<Authority>('hybrid')
+  const [continuationMode, setContinuationMode] = useState<'resume' | 'fork'>('resume')
+  const [knowledgeStatus, setKnowledgeStatus] = useState<KrailKnowledgeStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const localProjects = data.projects.filter((project) => project.workspaceKind === 'local' && project.local)
@@ -68,13 +77,20 @@ export function SessionBridgePage() {
     }
     let cancelled = false
     setLoading(true)
-    void Promise.all([
-      services.localProjects.localSessions('codex'),
-      services.localProjects.localSessions('claude'),
-    ])
-      .then(([codex, claude]) => {
+    const sessionRequest = scopedProjectId && services.localProjects.projectSessions
+      ? services.localProjects.projectSessions(scopedProjectId).then((result) => result.sessions)
+      : Promise.all([
+          services.localProjects.localSessions('codex'),
+          services.localProjects.localSessions('claude'),
+        ]).then(([codex, claude]) => [...codex, ...claude])
+    const knowledgeRequest = scopedProjectId && services.localProjects.knowledgeStatus
+      ? services.localProjects.knowledgeStatus(scopedProjectId)
+      : Promise.resolve(null)
+    void Promise.all([sessionRequest, knowledgeRequest])
+      .then(([discovered, knowledge]) => {
         if (cancelled) return
-        setSessions([...codex, ...claude])
+        setSessions(discovered)
+        setKnowledgeStatus(knowledge)
         setError('')
       })
       .catch((reason: unknown) => {
@@ -84,21 +100,25 @@ export function SessionBridgePage() {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [services])
+  }, [services, scopedProjectId])
+
+  useEffect(() => {
+    if (scopedProjectId) setProjectId(scopedProjectId)
+  }, [scopedProjectId])
 
   useEffect(() => {
     if (!selected) return
     setSelectedId(selected.sessionId)
-    const matching = localProjects.find((candidate) => candidate.local?.rootPath === selected.cwd)
+    const matching = localProjects.find((candidate) => isWithinProject(selected.cwd, candidate.local?.rootPath))
     if (matching) setProjectId(matching.id)
   }, [selected?.sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const needsProject = Boolean(selected?.cwd && !localProjects.some((candidate) => candidate.local?.rootPath === selected.cwd))
+  const needsProject = Boolean(selected?.cwd && !localProjects.some((candidate) => isWithinProject(selected.cwd, candidate.local?.rootPath)))
   const effectiveMode = mode === 'source_managed' ? 'Full access' : mode === 'opensaddle_managed' ? 'Project policy' : 'Project policy + source reference'
-  const canContinue = Boolean(harnessReady && selected && project && (!selected.cwd || project.local?.rootPath === selected.cwd))
+  const canContinue = Boolean(harnessReady && selected && project && (!selected.cwd || isWithinProject(selected.cwd, project.local?.rootPath)))
   const title = useMemo(() => selected
-    ? `Continue ${providerLabel(selected.provider)} session`
-    : `Continue ${providerLabel(provider)} session`, [provider, selected])
+    ? `${continuationMode === 'fork' ? 'Fork' : 'Continue'} ${providerLabel(selected.provider)} session`
+    : `${continuationMode === 'fork' ? 'Fork' : 'Continue'} ${providerLabel(provider)} session`, [continuationMode, provider, selected])
 
   const continueSession = () => {
     if (!selected || !project || !canContinue) return
@@ -107,7 +127,7 @@ export function SessionBridgePage() {
       sessionId: selected.sessionId,
       sourcePath: selected.path,
       authority: mode,
-      mode: 'resume',
+      mode: continuationMode,
     })
     setActiveProject(project.id)
     setActiveChat(chat.id)
@@ -121,16 +141,21 @@ export function SessionBridgePage() {
 
   return <div className="content-page session-bridge-page">
     <div className="page-header">
-      <div className="page-header-copy"><div className="eyebrow">Local session handoff</div><h1>Continue an existing session</h1><p>Resume a recent Codex or Claude Code thread in its original folder without importing raw transcript content.</p></div>
+      <div className="page-header-copy"><div className="eyebrow">{scopedProjectId ? 'Project sessions' : 'Local session handoff'}</div><h1>{scopedProjectId ? `Sessions for ${project?.name ?? 'this project'}` : 'Continue an existing session'}</h1><p>Resume or fork a recent Codex or Claude Code thread in its original folder without importing raw transcript content.</p></div>
       <button className="secondary-btn" disabled={loading} onClick={() => {
         if (!services?.localProjects) return
         setLoading(true)
-        void Promise.all([
-          services.localProjects.localSessions('codex'),
-          services.localProjects.localSessions('claude'),
-          refreshHarnessCapabilities(),
-        ])
-          .then(([codex, claude]) => { setSessions([...codex, ...claude]); setError('') })
+        const sessionRequest = scopedProjectId && services.localProjects.projectSessions
+          ? services.localProjects.projectSessions(scopedProjectId).then((result) => result.sessions)
+          : Promise.all([
+              services.localProjects.localSessions('codex'),
+              services.localProjects.localSessions('claude'),
+            ]).then(([codex, claude]) => [...codex, ...claude])
+        const knowledgeRequest = scopedProjectId && services.localProjects.knowledgeStatus
+          ? services.localProjects.knowledgeStatus(scopedProjectId)
+          : Promise.resolve(null)
+        void Promise.all([sessionRequest, knowledgeRequest, refreshHarnessCapabilities()])
+          .then(([discovered, knowledge]) => { setSessions(discovered); setKnowledgeStatus(knowledge); setError('') })
           .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)))
           .finally(() => setLoading(false))
       }}><Icon name="refresh" className={`icon sm ${loading ? 'spin' : ''}`} />Refresh</button>
@@ -164,6 +189,15 @@ export function SessionBridgePage() {
       <section className="card session-preview-card">
         <div className="card-header"><div><h3>Continuation preview</h3><p>Review exactly what OpenSaddle will link.</p></div></div>
         <div className="card-body">
+          {scopedProjectId && knowledgeStatus && <div className={`session-knowledge-status ${knowledgeStatus.status}`}>
+            <Icon name="db" className="icon sm" />
+            <span>
+              <strong>{knowledgeStatus.detected ? `KRAIL knowledge · ${knowledgeStatus.status}` : 'KRAIL knowledge is optional'}</strong>
+              <small>{knowledgeStatus.detected
+                ? `${knowledgeStatus.project?.name ?? knowledgeStatus.project?.slug ?? knowledgeStatus.manifestPath} · read-only discovery${knowledgeStatus.mcp?.available ? ' · MCP available' : ''}`
+                : 'Add rail.yaml or krail.yaml to expose durable project knowledge and workflows.'}</small>
+            </span>
+          </div>}
           {selected ? <>
             <div className={`session-harness-status ${harnessStatus}`}>
               <Icon name={harnessReady ? 'check' : 'terminal'} className="icon sm" />
@@ -177,6 +211,11 @@ export function SessionBridgePage() {
               <span>Session ID<strong title={selected.sessionId}>{selected.sessionId}</strong></span>
               <span>Working folder<strong title={selected.cwd}>{selected.cwd ?? 'Not recorded'}</strong></span>
               <span>Branch<strong>{selected.branch ?? 'Current folder state'}</strong></span>
+            </div>
+            <h4 className="session-authority-title">Continuation action</h4>
+            <div className="session-continuation-actions">
+              <button type="button" className={continuationMode === 'resume' ? 'selected' : ''} onClick={() => setContinuationMode('resume')}><Icon name="play" className="icon sm" /><span><strong>Resume</strong><small>Continue the original native session.</small></span></button>
+              <button type="button" className={continuationMode === 'fork' ? 'selected' : ''} onClick={() => setContinuationMode('fork')}><Icon name="branch" className="icon sm" /><span><strong>Fork</strong><small>Branch from its context into a new session.</small></span></button>
             </div>
             <div className="scope-box"><strong>Privacy boundary</strong><p>OpenSaddle reads only session metadata here. The native harness receives the session ID when you send the first continuation message; raw transcript text is not copied into the OpenSaddle workspace.</p></div>
             <div className="form-row"><label>Open in project</label><select value={projectId} onChange={(event) => setProjectId(event.target.value)}>

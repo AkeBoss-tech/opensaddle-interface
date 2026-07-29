@@ -1,10 +1,12 @@
 import type {
   HarnessCapability,
+  KrailKnowledgeStatus,
   LocalProjectClient,
   LocalSessionSummary,
   ManagedArtifactArchive,
   ProjectArtifactManifest,
   ProjectFileEntry,
+  ProjectSessionSummary,
   RegisteredLocalProject,
 } from './contracts'
 
@@ -57,7 +59,7 @@ type DomainHarness = {
 
 type DomainRescan = {
   project_id: string
-  discoveries: Partial<Record<'instructions' | 'skills' | 'mcp_configs' | 'sites' | 'documentation', string[]>>
+  discoveries: Partial<Record<'instructions' | 'skills' | 'mcp_configs' | 'knowledge' | 'sites' | 'documentation', string[]>>
 }
 
 const HARNESS_ID_ALIASES: Record<string, string> = {
@@ -265,6 +267,15 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
     const query = provider ? `?provider=${encodeURIComponent(provider)}` : ''
     const response = await this.request<{ sessions?: LocalSessionSummary[] }>(`/api/local-sessions${query}`)
     return response.sessions ?? []
+  }
+
+  projectSessions(projectId: string, provider?: LocalSessionSummary['provider']): Promise<ProjectSessionSummary> {
+    const query = provider ? `?provider=${encodeURIComponent(provider)}` : ''
+    return this.request<ProjectSessionSummary>(`${this.projectPath(projectId, 'sessions')}${query}`)
+  }
+
+  knowledgeStatus(projectId: string): Promise<KrailKnowledgeStatus> {
+    return this.request<KrailKnowledgeStatus>(this.projectPath(projectId, 'knowledge'))
   }
 
   async listFiles(projectId: string, input: { path?: string; limit?: number } = {}) {
