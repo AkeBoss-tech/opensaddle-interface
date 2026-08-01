@@ -294,10 +294,11 @@ export default function App() {
       </RunRegistryProvider>
     </StoreProvider>
   )
-  // A packaged Electron renderer is loaded from file://, where the GitHub
-  // Pages basename cannot match. Hash routing retains deep-link navigation
-  // without requiring a custom file-protocol handler.
-  if (window.location.protocol === 'file:') {
+  // The desktop renderer is served over a custom scheme (and historically
+  // file://), where the GitHub Pages basename cannot match the path. Anything
+  // that is not plain HTTP gets hash routing so deep links still work.
+  const servedOverHttp = window.location.protocol === 'http:' || window.location.protocol === 'https:'
+  if (!servedOverHttp) {
     return <HashRouter>{content}</HashRouter>
   }
   return (

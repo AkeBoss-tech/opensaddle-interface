@@ -18,7 +18,7 @@
     "real:check": "npm run typecheck && npm run lint && npm run test && npm run server:typecheck && npm run server:test && npm run build && npm run server:build",
     "krail": "npm run start --prefix packages/krail",
     "electron:build": "npm run build --prefix electron",
-    "electron:dev": "npm run build && npm run build --prefix electron && npm run start --prefix electron",
+    "electron:dev": "VITE_APP_BASE=./ npm run build && npm run build --prefix electron && npm run start --prefix electron",
     "desktop": "npm run electron:dev",
     "desktop:package": "VITE_APP_BASE=./ npm run build && npm run package:mac --prefix electron"
   },

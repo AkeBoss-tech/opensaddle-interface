@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, WebContentsView } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, WebContentsView } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,6 +7,41 @@ import { readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'no
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
+
+/**
+ * The renderer is an ES-module bundle, and a module script cannot be fetched
+ * from a `file://` origin — Chromium requires CORS for modules and file origins
+ * are opaque, so `loadFile` yields a blank window. Serving the same directory
+ * over a privileged scheme keeps webSecurity on and works packaged or not.
+ */
+const RENDERER_SCHEME = 'opensaddle'
+protocol.registerSchemesAsPrivileged([{
+  scheme: RENDERER_SCHEME,
+  // `standard` is what lets module scripts load; deliberately NOT `secure`,
+  // because a secure origin treats the local control plane's plain http://
+  // endpoint as mixed content and blocks every API call.
+  privileges: { standard: true, supportFetchAPI: true, corsEnabled: true },
+}])
+
+function rendererRoot(): string {
+  return isDev
+    ? path.resolve(__dirname, '../../dist')
+    : path.join(process.resourcesPath, 'renderer')
+}
+
+function registerRendererProtocol() {
+  const root = rendererRoot()
+  protocol.handle(RENDERER_SCHEME, (request) => {
+    const requested = decodeURIComponent(new URL(request.url).pathname)
+    const resolved = path.join(root, requested)
+    // Any unknown path resolves to the shell so hash routing still works, and a
+    // traversal attempt outside the bundle root can never escape it.
+    const safe = resolved.startsWith(root) && existsSync(resolved) && !resolved.endsWith('/')
+      ? resolved
+      : path.join(root, 'index.html')
+    return net.fetch(`file://${safe}`)
+  })
+}
 
 let mainWindow: BrowserWindow | null = null
 let opensaddleProc: ChildProcess | null = null
@@ -590,16 +625,20 @@ function createWindow() {
     void mainWindow?.webContents.executeJavaScript('window.opensaddleDesktop = true')
   })
 
-  if (isDev) {
-    void mainWindow.loadURL('http://127.0.0.1:5173/opensaddle-interface/')
-  } else {
-    void mainWindow.loadFile(path.join(process.resourcesPath, 'renderer/index.html'))
+  // Set OPENSADDLE_DEV_SERVER=1 to attach to a running Vite for hot reload.
+  // Vite binds [::1] rather than 127.0.0.1, so address it by hostname.
+  if (isDev && process.env.OPENSADDLE_DEV_SERVER) {
+    void mainWindow.loadURL('http://localhost:5173/opensaddle-interface/')
+    return
   }
+
+  void mainWindow.loadURL(`${RENDERER_SCHEME}://bundle/index.html`)
 }
 
 app.whenReady().then(async () => {
   app.setName('OpenSaddle')
   if (process.platform === 'darwin') app.dock?.setIcon(APP_ICON)
+  registerRendererProtocol()
   await startSidecars()
   createWindow()
 
