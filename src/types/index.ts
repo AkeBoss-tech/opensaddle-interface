@@ -18,6 +18,14 @@ export type InterfaceKind = 'chat' | 'form' | 'dashboard' | 'document' | 'custom
 export type TaskType = 'now' | 'scheduled' | 'background' | 'monitor'
 export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'failed' | 'paused'
 export type MessageRole = 'user' | 'assistant' | 'system'
+export type EntityKind = 'user' | 'agent' | 'artifact' | 'thread' | 'run' | 'skill' | 'project'
+
+/** A durable, typed link from a message to a substrate entity. */
+export interface EntityReference {
+  kind: EntityKind
+  id: string
+  label: string
+}
 export type LocalSandboxMode = 'read-only' | 'workspace-write' | 'full-access'
 export type LocalApprovalMode = 'always' | 'on-request' | 'never'
 export type RunExecutionMode = 'plan' | 'review' | 'project' | 'full-access'
@@ -290,6 +298,8 @@ export interface Message {
   chatId: string
   role: MessageRole
   text: string
+  /** Entity links are data, never inferred by re-parsing message prose. */
+  references?: EntityReference[]
   createdAt: number
   routingNote?: string
   /** Durable server run projected through this conversation message. */

@@ -37,6 +37,15 @@ function messageFromDurable(message: DurableThreadMessage): Message {
     role: message.role,
     text: message.text,
     createdAt: message.createdAt,
+    references: Array.isArray(payload.references)
+      ? payload.references.filter((reference): reference is NonNullable<Message['references']>[number] => Boolean(
+        reference
+        && typeof reference === 'object'
+        && typeof (reference as Record<string, unknown>).kind === 'string'
+        && typeof (reference as Record<string, unknown>).id === 'string'
+        && typeof (reference as Record<string, unknown>).label === 'string',
+      ))
+      : undefined,
     runtimeRunId: typeof payload.runtime_run_id === 'string'
       ? payload.runtime_run_id
       : typeof payload.runtimeRunId === 'string'
@@ -502,6 +511,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             || JSON.stringify(existing.run) !== JSON.stringify(message.run)
             || existing.routingNote !== message.routingNote
             || existing.lightHtml !== message.lightHtml
+            || JSON.stringify(existing.references) !== JSON.stringify(message.references)
         })
         if (!changed) return current
         const remoteIds = new Set(remote.map((message) => message.id))
@@ -655,6 +665,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ...(message.run ? { run: message.run } : {}),
     ...(message.lightHtml ? { lightHtml: message.lightHtml } : {}),
     ...(message.runtimeRunId ? { runtime_run_id: message.runtimeRunId } : {}),
+    ...(message.references?.length ? { references: message.references } : {}),
   }), [])
 
   const reportThreadSyncError = useCallback((error: unknown) => {

@@ -6,7 +6,7 @@ import {
   DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL, simulateAgentRun,
   type RouteDecision,
 } from '../lib/simulation'
-import type { AgentRunBlock, CodingProvider, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
+import type { AgentRunBlock, CodingProvider, EntityReference, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
 import { PROVIDER_NAME, ProviderLogo, providerFromLabel } from '../components/common/ProviderLogo'
 import { evaluatePermissions } from '../services/permissions'
 import { sanitizeHtml } from '../lib/sanitizeHtml'
@@ -17,6 +17,7 @@ import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources 
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
 import { buildPlanRevision } from '../features/thread/planRevision'
 import { selectPublishFlowStep } from '../features/git/publishFlow'
+import { EntityPicker, EntityRef, ReactionBar, type Reaction } from '../ui'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
   THREAD_INSPECTOR_STORAGE_KEY,
@@ -361,6 +362,7 @@ export function ChatPage() {
   const [delegateEditorOpen, setDelegateEditorOpen] = useState(false)
   const [delegateDraft, setDelegateDraft] = useState('')
   const [mentionOpen, setMentionOpen] = useState(false)
+  const [messageReferences, setMessageReferences] = useState<EntityReference[]>([])
   const [channelView, setChannelView] = useState<'messages' | 'canvas' | 'files'>('messages')
   const [channelSearchOpen, setChannelSearchOpen] = useState(false)
   const [channelSearch, setChannelSearch] = useState('')
@@ -368,7 +370,7 @@ export function ChatPage() {
   const [channelAddOpen, setChannelAddOpen] = useState(false)
   const [replyingTo, setReplyingTo] = useState<{ id: string; name: string } | null>(null)
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null)
-  const [channelReactions, setChannelReactions] = useState<Record<string, number>>({})
+  const [channelReactions, setChannelReactions] = useState<Record<string, Reaction[]>>({})
   const [savedChannelMessages, setSavedChannelMessages] = useState<Set<string>>(new Set())
   const channelComposerRef = useRef<HTMLTextAreaElement>(null)
   const attachRef = useRef<HTMLInputElement>(null)
@@ -748,21 +750,19 @@ export function ChatPage() {
   const send = async (forced?: string) => {
     const prompt = (forced ?? text).trim()
     if (!prompt || !chat) return
-    const mentionedAgent = chat.visibility !== 'private'
-      ? data.agents.find((agent) => {
-        if (agent.projectId !== project.id) return false
-        const mention = `@${agent.name}`.toLowerCase()
-        return prompt.toLowerCase().includes(mention)
-          || prompt.toLowerCase().includes(`@${agent.name.replaceAll(' ', '')}`.toLowerCase())
-      })
+    const references = forced === undefined ? messageReferences : []
+    const mentionedAgentReference = chat.visibility !== 'private'
+      ? references.find((reference) => reference.kind === 'agent')
+      : undefined
+    const mentionedAgent = mentionedAgentReference
+      ? data.agents.find((agent) => agent.id === mentionedAgentReference.id)
       : undefined
     if (mentionedAgent && chat.agentId !== mentionedAgent.id) {
       setText('')
+      setMessageReferences([])
       setMentionOpen(false)
-      appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+      appendMessage({ chatId: chat.id, role: 'user', text: prompt, references })
       const taskPrompt = prompt
-        .replace(new RegExp(`@${mentionedAgent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'ig'), '')
-        .trim()
       const agentThread = createChat(
         project.id,
         `${mentionedAgent.name} · ${taskPrompt || 'Channel request'}`,
@@ -782,7 +782,8 @@ export function ChatPage() {
     }
     if (chat.visibility !== 'private') {
       setText('')
-      appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+      setMessageReferences([])
+      appendMessage({ chatId: chat.id, role: 'user', text: prompt, references })
       return
     }
     if (forced === undefined && activeManagedRun) {
@@ -1720,6 +1721,7 @@ export function ChatPage() {
       initials: 'MC',
       createdAt: Date.now() - 58 * 60 * 1000,
       text: 'I pulled the secure VM acceptance criteria into one place. The remaining question is whether background sessions should pause or terminate when a permission expires.',
+      references: [] as EntityReference[],
     },
     {
       id: 'demo-jordan',
@@ -1728,6 +1730,7 @@ export function ChatPage() {
       initials: 'JL',
       createdAt: Date.now() - 51 * 60 * 1000,
       text: 'Pause feels safer and gives the user a clear recovery path. @Secure Coding Agent can you verify that against the current runtime policy?',
+      references: [] as EntityReference[],
     },
     {
       id: 'demo-agent-run',
@@ -1736,6 +1739,7 @@ export function ChatPage() {
       initials: 'AI',
       createdAt: Date.now() - 48 * 60 * 1000,
       text: 'Checked the runtime and permission policies. Expired grants pause the VM, preserve the encrypted workspace, and create an approval request for the owner.',
+      references: [] as EntityReference[],
       demoRun: {
         title: 'Permission-expiry policy review',
         status: 'Completed in 8.4s · 3 sources · Open agent thread',
@@ -1748,6 +1752,7 @@ export function ChatPage() {
       initials: 'AD',
       createdAt: Date.now() - 34 * 60 * 1000,
       text: 'Great. Let’s use that behavior in the demo and link the full agent thread from the release note.',
+      references: [] as EntityReference[],
     },
   ]
   const liveChannelFeed = messages.map((message) => {
@@ -1764,6 +1769,7 @@ export function ChatPage() {
       initials: member?.initials ?? (agent ? 'AI' : 'TM'),
       createdAt: message.createdAt,
       text: message.text,
+      references: message.references,
       lightHtml: message.lightHtml,
       run: message.run,
     }
@@ -1835,6 +1841,7 @@ export function ChatPage() {
                   <div>
                     <header><strong>{message.name}</strong>{message.role === 'assistant' && <span>APP</span>}<time>{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></header>
                     {message.text && <p>{message.text}</p>}
+                    {message.references?.map((reference) => <EntityRef key={`${reference.kind}:${reference.id}`} {...reference} onActivate={() => toast(`${reference.kind} opened`, reference.label)} />)}
                     {'lightHtml' in message && message.lightHtml && <div className="slack-agent-card" dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.lightHtml) }} />}
                     {'run' in message && message.run && (
                       <button className="slack-run-card" onClick={() => openInspector()}>
@@ -1850,12 +1857,9 @@ export function ChatPage() {
                         <Icon name="forward" className="icon sm" />
                       </button>
                     )}
-                    {Boolean(channelReactions[message.id]) && (
-                      <button className="slack-reaction-chip" onClick={() => setChannelReactions((current) => ({ ...current, [message.id]: Math.max(0, (current[message.id] ?? 0) - 1) }))}>👍 {channelReactions[message.id]}</button>
-                    )}
+                    <ReactionBar reactions={channelReactions[message.id] ?? []} onChange={(reactions) => setChannelReactions((current) => ({ ...current, [message.id]: reactions }))} />
                   </div>
                   <div className="slack-message-hover" aria-label={`Actions for message ${index + 1}`}>
-                    <button title="Add reaction" onClick={() => setChannelReactions((current) => ({ ...current, [message.id]: (current[message.id] ?? 0) + 1 }))}>☺</button>
                     <button title="Reply" onClick={() => { setReplyingTo({ id: message.id, name: message.name }); channelComposerRef.current?.focus() }}><Icon name="message" className="icon xs" /></button>
                     <button title="More" onClick={() => setMessageMenuId((value) => value === message.id ? null : message.id)}><Icon name="more" className="icon xs" /></button>
                   </div>
@@ -1933,15 +1937,12 @@ export function ChatPage() {
 
         {channelView === 'messages' && <div className="slack-composer-wrap">
           {mentionOpen && (
-            <div className="slack-agent-picker" aria-label="Mention an agent">
-              <span>Assign work to</span>
-              {channelAgents.map((agent) => (
-                <button key={agent.id} onClick={() => {
-                  setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@${agent.name} `)
-                  setMentionOpen(false)
-                }}><Icon name="spark" className="icon xs" />{agent.name}</button>
-              ))}
-            </div>
+            <EntityPicker kinds={['agent']} projectId={project.id} query={(text.match(/(?:^|\s)@([^\s]*)$/)?.[1] ?? '')} onDismiss={() => setMentionOpen(false)} onSelect={(reference) => {
+              setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@${reference.label} `)
+              setMessageReferences((current) => [...current.filter((item) => item.kind !== reference.kind || item.id !== reference.id), reference])
+              setMentionOpen(false)
+              channelComposerRef.current?.focus()
+            }} />
           )}
           <div className="slack-composer">
             {replyingTo && <div className="slack-reply-context"><span>Replying to <strong>{replyingTo.name}</strong></span><button onClick={() => setReplyingTo(null)}>×</button></div>}
@@ -1954,7 +1955,11 @@ export function ChatPage() {
               placeholder={`Message #${chat.title}`}
               value={text}
               rows={3}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value
+                setText(next)
+                setMentionOpen(/(?:^|\s)@[^\s]*$/.test(next))
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
@@ -2087,24 +2092,6 @@ export function ChatPage() {
           />
 
           <div className="composer-wrap">
-            {isTeamChannel && mentionOpen && (
-              <div className="team-channel-mentions" aria-label="Mention an agent">
-                <span>Assign in channel</span>
-                {channelAgents.map((agent) => (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    onClick={() => {
-                      setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@${agent.name} `)
-                      setMentionOpen(false)
-                    }}
-                  >
-                    <Icon name="spark" className="icon xs" />{agent.name}
-                  </button>
-                ))}
-                {!channelAgents.length && <button type="button" onClick={() => nav(`/agents/${project.id}`)}>Create the first team agent</button>}
-              </div>
-            )}
             {!!queuedManagedRuns.length && (
               <div className="queued-followups" aria-label="Queued follow-ups">
                 <div className="queued-followups-head">
