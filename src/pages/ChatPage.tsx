@@ -6,7 +6,7 @@ import {
   DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL, simulateAgentRun,
   type RouteDecision,
 } from '../lib/simulation'
-import type { AgentRunBlock, ArtifactRef, CodingProvider, EntityReference, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
+import type { AgentRunBlock, CodingProvider, EntityReference, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
 import { PROVIDER_NAME, ProviderLogo, providerFromLabel } from '../components/common/ProviderLogo'
 import { evaluatePermissions } from '../services/permissions'
 import { sanitizeHtml } from '../lib/sanitizeHtml'
@@ -1713,94 +1713,35 @@ export function ChatPage() {
   if (!chat) return <div className="content-page"><div className="empty-state"><h3>No chat selected</h3></div></div>
   const isTeamChannel = chat.visibility !== 'private'
   const channelAgents = data.agents.filter((agent) => agent.projectId === project.id)
-  const demoChannelFeed = [
-    {
-      id: 'demo-maya',
-      role: 'user' as const,
-      name: 'Maya Chen',
-      initials: 'MC',
-      createdAt: Date.now() - 58 * 60 * 1000,
-      text: 'I pulled the secure VM acceptance criteria into one place. The remaining question is whether background sessions should pause or terminate when a permission expires.',
-      references: [] as EntityReference[],
-    },
-    {
-      id: 'demo-maya-followup',
-      role: 'user' as const,
-      name: 'Maya Chen',
-      initials: 'MC',
-      createdAt: Date.now() - 56 * 60 * 1000,
-      text: 'Either way we should say so explicitly in the release note.',
-      references: [] as EntityReference[],
-    },
-    {
-      id: 'demo-jordan',
-      role: 'user' as const,
-      name: 'Jordan Lee',
-      initials: 'JL',
-      createdAt: Date.now() - 51 * 60 * 1000,
-      text: 'Pause feels safer and gives the user a clear recovery path. @Secure Coding Agent can you verify that against the current runtime policy?',
-      references: [
-        { kind: 'agent', id: channelAgents[0]?.id ?? 'agent-coder', label: '@Secure Coding Agent' },
-      ] as EntityReference[],
-      artifactRefs: [{
-        id: 'github-pr-184',
-        provider: 'GitHub',
-        kind: 'PR',
-        title: 'Pause background sessions when grants expire',
-        state: 'actionable',
-        fetchedAt: Date.now() - 2 * 60 * 1000,
-      }] as ArtifactRef[],
-    },
-    {
-      id: 'demo-agent-run',
-      role: 'assistant' as const,
-      name: channelAgents[0]?.name ?? 'Secure Coding Agent',
-      initials: 'AI',
-      createdAt: Date.now() - 48 * 60 * 1000,
-      text: 'Checked the runtime and permission policies. Expired grants pause the VM, preserve the encrypted workspace, and create an approval request for the owner.',
-      references: [] as EntityReference[],
-      artifactRefs: [{
-        id: 'opensaddle-run-permission-review',
-        provider: 'OpenSaddle',
-        kind: 'Run',
-        title: 'Permission-expiry policy review',
-        state: 'done',
-        fetchedAt: Date.now() - 48 * 60 * 1000,
-      }] as ArtifactRef[],
-    },
-    {
-      id: 'demo-akash',
-      role: 'user' as const,
-      name: 'Akash Dubey',
-      initials: 'AD',
-      createdAt: Date.now() - 34 * 60 * 1000,
-      text: 'Great. Let’s use that behavior in the demo and link the full agent thread from the release note. Thanks @Maya Chen for pulling the criteria together.',
-      references: [
-        { kind: 'user', id: 'user-maya', label: '@Maya Chen' },
-      ] as EntityReference[],
-    },
-  ]
-  const liveChannelFeed = messages.map((message) => {
-    const member = message.role === 'user'
-      ? data.members.find((item) => item.id === data.currentUserId)
-      : undefined
+  // Authorship comes from the message, not from the viewer. Falling back to the
+  // current user is what made every channel look like a monologue.
+  const channelFeed = [...messages].sort((a, b) => a.createdAt - b.createdAt).map((message) => {
+    const member = data.members.find((item) => item.id === message.authorId)
+      ?? (message.role === 'user' && !message.authorId
+        ? data.members.find((item) => item.id === data.currentUserId)
+        : undefined)
     const agent = message.role === 'assistant'
-      ? data.agents.find((item) => item.id === chat.agentId) ?? channelAgents[0]
+      ? data.agents.find((item) => item.id === (message.authorId ?? chat.agentId)) ?? channelAgents[0]
       : undefined
     return {
       id: message.id,
       role: message.role,
-      name: member?.name ?? agent?.name ?? (message.role === 'assistant' ? 'OpenSaddle Agent' : 'Team member'),
-      initials: member?.initials ?? (agent ? 'AI' : 'TM'),
+      name: member?.name ?? agent?.name ?? 'Unknown author',
+      initials: member?.initials ?? (agent ? 'AI' : '??'),
       createdAt: message.createdAt,
       text: message.text,
       references: message.references,
       lightHtml: message.lightHtml,
       run: message.run,
-      artifactRefs: [] as ArtifactRef[],
+      artifactRefs: message.artifactRefs ?? [],
     }
   })
-  const channelFeed = [...demoChannelFeed, ...liveChannelFeed]
+  // The unread marker is derived from the chat's own unread count rather than
+  // from where a hardcoded demo block happened to end.
+  const unreadBoundary = chat.unreadCount && chat.unreadCount > 0
+    ? Math.max(0, channelFeed.length - chat.unreadCount)
+    : null
+  const visibleFeed = channelFeed
     .filter((message) => !channelSearch.trim() || `${message.name} ${message.text}`.toLowerCase().includes(channelSearch.trim().toLowerCase()))
 
   if (isTeamChannel) {
@@ -1855,7 +1796,7 @@ export function ChatPage() {
             </div>
             <div className="slack-day-divider"><span>Today</span></div>
             <div className="slack-message-list">
-              {channelFeed.map((message, index) => {
+              {visibleFeed.map((message, index) => {
                 const previous = channelFeed[index - 1]
                 const isGrouped = Boolean(
                   previous
@@ -1865,7 +1806,7 @@ export function ChatPage() {
                 )
                 const timestamp = new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
                 return <Fragment key={message.id}>
-                  {index === demoChannelFeed.length && liveChannelFeed.length > 0 && <div className="slack-new-divider"><span>New messages</span></div>}
+                  {unreadBoundary !== null && index === unreadBoundary && <div className="slack-new-divider"><span>New messages</span></div>}
                   <article className={`slack-message ${message.role === 'assistant' ? 'agent' : ''} ${isGrouped ? 'is-grouped' : ''}`}>
                   <span
                     className="slack-message-avatar"

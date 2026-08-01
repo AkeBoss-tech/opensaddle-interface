@@ -320,8 +320,16 @@ export interface Message {
   chatId: string
   role: MessageRole
   text: string
+  /**
+   * Who wrote this. A member id for `user` messages, an agent id for
+   * `assistant` ones. Without it a channel can only ever attribute messages to
+   * the viewer, which is why multi-person transcripts used to be hardcoded.
+   */
+  authorId?: string
   /** Entity links are data, never inferred by re-parsing message prose. */
   references?: EntityReference[]
+  /** External artifacts unfurled beneath the message body. */
+  artifactRefs?: ArtifactRef[]
   createdAt: number
   routingNote?: string
   /** Durable server run projected through this conversation message. */

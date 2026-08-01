@@ -4,8 +4,8 @@ const now = Date.now()
 const hour = 3600_000
 const day = 24 * hour
 
-export const DATA_VERSION = 6
-export const STORAGE_KEY = 'opensaddle-data-v6'
+export const DATA_VERSION = 7
+export const STORAGE_KEY = 'opensaddle-data-v7'
 
 export function createSeedData(): AppData {
   const corp = 'proj-corp'
@@ -48,7 +48,7 @@ export function createSeedData(): AppData {
     ],
     chats: [
       { id: chatNew, projectId: corp, title: 'New chat', visibility: 'private', createdAt: now, updatedAt: now, sharedWith: [] },
-      { id: chatCoding, projectId: coding, title: 'Secure VM background feature', visibility: 'shared', createdAt: now - 2 * hour, updatedAt: now - hour, sharedWith: ['user-maya', 'user-jordan'], agentId: 'agent-coder' },
+      { id: chatCoding, projectId: coding, title: 'Secure VM background feature', visibility: 'shared', createdAt: now - 2 * hour, updatedAt: now - hour, sharedWith: ['user-maya', 'user-jordan'], agentId: 'agent-coder', unreadCount: 2 },
       { id: chatResearch, projectId: corp, title: 'Model gateway architecture review', visibility: 'project', createdAt: now - day, updatedAt: now - 3 * hour, sharedWith: [], agentId: 'agent-research' },
       { id: chatClaims, projectId: claims, title: 'At-risk Salesforce renewals', visibility: 'shared', createdAt: now - 5 * hour, updatedAt: now - 4 * hour, sharedWith: ['user-maya'], agentId: 'agent-claims' },
       { id: chatDmMaya, projectId: corp, title: 'Maya Chen', visibility: 'private', createdAt: now - 4 * hour, updatedAt: now - 18 * 60_000, sharedWith: [], directMessageWith: { kind: 'human', id: 'user-maya' }, unreadCount: 3 },
@@ -62,12 +62,46 @@ export function createSeedData(): AppData {
       { id: 'dm-maya-1', chatId: chatDmMaya, role: 'assistant', createdAt: now - 18 * 60_000, text: 'I added the customer feedback to the launch brief. Want me to pull Priya into the review?' },
       { id: 'dm-research-1', chatId: chatDmResearch, role: 'assistant', createdAt: now - 42 * 60_000, text: 'The source comparison is ready. I flagged two assumptions that need a human decision.' },
       { id: 'dm-coder-1', chatId: chatDmCoder, role: 'assistant', createdAt: now - 75 * 60_000, text: 'I found the likely regression boundary and can prepare a focused patch when you are ready.' },
+      // Multi-author channel conversation. These carry `authorId`, which is what
+      // lets a channel show more than one person without hardcoding a feed.
       {
-        id: 'm1', chatId: chatCoding, role: 'user', createdAt: now - 2 * hour,
+        id: 'ch-maya-1', chatId: chatCoding, role: 'user', authorId: 'user-maya', createdAt: now - 58 * 60_000,
+        text: 'I pulled the secure VM acceptance criteria into one place. The remaining question is whether background sessions should pause or terminate when a permission expires.',
+      },
+      {
+        id: 'ch-maya-2', chatId: chatCoding, role: 'user', authorId: 'user-maya', createdAt: now - 56 * 60_000,
+        text: 'Either way we should say so explicitly in the release note.',
+      },
+      {
+        id: 'ch-jordan-1', chatId: chatCoding, role: 'user', authorId: 'user-jordan', createdAt: now - 51 * 60_000,
+        text: 'Pause feels safer and gives the user a clear recovery path. @Secure Coding Agent can you verify that against the current runtime policy?',
+        references: [{ kind: 'agent', id: 'agent-coder', label: '@Secure Coding Agent' }],
+        artifactRefs: [{
+          id: 'gh-pr-1932', provider: 'GitHub', kind: 'PR',
+          title: 'Pause background sessions when grants expire',
+          state: 'actionable', fetchedAt: now - 2 * 60_000,
+        }],
+      },
+      {
+        id: 'ch-agent-1', chatId: chatCoding, role: 'assistant', authorId: 'agent-coder', createdAt: now - 48 * 60_000,
+        text: 'Checked the runtime and permission policies. Expired grants pause the VM, preserve the encrypted workspace, and create an approval request for the owner.',
+        artifactRefs: [{
+          id: 'os-run-4471', provider: 'OpenSaddle', kind: 'Run',
+          title: 'Permission-expiry policy review',
+          state: 'done', fetchedAt: now - 48 * 60_000,
+        }],
+      },
+      {
+        id: 'ch-akash-1', chatId: chatCoding, role: 'user', authorId: 'user-ad', createdAt: now - 34 * 60_000,
+        text: 'Great. Let’s use that behavior in the demo and link the full agent thread from the release note. Thanks @Maya Chen for pulling the criteria together.',
+        references: [{ kind: 'user', id: 'user-maya', label: '@Maya Chen' }],
+      },
+      {
+        id: 'm1', chatId: chatCoding, role: 'user', authorId: 'user-ad', createdAt: now - 2 * hour,
         text: 'Build a new feature that lets a user request a secure VM and continue the task in the background.',
       },
       {
-        id: 'm2', chatId: chatCoding, role: 'assistant', createdAt: now - 2 * hour + 60_000,
+        id: 'm2', chatId: chatCoding, role: 'assistant', authorId: 'agent-coder', createdAt: now - 2 * hour + 60_000,
         text: 'Implemented the secure background-VM flow in two files. Provisioning now requires budget approval and records an audit event; background tasks are queued with the allocated VM.\n\nVerification passed with 18 runtime tests and no failures. The proposed changes are ready for review below.',
         routingNote: 'Auto · Claude Opus · Coding · Local',
         run: {
