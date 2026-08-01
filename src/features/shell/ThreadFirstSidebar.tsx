@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
-import type { Project } from '../../types'
+import type { DirectMessagePrincipalKind, Project } from '../../types'
 import { selectThreadSummaries } from '../thread/domain'
+import { PrincipalAvatar } from '../../ui/PrincipalAvatar'
 import '../../styles/team-shell.css'
 
 const TEAM_COLORS_KEY = 'opensaddle.team-colors'
@@ -13,6 +14,7 @@ const PINNED_SHORTCUTS_KEY = 'opensaddle.pinned-shortcuts'
 const SEEN_THREADS_KEY = 'opensaddle.seen-threads'
 const HIDDEN_TEAMS_KEY = 'opensaddle.hidden-teams'
 const PROJECT_ACCESS_KEY = 'opensaddle.project-access'
+const DIRECT_MESSAGE_THREADS_KEY = 'opensaddle.direct-message-threads'
 
 function readLocalRecord(key: string): Record<string, string> {
   try {
@@ -29,6 +31,12 @@ function readLocalList(key: string): string[] {
   } catch {
     return []
   }
+}
+
+type DirectMessageThreadMap = Record<string, string>
+
+function directMessageKey(kind: DirectMessagePrincipalKind, id: string) {
+  return `${kind}:${id}`
 }
 
 function relativeTime(timestamp: number) {
@@ -120,6 +128,7 @@ export function ThreadFirstSidebar({
   const [hiddenTeamIds, setHiddenTeamIds] = useState<string[]>(() => readLocalList(HIDDEN_TEAMS_KEY))
   const [projectAccess, setProjectAccess] = useState<Record<string, string>>(() => readLocalRecord(PROJECT_ACCESS_KEY))
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
+  const [directMessageThreads, setDirectMessageThreads] = useState<DirectMessageThreadMap>(() => readLocalRecord(DIRECT_MESSAGE_THREADS_KEY))
 
   const organizationRoots = useMemo(
     () => data.projects.filter((project) => project.parentId === null && project.workspaceKind !== 'local'),
@@ -162,6 +171,22 @@ export function ThreadFirstSidebar({
     () => data.agents.filter((agent) => scopedProjectIds.has(agent.projectId)),
     [data.agents, scopedProjectIds],
   )
+  const directMessages = useMemo(() => {
+    const chatsByPrincipal = new Map(
+      data.chats
+        .filter((chat) => chat.directMessageWith && scopedProjectIds.has(chat.projectId))
+        .map((chat) => [directMessageKey(chat.directMessageWith!.kind, chat.directMessageWith!.id), chat]),
+    )
+    const contacts = [
+      ...data.members
+        .filter((member) => member.id !== data.currentUserId)
+        .map((member) => ({ id: member.id, kind: 'human' as const, name: member.name, presence: member.presence, projectId: activeTeam.id })),
+      ...scopedAgents.map((agent) => ({ id: agent.id, kind: 'agent' as const, name: agent.name, presence: agent.presence, projectId: agent.projectId })),
+    ]
+    return contacts
+      .map((contact) => ({ ...contact, chat: chatsByPrincipal.get(directMessageKey(contact.kind, contact.id)) ?? data.chats.find((chat) => chat.id === directMessageThreads[directMessageKey(contact.kind, contact.id)]) }))
+      .sort((left, right) => (right.chat?.updatedAt ?? 0) - (left.chat?.updatedAt ?? 0) || left.name.localeCompare(right.name))
+  }, [activeTeam.id, data.chats, data.currentUserId, data.members, directMessageThreads, scopedAgents, scopedProjectIds])
   const me = data.members.find((member) => member.id === data.currentUserId)
   const isAdmin = me?.role === 'Admin'
   const closeMobileNavigation = () => document.getElementById('sidebar')?.classList.remove('mobile-open')
@@ -331,6 +356,22 @@ export function ThreadFirstSidebar({
     setActiveProject(projectId)
     setActiveChat(chatId)
     navigate(`/chat/${chatId}`)
+    closeMobileNavigation()
+  }
+
+  const openDirectMessage = (contact: (typeof directMessages)[number]) => {
+    const key = directMessageKey(contact.kind, contact.id)
+    const existing = contact.chat
+    if (existing) {
+      openThread(existing.id, existing.projectId)
+      return
+    }
+    const chat = createChat(contact.projectId, contact.name, contact.kind === 'agent' ? contact.id : undefined)
+    const next = { ...directMessageThreads, [key]: chat.id }
+    setDirectMessageThreads(next)
+    localStorage.setItem(DIRECT_MESSAGE_THREADS_KEY, JSON.stringify(next))
+    setActiveChat(chat.id)
+    navigate(`/chat/${chat.id}`)
     closeMobileNavigation()
   }
 
@@ -607,6 +648,24 @@ export function ThreadFirstSidebar({
                   })}
                 </div>
               )}
+            </div>
+
+            <div className="tf-team-section tf-direct-messages">
+              <div className="tf-team-section-label static"><span>Direct messages</span></div>
+              <div className="tf-team-section-list">
+                {directMessages.map((contact) => (
+                  <button
+                    className={`tf-direct-message-row ${contact.chat?.id === data.activeChatId ? 'active' : ''}`}
+                    key={directMessageKey(contact.kind, contact.id)}
+                    onClick={() => openDirectMessage(contact)}
+                    aria-label={`Direct message ${contact.name}`}
+                  >
+                    <PrincipalAvatar name={contact.name} kind={contact.kind} presence={contact.presence ?? 'offline'} size="sm" />
+                    <span>{contact.name}</span>
+                    {(contact.chat?.unreadCount ?? 0) > 0 && <small>{contact.chat!.unreadCount}</small>}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="tf-team-section tf-team-recent">

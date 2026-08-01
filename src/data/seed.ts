@@ -4,8 +4,8 @@ const now = Date.now()
 const hour = 3600_000
 const day = 24 * hour
 
-export const DATA_VERSION = 5
-export const STORAGE_KEY = 'opensaddle-data-v5'
+export const DATA_VERSION = 6
+export const STORAGE_KEY = 'opensaddle-data-v6'
 
 export function createSeedData(): AppData {
   const corp = 'proj-corp'
@@ -21,17 +21,20 @@ export function createSeedData(): AppData {
   const chatResearch = 'chat-research'
   const chatClaims = 'chat-claims'
   const chatNew = 'chat-welcome'
+  const chatDmMaya = 'chat-dm-maya'
+  const chatDmResearch = 'chat-dm-research'
+  const chatDmCoder = 'chat-dm-coder'
 
   return {
     version: DATA_VERSION,
     workspaceName: 'Acme enterprise workspace',
     currentUserId: 'user-ad',
     members: [
-      { id: 'user-ad', name: 'Akash Dubey', initials: 'AD', role: 'Admin', email: 'akash@acme.com' },
-      { id: 'user-maya', name: 'Maya Chen', initials: 'MC', role: 'Editor', email: 'maya@acme.com' },
-      { id: 'user-jordan', name: 'Jordan Lee', initials: 'JL', role: 'Reviewer', email: 'jordan@acme.com' },
-      { id: 'user-sec', name: 'Security Ops', initials: 'SO', role: 'Reviewer', email: 'secops@acme.com' },
-      { id: 'user-priya', name: 'Priya Shah', initials: 'PS', role: 'Viewer', email: 'priya@acme.com' },
+      { id: 'user-ad', name: 'Akash Dubey', initials: 'AD', role: 'Admin', email: 'akash@acme.com', presence: 'online' },
+      { id: 'user-maya', name: 'Maya Chen', initials: 'MC', role: 'Editor', email: 'maya@acme.com', presence: 'online' },
+      { id: 'user-jordan', name: 'Jordan Lee', initials: 'JL', role: 'Reviewer', email: 'jordan@acme.com', presence: 'away' },
+      { id: 'user-sec', name: 'Security Ops', initials: 'SO', role: 'Reviewer', email: 'secops@acme.com', presence: 'offline' },
+      { id: 'user-priya', name: 'Priya Shah', initials: 'PS', role: 'Viewer', email: 'priya@acme.com', presence: 'online' },
     ],
     projects: [
       { id: corp, name: 'Corporate Base Agent', parentId: null, description: 'Default enterprise agent with corporate-safe routing, shared knowledge, and a permission gateway.', iconColor: '#80a9ff', knowledgeCount: 12, serviceCount: 8, childCount: 4, autoConfidence: 93, lineage: ['Organization', 'Corporate Base Agent'] },
@@ -48,11 +51,17 @@ export function createSeedData(): AppData {
       { id: chatCoding, projectId: coding, title: 'Secure VM background feature', visibility: 'shared', createdAt: now - 2 * hour, updatedAt: now - hour, sharedWith: ['user-maya', 'user-jordan'], agentId: 'agent-coder' },
       { id: chatResearch, projectId: corp, title: 'Model gateway architecture review', visibility: 'project', createdAt: now - day, updatedAt: now - 3 * hour, sharedWith: [], agentId: 'agent-research' },
       { id: chatClaims, projectId: claims, title: 'At-risk Salesforce renewals', visibility: 'shared', createdAt: now - 5 * hour, updatedAt: now - 4 * hour, sharedWith: ['user-maya'], agentId: 'agent-claims' },
+      { id: chatDmMaya, projectId: corp, title: 'Maya Chen', visibility: 'private', createdAt: now - 4 * hour, updatedAt: now - 18 * 60_000, sharedWith: [], directMessageWith: { kind: 'human', id: 'user-maya' }, unreadCount: 3 },
+      { id: chatDmResearch, projectId: corp, title: 'Research Analyst', visibility: 'private', createdAt: now - 3 * hour, updatedAt: now - 42 * 60_000, sharedWith: [], agentId: 'agent-research', directMessageWith: { kind: 'agent', id: 'agent-research' }, unreadCount: 1 },
+      { id: chatDmCoder, projectId: coding, title: 'Secure Coding Agent', visibility: 'private', createdAt: now - 2 * hour, updatedAt: now - 75 * 60_000, sharedWith: [], agentId: 'agent-coder', directMessageWith: { kind: 'agent', id: 'agent-coder' } },
       { id: 'chat-policy', projectId: router, title: 'Audit policy-aware routing', visibility: 'project', createdAt: now - 2 * day, updatedAt: now - day, sharedWith: [] },
       { id: 'chat-sharepoint', projectId: corp, title: 'Create SharePoint knowledge index', visibility: 'private', createdAt: now - 3 * day, updatedAt: now - 2 * day, sharedWith: [] },
       { id: 'chat-prs', projectId: coding, title: 'Review GitHub pull requests', visibility: 'shared', createdAt: now - 4 * day, updatedAt: now - 3 * day, sharedWith: ['user-jordan'] },
     ],
     messages: [
+      { id: 'dm-maya-1', chatId: chatDmMaya, role: 'assistant', createdAt: now - 18 * 60_000, text: 'I added the customer feedback to the launch brief. Want me to pull Priya into the review?' },
+      { id: 'dm-research-1', chatId: chatDmResearch, role: 'assistant', createdAt: now - 42 * 60_000, text: 'The source comparison is ready. I flagged two assumptions that need a human decision.' },
+      { id: 'dm-coder-1', chatId: chatDmCoder, role: 'assistant', createdAt: now - 75 * 60_000, text: 'I found the likely regression boundary and can prepare a focused patch when you are ready.' },
       {
         id: 'm1', chatId: chatCoding, role: 'user', createdAt: now - 2 * hour,
         text: 'Build a new feature that lets a user request a secure VM and continue the task in the background.',
@@ -194,12 +203,12 @@ export function createSeedData(): AppData {
       },
     ],
     agents: [
-      { id: 'agent-coder', projectId: coding, name: 'Secure Coding Agent', description: 'Plans, edits, tests, and opens PRs in managed sandboxes.', systemPrompt: 'You are a careful coding agent. Prefer smallest diffs. Never deploy without approval.', modelPolicy: 'claude', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub', 'Terminal', 'VM'], knowledgeSourceIds: ['kn-github'], interfaceId: 'iface-chat-diff', visibility: 'shared', createdAt: now - 10 * day },
-      { id: 'agent-research', projectId: corp, name: 'Research Analyst', description: 'Searches knowledge and produces cited reports.', systemPrompt: 'Cite sources. Prefer internal knowledge over web.', modelPolicy: 'gpt', harness: 'research', runtime: 'sandbox', tools: ['Knowledge', 'Web'], knowledgeSourceIds: ['kn-sharepoint', 'kn-drive'], interfaceId: 'iface-doc', visibility: 'project', createdAt: now - 8 * day },
-      { id: 'agent-claims', projectId: claims, name: 'Claims Copilot', description: 'Drafts claim responses; writes require approval.', systemPrompt: 'Never invent policy. Escalate ambiguous cases.', modelPolicy: 'sonnet', harness: 'browser', runtime: 'local', tools: ['Salesforce', 'Files'], knowledgeSourceIds: ['kn-claims'], interfaceId: 'iface-form', visibility: 'shared', createdAt: now - 6 * day },
-      { id: 'agent-cold', projectId: cold, name: 'Cold Email Drafter', description: 'Writes outreach drafts; sending is gated by human approval.', systemPrompt: 'Draft concise, personalized outreach. Never send without approval.', modelPolicy: 'sonnet', harness: 'chat', runtime: 'browser', tools: ['Files', 'Email'], knowledgeSourceIds: [], visibility: 'project', createdAt: now - 6 * day },
-      { id: 'agent-router', projectId: router, name: 'Routing Policy Analyst', description: 'Audits routing decisions, cost controls, and harness selection.', systemPrompt: 'Explain routing decisions with policy citations and cost impact.', modelPolicy: 'gpt', harness: 'research', runtime: 'sandbox', tools: ['Knowledge'], knowledgeSourceIds: ['kn-github'], visibility: 'project', createdAt: now - 7 * day },
-      { id: 'agent-audit', projectId: audit, name: 'Degree Audit Agent', description: 'Repository-aware checks that inherit GitHub but deny production DB writes.', systemPrompt: 'Read-only against production data. Propose changes as diffs.', modelPolicy: 'sonnet', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub'], knowledgeSourceIds: ['kn-github'], visibility: 'project', createdAt: now - 5 * day },
+      { id: 'agent-coder', projectId: coding, name: 'Secure Coding Agent', description: 'Plans, edits, tests, and opens PRs in managed sandboxes.', systemPrompt: 'You are a careful coding agent. Prefer smallest diffs. Never deploy without approval.', modelPolicy: 'claude', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub', 'Terminal', 'VM'], knowledgeSourceIds: ['kn-github'], interfaceId: 'iface-chat-diff', visibility: 'shared', presence: 'online', createdAt: now - 10 * day },
+      { id: 'agent-research', projectId: corp, name: 'Research Analyst', description: 'Searches knowledge and produces cited reports.', systemPrompt: 'Cite sources. Prefer internal knowledge over web.', modelPolicy: 'gpt', harness: 'research', runtime: 'sandbox', tools: ['Knowledge', 'Web'], knowledgeSourceIds: ['kn-sharepoint', 'kn-drive'], interfaceId: 'iface-doc', visibility: 'project', presence: 'away', createdAt: now - 8 * day },
+      { id: 'agent-claims', projectId: claims, name: 'Claims Copilot', description: 'Drafts claim responses; writes require approval.', systemPrompt: 'Never invent policy. Escalate ambiguous cases.', modelPolicy: 'sonnet', harness: 'browser', runtime: 'local', tools: ['Salesforce', 'Files'], knowledgeSourceIds: ['kn-claims'], interfaceId: 'iface-form', visibility: 'shared', presence: 'online', createdAt: now - 6 * day },
+      { id: 'agent-cold', projectId: cold, name: 'Cold Email Drafter', description: 'Writes outreach drafts; sending is gated by human approval.', systemPrompt: 'Draft concise, personalized outreach. Never send without approval.', modelPolicy: 'sonnet', harness: 'chat', runtime: 'browser', tools: ['Files', 'Email'], knowledgeSourceIds: [], visibility: 'project', presence: 'offline', createdAt: now - 6 * day },
+      { id: 'agent-router', projectId: router, name: 'Routing Policy Analyst', description: 'Audits routing decisions, cost controls, and harness selection.', systemPrompt: 'Explain routing decisions with policy citations and cost impact.', modelPolicy: 'gpt', harness: 'research', runtime: 'sandbox', tools: ['Knowledge'], knowledgeSourceIds: ['kn-github'], visibility: 'project', presence: 'away', createdAt: now - 7 * day },
+      { id: 'agent-audit', projectId: audit, name: 'Degree Audit Agent', description: 'Repository-aware checks that inherit GitHub but deny production DB writes.', systemPrompt: 'Read-only against production data. Propose changes as diffs.', modelPolicy: 'sonnet', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub'], knowledgeSourceIds: ['kn-github'], visibility: 'project', presence: 'offline', createdAt: now - 5 * day },
     ],
     sites: [
       {

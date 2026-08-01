@@ -1,5 +1,7 @@
 export type Theme = 'dark' | 'light' | 'liquid' | 'hc'
 export type Visibility = 'private' | 'shared' | 'project'
+export type PresenceState = 'online' | 'away' | 'offline'
+export type DirectMessagePrincipalKind = 'human' | 'agent'
 export type Inheritance = 'org' | 'parent' | 'override' | 'denied'
 export type Harness = 'chat' | 'research' | 'coding' | 'browser' | 'vm'
 export type CodingProvider =
@@ -100,6 +102,7 @@ export interface Member {
   initials: string
   role: 'Admin' | 'Editor' | 'Reviewer' | 'Viewer'
   email: string
+  presence?: PresenceState
 }
 
 export interface Project {
@@ -139,6 +142,13 @@ export interface Chat {
   sharedWith: string[]
   archived?: boolean
   agentId?: string
+  /** The principal at the other end of a one-to-one direct message. */
+  directMessageWith?: {
+    kind: DirectMessagePrincipalKind
+    id: string
+  }
+  /** Projected unread messages for a direct-message row. */
+  unreadCount?: number
   runConfig?: {
     auto: boolean
     providerKey: CodingProvider
@@ -341,6 +351,7 @@ export interface CustomAgent {
   knowledgeSourceIds: string[]
   interfaceId?: string
   visibility: Visibility
+  presence?: PresenceState
   createdAt: number
 }
 
