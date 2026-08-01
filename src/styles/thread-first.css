@@ -63,6 +63,23 @@
 .tf-team-section-list > button small { margin-left: auto; color: var(--dim); font-size: 8px; }
 .tf-team-section-list > p { margin: 3px 8px 5px; color: var(--dim); font-size: 9px; line-height: 1.4; }
 .tf-team-recent .tf-team-section-list > button { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; }
+
+/* Explicit grid so the avatar keeps its intrinsic size. The generic
+   `.tf-team-section-list > button > span` rule sets flex:1, which stretched
+   the PrincipalAvatar span into an ellipse and truncated the name. */
+.tf-direct-message-row { display: grid !important; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.tf-direct-message-row > .os-principal-avatar { flex: 0 0 auto !important; }
+.tf-direct-message-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+.tf-direct-message-row > small {
+  min-width: 16px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 8px;
+  font-weight: 750;
+  text-align: center;
+}
 .tf-direct-message-row {
   width: 100%;
   min-width: 0;
