@@ -6,7 +6,7 @@ import {
   DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL, simulateAgentRun,
   type RouteDecision,
 } from '../lib/simulation'
-import type { AgentRunBlock, CodingProvider, EntityReference, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
+import type { AgentRunBlock, ArtifactRef, CodingProvider, EntityReference, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
 import { PROVIDER_NAME, ProviderLogo, providerFromLabel } from '../components/common/ProviderLogo'
 import { evaluatePermissions } from '../services/permissions'
 import { sanitizeHtml } from '../lib/sanitizeHtml'
@@ -17,7 +17,7 @@ import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources 
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
 import { buildPlanRevision } from '../features/thread/planRevision'
 import { selectPublishFlowStep } from '../features/git/publishFlow'
-import { EntityPicker, MessageText, ReactionBar, type Reaction } from '../ui'
+import { ArtifactCard, EntityPicker, MessageText, ReactionBar, type Reaction } from '../ui'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
   THREAD_INSPECTOR_STORAGE_KEY,
@@ -1733,6 +1733,14 @@ export function ChatPage() {
       references: [
         { kind: 'agent', id: channelAgents[0]?.id ?? 'agent-coder', label: '@Secure Coding Agent' },
       ] as EntityReference[],
+      artifactRefs: [{
+        id: 'github-pr-184',
+        provider: 'GitHub',
+        kind: 'PR',
+        title: 'Pause background sessions when grants expire',
+        state: 'actionable',
+        fetchedAt: Date.now() - 2 * 60 * 1000,
+      }] as ArtifactRef[],
     },
     {
       id: 'demo-agent-run',
@@ -1742,10 +1750,14 @@ export function ChatPage() {
       createdAt: Date.now() - 48 * 60 * 1000,
       text: 'Checked the runtime and permission policies. Expired grants pause the VM, preserve the encrypted workspace, and create an approval request for the owner.',
       references: [] as EntityReference[],
-      demoRun: {
+      artifactRefs: [{
+        id: 'opensaddle-run-permission-review',
+        provider: 'OpenSaddle',
+        kind: 'Run',
         title: 'Permission-expiry policy review',
-        status: 'Completed in 8.4s · 3 sources · Open agent thread',
-      },
+        state: 'done',
+        fetchedAt: Date.now() - 48 * 60 * 1000,
+      }] as ArtifactRef[],
     },
     {
       id: 'demo-akash',
@@ -1776,6 +1788,7 @@ export function ChatPage() {
       references: message.references,
       lightHtml: message.lightHtml,
       run: message.run,
+      artifactRefs: [] as ArtifactRef[],
     }
   })
   const channelFeed = [...demoChannelFeed, ...liveChannelFeed]
@@ -1845,18 +1858,12 @@ export function ChatPage() {
                   <div>
                     <header><strong>{message.name}</strong>{message.role === 'assistant' && <span>APP</span>}<time>{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></header>
                     {message.text && <MessageText text={message.text} references={message.references} onActivate={(reference) => toast(`${reference.kind} opened`, reference.label)} />}
+                    {message.artifactRefs?.map((artifact) => <ArtifactCard key={artifact.id} artifact={artifact} onActivate={() => toast(`${artifact.kind} opened`, artifact.title)} />)}
                     {'lightHtml' in message && message.lightHtml && <div className="slack-agent-card" dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.lightHtml) }} />}
                     {'run' in message && message.run && (
                       <button className="slack-run-card" onClick={() => openInspector()}>
                         <Icon name={message.run.done ? 'check' : 'activity'} />
                         <span><strong>{message.run.title}</strong><small>{message.run.statusText} · Open agent thread</small></span>
-                        <Icon name="forward" className="icon sm" />
-                      </button>
-                    )}
-                    {'demoRun' in message && message.demoRun && (
-                      <button className="slack-run-card" onClick={() => toast('Agent thread opened', 'The complete model reasoning, output, sources, and trace live in the agent thread.')}>
-                        <Icon name="check" />
-                        <span><strong>{message.demoRun.title}</strong><small>{message.demoRun.status}</small></span>
                         <Icon name="forward" className="icon sm" />
                       </button>
                     )}

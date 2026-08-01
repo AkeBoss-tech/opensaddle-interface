@@ -19,6 +19,18 @@ export type TaskType = 'now' | 'scheduled' | 'background' | 'monitor'
 export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'failed' | 'paused'
 export type MessageRole = 'user' | 'assistant' | 'system'
 export type EntityKind = 'user' | 'agent' | 'artifact' | 'thread' | 'run' | 'skill' | 'project'
+export type ActionabilityState = 'blocked' | 'actionable' | 'claimed' | 'in-progress' | 'done'
+
+/** A source-backed artifact attached to a message or rendered in an unfurl. */
+export interface ArtifactRef {
+  id: string
+  provider: string
+  kind: string
+  title: string
+  state: ActionabilityState
+  fetchedAt: number
+  degraded?: boolean
+}
 
 /** A durable, typed link from a message to a substrate entity. */
 export interface EntityReference {
