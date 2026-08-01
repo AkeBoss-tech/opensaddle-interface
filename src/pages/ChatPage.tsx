@@ -1730,7 +1730,9 @@ export function ChatPage() {
       initials: 'JL',
       createdAt: Date.now() - 51 * 60 * 1000,
       text: 'Pause feels safer and gives the user a clear recovery path. @Secure Coding Agent can you verify that against the current runtime policy?',
-      references: [] as EntityReference[],
+      references: [
+        { kind: 'agent', id: channelAgents[0]?.id ?? 'agent-coder', label: '@Secure Coding Agent' },
+      ] as EntityReference[],
     },
     {
       id: 'demo-agent-run',
@@ -1751,8 +1753,10 @@ export function ChatPage() {
       name: 'Akash Dubey',
       initials: 'AD',
       createdAt: Date.now() - 34 * 60 * 1000,
-      text: 'Great. Let’s use that behavior in the demo and link the full agent thread from the release note.',
-      references: [] as EntityReference[],
+      text: 'Great. Let’s use that behavior in the demo and link the full agent thread from the release note. Thanks @Maya Chen for pulling the criteria together.',
+      references: [
+        { kind: 'user', id: 'user-maya', label: '@Maya Chen' },
+      ] as EntityReference[],
     },
   ]
   const liveChannelFeed = messages.map((message) => {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getMessageTextSegments } from '../src/ui/MessageText.tsx'
+import { getMessageTextSegments } from '../src/ui/messageSegments.ts'
 
 test('appends an entity chip when its label is absent from the message text', () => {
   const segments = getMessageTextSegments('Ship it.', [{ kind: 'agent', id: 'a-1', label: '@Ada' }])
