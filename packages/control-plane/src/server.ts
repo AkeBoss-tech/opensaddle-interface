@@ -741,6 +741,27 @@ app.get('/api/workspace', async (_request, reply) => {
   }
 })
 
+app.get<{ Querystring: { project_id?: string } }>('/api/surfaces', async (request) => {
+  const projects = store.workspace()?.projects
+  if (!Array.isArray(projects)) return { surfaces: [] }
+  const requestedProjectId = request.query.project_id
+  const surfaces = projects.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return []
+    const project = candidate as Record<string, unknown>
+    const projectId = typeof project.id === 'string' ? project.id : undefined
+    if (!projectId || (requestedProjectId && projectId !== requestedProjectId)) return []
+    const permission = evaluatePermissions(store.grants(), {
+      userId: request.principal.userId,
+      resourceKind: 'project',
+      resourceId: projectId,
+      action: 'read',
+    })
+    if (!permission.allowed) return []
+    return [{ id: 'work', project_id: projectId, title: 'Work' }]
+  })
+  return { surfaces }
+})
+
 /**
  * Granular, durable conversation API. The legacy /api/workspace snapshot is
  * intentionally retained while clients transition; StateStore imports legacy

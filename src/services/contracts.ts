@@ -88,6 +88,13 @@ export interface RuntimeRunSummary {
   lastEventType?: RunEventType
 }
 
+/** A server-registered view that is visible within one Project. */
+export interface RegisteredSurface {
+  id: string
+  projectId: string
+  title: string
+}
+
 export interface WorkflowDefinition {
   workflowId: string
   name: string
@@ -223,6 +230,7 @@ export interface RuntimeClient {
     route?: RouteEstimate
   }>
   listRuns?(): Promise<RuntimeRunSummary[]>
+  listSurfaces?(projectId?: string): Promise<RegisteredSurface[]>
   subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void
   cancel(runId: string): Promise<void>
   pause(runId: string): Promise<void>

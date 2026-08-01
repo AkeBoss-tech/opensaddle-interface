@@ -1,0 +1,6 @@
+.os-surface-empty, .os-surface-recovery { display: grid; gap: var(--os-space-2); padding: var(--os-space-6); border: 1px solid var(--os-color-border); border-radius: var(--os-radius-lg); background: var(--os-color-surface); color: var(--os-color-text); }
+.os-surface-empty h2, .os-surface-recovery h2 { margin: 0; font-size: var(--os-font-size-lg); }
+.os-surface-empty p, .os-surface-recovery p { margin: 0; color: var(--os-color-text-muted); font-size: var(--os-font-size-sm); line-height: var(--os-line-normal); }
+.os-surface-recovery { border-color: var(--os-color-danger); background: var(--os-color-danger-soft); }
+.os-surface-recovery button { justify-self: start; padding: var(--os-space-2) var(--os-space-3); border: 1px solid var(--os-color-border-strong); border-radius: var(--os-radius-sm); background: var(--os-color-surface-raised); color: var(--os-color-text); cursor: pointer; }
+.os-surface-recovery button:focus-visible { outline: none; box-shadow: var(--os-focus-ring); }

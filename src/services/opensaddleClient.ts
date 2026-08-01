@@ -1,5 +1,5 @@
 import { MockRuntimeClient } from './mockRuntime'
-import type { GitComparisonResult, GitStatusResult, RuntimeClient, RouteEstimate, RuntimeRunSummary, SessionEvent } from './contracts'
+import type { GitComparisonResult, GitStatusResult, RegisteredSurface, RuntimeClient, RouteEstimate, RuntimeRunSummary, SessionEvent } from './contracts'
 import type { CodingProvider, Harness, ModelKey, RunExecutionMode, RuntimeKind } from '../types'
 import { createOrderedEventEmitter } from './orderedEvents'
 
@@ -292,6 +292,15 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       error: run.error,
       lastEventType: run.last_event_type,
     }))
+  }
+
+  async listSurfaces(projectId?: string): Promise<RegisteredSurface[]> {
+    if (!(await this.healthy())) return []
+    const query = projectId ? `?${new URLSearchParams({ project_id: projectId })}` : ''
+    const response = await fetch(`${this.baseUrl}/api/surfaces${query}`, { headers: this.headers() })
+    if (!response.ok) throw await this.responseError(response)
+    const body = await response.json() as { surfaces?: Array<{ id: string; project_id: string; title: string }> }
+    return (body.surfaces ?? []).map((surface) => ({ id: surface.id, projectId: surface.project_id, title: surface.title }))
   }
 
   async resolveDiff(

@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
 import { Button, Dialog, Drawer } from '../../ui'
+import { SurfaceHost } from '../../ui/SurfaceHost'
+import '../../surfaces/WorkSurface'
+import '../../styles/surface-host.css'
+import { type WorkAction, type WorkFilter, type WorkRow } from '../../surfaces/WorkSurface'
 import type {
   RuntimeRunSummary,
   WorkflowDefinition,
@@ -11,25 +15,6 @@ import type {
 } from '../../services/contracts'
 import { selectAttentionItems, type AttentionItem } from '../thread/domain'
 
-type WorkFilter = 'attention' | 'running' | 'scheduled' | 'completed' | 'archived'
-type WorkAction = 'pause-workflow' | 'resume-workflow' | 'run-workflow' | 'cancel-execution' | 'retry-execution'
-
-interface WorkRow {
-  id: string
-  title: string
-  subtitle: string
-  projectId: string
-  status: string
-  owner?: string
-  priority?: AttentionItem['priority']
-  timeSignal?: string
-  progress?: number
-  href?: string
-  kind: 'thread' | 'task' | 'workflow' | 'approval' | 'run'
-  workflowId?: string
-  executionId?: string
-  actions?: Array<{ id: WorkAction; label: string }>
-}
 
 function relativeTime(timestamp?: number) {
   if (!timestamp) return undefined
@@ -104,44 +89,6 @@ function descendantProjectIds(projects: Array<{ id: string; parentId: string | n
   return ids
 }
 
-function Section({
-  title,
-  description,
-  rows,
-  onOpen,
-}: {
-  title: string
-  description: string
-  rows: WorkRow[]
-  onOpen: (row: WorkRow) => void
-}) {
-  return (
-    <section className="tf-work-section">
-      <div className="tf-work-section-head"><div><h2>{title}</h2><p>{description}</p></div><span>{rows.length}</span></div>
-      <div className="tf-work-list">
-        {rows.map((row) => (
-          <div key={row.id} className="tf-work-row-wrap">
-            <button className="tf-work-row" onClick={() => onOpen(row)} aria-label={`Open details for ${row.title}`}>
-              <span className={`tf-work-icon ${row.kind}`}><Icon name={row.kind === 'approval' ? 'shield' : row.kind === 'workflow' ? 'activity' : row.kind === 'task' ? 'clock' : row.kind === 'run' ? 'terminal' : 'message'} className="icon sm" /></span>
-              <span className="tf-work-copy">
-                <strong>{row.title}</strong>
-                <small>{row.subtitle}</small>
-                <span className="tf-work-card-meta">
-                  {row.owner && <span>{row.owner}</span>}
-                  {row.timeSignal && <span>{row.timeSignal}</span>}
-                </span>
-              </span>
-              {row.progress !== undefined && <span className="tf-progress"><i style={{ width: `${row.progress}%` }} /></span>}
-              <span className={`tf-work-status ${row.status.toLowerCase().replaceAll(' ', '-')}`}>{row.status}</span>
-              <Icon name="chevron" className="icon xs tf-row-arrow" />
-            </button>
-          </div>
-        ))}
-        {!rows.length && <div className="tf-work-empty"><Icon name="check" /><strong>Nothing here</strong><span>You are caught up.</span></div>}
-      </div>
-    </section>
-  )
-}
 
 export function WorkPage() {
   const { data, createChat, setActiveChat, setChatArchived, services, toast } = useStore()
@@ -515,41 +462,24 @@ export function WorkPage() {
   ) : null
 
   return (
-    <div className="tf-work-page">
-      <header className="tf-work-header">
-        <div>
-          <span className="tf-eyebrow">Team workspace · {data.projects.find((project) => project.id === data.activeProjectId)?.name ?? 'OpenSaddle'}</span>
-          <h1>Work</h1>
-          <p>Active work for this team, ordered by what needs you next.</p>
-        </div>
-        <Button variant="primary" size="sm" leadingIcon={<Icon name="plus" className="icon sm" />} onClick={() => {
-          const chat = createChat(data.activeProjectId, 'New task')
-          setActiveChat(chat.id)
-          navigate(`/chat/${chat.id}`)
-        }}>New task</Button>
-      </header>
-
-      <div className="tf-work-filters" role="tablist" aria-label="Work filters">
-        {(['all', 'attention', 'running', 'scheduled', 'completed', 'archived'] as const).map((item) => (
-          <button key={item} role="tab" aria-selected={filter === item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>
-            {item === 'all' ? 'All work' : item === 'attention' ? 'Needs attention' : item[0]!.toUpperCase() + item.slice(1)}
-            {item !== 'all' && <span>{rows[item].length}</span>}
-          </button>
-        ))}
-      </div>
-
-      <div className="tf-work-sections">
-        {sections.filter((section) => filter === 'all' || section.key === filter).map((section) => (
-          <Section
-            key={section.key}
-            title={section.title}
-            description={section.description}
-            rows={section.rows}
-            onOpen={open}
-          />
-        ))}
-      </div>
-
+    <>
+      <SurfaceHost
+        surfaceId="work"
+        projectId={data.activeProjectId}
+        permissions={services?.permissions}
+        inputs={{
+          activeProjectName: data.projects.find((project) => project.id === data.activeProjectId)?.name ?? 'OpenSaddle',
+          filter,
+          sections,
+          onCreateTask: () => {
+            const chat = createChat(data.activeProjectId, 'New task')
+            setActiveChat(chat.id)
+            navigate(`/chat/${chat.id}`)
+          },
+          onFilterChange: setFilter,
+          onOpen: open,
+        }}
+      />
       {selectedRow?.kind === 'approval' ? (
         <Dialog
           open
@@ -574,6 +504,6 @@ export function WorkPage() {
           {detailBody}
         </Drawer>
       )}
-    </div>
+    </>
   )
 }
