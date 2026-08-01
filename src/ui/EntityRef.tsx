@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../data/store'
 import { entityResolver, type EntityDisplay } from '../services/entityResolver'
 import type { EntityKind } from '../types'
-import '../styles/entity.css'
 
 export interface EntityRefProps {
   kind: EntityKind

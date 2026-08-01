@@ -1,5 +1,6 @@
 import '../styles/tokens.css'
 import '../styles/primitives.css'
+import '../styles/entity.css'
 
 export * from './Button'
 export * from './Dialog'
@@ -15,5 +16,6 @@ export * from './VirtualList'
 export * from './cx'
 export * from './EntityPicker'
 export * from './EntityRef'
+export * from './MessageText'
 export * from './ReactionBar'
 export * from './SurfaceHost'

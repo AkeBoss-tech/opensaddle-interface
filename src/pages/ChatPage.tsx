@@ -17,7 +17,7 @@ import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources 
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
 import { buildPlanRevision } from '../features/thread/planRevision'
 import { selectPublishFlowStep } from '../features/git/publishFlow'
-import { EntityPicker, EntityRef, ReactionBar, type Reaction } from '../ui'
+import { EntityPicker, MessageText, ReactionBar, type Reaction } from '../ui'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
   THREAD_INSPECTOR_STORAGE_KEY,
@@ -1840,8 +1840,7 @@ export function ChatPage() {
                   >{message.role === 'assistant' ? <Icon name="spark" className="icon sm" /> : message.initials}</span>
                   <div>
                     <header><strong>{message.name}</strong>{message.role === 'assistant' && <span>APP</span>}<time>{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></header>
-                    {message.text && <p>{message.text}</p>}
-                    {message.references?.map((reference) => <EntityRef key={`${reference.kind}:${reference.id}`} {...reference} onActivate={() => toast(`${reference.kind} opened`, reference.label)} />)}
+                    {message.text && <MessageText text={message.text} references={message.references} onActivate={(reference) => toast(`${reference.kind} opened`, reference.label)} />}
                     {'lightHtml' in message && message.lightHtml && <div className="slack-agent-card" dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.lightHtml) }} />}
                     {'run' in message && message.run && (
                       <button className="slack-run-card" onClick={() => openInspector()}>
@@ -1857,11 +1856,7 @@ export function ChatPage() {
                         <Icon name="forward" className="icon sm" />
                       </button>
                     )}
-                    <ReactionBar reactions={channelReactions[message.id] ?? []} onChange={(reactions) => setChannelReactions((current) => ({ ...current, [message.id]: reactions }))} />
-                  </div>
-                  <div className="slack-message-hover" aria-label={`Actions for message ${index + 1}`}>
-                    <button title="Reply" onClick={() => { setReplyingTo({ id: message.id, name: message.name }); channelComposerRef.current?.focus() }}><Icon name="message" className="icon xs" /></button>
-                    <button title="More" onClick={() => setMessageMenuId((value) => value === message.id ? null : message.id)}><Icon name="more" className="icon xs" /></button>
+                    <ReactionBar reactions={channelReactions[message.id] ?? []} onChange={(reactions) => setChannelReactions((current) => ({ ...current, [message.id]: reactions }))} onReply={() => { setReplyingTo({ id: message.id, name: message.name }); channelComposerRef.current?.focus() }} onOverflow={() => setMessageMenuId((value) => value === message.id ? null : message.id)} />
                   </div>
                   {messageMenuId === message.id && (
                     <div className="slack-message-menu">
