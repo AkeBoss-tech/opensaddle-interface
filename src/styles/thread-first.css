@@ -6,7 +6,7 @@
   display: grid;
   grid-template-columns: 62px minmax(0, 1fr);
   color: var(--text);
-  background: color-mix(in srgb, var(--sidebar) 94%, #111318);
+  background: var(--os-color-team-sidebar);
   border-right: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   overflow: hidden;
 }
@@ -24,7 +24,7 @@
 .tf-thread-state.paused { background: #e6b768; box-shadow: 0 0 0 3px color-mix(in srgb, #e6b768 12%, transparent); }
 .tf-thread-state.ready { border: 1px solid var(--dim); background: transparent; }
 
-.tf-team-rail { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 10px 8px; border-right: 1px solid color-mix(in srgb, var(--border) 70%, transparent); background: color-mix(in srgb, var(--sidebar) 84%, #0b0d10); }
+.tf-team-rail { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 10px 8px; border-right: 1px solid color-mix(in srgb, var(--border) 70%, transparent); background: color-mix(in srgb, var(--os-color-team-sidebar) 94%, var(--os-color-surface)); }
 .tf-team-brand, .tf-team-switch, .tf-team-profile { display: grid; place-items: center; flex: 0 0 auto; border: 0; cursor: pointer; }
 .tf-team-brand { width: 36px; height: 36px; border-radius: 10px; background: var(--bg-elevated); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
 .tf-team-list { width: 100%; display: flex; flex: 1; flex-direction: column; align-items: center; gap: 9px; overflow-y: auto; scrollbar-width: none; }
@@ -39,12 +39,17 @@
 .tf-selected-team-head span { color: var(--dim); font-size: 7.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .tf-selected-team-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 650; }
 .tf-selected-team-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 3px 9px 18px; scrollbar-width: thin; }
-.tf-team-primary-actions { display: grid; grid-template-columns: minmax(0, 1fr) 29px; gap: 5px; margin: 2px 0 14px; }
-.tf-team-new-task { height: 31px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 7px; background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated)); cursor: pointer; font-size: 10.5px; font-weight: 600; }
+.tf-team-primary-actions { display: grid; grid-template-columns: minmax(88px, .75fr) minmax(0, 1.25fr); gap: 5px; margin: 2px 0 14px; }
+.tf-team-new-task { height: 31px; display: flex; align-items: center; gap: 5px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 7px; background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated)); cursor: pointer; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .tf-team-new-task:hover { background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated)); }
+.tf-team-search { min-width: 0; height: 31px; display: grid; grid-template-columns: 15px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in srgb, var(--os-color-surface) 72%, transparent); color: var(--dim); cursor: pointer; text-align: left; }
+.tf-team-search:hover { border-color: var(--border-strong); background: color-mix(in srgb, var(--os-color-surface-hover) 72%, transparent); color: var(--text); }
+.tf-team-search > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.tf-team-search kbd { padding: 2px 4px; border: 1px solid color-mix(in srgb, var(--border) 85%, transparent); border-radius: 4px; color: var(--muted); font: 700 7.5px/1 var(--font-mono, var(--os-font-mono)); letter-spacing: .02em; }
+.tf-team-search:focus-visible, .tf-team-new-task:focus-visible, .tf-icon-button:focus-visible { outline: none; box-shadow: var(--os-focus-ring); }
 .tf-team-nav { display: grid; gap: 2px; margin-bottom: 18px; }
 .tf-team-nav > button, .tf-team-nav > a, .tf-team-section-list > button { width: 100%; min-width: 0; height: 31px; display: flex; align-items: center; gap: 8px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: var(--muted) !important; text-decoration: none; text-align: left; cursor: pointer; }
-.tf-team-nav > button span, .tf-team-nav > a span, .tf-team-section-list > button > span:not(.tf-thread-state):not(.tf-channel-mark) { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+.tf-team-nav > button span, .tf-team-nav > a span, .tf-team-section-list > button > span:not(.tf-thread-state) { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
 .tf-team-nav > button:hover, .tf-team-nav > a:hover, .tf-team-nav > .active, .tf-team-section-list > button:hover, .tf-team-section-list > button.active { color: var(--text) !important; background: var(--card-hover); }
 .tf-team-nav > .active { box-shadow: inset 2px 0 var(--accent); }
 .tf-team-section { margin-top: 15px; }
@@ -55,7 +60,6 @@
 .tf-team-section-list > button { height: 29px; padding-inline: 8px; }
 .tf-team-section-list > button small { margin-left: auto; color: var(--dim); font-size: 8px; }
 .tf-team-section-list > p { margin: 3px 8px 5px; color: var(--dim); font-size: 9px; line-height: 1.4; }
-.tf-channel-mark { flex: 0 0 auto !important; color: var(--dim); font-size: 13px !important; text-align: center; }
 .tf-team-recent .tf-team-section-list > button { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; }
 .tf-selected-team-foot { position: relative; padding: 8px; border-top: 1px solid var(--border); }
 .tf-sidebar-resizer {
