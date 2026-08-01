@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
@@ -1841,22 +1841,29 @@ export function ChatPage() {
         {channelView === 'messages' && (
           <div className="slack-channel-scroll">
             <div className="slack-channel-intro">
-              <span>#</span>
               <h2>{chat.title}</h2>
               <p>A shared space for people and AI to coordinate. Agent reasoning stays in linked agent threads, while decisions and results remain readable here.</p>
             </div>
             <div className="slack-day-divider"><span>Today</span></div>
             <div className="slack-message-list">
-              {channelFeed.map((message, index) => (
-                <article className={`slack-message ${message.role === 'assistant' ? 'agent' : ''}`} key={message.id}>
+              {channelFeed.map((message, index) => {
+                const previous = channelFeed[index - 1]
+                const isGrouped = Boolean(
+                  previous
+                  && previous.role === message.role
+                  && previous.name === message.name
+                  && Math.abs(message.createdAt - previous.createdAt) <= 5 * 60 * 1000,
+                )
+                const timestamp = new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                return <Fragment key={message.id}>
+                  {index === demoChannelFeed.length && liveChannelFeed.length > 0 && <div className="slack-new-divider"><span>New messages</span></div>}
+                  <article className={`slack-message ${message.role === 'assistant' ? 'agent' : ''} ${isGrouped ? 'is-grouped' : ''}`}>
                   <span
                     className="slack-message-avatar"
-                    style={message.role === 'assistant' ? undefined : {
-                      '--message-avatar': ['#536de8', '#b15fba', '#d4674c', '#2d9b82', '#c18a32'][index % 5],
-                    } as React.CSSProperties}
                   >{message.role === 'assistant' ? <Icon name="spark" className="icon sm" /> : message.initials}</span>
-                  <div>
-                    <header><strong>{message.name}</strong>{message.role === 'assistant' && <span>APP</span>}<time>{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></header>
+                  {isGrouped && <time className="slack-message-gutter-time">{timestamp}</time>}
+                  <div className="slack-message-content">
+                    {!isGrouped && <header><strong>{message.name}</strong>{message.role === 'assistant' && <span>APP</span>}<time>{timestamp}</time></header>}
                     {message.text && <MessageText text={message.text} references={message.references} onActivate={(reference) => toast(`${reference.kind} opened`, reference.label)} />}
                     {message.artifactRefs?.map((artifact) => <ArtifactCard key={artifact.id} artifact={artifact} onActivate={() => toast(`${artifact.kind} opened`, artifact.title)} />)}
                     {'lightHtml' in message && message.lightHtml && <div className="slack-agent-card" dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.lightHtml) }} />}
@@ -1884,8 +1891,9 @@ export function ChatPage() {
                       <button onClick={() => { setReplyingTo({ id: message.id, name: message.name }); setMessageMenuId(null); channelComposerRef.current?.focus() }}>Reply in thread</button>
                     </div>
                   )}
-                </article>
-              ))}
+                  </article>
+                </Fragment>
+              })}
               {!channelFeed.length && <div className="slack-empty-results">No messages match “{channelSearch}”.</div>}
             </div>
           </div>
@@ -1952,19 +1960,20 @@ export function ChatPage() {
           )}
           <div className="slack-composer">
             {replyingTo && <div className="slack-reply-context"><span>Replying to <strong>{replyingTo.name}</strong></span><button onClick={() => setReplyingTo(null)}>×</button></div>}
-            <div className="slack-format-row">
-              <button title="Bold"><strong>B</strong></button><button title="Italic"><em>I</em></button><button title="Link"><Icon name="paperclip" className="icon xs" /></button><button title="Code"><Icon name="code" className="icon xs" /></button>
-            </div>
             <textarea
               ref={channelComposerRef}
               aria-label={`Message #${chat.title}`}
               placeholder={`Message #${chat.title}`}
               value={text}
-              rows={3}
+              rows={1}
               onChange={(event) => {
                 const next = event.target.value
                 setText(next)
                 setMentionOpen(/(?:^|\s)@[^\s]*$/.test(next))
+              }}
+              onInput={(event) => {
+                event.currentTarget.style.height = 'auto'
+                event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 160)}px`
               }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
@@ -1975,6 +1984,7 @@ export function ChatPage() {
             />
             <div className="slack-compose-actions">
               <div>
+                <button title="Bold"><strong>B</strong></button><button title="Italic"><em>I</em></button><button title="Link"><Icon name="paperclip" className="icon xs" /></button><button title="Code"><Icon name="code" className="icon xs" /></button>
                 <button title="Attach" aria-label="Attach" onClick={() => { setChannelView('files'); toast('Files view opened', 'Choose a file or paste a link to share it with the channel.') }}><Icon name="plus" className="icon sm" /></button>
                 <button title="Mention agent" aria-label="Mention agent" onClick={() => setMentionOpen((value) => !value)}>@</button>
                 <button title="Emoji" aria-label="Emoji" onClick={() => { setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}👍`); channelComposerRef.current?.focus() }}>☺</button>
