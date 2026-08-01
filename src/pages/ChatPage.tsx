@@ -1724,6 +1724,15 @@ export function ChatPage() {
       references: [] as EntityReference[],
     },
     {
+      id: 'demo-maya-followup',
+      role: 'user' as const,
+      name: 'Maya Chen',
+      initials: 'MC',
+      createdAt: Date.now() - 56 * 60 * 1000,
+      text: 'Either way we should say so explicitly in the release note.',
+      references: [] as EntityReference[],
+    },
+    {
       id: 'demo-jordan',
       role: 'user' as const,
       name: 'Jordan Lee',
