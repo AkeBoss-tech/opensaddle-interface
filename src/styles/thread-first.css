@@ -39,8 +39,10 @@
 .tf-selected-team-head span { color: var(--dim); font-size: 7.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .tf-selected-team-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 650; }
 .tf-selected-team-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 3px 9px 18px; scrollbar-width: thin; }
-.tf-team-primary-actions { display: grid; grid-template-columns: minmax(88px, .75fr) minmax(0, 1.25fr); gap: 5px; margin: 2px 0 14px; }
-.tf-team-new-task { height: 31px; display: flex; align-items: center; gap: 5px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 7px; background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated)); cursor: pointer; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+/* Stacked rather than side-by-side: at the default 292px sidebar width the two
+   controls cannot both hold their labels, and the search label truncated first. */
+.tf-team-primary-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 2px 0 14px; }
+.tf-team-new-task { height: 31px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 7px; background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated)); cursor: pointer; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .tf-team-new-task:hover { background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated)); }
 .tf-team-search { min-width: 0; height: 31px; display: grid; grid-template-columns: 15px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in srgb, var(--os-color-surface) 72%, transparent); color: var(--dim); cursor: pointer; text-align: left; }
 .tf-team-search:hover { border-color: var(--border-strong); background: color-mix(in srgb, var(--os-color-surface-hover) 72%, transparent); color: var(--text); }

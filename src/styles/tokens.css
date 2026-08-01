@@ -97,6 +97,11 @@
   --os-color-approval-soft: rgb(102 66 173 / 11%);
   --os-shadow-popover: 0 16px 44px rgb(28 31 27 / 16%), 0 2px 8px rgb(28 31 27 / 10%);
   --os-shadow-dialog: 0 24px 80px rgb(28 31 27 / 22%);
+
+  /* Re-declared per theme: a custom property is substituted in the scope that
+     declares it, so the :root copy would resolve --os-color-surface against the
+     dark palette even when the light theme is active on <body>. */
+  --os-color-team-sidebar: color-mix(in srgb, var(--team-color, var(--os-color-accent)) 12%, var(--os-color-surface));
 }
 
 :root[data-contrast="high"],
