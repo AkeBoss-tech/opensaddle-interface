@@ -18,7 +18,7 @@ function initials(name: string) {
  * It deliberately has no store or filesystem dependency; callers choose when
  * and how to persist these inputs.
  */
-export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: ReadonlySet<string>, folderPath: string): ScaffoldApplication {
+export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: ReadonlySet<string>, folderPath: string, projectName = proposal.label): ScaffoldApplication {
   const selected = <T extends { id: string }>(items: T[]) => items.filter((item) => selectedIds.has(item.id))
   const channels = selected(proposal.channels).map((channel) => ({ id: channel.id, title: channel.label, ...(channel.custom ? { custom: true as const } : {}) }))
   const members = selected(proposal.members).map((member) => ({
@@ -57,7 +57,7 @@ export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: Readonly
 
   return {
     project: {
-      name: proposal.label,
+      name: projectName,
       description: `Local code project at ${folderPath}`,
       workspaceKind: 'local',
       local: {

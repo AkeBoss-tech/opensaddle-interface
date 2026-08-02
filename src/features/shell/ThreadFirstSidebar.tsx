@@ -87,6 +87,7 @@ export function ThreadFirstSidebar({
   collapsed,
   globalMode,
   onCollapsedChange,
+  onCreateProject,
   onResizeStart,
   onResetWidth,
 }: {
@@ -505,7 +506,7 @@ export function ThreadFirstSidebar({
               {teamInitials(team.name)}
             </button>
           ))}
-          <button className="tf-team-switch tf-add-team" onClick={() => navigate('/local')} aria-label="Add local team" title="Add team from a folder or Git repository">
+          <button className="tf-team-switch tf-add-team" onClick={onCreateProject} aria-label="Add project" title="Add a local or cloud project">
             <Icon name="plus" className="icon sm" />
           </button>
         </div>

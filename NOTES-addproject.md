@@ -1,0 +1,1 @@
+- StoreApi.updateProject omits Project.iconColor from its typed patch even though its implementation assigns arbitrary project fields. The add-project dialog applies the selected color through the allowed App integration using the existing runtime behavior; consider adding iconColor to the public patch type in a follow-up.

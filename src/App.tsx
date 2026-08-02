@@ -30,6 +30,8 @@ import { WorkspaceStatusBar } from './features/shell/WorkspaceStatusBar'
 import { WorkPage } from './features/work/WorkPage'
 import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
+import { AddProjectDialog } from './features/onboarding/AddProjectDialog'
+import { scaffoldApply } from './features/onboarding/scaffoldApply'
 import './styles/app.css'
 import './styles/thread-first.css'
 import './styles/liquid-glass.css'
@@ -37,11 +39,9 @@ import './styles/liquid-glass.css'
 const IconPacksPage = lazy(() => import('./pages/IconPacksPage').then((module) => ({ default: module.IconPacksPage })))
 
 function Shell() {
-  const { data, createChat, createProject, setTheme, resetData, toast, setActiveProject } = useStore()
+  const { data, createChat, createProject, importLocalProject, createAgent, createMember, addServiceConnections, addPermissionGrants, updateProject, services, setTheme, resetData, toast, setActiveProject } = useStore()
   const [palette, setPalette] = useState(false)
   const [projectModal, setProjectModal] = useState(false)
-  const [projName, setProjName] = useState('New agent project')
-  const [projParent, setProjParent] = useState(data.activeProjectId)
   const [browserOpen, setBrowserOpen] = useState(false)
   const [browserCollapsed, setBrowserCollapsed] = useState(false)
   const [browserWidth, setBrowserWidth] = useState(620)
@@ -73,15 +73,6 @@ function Shell() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [createChat, data.activeProjectId, nav])
-
-  useEffect(() => {
-    if (!projectModal) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setProjectModal(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [projectModal])
 
   const crumbs = useMemo(() => {
     const parts = loc.pathname.split('/').filter(Boolean)
@@ -196,7 +187,7 @@ function Shell() {
           collapsed={sidebarCollapsed}
           globalMode={globalStart}
           onCollapsedChange={setSidebarCollapsed}
-          onCreateProject={() => { setProjParent(data.activeProjectId); setProjectModal(true) }}
+          onCreateProject={() => setProjectModal(true)}
           onResizeStart={beginSidebarResize}
           onResetWidth={() => {
             setSidebarWidth(292)
@@ -258,30 +249,37 @@ function Shell() {
       <ToastStack />
       <CommandPalette open={palette} onClose={() => setPalette(false)} items={items} />
 
-      {projectModal && (
-        <div className="modal-backdrop open" onClick={(e) => { if (e.target === e.currentTarget) setProjectModal(false) }}>
-          <div className="modal">
-            <div className="modal-head"><div className="modal-icon" style={{ color: 'var(--accent)', borderColor: 'rgba(128,169,255,.3)', background: 'rgba(128,169,255,.08)' }}>+</div><div><h3>Create a project</h3><p>Nested projects inherit knowledge, services, and policies.</p></div></div>
-            <div className="modal-body">
-              <div className="form-row"><label>Name</label><input value={projName} onChange={(e) => setProjName(e.target.value)} /></div>
-              <div className="form-row" style={{ marginBottom: 0 }}><label>Parent</label>
-                <select value={projParent} onChange={(e) => setProjParent(e.target.value)}>
-                  {data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="ghost-btn" onClick={() => setProjectModal(false)}>Cancel</button>
-              <button className="primary-btn" onClick={() => {
-                const id = createProject(projName, projParent, 'New nested project')
-                setProjectModal(false)
-                toast('Project created', projName)
-                nav(`/project/${id}`)
-              }}>Create</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AddProjectDialog
+        open={projectModal}
+        projects={data.projects}
+        defaultParentId={data.activeProjectId}
+        onClose={() => setProjectModal(false)}
+        onCreateCloud={({ name, parentId, color }) => {
+          const id = createProject(name, parentId, 'Cloud workspace')
+          updateProject(id, { iconColor: color } as never)
+          toast('Project created', name)
+          nav(`/project/${id}`)
+        }}
+        onCreateLocal={async ({ name, color, proposal, selectedIds }) => {
+          const application = scaffoldApply(proposal, selectedIds, proposal.folderPath, name)
+          const projectId = importLocalProject({ name: application.project.name, description: application.project.description, local: application.project.local })
+          updateProject(projectId, { iconColor: color } as never)
+          await services?.localProjects?.registerProject?.(projectId, application.project.local.rootPath)
+          application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
+          application.members.forEach((member) => createMember(member))
+          application.agents.forEach((agent) => createAgent({
+            projectId, name: agent.name, description: agent.description, systemPrompt: agent.description, modelPolicy: 'auto', harness: 'coding', harnessId: agent.harnessId, runtime: 'local',
+            permissionPolicy: { sandbox: 'workspace-write', approvals: 'on-request', network: false, allowedTools: [], deniedTools: [] }, skillIds: [], tools: ['Files', 'Shell', 'Git'], knowledgeSourceIds: [], visibility: 'private',
+          }))
+          addServiceConnections(projectId, application.connectors)
+          addPermissionGrants(application.permissionGrants.map((permission) => ({
+            principalKind: 'user', principalId: data.currentUserId, resourceKind: 'project', resourceId: projectId, action: permission.action, effect: 'allow', inheritance: 'direct', approvalRequired: permission.approvalRequired,
+          })))
+          setActiveProject(projectId)
+          toast('Local workspace created', name)
+          nav(`/project/${projectId}`)
+        }}
+      />
     </div>
   )
 }

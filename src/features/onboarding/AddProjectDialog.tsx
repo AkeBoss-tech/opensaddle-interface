@@ -1,0 +1,79 @@
+import { useEffect, useState } from 'react'
+import type { Project, WorkspaceProposal } from '../../types'
+import { Dialog, Button } from '../../ui'
+import { ScaffoldProposal } from './ScaffoldProposal'
+import { scanWorkspaceFolder } from '../../services/workspaceScaffold'
+import { creationAction, isProjectDetailsValid, type AddProjectKind } from './addProjectFlow'
+import '../../styles/scaffold.css'
+
+type Step = 'kind' | 'details' | 'review'
+
+const COLORS = [
+  { value: 'var(--os-color-accent)', label: 'Accent blue' }, { value: 'var(--os-color-info)', label: 'Info blue' },
+  { value: 'var(--os-color-success)', label: 'Green' }, { value: 'var(--os-color-warning)', label: 'Gold' },
+  { value: 'var(--os-color-danger)', label: 'Red' }, { value: 'var(--os-color-approval)', label: 'Purple' },
+  { value: 'var(--os-color-text-muted)', label: 'Gray' }, { value: 'var(--os-color-border-strong)', label: 'Slate' },
+]
+
+function folderName(path: string) { return path.trim().replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).at(-1) ?? '' }
+
+export function AddProjectDialog({ open, projects, defaultParentId, onClose, onCreateCloud, onCreateLocal }: {
+  open: boolean; projects: Project[]; defaultParentId: string | null; onClose: () => void
+  onCreateCloud: (input: { name: string; parentId: string | null; color: string }) => Promise<void> | void
+  onCreateLocal: (input: { name: string; color: string; proposal: WorkspaceProposal; selectedIds: Set<string> }) => Promise<void> | void
+}) {
+  const [step, setStep] = useState<Step>('kind')
+  const [kind, setKind] = useState<AddProjectKind | null>(null)
+  const [name, setName] = useState('')
+  const [nameEdited, setNameEdited] = useState(false)
+  const [folderPath, setFolderPath] = useState('')
+  const [parentId, setParentId] = useState<string | null>(defaultParentId)
+  const [color, setColor] = useState(COLORS[0].value)
+  const [proposal, setProposal] = useState<WorkspaceProposal | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setStep('kind'); setKind(null); setName(''); setNameEdited(false); setFolderPath(''); setParentId(defaultParentId); setColor(COLORS[0].value); setProposal(null); setError(null)
+  }, [defaultParentId, open])
+
+  const chooseFolder = async () => {
+    const path = await window.opensaddle?.pickRepository?.()
+    if (!path) return
+    setFolderPath(path)
+    if (!nameEdited) setName(folderName(path))
+  }
+  const continueDetails = async () => {
+    if (!kind || !isProjectDetailsValid(kind, name, folderPath)) return
+    if (creationAction(kind, folderPath) === 'create') {
+      setCreating(true)
+      try { await onCreateCloud({ name: name.trim(), parentId, color }); onClose() } finally { setCreating(false) }
+      return
+    }
+    setScanning(true); setError(null)
+    try { setProposal(await scanWorkspaceFolder(folderPath.trim())); setStep('review') } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } finally { setScanning(false) }
+  }
+  const createLocal = async (selectedIds: Set<string>) => {
+    if (!proposal) return
+    setCreating(true)
+    try { await onCreateLocal({ name: name.trim(), color, proposal: { ...proposal, label: name.trim() }, selectedIds }); onClose() } finally { setCreating(false) }
+  }
+
+  return <Dialog open={open} onClose={onClose} title={step === 'kind' ? 'Add a project' : step === 'review' ? 'Review local workspace' : `${kind === 'local' ? 'Local' : 'Cloud'} project details`} description={step === 'kind' ? 'Choose where this project lives.' : undefined} size={step === 'review' ? 'lg' : 'sm'} className="add-project-dialog">
+    {step === 'kind' && <div className="add-project-kinds">
+      <button type="button" className="add-project-kind" onClick={() => { setKind('local'); setStep('details') }}><strong>Local project</strong><span>A folder on this machine. Agents run against real files.</span><small>Stays on this device.</small></button>
+      <button type="button" className="add-project-kind" onClick={() => { setKind('cloud'); setStep('details') }}><strong>Cloud project</strong><span>A workspace with no folder for marketing, research, or planning.</span></button>
+    </div>}
+    {step === 'details' && kind && <div className="add-project-details">
+      <label>Name<input autoFocus value={name} onChange={(event) => { setNameEdited(true); setName(event.target.value) }} placeholder={kind === 'local' ? 'Project name' : 'New project'} /></label>
+      {kind === 'local' && <label>Folder{window.opensaddle?.pickRepository ? <span className="add-project-folder-picker"><input value={folderPath} readOnly placeholder="Choose a folder" /><Button variant="secondary" onClick={() => void chooseFolder()}>Choose folder</Button></span> : <input value={folderPath} onChange={(event) => { const path = event.target.value; setFolderPath(path); if (!nameEdited) setName(folderName(path)) }} placeholder="/path/to/project" />}</label>}
+      {kind === 'cloud' && <label>Parent project <span className="add-project-optional">optional</span><select value={parentId ?? ''} onChange={(event) => setParentId(event.target.value || null)}><option value="">No parent</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>}
+      <fieldset className="add-project-colors"><legend>Colour</legend><div>{COLORS.map((swatch) => <button key={swatch.value} type="button" className={`add-project-swatch${color === swatch.value ? ' is-selected' : ''}`} style={{ background: swatch.value }} onClick={() => setColor(swatch.value)} aria-label={`Select ${swatch.label}`} aria-pressed={color === swatch.value} />)}</div></fieldset>
+      {error && <p className="add-project-error" role="alert">Could not scan folder: {error}</p>}
+      <div className="add-project-actions"><Button variant="ghost" onClick={() => setStep('kind')}>Back</Button><Button variant="primary" disabled={!isProjectDetailsValid(kind, name, folderPath)} loading={scanning || creating} onClick={() => void continueDetails()}>{kind === 'local' ? 'Review workspace' : 'Create project'}</Button></div>
+    </div>}
+    {step === 'review' && proposal && <ScaffoldProposal proposal={{ ...proposal, label: name.trim() }} creating={creating} onCreate={(selectedIds) => void createLocal(selectedIds)} />}
+  </Dialog>
+}
