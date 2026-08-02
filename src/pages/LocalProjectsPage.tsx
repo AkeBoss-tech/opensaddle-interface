@@ -2,13 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
+import { ScaffoldProposal } from '../features/onboarding/ScaffoldProposal'
+import { scaffoldApply } from '../features/onboarding/scaffoldApply'
 import type { HarnessCapability, ManagedArtifactArchive, ProjectArtifactManifest } from '../services/contracts'
+import { scanWorkspaceFolder } from '../services/workspaceScaffold'
 import type {
   AgentPermissionPolicy,
   CodingProvider,
   LocalHarnessDefinition,
   LocalProjectSettings,
   Project,
+  WorkspaceProposal,
 } from '../types'
 
 type LocalTab = 'overview' | 'documentation' | 'agents' | 'skills' | 'harnesses' | 'permissions'
@@ -175,6 +179,7 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
   })
   const [clis, setClis] = useState<string[]>([])
   const [importing, setImporting] = useState(false)
+  const [pendingProposal, setPendingProposal] = useState<WorkspaceProposal | null>(null)
   const [manualPath, setManualPath] = useState('')
   const [harnessDraft, setHarnessDraft] = useState<HarnessDraft>(EMPTY_HARNESS_DRAFT)
   const [agentDraft, setAgentDraft] = useState({ name: '', description: '', prompt: '', harnessId: '' })
@@ -282,125 +287,9 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
     }
     setImporting(true)
     try {
-      const inspection = window.opensaddle?.inspectProject
-        ? await window.opensaddle.inspectProject(requestedPath)
-        : {
-            rootPath: requestedPath,
-            name: requestedPath.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Local project',
-            description: `Local code project at ${requestedPath}`,
-            detectedConfigs: [],
-            documents: [],
-            skills: [],
-            fileCount: 0,
-            languages: [],
-          }
-      const discoveredDefault = clis.includes('codex')
-        ? 'codex'
-        : clis.includes('claude')
-          ? 'claude'
-          : clis.includes('cursor-agent') || clis.includes('agent')
-            ? 'cursor'
-            : 'opensaddle'
-      const now = Date.now()
-      let importedLocal: LocalProjectSettings = {
-        rootPath: inspection.rootPath,
-        importedFrom: inferredSource(inspection.detectedConfigs),
-        importedAt: now,
-        defaultHarnessId: discoveredDefault,
-        permissionPreset: 'workspace-write',
-        adminAccess: true,
-        detectedConfigs: inspection.detectedConfigs,
-        harnesses: [],
-        skills: inspection.skills.map((skill) => ({
-          id: uid('skill'),
-          name: skill.name,
-          description: skill.description,
-          path: skill.path,
-          enabled: true,
-        })),
-        documents: inspection.documents.map((document) => ({
-          id: uid('doc'),
-          title: document.title,
-          path: document.path,
-          status: 'detected',
-          updatedAt: now,
-        })),
-      }
-      const id = importLocalProject({
-        name: inspection.name,
-        description: inspection.description,
-        local: importedLocal,
-      })
-      await services?.localProjects?.registerProject?.(id, inspection.rootPath)
-      await Promise.all(['read', 'write', 'execute', 'administer'].map((action) => upsertPermissionGrant({
-        principalKind: 'user',
-        principalId: data.currentUserId,
-        resourceKind: 'project',
-        resourceId: id,
-        action,
-        effect: 'allow',
-        inheritance: 'direct',
-        createdBy: data.currentUserId,
-      })))
-      let serverManifest: ProjectArtifactManifest | null = null
-      if (services?.localProjects) {
-        for (let attempt = 0; attempt < 8 && !serverManifest; attempt += 1) {
-          try {
-            serverManifest = await rescanLocalProject(id)
-          } catch {
-            if (attempt < 7) await new Promise((resolve) => window.setTimeout(resolve, 250))
-          }
-        }
-      }
-      if (serverManifest) {
-        const detectedConfigs = serverManifest.artifacts
-          .filter((artifact) => artifact.kind === 'instruction')
-          .map((artifact) => artifact.path)
-        const documents = serverManifest.artifacts
-          .filter((artifact) => artifact.kind === 'documentation')
-          .map((artifact) => ({
-            id: uid('doc'),
-            title: artifact.name,
-            path: artifact.path,
-            status: 'detected' as const,
-            updatedAt: artifact.modifiedAt ?? now,
-          }))
-        const skills = serverManifest.artifacts
-          .filter((artifact) => artifact.kind === 'skill')
-          .map((artifact) => ({
-            id: uid('skill'),
-            name: artifact.name,
-            description: `Project skill discovered in ${artifact.location}`,
-            path: artifact.path,
-            enabled: true,
-          }))
-        importedLocal = {
-          ...importedLocal,
-          detectedConfigs,
-          importedFrom: inferredSource(detectedConfigs),
-          documents,
-          skills,
-        }
-        updateProject(id, { local: importedLocal })
-        await syncDiscoveredAgents(
-          id,
-          importedLocal,
-          serverManifest,
-          skills.map((skill) => skill.id),
-        )
-        if (managedArchivesSupported) await refreshManagedArchives(id)
-      }
-      setSelectedId(id)
-      setSearchParams({ project: id })
-      setManualPath('')
-      toast(
-        'Local project added',
-        serverManifest
-          ? `${inspection.name} · ${serverManifest.artifacts.length} project artifacts discovered`
-          : `${inspection.name} · ${inspection.fileCount.toLocaleString()} files${inspection.languages.length ? ` · ${inspection.languages.join(', ')}` : ''}`,
-      )
+      setPendingProposal(await scanWorkspaceFolder(requestedPath))
     } catch (error) {
-      toast('Could not add project', error instanceof Error ? error.message : String(error))
+      toast('Could not scan folder', error instanceof Error ? error.message : String(error))
     } finally {
       setImporting(false)
     }
@@ -430,6 +319,58 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
     }
     const path = await window.opensaddle.pickRepository()
     if (path) await importPath(path)
+  }
+
+  const applyProposal = async (selectedIds: Set<string>) => {
+    if (!pendingProposal) return
+    setImporting(true)
+    try {
+      const application = scaffoldApply(pendingProposal, selectedIds, pendingProposal.folderPath)
+      const projectId = importLocalProject({
+        name: application.project.name,
+        description: application.project.description,
+        local: application.project.local,
+      })
+      await services?.localProjects?.registerProject?.(projectId, application.project.local.rootPath)
+      application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
+      application.agents.forEach((agent) => createAgent({
+        projectId,
+        name: agent.name,
+        description: agent.description,
+        systemPrompt: agent.description,
+        modelPolicy: 'auto',
+        harness: 'coding',
+        harnessId: agent.harnessId,
+        runtime: 'local',
+        permissionPolicy: { ...DEFAULT_POLICY },
+        skillIds: [],
+        tools: ['Files', 'Shell', 'Git'],
+        knowledgeSourceIds: [],
+        visibility: 'private',
+      }))
+      await Promise.all(application.permissions.map((permission) => upsertPermissionGrant({
+        id: permission.id,
+        principalKind: 'user',
+        principalId: data.currentUserId,
+        resourceKind: 'project',
+        resourceId: projectId,
+        action: permission.action,
+        effect: 'allow',
+        inheritance: 'direct',
+        approvalRequired: permission.approvalRequired,
+        createdBy: data.currentUserId,
+      })))
+      setSelectedId(projectId)
+      setActiveProject(projectId)
+      setSearchParams({ project: projectId })
+      setManualPath('')
+      setPendingProposal(null)
+      toast('Local workspace created', `${application.channels.length} channels · ${application.agents.length} agents · ${application.permissions.length} permissions`)
+    } catch (error) {
+      toast('Could not create workspace', error instanceof Error ? error.message : String(error))
+    } finally {
+      setImporting(false)
+    }
   }
 
   const syncDiscoveredAgents = async (
@@ -914,6 +855,12 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
     } finally {
       setRestoringArchive(null)
     }
+  }
+
+  if (pendingProposal) {
+    return <div className="local-projects-page">
+      <ScaffoldProposal proposal={pendingProposal} onCreate={(selectedIds) => void applyProposal(selectedIds)} creating={importing} />
+    </div>
   }
 
   if (focusedTab && !project?.local) {
