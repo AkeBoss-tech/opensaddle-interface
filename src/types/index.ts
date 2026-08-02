@@ -23,6 +23,70 @@ export type MessageRole = 'user' | 'assistant' | 'system'
 export type EntityKind = 'user' | 'agent' | 'artifact' | 'thread' | 'run' | 'skill' | 'project'
 export type ActionabilityState = 'blocked' | 'actionable' | 'claimed' | 'in-progress' | 'done'
 
+/** Read-only evidence collected by the desktop process before a workspace exists. */
+export interface WorkspaceScanSnapshot {
+  folderPath: string
+  folderName: string
+  directories: string[]
+  configPaths: string[]
+  packageScripts: string[]
+  makefile: string | null
+  envExamplePaths: string[]
+  git: {
+    readable: boolean
+    reason?: string
+    branches: string[]
+    commitCount: number
+    authors: Array<{ name: string; email: string; commitCount: number }>
+    hasRemote: boolean
+  }
+}
+
+export interface WorkspaceProposalItem {
+  id: string
+  label: string
+  provenance: string
+  recommended: boolean
+}
+
+export interface WorkspaceChannelProposal extends WorkspaceProposalItem {
+  kind: 'directory' | 'branch'
+}
+
+/** Git identities are intentionally proposal-only and individually deselectable. */
+export interface WorkspaceMemberProposal extends WorkspaceProposalItem {
+  name: string
+  email: string
+  commitCount: number
+  deselectable: true
+}
+
+export interface WorkspaceAgentProposal extends WorkspaceProposalItem {
+  harness: 'claude' | 'codex' | 'cursor' | 'opensaddle'
+  triggerPath: string
+}
+
+export interface WorkspacePermissionProposal extends WorkspaceProposalItem {
+  scope: 'workspace-write' | 'secret-handling' | 'repository-read' | 'run-tests'
+  needsApproval: boolean
+}
+
+/** A disposable projection of a folder. Applying it is a separate, explicit action. */
+export interface WorkspaceProposal {
+  id: string
+  folderPath: string
+  label: string
+  channels: WorkspaceChannelProposal[]
+  members: WorkspaceMemberProposal[]
+  agents: WorkspaceAgentProposal[]
+  permissions: WorkspacePermissionProposal[]
+  memberAnalysis: {
+    source: 'git log'
+    reason: string
+  }
+  notes: string[]
+}
+
 /** A source-backed artifact attached to a message or rendered in an unfurl. */
 export interface ArtifactRef {
   id: string

@@ -57,5 +57,6 @@ interface Window {
     printBrowser: () => Promise<boolean>
     screenshotBrowser: () => Promise<boolean>
     clearBrowserData: () => Promise<boolean>
+    scanWorkspaceFolder?: (folderPath: string) => Promise<import('./types').WorkspaceScanSnapshot>
   }
 }

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, WebContentsView } from 'electron'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync } from 'node:fs'
@@ -72,6 +72,83 @@ interface LocalProjectInspection {
   skills: Array<{ name: string; path: string; description: string }>
   fileCount: number
   languages: string[]
+}
+
+interface WorkspaceScanSnapshot {
+  folderPath: string
+  folderName: string
+  directories: string[]
+  configPaths: string[]
+  packageScripts: string[]
+  makefile: string | null
+  envExamplePaths: string[]
+  git: {
+    readable: boolean
+    reason?: string
+    branches: string[]
+    commitCount: number
+    authors: Array<{ name: string; email: string; commitCount: number }>
+    hasRemote: boolean
+  }
+}
+
+function gitOutput(folderPath: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile('git', args, { cwd: folderPath, windowsHide: true }, (error, stdout) => {
+      resolve(error ? null : stdout)
+    })
+  })
+}
+
+async function scanWorkspaceFolder(input: string): Promise<WorkspaceScanSnapshot> {
+  const folderPath = await realpath(input).catch(() => input)
+  const folderName = path.basename(folderPath) || folderPath
+  const entries = await readdir(folderPath, { withFileTypes: true }).catch(() => [])
+  const names = new Set(entries.map((entry) => entry.name))
+  const directories = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+  const configPaths = ['.claude/', '.codex/', '.cursor/', 'AGENTS.md', 'CLAUDE.md', '.opensaddle/']
+    .filter((marker) => names.has(marker.replace(/\/$/, '')))
+  const packageScripts = await readFile(path.join(folderPath, 'package.json'), 'utf8')
+    .then((source) => {
+      const scripts = JSON.parse(source) as { scripts?: Record<string, unknown> }
+      return Object.entries(scripts.scripts ?? {}).flatMap(([name, command]) =>
+        typeof command === 'string' ? [`${name}: ${command}`] : [])
+    })
+    .catch(() => [])
+  const makefile = names.has('Makefile')
+    ? await readFile(path.join(folderPath, 'Makefile'), 'utf8').catch(() => '')
+    : null
+  const envExamplePaths = names.has('.env.example') ? ['.env.example'] : []
+
+  const isGitRepository = (await gitOutput(folderPath, ['rev-parse', '--is-inside-work-tree']))?.trim() === 'true'
+  if (!isGitRepository) {
+    return {
+      folderPath, folderName, directories, configPaths, packageScripts, makefile, envExamplePaths,
+      git: { readable: false, reason: 'No readable git history was found for this folder.', branches: [], commitCount: 0, authors: [], hasRemote: false },
+    }
+  }
+
+  const branches = ((await gitOutput(folderPath, ['branch', '--format=%(refname:short)'])) ?? '')
+    .split(/\r?\n/).map((branch) => branch.trim()).filter(Boolean)
+  const authorCounts = new Map<string, { name: string; email: string; commitCount: number }>()
+  const authorLines = ((await gitOutput(folderPath, ['log', '--format=%an|%ae'])) ?? '').split(/\r?\n/)
+  for (const line of authorLines) {
+    const separator = line.lastIndexOf('|')
+    if (separator < 1) continue
+    const name = line.slice(0, separator).trim()
+    const email = line.slice(separator + 1).trim()
+    if (!name || !email) continue
+    const key = `${name}\u0000${email}`
+    const author = authorCounts.get(key)
+    if (author) author.commitCount += 1
+    else authorCounts.set(key, { name, email, commitCount: 1 })
+  }
+  const authors = [...authorCounts.values()]
+  const hasRemote = Boolean((await gitOutput(folderPath, ['remote']))?.trim())
+  return {
+    folderPath, folderName, directories, configPaths, packageScripts, makefile, envExamplePaths,
+    git: { readable: true, branches, commitCount: authorLines.filter(Boolean).length, authors, hasRemote },
+  }
 }
 
 async function inspectLocalProject(input: string): Promise<LocalProjectInspection> {
@@ -660,6 +737,8 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('runtime:inspect-project', async (_evt, target: string) => inspectLocalProject(target))
+
+  ipcMain.handle('runtime:scan-workspace', async (_evt, folderPath: string) => scanWorkspaceFolder(folderPath))
 
   ipcMain.handle('runtime:open-path', async (_evt, target: string) => {
     await shell.openPath(target)
