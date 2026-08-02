@@ -37,6 +37,8 @@ export interface WorkspaceScanSnapshot {
     reason?: string
     branches: string[]
     commitCount: number
+    /** Commits touching each top-level directory, so channel provenance is specific. */
+    directoryCommitCounts?: Record<string, number>
     authors: Array<{ name: string; email: string; commitCount: number }>
     hasRemote: boolean
   }

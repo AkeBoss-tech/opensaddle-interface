@@ -87,6 +87,7 @@ interface WorkspaceScanSnapshot {
     reason?: string
     branches: string[]
     commitCount: number
+    directoryCommitCounts?: Record<string, number>
     authors: Array<{ name: string; email: string; commitCount: number }>
     hasRemote: boolean
   }
@@ -145,9 +146,18 @@ async function scanWorkspaceFolder(input: string): Promise<WorkspaceScanSnapshot
   }
   const authors = [...authorCounts.values()]
   const hasRemote = Boolean((await gitOutput(folderPath, ['remote']))?.trim())
+
+  // Per-directory commit counts so a proposed channel can justify itself with a
+  // number that actually describes that directory. Bounded to keep the scan quick.
+  const directoryCommitCounts: Record<string, number> = {}
+  for (const directory of directories.slice(0, 40)) {
+    const log = await gitOutput(folderPath, ['log', '--oneline', '--', directory])
+    if (log !== null) directoryCommitCounts[directory] = log.split(/\r?\n/).filter(Boolean).length
+  }
+
   return {
     folderPath, folderName, directories, configPaths, packageScripts, makefile, envExamplePaths,
-    git: { readable: true, branches, commitCount: authorLines.filter(Boolean).length, authors, hasRemote },
+    git: { readable: true, branches, commitCount: authorLines.filter(Boolean).length, directoryCommitCounts, authors, hasRemote },
   }
 }
 

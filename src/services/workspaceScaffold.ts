@@ -9,7 +9,14 @@ import type {
 
 const NOISE_DIRECTORIES = new Set([
   'node_modules', 'dist', 'build', '.git', 'coverage', 'vendor', 'target', '.venv', '__pycache__',
+  'out', 'tmp', 'temp', '.cache', '.output', 'bin', 'obj', 'Pods', '.gradle', '.idea', '.vscode',
 ])
+
+/**
+ * Every directory is offered, but only the first few are pre-checked. A repo with
+ * eighteen top-level folders should not silently propose eighteen channels.
+ */
+const MAX_RECOMMENDED_CHANNELS = 5
 
 const CONFIG_AGENTS: Array<{ path: string; harness: WorkspaceAgentProposal['harness'] }> = [
   { path: '.claude/', harness: 'claude' },
@@ -42,22 +49,34 @@ function isTestScript(script: string): boolean {
 
 /** Converts desktop-collected evidence into a UI-selectable, non-persisted proposal. */
 export function deriveWorkspaceProposal(scan: WorkspaceScanSnapshot): WorkspaceProposal {
-  const commitDescription = scan.git.readable
-    ? `${scan.git.commitCount} commits`
-    : 'git history unavailable'
+  // Provenance must describe the item it labels. Reusing the repo-wide commit
+  // total made every directory claim the same misleading number.
+  const directoryProvenance = (directory: string) => {
+    const commits = scan.git.directoryCommitCounts?.[directory]
+    if (!scan.git.readable) return `${directory}/ · git history unavailable`
+    if (typeof commits === 'number') return `${directory}/ · ${commits} commit${commits === 1 ? '' : 's'}`
+    return `${directory}/ directory`
+  }
+  const mostActiveDirectories = new Set(
+    [...sourceDirectories(scan.directories)]
+      .sort((left, right) => (scan.git.directoryCommitCounts?.[right] ?? 0) - (scan.git.directoryCommitCounts?.[left] ?? 0))
+      .slice(0, MAX_RECOMMENDED_CHANNELS),
+  )
   const channels: WorkspaceChannelProposal[] = [
     ...sourceDirectories(scan.directories).map((directory) => ({
       id: stableId('channel-directory', directory),
       label: directory,
-      provenance: `${directory}/, ${commitDescription}`,
-      recommended: true,
+      provenance: directoryProvenance(directory),
+      // Pre-check the most active directories, not the alphabetically first
+      // ones: a dormant folder should not be proposed ahead of a busy one.
+      recommended: mostActiveDirectories.has(directory),
       kind: 'directory' as const,
     })),
     ...[...new Set(scan.git.branches)].sort((left, right) => left.localeCompare(right)).map((branch) => ({
       id: stableId('channel-branch', branch),
       label: branch,
       provenance: `branch: ${branch}`,
-      recommended: true,
+      recommended: false,
       kind: 'branch' as const,
     })),
   ]
