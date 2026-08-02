@@ -989,3 +989,18 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
 @media (prefers-reduced-motion: reduce) {
   .tf-sidebar *, .tf-work-page * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* Demo data is labelled so a sample team is never mistaken for a real one. */
+.tf-demo-tag {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--orange, var(--os-color-warning)) 40%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--orange, var(--os-color-warning)) 12%, transparent);
+  color: var(--orange, var(--os-color-warning));
+  font-size: 7.5px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}

@@ -141,6 +141,8 @@ interface StoreApi {
   attachSource: (input: Omit<ProjectSource, 'id' | 'lastSyncAt'>) => ProjectSource
   updateSource: (id: string, patch: Partial<Pick<ProjectSource, 'name' | 'url' | 'status' | 'branch' | 'folderPath'>>) => void
   updateHunk: (messageId: string, hunkId: string, status: 'accepted' | 'rejected') => void
+  /** Deletes seeded sample teams, people and conversations. Snapshot kept. */
+  removeDemoData: () => void
   resetData: () => void
   exportData: () => string
   toast: (title: string, message: string) => void
@@ -1526,6 +1528,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       for (const f of files) for (const h of f.hunks) if (h.id === hunkId) h.status = status
       return d
     }),
+    removeDemoData: () => {
+      captureWorkspaceRecovery(localStorage, STORAGE_KEY, JSON.stringify(data), 'Snapshot before removing demo data')
+      setWorkspaceRecoveries(listWorkspaceRecoveries())
+      setData((current) => {
+        const demoProjectIds = new Set(current.projects.filter((project) => project.demo).map((project) => project.id))
+        const demoChatIds = new Set(current.chats.filter((chat) => demoProjectIds.has(chat.projectId)).map((chat) => chat.id))
+        const survivingProjects = current.projects.filter((project) => !demoProjectIds.has(project.id))
+        return normalizeWorkspace({
+          ...current,
+          projects: survivingProjects,
+          // The signed-in user is never demo data, so they always survive.
+          members: current.members.filter((member) => !member.demo || member.id === current.currentUserId),
+          chats: current.chats.filter((chat) => !demoChatIds.has(chat.id)),
+          messages: current.messages.filter((message) => !demoChatIds.has(message.chatId)),
+          agents: current.agents.filter((agent) => !demoProjectIds.has(agent.projectId)),
+          services: current.services.filter((service) => !demoProjectIds.has(service.projectId)),
+          permissionGrants: current.permissionGrants.filter((grant) =>
+            !(grant.resourceKind === 'project' && demoProjectIds.has(grant.resourceId))),
+          activeProjectId: survivingProjects[0]?.id ?? '',
+          activeChatId: '',
+        })
+      })
+      toast('Demo data removed', 'Sample teams and people are gone. A snapshot is available in recovery.')
+    },
     resetData: () => {
       resetServices()
       captureWorkspaceRecovery(localStorage, STORAGE_KEY, JSON.stringify(data), 'Snapshot before reset to seed')

@@ -4,8 +4,19 @@ const now = Date.now()
 const hour = 3600_000
 const day = 24 * hour
 
-export const DATA_VERSION = 7
-export const STORAGE_KEY = 'opensaddle-data-v7'
+export const DATA_VERSION = 8
+export const STORAGE_KEY = 'opensaddle-data-v8'
+
+/**
+ * Ids minted by the seed. A stored workspace is migrated forward rather than
+ * re-seeded, so demo content is identified by id at load time — a `demo` flag
+ * added to this file alone would never reach an existing workspace.
+ */
+export const SEED_PROJECT_IDS = new Set([
+  'proj-corp', 'proj-customer', 'proj-claims', 'proj-cold',
+  'proj-eng', 'proj-coding', 'proj-router', 'proj-audit',
+])
+export const SEED_MEMBER_IDS = new Set(['user-maya', 'user-jordan', 'user-sec', 'user-priya'])
 
 export function createSeedData(): AppData {
   const corp = 'proj-corp'
@@ -31,20 +42,20 @@ export function createSeedData(): AppData {
     currentUserId: 'user-ad',
     members: [
       { id: 'user-ad', name: 'Akash Dubey', initials: 'AD', role: 'Admin', email: 'akash@acme.com', presence: 'online' },
-      { id: 'user-maya', name: 'Maya Chen', initials: 'MC', role: 'Editor', email: 'maya@acme.com', presence: 'online' },
-      { id: 'user-jordan', name: 'Jordan Lee', initials: 'JL', role: 'Reviewer', email: 'jordan@acme.com', presence: 'away' },
-      { id: 'user-sec', name: 'Security Ops', initials: 'SO', role: 'Reviewer', email: 'secops@acme.com', presence: 'offline' },
-      { id: 'user-priya', name: 'Priya Shah', initials: 'PS', role: 'Viewer', email: 'priya@acme.com', presence: 'online' },
+      { id: 'user-maya', name: 'Maya Chen', initials: 'MC', role: 'Editor', email: 'maya@acme.com', presence: 'online', demo: true },
+      { id: 'user-jordan', name: 'Jordan Lee', initials: 'JL', role: 'Reviewer', email: 'jordan@acme.com', presence: 'away', demo: true },
+      { id: 'user-sec', name: 'Security Ops', initials: 'SO', role: 'Reviewer', email: 'secops@acme.com', presence: 'offline', demo: true },
+      { id: 'user-priya', name: 'Priya Shah', initials: 'PS', role: 'Viewer', email: 'priya@acme.com', presence: 'online', demo: true },
     ],
     projects: [
-      { id: corp, name: 'Corporate Base Agent', parentId: null, description: 'Default enterprise agent with corporate-safe routing, shared knowledge, and a permission gateway.', iconColor: '#80a9ff', knowledgeCount: 12, serviceCount: 8, childCount: 4, autoConfidence: 93, lineage: ['Organization', 'Corporate Base Agent'] },
-      { id: cust, name: 'Customer Operations', parentId: corp, description: 'Claims, outreach, and customer-facing workflows.', iconColor: '#9b83ff', knowledgeCount: 6, serviceCount: 4, childCount: 2, autoConfidence: 88, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations'] },
-      { id: claims, name: 'Claims Assistant', parentId: cust, description: 'Drafts claim responses with human approval on writes.', iconColor: '#8f78de', knowledgeCount: 4, serviceCount: 3, childCount: 0, autoConfidence: 91, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Claims Assistant'] },
-      { id: cold, name: 'Cold Emailer', parentId: cust, description: 'Outreach drafts with send gated by approval.', iconColor: '#d6af63', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 84, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Cold Emailer'] },
-      { id: eng, name: 'Engineering', parentId: corp, description: 'Repositories, CI systems, and coding agents.', iconColor: '#73a8dd', knowledgeCount: 9, serviceCount: 5, childCount: 3, autoConfidence: 95, lineage: ['Organization', 'Corporate Base Agent', 'Engineering'] },
-      { id: coding, name: 'Coding Agent', parentId: eng, description: 'Repository-aware planning, patches, tests, and PRs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 0, autoConfidence: 96, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Coding Agent'], routingDefaults: { providerKey: 'codex', modelKey: 'auto', runtimeKey: 'sandbox', reviewProviderKey: 'claude' } },
-      { id: router, name: 'Model Router', parentId: eng, description: 'Routing policy, cost controls, and harness selection.', iconColor: '#73a8dd', knowledgeCount: 5, serviceCount: 2, childCount: 0, autoConfidence: 90, lineage: ['Organization', 'Engineering', 'Model Router'] },
-      { id: audit, name: 'Degree Audit', parentId: coding, description: 'Nested project that inherits GitHub but denies production DB writes.', iconColor: '#65c78b', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 89, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Degree Audit'] },
+      { id: corp, name: 'Corporate Base Agent', parentId: null, description: 'Default enterprise agent with corporate-safe routing, shared knowledge, and a permission gateway.', iconColor: '#80a9ff', knowledgeCount: 12, serviceCount: 8, childCount: 4, autoConfidence: 93, lineage: ['Organization', 'Corporate Base Agent'], demo: true },
+      { id: cust, name: 'Customer Operations', parentId: corp, description: 'Claims, outreach, and customer-facing workflows.', iconColor: '#9b83ff', knowledgeCount: 6, serviceCount: 4, childCount: 2, autoConfidence: 88, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations'], demo: true },
+      { id: claims, name: 'Claims Assistant', parentId: cust, description: 'Drafts claim responses with human approval on writes.', iconColor: '#8f78de', knowledgeCount: 4, serviceCount: 3, childCount: 0, autoConfidence: 91, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Claims Assistant'], demo: true },
+      { id: cold, name: 'Cold Emailer', parentId: cust, description: 'Outreach drafts with send gated by approval.', iconColor: '#d6af63', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 84, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Cold Emailer'], demo: true },
+      { id: eng, name: 'Engineering', parentId: corp, description: 'Repositories, CI systems, and coding agents.', iconColor: '#73a8dd', knowledgeCount: 9, serviceCount: 5, childCount: 3, autoConfidence: 95, lineage: ['Organization', 'Corporate Base Agent', 'Engineering'], demo: true },
+      { id: coding, name: 'Coding Agent', parentId: eng, description: 'Repository-aware planning, patches, tests, and PRs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 0, autoConfidence: 96, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Coding Agent'], demo: true, routingDefaults: { providerKey: 'codex', modelKey: 'auto', runtimeKey: 'sandbox', reviewProviderKey: 'claude' } },
+      { id: router, name: 'Model Router', parentId: eng, description: 'Routing policy, cost controls, and harness selection.', iconColor: '#73a8dd', knowledgeCount: 5, serviceCount: 2, childCount: 0, autoConfidence: 90, lineage: ['Organization', 'Engineering', 'Model Router'], demo: true },
+      { id: audit, name: 'Degree Audit', parentId: coding, description: 'Nested project that inherits GitHub but denies production DB writes.', iconColor: '#65c78b', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 89, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Degree Audit'], demo: true },
     ],
     chats: [
       { id: chatNew, projectId: corp, title: 'New chat', visibility: 'private', createdAt: now, updatedAt: now, sharedWith: [] },

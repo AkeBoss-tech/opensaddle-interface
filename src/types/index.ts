@@ -197,6 +197,8 @@ export interface Member {
   role: 'Admin' | 'Editor' | 'Reviewer' | 'Viewer'
   email: string
   presence?: PresenceState
+  /** Seeded sample person, removed with the rest of the demo data. */
+  demo?: true
 }
 
 export interface Project {
@@ -211,6 +213,8 @@ export interface Project {
   autoConfidence: number
   lineage: string[]
   workspaceKind?: 'enterprise' | 'local'
+  /** Seeded sample data. Labelled in the UI and removable in one action. */
+  demo?: true
   local?: LocalProjectSettings
   routingDefaults?: {
     modelKey: ModelKey
