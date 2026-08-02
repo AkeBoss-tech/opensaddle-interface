@@ -19,6 +19,18 @@ const NOISE_DIRECTORIES = new Set([
  */
 const MAX_RECOMMENDED_CHANNELS = 5
 
+/** Branches quiet for longer than this are not proposed as channels. */
+const MAX_BRANCH_AGE_MS = 90 * 24 * 60 * 60 * 1000
+const MAX_BRANCH_CHANNELS = 10
+
+function describeAge(at: number, now: number): string {
+  const days = Math.floor(Math.max(0, now - at) / (24 * 60 * 60 * 1000))
+  if (days < 1) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days} days ago`
+  return `${Math.floor(days / 30)} month${days < 60 ? '' : 's'} ago`
+}
+
 const CONFIG_AGENTS: Array<{ path: string; harness: WorkspaceAgentProposal['harness'] }> = [
   { path: '.claude/', harness: 'claude' },
   { path: '.codex/', harness: 'codex' },
@@ -153,6 +165,18 @@ export function deriveWorkspaceProposal(scan: WorkspaceScanSnapshot): WorkspaceP
     if (typeof commits === 'number') return `${directory}/ · ${commits} commit${commits === 1 ? '' : 's'}`
     return `${directory}/ directory`
   }
+  // Only branches touched recently are worth proposing. A long-lived repo can
+  // hold a hundred dead branches, which would bury every other suggestion.
+  const now = scan.scannedAt ?? 0
+  const activeBranches = [...new Set(scan.git.branches)]
+    .map((name) => ({ name, lastCommitAt: scan.git.branchActivity?.[name] }))
+    .filter((branch) => {
+      if (!branch.lastCommitAt) return false
+      return now === 0 || now - branch.lastCommitAt <= MAX_BRANCH_AGE_MS
+    })
+    .sort((left, right) => (right.lastCommitAt ?? 0) - (left.lastCommitAt ?? 0))
+    .slice(0, MAX_BRANCH_CHANNELS)
+
   const mostActiveDirectories = new Set(
     [...sourceDirectories(scan.directories)]
       .sort((left, right) => (scan.git.directoryCommitCounts?.[right] ?? 0) - (scan.git.directoryCommitCounts?.[left] ?? 0))
@@ -168,10 +192,12 @@ export function deriveWorkspaceProposal(scan: WorkspaceScanSnapshot): WorkspaceP
       recommended: mostActiveDirectories.has(directory),
       kind: 'directory' as const,
     })),
-    ...[...new Set(scan.git.branches)].sort((left, right) => left.localeCompare(right)).map((branch) => ({
-      id: stableId('channel-branch', branch),
-      label: branch,
-      provenance: `branch: ${branch}`,
+    ...activeBranches.map((branch) => ({
+      id: stableId('channel-branch', branch.name),
+      label: branch.name,
+      provenance: branch.lastCommitAt
+        ? `branch · last commit ${describeAge(branch.lastCommitAt, now)}`
+        : `branch: ${branch.name}`,
       recommended: false,
       kind: 'branch' as const,
     })),

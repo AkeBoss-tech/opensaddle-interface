@@ -75,6 +75,7 @@ interface LocalProjectInspection {
 }
 
 interface WorkspaceScanSnapshot {
+  scannedAt?: number
   folderPath: string
   folderName: string
   directories: string[]
@@ -94,6 +95,7 @@ interface WorkspaceScanSnapshot {
     authors: Array<{ name: string; email: string; commitCount: number }>
     hasRemote: boolean
     remoteHost?: string
+    branchActivity?: Record<string, number>
   }
 }
 
@@ -151,13 +153,25 @@ async function scanWorkspaceFolder(input: string): Promise<WorkspaceScanSnapshot
   const isGitRepository = (await gitOutput(folderPath, ['rev-parse', '--is-inside-work-tree']))?.trim() === 'true'
   if (!isGitRepository) {
     return {
+      scannedAt: Date.now(),
       folderPath, folderName, directories, configPaths, packageScripts, dependencyNames, makefile, envExamplePaths, envExampleVariableNames, connectorPaths,
       git: { readable: false, reason: 'No readable git history was found for this folder.', branches: [], commitCount: 0, authors: [], hasRemote: false },
     }
   }
 
-  const branches = ((await gitOutput(folderPath, ['branch', '--format=%(refname:short)'])) ?? '')
-    .split(/\r?\n/).map((branch) => branch.trim()).filter(Boolean)
+  // Branches carry their last-commit date so stale ones can be filtered out.
+  // A long-lived repo accumulates dead branches; proposing all of them as
+  // channels buries the handful anyone is actually working on.
+  const branchLines = ((await gitOutput(folderPath, [
+    'for-each-ref', '--sort=-committerdate', '--format=%(refname:short)|%(committerdate:unix)', 'refs/heads',
+  ])) ?? '').split(/\r?\n/).filter(Boolean)
+  const branches = branchLines.map((line) => line.split('|')[0]!.trim()).filter(Boolean)
+  const branchActivity: Record<string, number> = {}
+  for (const line of branchLines) {
+    const [name, when] = line.split('|')
+    const seconds = Number(when)
+    if (name && Number.isFinite(seconds)) branchActivity[name.trim()] = seconds * 1000
+  }
   const authorCounts = new Map<string, { name: string; email: string; commitCount: number }>()
   const authorLines = ((await gitOutput(folderPath, ['log', '--format=%an|%ae'])) ?? '').split(/\r?\n/)
   for (const line of authorLines) {
@@ -184,8 +198,9 @@ async function scanWorkspaceFolder(input: string): Promise<WorkspaceScanSnapshot
   }
 
   return {
+    scannedAt: Date.now(),
     folderPath, folderName, directories, configPaths, packageScripts, dependencyNames, makefile, envExamplePaths, envExampleVariableNames, connectorPaths,
-    git: { readable: true, branches, commitCount: authorLines.filter(Boolean).length, directoryCommitCounts, authors, hasRemote, remoteHost },
+    git: { readable: true, branches, branchActivity, commitCount: authorLines.filter(Boolean).length, directoryCommitCounts, authors, hasRemote, remoteHost },
   }
 }
 

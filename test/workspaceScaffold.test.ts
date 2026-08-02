@@ -80,3 +80,30 @@ test('production-shaped connector scopes require approval', () => {
   const deployScope = proposal.connectors.find((connector) => connector.label === 'Vercel')?.scopes.find((scope) => scope.name === 'Deploy project')
   assert.equal(deployScope?.needsApproval, true)
 })
+
+test('drops branches that have been quiet for months and caps the rest', () => {
+  const day = 24 * 60 * 60 * 1000
+  const scannedAt = 1_800_000_000_000
+  const names = Array.from({ length: 40 }, (_, index) => `branch-${index}`)
+  const branchActivity: Record<string, number> = {}
+  names.forEach((name, index) => {
+    // First 20 are recent, the rest are a year stale.
+    branchActivity[name] = scannedAt - (index < 20 ? index * day : 365 * day)
+  })
+
+  const proposal = deriveWorkspaceProposal({
+    scannedAt,
+    folderPath: '/repo', folderName: 'repo', directories: [], configPaths: [],
+    connectorPaths: [], dependencyNames: [], packageScripts: [], makefile: null,
+    envExamplePaths: [], envExampleVariableNames: [],
+    git: {
+      readable: true, branches: names, branchActivity, commitCount: 1,
+      authors: [], hasRemote: false,
+    },
+  } as never)
+
+  const branches = proposal.channels.filter((channel) => channel.kind === 'branch')
+  assert.equal(branches.length, 10, 'stale branches dropped and the rest capped')
+  assert.ok(branches.every((branch) => !branch.recommended), 'branch channels are never pre-checked')
+  assert.ok(branches.every((branch) => Number(branch.label.split('-')[1]) < 20), 'only recent branches survive')
+})

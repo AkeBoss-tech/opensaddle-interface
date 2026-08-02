@@ -25,6 +25,8 @@ export type ActionabilityState = 'blocked' | 'actionable' | 'claimed' | 'in-prog
 
 /** Read-only evidence collected by the desktop process before a workspace exists. */
 export interface WorkspaceScanSnapshot {
+  /** When the desktop process collected this evidence; keeps derivation pure. */
+  scannedAt?: number
   folderPath: string
   folderName: string
   directories: string[]
@@ -45,6 +47,8 @@ export interface WorkspaceScanSnapshot {
     commitCount: number
     /** Commits touching each top-level directory, so channel provenance is specific. */
     directoryCommitCounts?: Record<string, number>
+    /** Epoch millis of each branch's last commit, so stale branches can be dropped. */
+    branchActivity?: Record<string, number>
     authors: Array<{ name: string; email: string; commitCount: number }>
     hasRemote: boolean
     /** Sanitized remote host, never the remote URL. */
