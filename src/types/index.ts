@@ -30,8 +30,14 @@ export interface WorkspaceScanSnapshot {
   directories: string[]
   configPaths: string[]
   packageScripts: string[]
+  /** Package dependency names only; versions and package contents are never scanned. */
+  dependencyNames: string[]
   makefile: string | null
   envExamplePaths: string[]
+  /** Variable names from .env.example only; values are never collected. */
+  envExampleVariableNames: string[]
+  /** Recognized deployment and service markers present at the repository root. */
+  connectorPaths: string[]
   git: {
     readable: boolean
     reason?: string
@@ -41,6 +47,8 @@ export interface WorkspaceScanSnapshot {
     directoryCommitCounts?: Record<string, number>
     authors: Array<{ name: string; email: string; commitCount: number }>
     hasRemote: boolean
+    /** Sanitized remote host, never the remote URL. */
+    remoteHost?: string
   }
 }
 
@@ -75,6 +83,19 @@ export interface WorkspacePermissionProposal extends WorkspaceProposalItem {
   needsApproval: boolean
 }
 
+export interface WorkspaceConnectorScopeProposal {
+  id: string
+  name: string
+  description: string
+  needsApproval: boolean
+}
+
+/** A connector inferred solely from the read-only folder scan evidence. */
+export interface WorkspaceConnectorProposal extends WorkspaceProposalItem {
+  status: 'detected' | 'unconfigured'
+  scopes: WorkspaceConnectorScopeProposal[]
+}
+
 /** A disposable projection of a folder. Applying it is a separate, explicit action. */
 export interface WorkspaceProposal {
   id: string
@@ -83,6 +104,7 @@ export interface WorkspaceProposal {
   channels: WorkspaceChannelProposal[]
   members: WorkspaceMemberProposal[]
   agents: WorkspaceAgentProposal[]
+  connectors: WorkspaceConnectorProposal[]
   permissions: WorkspacePermissionProposal[]
   memberAnalysis: {
     source: 'git log'

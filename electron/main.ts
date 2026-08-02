@@ -80,8 +80,11 @@ interface WorkspaceScanSnapshot {
   directories: string[]
   configPaths: string[]
   packageScripts: string[]
+  dependencyNames: string[]
   makefile: string | null
   envExamplePaths: string[]
+  envExampleVariableNames: string[]
+  connectorPaths: string[]
   git: {
     readable: boolean
     reason?: string
@@ -90,6 +93,7 @@ interface WorkspaceScanSnapshot {
     directoryCommitCounts?: Record<string, number>
     authors: Array<{ name: string; email: string; commitCount: number }>
     hasRemote: boolean
+    remoteHost?: string
   }
 }
 
@@ -101,6 +105,20 @@ function gitOutput(folderPath: string, args: string[]): Promise<string | null> {
   })
 }
 
+function gitRemoteHost(remote: string | null): string | undefined {
+  const value = remote?.trim()
+  if (!value) return undefined
+  try { return new URL(value).hostname.toLowerCase() || undefined } catch { /* try scp-style remotes */ }
+  return value.match(/^[^@\s]+@([^:/\s]+):/)?.[1]?.toLowerCase()
+}
+
+function parseEnvExampleVariableNames(source: string): string[] {
+  return [...new Set(source.split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/)
+    return match ? [match[1]] : []
+  }))]
+}
+
 async function scanWorkspaceFolder(input: string): Promise<WorkspaceScanSnapshot> {
   const folderPath = await realpath(input).catch(() => input)
   const folderName = path.basename(folderPath) || folderPath
@@ -109,22 +127,31 @@ async function scanWorkspaceFolder(input: string): Promise<WorkspaceScanSnapshot
   const directories = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
   const configPaths = ['.claude/', '.codex/', '.cursor/', 'AGENTS.md', 'CLAUDE.md', '.opensaddle/']
     .filter((marker) => names.has(marker.replace(/\/$/, '')))
-  const packageScripts = await readFile(path.join(folderPath, 'package.json'), 'utf8')
+  const packageMetadata = await readFile(path.join(folderPath, 'package.json'), 'utf8')
     .then((source) => {
-      const scripts = JSON.parse(source) as { scripts?: Record<string, unknown> }
-      return Object.entries(scripts.scripts ?? {}).flatMap(([name, command]) =>
-        typeof command === 'string' ? [`${name}: ${command}`] : [])
+      const pkg = JSON.parse(source) as { scripts?: Record<string, unknown>; dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown> }
+      return {
+        packageScripts: Object.entries(pkg.scripts ?? {}).flatMap(([name, command]) => typeof command === 'string' ? [`${name}: ${command}`] : []),
+        dependencyNames: [...new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})])],
+      }
     })
-    .catch(() => [])
+    .catch(() => ({ packageScripts: [], dependencyNames: [] }))
+  const { packageScripts, dependencyNames } = packageMetadata
   const makefile = names.has('Makefile')
     ? await readFile(path.join(folderPath, 'Makefile'), 'utf8').catch(() => '')
     : null
   const envExamplePaths = names.has('.env.example') ? ['.env.example'] : []
+  const envExampleVariableNames = names.has('.env.example')
+    ? parseEnvExampleVariableNames(await readFile(path.join(folderPath, '.env.example'), 'utf8').catch(() => '')) : []
+  const connectorPaths = ['netlify.toml', 'vercel.json', 'cloudbuild.yaml', 'app.yaml', 'Dockerfile', '.gcloudignore', 'supabase/', '.github/workflows/']
+    .filter((marker) => marker === '.github/workflows/'
+      ? entries.some((entry) => entry.name === '.github' && entry.isDirectory()) && existsSync(path.join(folderPath, '.github', 'workflows'))
+      : names.has(marker.replace(/\/$/, '')))
 
   const isGitRepository = (await gitOutput(folderPath, ['rev-parse', '--is-inside-work-tree']))?.trim() === 'true'
   if (!isGitRepository) {
     return {
-      folderPath, folderName, directories, configPaths, packageScripts, makefile, envExamplePaths,
+      folderPath, folderName, directories, configPaths, packageScripts, dependencyNames, makefile, envExamplePaths, envExampleVariableNames, connectorPaths,
       git: { readable: false, reason: 'No readable git history was found for this folder.', branches: [], commitCount: 0, authors: [], hasRemote: false },
     }
   }
@@ -146,6 +173,7 @@ async function scanWorkspaceFolder(input: string): Promise<WorkspaceScanSnapshot
   }
   const authors = [...authorCounts.values()]
   const hasRemote = Boolean((await gitOutput(folderPath, ['remote']))?.trim())
+  const remoteHost = gitRemoteHost(await gitOutput(folderPath, ['remote', 'get-url', 'origin']))
 
   // Per-directory commit counts so a proposed channel can justify itself with a
   // number that actually describes that directory. Bounded to keep the scan quick.
@@ -156,8 +184,8 @@ async function scanWorkspaceFolder(input: string): Promise<WorkspaceScanSnapshot
   }
 
   return {
-    folderPath, folderName, directories, configPaths, packageScripts, makefile, envExamplePaths,
-    git: { readable: true, branches, commitCount: authorLines.filter(Boolean).length, directoryCommitCounts, authors, hasRemote },
+    folderPath, folderName, directories, configPaths, packageScripts, dependencyNames, makefile, envExamplePaths, envExampleVariableNames, connectorPaths,
+    git: { readable: true, branches, commitCount: authorLines.filter(Boolean).length, directoryCommitCounts, authors, hasRemote, remoteHost },
   }
 }
 

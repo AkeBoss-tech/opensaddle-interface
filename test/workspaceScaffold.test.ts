@@ -6,7 +6,7 @@ import type { WorkspaceScanSnapshot } from '../src/types/index.ts'
 function snapshot(overrides: Partial<WorkspaceScanSnapshot> = {}): WorkspaceScanSnapshot {
   return {
     folderPath: '/projects/acme', folderName: 'acme', directories: [], configPaths: [],
-    packageScripts: [], makefile: null, envExamplePaths: [],
+    packageScripts: [], dependencyNames: [], makefile: null, envExamplePaths: [], envExampleVariableNames: [], connectorPaths: [],
     git: { readable: true, branches: [], commitCount: 0, authors: [], hasRemote: false },
     ...overrides,
   }
@@ -61,4 +61,22 @@ test('.env.example requires secret-handling approval', () => {
   const proposal = deriveWorkspaceProposal(snapshot({ envExamplePaths: ['.env.example'] }))
 
   assert.equal(proposal.permissions.find((permission) => permission.scope === 'secret-handling')?.needsApproval, true)
+})
+
+test('a folder with no connector evidence proposes no detected connectors', () => {
+  const proposal = deriveWorkspaceProposal(snapshot())
+  assert.deepEqual(proposal.connectors.filter((connector) => connector.status === 'detected'), [])
+})
+
+test('a Supabase dependency proposes a detected Supabase connector', () => {
+  const proposal = deriveWorkspaceProposal(snapshot({ dependencyNames: ['@supabase/supabase-js'] }))
+  assert.equal(proposal.connectors[0]?.label, 'Supabase')
+  assert.equal(proposal.connectors[0]?.status, 'detected')
+  assert.match(proposal.connectors[0]?.provenance ?? '', /@supabase/)
+})
+
+test('production-shaped connector scopes require approval', () => {
+  const proposal = deriveWorkspaceProposal(snapshot({ connectorPaths: ['vercel.json'] }))
+  const deployScope = proposal.connectors.find((connector) => connector.label === 'Vercel')?.scopes.find((scope) => scope.name === 'Deploy project')
+  assert.equal(deployScope?.needsApproval, true)
 })

@@ -1,6 +1,7 @@
 import type {
   WorkspaceAgentProposal,
   WorkspaceChannelProposal,
+  WorkspaceConnectorProposal,
   WorkspaceMemberProposal,
   WorkspacePermissionProposal,
   WorkspaceProposal,
@@ -46,6 +47,101 @@ function isDeploymentScript(script: string): boolean {
 function isTestScript(script: string): boolean {
   return /(^|[:\s_-])(test|tests)(?=$|[:\s_-])/i.test(script)
 }
+
+function hasEnvironmentPrefix(scan: WorkspaceScanSnapshot, prefix: string): boolean {
+  return scan.envExampleVariableNames.some((name) => name.startsWith(prefix))
+}
+
+function firstConnectorPath(scan: WorkspaceScanSnapshot, paths: string[]): string | null {
+  return paths.find((marker) => scan.connectorPaths.includes(marker)) ?? null
+}
+
+const CONNECTOR_RULES: Array<{
+  id: string
+  label: string
+  evidence: (scan: WorkspaceScanSnapshot) => string | null
+  scopes: WorkspaceConnectorProposal['scopes']
+}> = [
+  {
+    id: 'supabase', label: 'Supabase',
+    evidence: (scan) => scan.dependencyNames.some((name) => name.startsWith('@supabase/'))
+      ? 'Dependency matching @supabase/* detected in package.json'
+      : scan.connectorPaths.includes('supabase/') ? 'supabase/ directory detected'
+        : hasEnvironmentPrefix(scan, 'SUPABASE_') ? 'SUPABASE_* variable name detected in .env.example' : null,
+    scopes: [
+      { id: 'connector-supabase-read', name: 'Read project data', description: 'Read database and project metadata.', needsApproval: false },
+      { id: 'connector-supabase-write', name: 'Modify project data', description: 'Write data, run migrations, or change project configuration.', needsApproval: true },
+    ],
+  },
+  {
+    id: 'posthog', label: 'PostHog',
+    evidence: (scan) => scan.dependencyNames.some((name) => name === 'posthog' || name === 'posthog-js')
+      ? 'PostHog dependency detected in package.json'
+      : hasEnvironmentPrefix(scan, 'POSTHOG_') ? 'POSTHOG_* variable name detected in .env.example' : null,
+    scopes: [
+      { id: 'connector-posthog-read', name: 'Read analytics', description: 'Read analytics configuration and aggregate insights.', needsApproval: false },
+      { id: 'connector-posthog-export', name: 'Export analytics data', description: 'Export event or person data.', needsApproval: true },
+      { id: 'connector-posthog-flags', name: 'Change feature flags', description: 'Create, update, or disable feature flags.', needsApproval: true },
+    ],
+  },
+  {
+    id: 'netlify', label: 'Netlify',
+    evidence: (scan) => scan.connectorPaths.includes('netlify.toml') ? 'netlify.toml detected' : null,
+    scopes: [
+      { id: 'connector-netlify-read', name: 'Read site configuration', description: 'Read site and deploy configuration.', needsApproval: false },
+      { id: 'connector-netlify-deploy', name: 'Deploy site', description: 'Create a production or preview deployment.', needsApproval: true },
+    ],
+  },
+  {
+    id: 'vercel', label: 'Vercel',
+    evidence: (scan) => scan.connectorPaths.includes('vercel.json') ? 'vercel.json detected'
+      : scan.dependencyNames.some((name) => name.startsWith('@vercel/')) ? 'Dependency matching @vercel/* detected in package.json' : null,
+    scopes: [
+      { id: 'connector-vercel-read', name: 'Read project configuration', description: 'Read project and deployment configuration.', needsApproval: false },
+      { id: 'connector-vercel-deploy', name: 'Deploy project', description: 'Create a production or preview deployment.', needsApproval: true },
+    ],
+  },
+  {
+    id: 'gcp', label: 'Google Cloud',
+    evidence: (scan) => {
+      const marker = firstConnectorPath(scan, ['cloudbuild.yaml', 'app.yaml', '.gcloudignore'])
+      return marker ? `${marker} detected` : null
+    },
+    scopes: [
+      { id: 'connector-gcp-read', name: 'Read project metadata', description: 'Read Google Cloud project metadata and configuration.', needsApproval: false },
+      { id: 'connector-gcp-deploy', name: 'Deploy cloud resources', description: 'Deploy workloads or change cloud resources.', needsApproval: true },
+      { id: 'connector-gcp-secrets', name: 'Access secrets', description: 'Read or modify Secret Manager secrets.', needsApproval: true },
+    ],
+  },
+  {
+    id: 'docker', label: 'Docker',
+    evidence: (scan) => scan.connectorPaths.includes('Dockerfile') ? 'Dockerfile detected' : null,
+    scopes: [
+      { id: 'connector-docker-read', name: 'Read container configuration', description: 'Read local container configuration.', needsApproval: false },
+      { id: 'connector-docker-build', name: 'Build local image', description: 'Build an image in the local Docker daemon.', needsApproval: false },
+      { id: 'connector-docker-publish', name: 'Publish image', description: 'Push an image to a remote registry.', needsApproval: true },
+    ],
+  },
+  {
+    id: 'github', label: 'GitHub',
+    evidence: (scan) => scan.git.remoteHost === 'github.com' ? 'Git remote host github.com detected'
+      : scan.connectorPaths.includes('.github/workflows/') ? '.github/workflows/ directory detected' : null,
+    scopes: [
+      { id: 'connector-github-read', name: 'Read repository', description: 'Read repository metadata, issues, and pull requests.', needsApproval: false },
+      { id: 'connector-github-write', name: 'Write repository content', description: 'Create commits, issues, or pull requests.', needsApproval: true },
+      { id: 'connector-github-delete', name: 'Delete repository content', description: 'Delete repository content or resources.', needsApproval: true },
+    ],
+  },
+  {
+    id: 'gitlab', label: 'GitLab',
+    evidence: (scan) => scan.git.remoteHost === 'gitlab.com' ? 'Git remote host gitlab.com detected' : null,
+    scopes: [
+      { id: 'connector-gitlab-read', name: 'Read repository', description: 'Read repository metadata, issues, and merge requests.', needsApproval: false },
+      { id: 'connector-gitlab-write', name: 'Write repository content', description: 'Create commits, issues, or merge requests.', needsApproval: true },
+      { id: 'connector-gitlab-delete', name: 'Delete repository content', description: 'Delete repository content or resources.', needsApproval: true },
+    ],
+  },
+]
 
 /** Converts desktop-collected evidence into a UI-selectable, non-persisted proposal. */
 export function deriveWorkspaceProposal(scan: WorkspaceScanSnapshot): WorkspaceProposal {
@@ -141,6 +237,20 @@ export function deriveWorkspaceProposal(scan: WorkspaceScanSnapshot): WorkspaceP
     provenance: 'Test command detected in package.json or Makefile', recommended: true, needsApproval: false,
   })
 
+  const connectors: WorkspaceConnectorProposal[] = CONNECTOR_RULES.map((rule) => {
+    const provenance = rule.evidence(scan)
+    return provenance
+      ? { id: `connector-${rule.id}`, label: rule.label, provenance, recommended: true, status: 'detected' as const, scopes: rule.scopes }
+      : {
+          id: `connector-${rule.id}`,
+          label: rule.label,
+          provenance: 'No evidence was found in the repository; configure this connector before use.',
+          recommended: false,
+          status: 'unconfigured' as const,
+          scopes: [],
+        }
+  })
+
   const memberReason = scan.git.readable
     ? 'Git log was read to propose individually deselectable members and their email addresses.'
     : scan.git.reason ?? 'Git history is unavailable; no members were proposed.'
@@ -152,6 +262,7 @@ export function deriveWorkspaceProposal(scan: WorkspaceScanSnapshot): WorkspaceP
     channels,
     members,
     agents,
+    connectors,
     permissions,
     memberAnalysis: { source: 'git log', reason: memberReason },
     notes,
@@ -165,7 +276,7 @@ export async function scanWorkspaceFolder(folderPath: string): Promise<Workspace
     return deriveWorkspaceProposal({
       folderPath,
       folderName: folderPath.split(/[\\/]/).filter(Boolean).at(-1) ?? folderPath,
-      directories: [], configPaths: [], packageScripts: [], makefile: null, envExamplePaths: [],
+      directories: [], configPaths: [], packageScripts: [], dependencyNames: [], makefile: null, envExamplePaths: [], envExampleVariableNames: [], connectorPaths: [],
       git: { readable: false, reason: 'Folder scanning requires the OpenSaddle desktop app.', branches: [], commitCount: 0, authors: [], hasRemote: false },
     })
   }

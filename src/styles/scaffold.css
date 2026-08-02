@@ -23,6 +23,17 @@
 .scaffold-row__copy { display: grid; min-width: 0; gap: 2px; }
 .scaffold-row__copy strong { font-size: var(--os-font-size-md); font-weight: var(--os-weight-medium); }
 .scaffold-row__copy small { overflow: hidden; color: var(--os-color-text-muted); font-size: var(--os-font-size-xs); line-height: var(--os-line-normal); text-overflow: ellipsis; white-space: nowrap; }
+.scaffold-connector { display: grid; gap: var(--os-space-3); padding: var(--os-space-3); border: 1px solid var(--os-color-border); border-radius: var(--os-radius-md); background: var(--os-color-surface-raised); }
+.scaffold-connector--unconfigured { border-style: dashed; opacity: .72; }
+.scaffold-connector__copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--os-space-1) var(--os-space-3); align-items: center; }
+.scaffold-connector__copy small { grid-column: 1 / -1; color: var(--os-color-text-muted); font-size: var(--os-font-size-xs); }
+.scaffold-connector__scopes { display: grid; gap: var(--os-space-1); }
+.scaffold-connector__scope { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--os-space-2); align-items: center; padding: var(--os-space-2); border-radius: var(--os-radius-sm); }
+.scaffold-connector__scope:hover { background: var(--os-color-surface-hover); }
+.scaffold-connector__scope input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--os-color-accent); }
+.scaffold-connector__scope span { display: grid; gap: 2px; }
+.scaffold-connector__scope strong { font-size: var(--os-font-size-sm); font-weight: var(--os-weight-medium); }
+.scaffold-connector__scope small { color: var(--os-color-text-muted); font-size: var(--os-font-size-xs); }
 .scaffold-custom-fields { display: grid; gap: var(--os-space-2); margin-top: var(--os-space-2); }
 .scaffold-custom-fields input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--os-color-border); border-radius: var(--os-radius-sm); background: var(--os-color-surface); color: var(--os-color-text); font: inherit; font-size: var(--os-font-size-sm); padding: var(--os-space-2); }
 .scaffold-proposal__footer { display: flex; align-items: center; justify-content: space-between; gap: var(--os-space-4); padding: var(--os-space-4) var(--os-space-6); background: var(--os-color-surface-raised); }

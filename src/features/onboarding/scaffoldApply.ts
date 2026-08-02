@@ -1,4 +1,4 @@
-import type { LocalProjectSettings, Member, PermissionGrant, ServiceConn, WorkspaceProposal } from '../../types'
+import type { LocalProjectSettings, Member, PermissionGrant, ServiceConn, WorkspaceConnectorProposal, WorkspaceProposal } from '../../types'
 
 export interface ScaffoldApplication {
   project: { name: string; description: string; workspaceKind: 'local'; local: LocalProjectSettings }
@@ -36,18 +36,18 @@ export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: Readonly
     harnessId: agent.harness,
     ...(agent.custom ? { custom: true as const } : {}),
   }))
-  const connectors = selected(proposal.agents).map((agent) => ({
-    name: `${agent.label} connector`,
-    logo: `${agent.harness}.svg`,
-    status: agent.custom ? 'Added by you' : 'Detected',
-    subtitle: agent.custom ? 'Added by you' : `Configured at ${agent.triggerPath}`,
-    ...(agent.custom ? { custom: true as const } : {}),
-  }))
-  const permissionGrants = selected(proposal.permissions).map((permission) => ({
+  const connectors = proposal.connectors
+    .filter((connector) => connector.status === 'detected' && connector.scopes.some((scope) => selectedIds.has(scope.id)))
+    .map((connector) => ({ name: connector.label, logo: `${connector.id}.svg`, status: 'Detected', subtitle: connector.provenance }))
+  const connectorGrants = proposal.connectors.flatMap((connector) => selectedConnectorScopes(connector, selectedIds).map((scope) => ({
+    action: scope.id,
+    approvalRequired: scope.needsApproval,
+  })))
+  const permissionGrants = [...selected(proposal.permissions).map((permission) => ({
     action: permission.scope,
     approvalRequired: permission.needsApproval,
     ...(permission.custom ? { custom: true as const } : {}),
-  }))
+  })), ...connectorGrants]
   const detectedConfigs = selected(proposal.agents).map((agent) => agent.triggerPath)
   const importedFrom = detectedConfigs.some((path) => path === 'AGENTS.md' || path.startsWith('.codex/'))
     ? 'codex'
@@ -79,4 +79,8 @@ export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: Readonly
     connectors,
     permissionGrants,
   }
+}
+
+function selectedConnectorScopes(connector: WorkspaceConnectorProposal, selectedIds: ReadonlySet<string>) {
+  return connector.status === 'detected' ? connector.scopes.filter((scope) => selectedIds.has(scope.id)) : []
 }

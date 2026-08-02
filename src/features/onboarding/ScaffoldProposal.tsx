@@ -1,24 +1,26 @@
 import { useMemo, useState } from 'react'
-import type { WorkspaceAgentProposal, WorkspaceChannelProposal, WorkspaceMemberProposal, WorkspacePermissionProposal, WorkspaceProposal, WorkspaceProposalItem } from '../../types'
+import type { WorkspaceAgentProposal, WorkspaceChannelProposal, WorkspaceConnectorProposal, WorkspaceMemberProposal, WorkspacePermissionProposal, WorkspaceProposal, WorkspaceProposalItem } from '../../types'
 import { StateBadge } from '../../ui'
 import '../../styles/scaffold.css'
 
-type ProposalGroup = 'channels' | 'members' | 'agents' | 'permissions'
+type ProposalGroup = 'channels' | 'members' | 'agents' | 'connectors' | 'permissions'
+type CustomProposalGroup = Exclude<ProposalGroup, 'connectors'>
 
 const GROUPS: Array<{ key: ProposalGroup; label: string; empty: string }> = [
   { key: 'channels', label: 'Channels', empty: 'No folders or branches were found to propose as channels.' },
   { key: 'members', label: 'Members', empty: 'No members were proposed because git history was unreadable or contained no author identities.' },
   { key: 'agents', label: 'Agents', empty: 'No supported agent configuration was detected in this folder.' },
+  { key: 'connectors', label: 'Connectors', empty: 'No connectors were detected from repository evidence.' },
   { key: 'permissions', label: 'Permissions', empty: 'No capabilities were detected that need a project permission.' },
 ]
 
 type CustomItem = WorkspaceChannelProposal | WorkspaceMemberProposal | WorkspaceAgentProposal | WorkspacePermissionProposal
 
-function customId(group: ProposalGroup) {
+function customId(group: CustomProposalGroup) {
   return `custom-${group}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-function newCustomItem(group: ProposalGroup): CustomItem {
+function newCustomItem(group: CustomProposalGroup): CustomItem {
   const id = customId(group)
   const shared = { id, label: '', provenance: 'Added by you', recommended: true, custom: true as const }
   switch (group) {
@@ -40,18 +42,23 @@ export function ScaffoldProposal({ proposal, onCreate, creating = false }: {
 }) {
   const initialSelection = useMemo(() => new Set([
     ...proposal.channels, ...proposal.members, ...proposal.agents, ...proposal.permissions,
-  ].filter((item) => item.recommended).map((item) => item.id)), [proposal])
+  ].filter((item) => item.recommended).map((item) => item.id).concat(
+    proposal.connectors.filter((connector) => connector.status === 'detected' && connector.recommended).flatMap((connector) => connector.scopes.map((scope) => scope.id)),
+  )), [proposal])
   const [selectedIds, setSelectedIds] = useState(initialSelection)
-  const [customItems, setCustomItems] = useState<Record<ProposalGroup, CustomItem[]>>({ channels: [], members: [], agents: [], permissions: [] })
+  const [customItems, setCustomItems] = useState<Record<CustomProposalGroup, CustomItem[]>>({ channels: [], members: [], agents: [], permissions: [] })
   const reviewProposal = useMemo(() => ({
     ...proposal,
     channels: [...proposal.channels, ...(customItems.channels as WorkspaceChannelProposal[])],
     members: [...proposal.members, ...(customItems.members as WorkspaceMemberProposal[])],
     agents: [...proposal.agents, ...(customItems.agents as WorkspaceAgentProposal[])],
+    connectors: proposal.connectors,
     permissions: [...proposal.permissions, ...(customItems.permissions as WorkspacePermissionProposal[])],
   }), [customItems, proposal])
-  const selectedCounts = useMemo(() => Object.fromEntries(GROUPS.map(({ key }) => [
-    key, reviewProposal[key].filter((item) => selectedIds.has(item.id)).length,
+  const selectedCounts = useMemo(() => Object.fromEntries(GROUPS.map(({ key }) => [key,
+    key === 'connectors'
+      ? reviewProposal.connectors.filter((connector) => connector.scopes.some((scope) => selectedIds.has(scope.id))).length
+      : reviewProposal[key].filter((item) => selectedIds.has(item.id)).length,
   ])) as Record<ProposalGroup, number>, [reviewProposal, selectedIds])
   const total = GROUPS.reduce((sum, { key }) => sum + selectedCounts[key], 0)
   const hasInvalidSelectedCustom = GROUPS.some(({ key }) => reviewProposal[key].some((item) =>
@@ -62,12 +69,12 @@ export function ScaffoldProposal({ proposal, onCreate, creating = false }: {
     else next.add(id)
     return next
   })
-  const addCustom = (group: ProposalGroup) => {
+  const addCustom = (group: CustomProposalGroup) => {
     const item = newCustomItem(group)
     setCustomItems((current) => ({ ...current, [group]: [...current[group], item] }))
     setSelectedIds((current) => new Set([...current, item.id]))
   }
-  const updateCustom = (group: ProposalGroup, id: string, patch: Partial<CustomItem>) => setCustomItems((current) => ({
+  const updateCustom = (group: CustomProposalGroup, id: string, patch: Partial<CustomItem>) => setCustomItems((current) => ({
     ...current,
     [group]: current[group].map((item) => item.id === id ? { ...item, ...patch } as CustomItem : item),
   }))
@@ -94,12 +101,14 @@ export function ScaffoldProposal({ proposal, onCreate, creating = false }: {
             </div>
             <div className="scaffold-group__actions">
               {items.length > 0 && <span>{countLabel(selectedCounts[key], label.toLowerCase())}</span>}
-              <button type="button" className="scaffold-group__add" onClick={() => addCustom(key)}>Add {label.slice(0, -1)}</button>
+              {key !== 'connectors' && <button type="button" className="scaffold-group__add" onClick={() => addCustom(key)}>Add {label.slice(0, -1)}</button>}
             </div>
           </header>
           {items.length === 0 ? <p className="scaffold-group__empty">{empty}</p> : <div className="scaffold-group__rows">
-            {items.map((item) => <ProposalRow key={item.id} item={item} checked={selectedIds.has(item.id)} onToggle={toggle}>
-              {item.custom && <CustomItemFields item={item} group={key} onChange={(patch) => updateCustom(key, item.id, patch)} />}
+            {key === 'connectors'
+              ? (items as WorkspaceConnectorProposal[]).map((connector) => <ConnectorRow key={connector.id} connector={connector} selectedIds={selectedIds} onToggle={toggle} />)
+              : (items as CustomItem[]).map((item) => <ProposalRow key={item.id} item={item} checked={selectedIds.has(item.id)} onToggle={toggle}>
+              {item.custom && <CustomItemFields item={item} group={key as CustomProposalGroup} onChange={(patch) => updateCustom(key as CustomProposalGroup, item.id, patch)} />}
             </ProposalRow>)}
           </div>}
         </section>
@@ -112,6 +121,7 @@ export function ScaffoldProposal({ proposal, onCreate, creating = false }: {
           selectedCounts.channels && countLabel(selectedCounts.channels, 'channel'),
           selectedCounts.members && countLabel(selectedCounts.members, 'member'),
           selectedCounts.agents && countLabel(selectedCounts.agents, 'agent'),
+          selectedCounts.connectors && countLabel(selectedCounts.connectors, 'connector'),
           selectedCounts.permissions && countLabel(selectedCounts.permissions, 'permission'),
         ].filter(Boolean).join(', ')
         : 'Select at least one item to create.'}</p>
@@ -138,7 +148,21 @@ function ProposalRow({ item, checked, onToggle, children }: { item: WorkspacePro
   </div>
 }
 
-function CustomItemFields({ item, group, onChange }: { item: CustomItem; group: ProposalGroup; onChange: (patch: Partial<CustomItem>) => void }) {
+function ConnectorRow({ connector, selectedIds, onToggle }: { connector: WorkspaceConnectorProposal; selectedIds: Set<string>; onToggle: (id: string) => void }) {
+  const unconfigured = connector.status === 'unconfigured'
+  return <div className={`scaffold-connector scaffold-connector--${connector.status}`}>
+    <span className="scaffold-connector__copy"><strong>{connector.label}</strong><small>{connector.provenance}</small><StateBadge state={unconfigured ? 'blocked' : 'actionable'} /></span>
+    {connector.scopes.length > 0 && <div className="scaffold-connector__scopes">
+      {connector.scopes.map((scope) => <label className="scaffold-connector__scope" key={scope.id}>
+        <input aria-label={`Select ${connector.label}: ${scope.name}`} type="checkbox" checked={selectedIds.has(scope.id)} onChange={() => onToggle(scope.id)} disabled={unconfigured} />
+        <span><strong>{scope.name}</strong><small>{scope.description}</small></span>
+        {scope.needsApproval && <StateBadge state="claimed" />}
+      </label>)}
+    </div>}
+  </div>
+}
+
+function CustomItemFields({ item, group, onChange }: { item: CustomItem; group: CustomProposalGroup; onChange: (patch: Partial<CustomItem>) => void }) {
   return <span className="scaffold-custom-fields">
     <input aria-label={`${group} name`} placeholder={group === 'permissions' ? 'Permission label' : `${group.slice(0, -1)} name`} value={item.label} onChange={(event) => {
       const label = event.target.value

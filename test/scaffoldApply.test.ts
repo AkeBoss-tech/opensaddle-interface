@@ -8,6 +8,10 @@ const proposal: WorkspaceProposal = {
   channels: [{ id: 'channel', label: 'api', provenance: 'api/ · 2 commits', recommended: true, kind: 'directory' }],
   members: [{ id: 'member', label: 'Ada', name: 'Ada Lovelace', email: 'ada@example.test', commitCount: 2, provenance: 'git log', recommended: true, deselectable: true }],
   agents: [{ id: 'agent', label: 'claude agent', harness: 'claude', triggerPath: '.claude/', provenance: 'Detected .claude/', recommended: true }],
+  connectors: [{
+    id: 'connector-supabase', label: 'Supabase', provenance: 'Dependency matching @supabase/* detected in package.json', recommended: true, status: 'detected',
+    scopes: [{ id: 'connector-supabase-read', name: 'Read project data', description: 'Read data.', needsApproval: false }, { id: 'connector-supabase-write', name: 'Modify project data', description: 'Write data.', needsApproval: true }],
+  }],
   permissions: [{ id: 'permission', label: 'Read repository', scope: 'repository-read', provenance: 'Git remote detected', recommended: true, needsApproval: false }],
 }
 
@@ -42,4 +46,23 @@ test('a selected custom item survives scaffoldApply and remains marked custom', 
   }
   const result = scaffoldApply(customProposal, new Set(['custom-channel']), '/work/acme')
   assert.deepEqual(result.channels, [{ id: 'custom-channel', title: 'Marketing', custom: true }])
+})
+
+test('unselected connector scopes yield no connector grants', () => {
+  const result = scaffoldApply(proposal, new Set(['connector-supabase']), '/work/acme')
+  assert.deepEqual(result.connectors, [])
+  assert.deepEqual(result.permissionGrants, [])
+})
+
+test('an unconfigured connector yields no grants', () => {
+  const unconfigured = {
+    ...proposal,
+    connectors: [{
+      id: 'connector-github', label: 'GitHub', recommended: false, status: 'unconfigured' as const,
+      provenance: 'No evidence was found in the repo; configure this connector before use.', scopes: [],
+    }],
+  }
+  const result = scaffoldApply(unconfigured, new Set(['connector-github']), '/work/acme')
+  assert.deepEqual(result.connectors, [])
+  assert.deepEqual(result.permissionGrants, [])
 })
