@@ -49,10 +49,12 @@ export interface WorkspaceProposalItem {
   label: string
   provenance: string
   recommended: boolean
+  /** Present only for review items authored in the proposal UI. */
+  custom?: true
 }
 
 export interface WorkspaceChannelProposal extends WorkspaceProposalItem {
-  kind: 'directory' | 'branch'
+  kind: 'directory' | 'branch' | 'custom'
 }
 
 /** Git identities are intentionally proposal-only and individually deselectable. */
@@ -69,7 +71,7 @@ export interface WorkspaceAgentProposal extends WorkspaceProposalItem {
 }
 
 export interface WorkspacePermissionProposal extends WorkspaceProposalItem {
-  scope: 'workspace-write' | 'secret-handling' | 'repository-read' | 'run-tests'
+  scope: string
   needsApproval: boolean
 }
 

@@ -1,11 +1,12 @@
-import type { LocalProjectSettings, Member, WorkspaceProposal } from '../../types'
+import type { LocalProjectSettings, Member, PermissionGrant, ServiceConn, WorkspaceProposal } from '../../types'
 
 export interface ScaffoldApplication {
   project: { name: string; description: string; workspaceKind: 'local'; local: LocalProjectSettings }
-  channels: Array<{ id: string; title: string }>
-  members: Member[]
-  agents: Array<{ id: string; name: string; description: string; harnessId: string }>
-  permissions: Array<{ id: string; action: string; approvalRequired: boolean }>
+  channels: Array<{ id: string; title: string; custom?: true }>
+  members: Array<Omit<Member, 'id'> & { custom?: true }>
+  agents: Array<{ id: string; name: string; description: string; harnessId: string; custom?: true }>
+  connectors: Array<Omit<ServiceConn, 'id' | 'projectId'> & { custom?: true }>
+  permissionGrants: Array<Pick<PermissionGrant, 'action' | 'approvalRequired'> & { custom?: true }>
 }
 
 function initials(name: string) {
@@ -19,25 +20,33 @@ function initials(name: string) {
  */
 export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: ReadonlySet<string>, folderPath: string): ScaffoldApplication {
   const selected = <T extends { id: string }>(items: T[]) => items.filter((item) => selectedIds.has(item.id))
-  const channels = selected(proposal.channels).map((channel) => ({ id: channel.id, title: channel.label }))
+  const channels = selected(proposal.channels).map((channel) => ({ id: channel.id, title: channel.label, ...(channel.custom ? { custom: true as const } : {}) }))
   const members = selected(proposal.members).map((member) => ({
-    id: member.id,
     name: member.name,
     initials: initials(member.name),
     role: 'Reviewer' as const,
     email: member.email,
     presence: 'offline' as const,
+    ...(member.custom ? { custom: true as const } : {}),
   }))
   const agents = selected(proposal.agents).map((agent) => ({
     id: agent.id,
     name: agent.label,
     description: agent.provenance,
     harnessId: agent.harness,
+    ...(agent.custom ? { custom: true as const } : {}),
   }))
-  const permissions = selected(proposal.permissions).map((permission) => ({
-    id: permission.id,
+  const connectors = selected(proposal.agents).map((agent) => ({
+    name: `${agent.label} connector`,
+    logo: `${agent.harness}.svg`,
+    status: agent.custom ? 'Added by you' : 'Detected',
+    subtitle: agent.custom ? 'Added by you' : `Configured at ${agent.triggerPath}`,
+    ...(agent.custom ? { custom: true as const } : {}),
+  }))
+  const permissionGrants = selected(proposal.permissions).map((permission) => ({
     action: permission.scope,
     approvalRequired: permission.needsApproval,
+    ...(permission.custom ? { custom: true as const } : {}),
   }))
   const detectedConfigs = selected(proposal.agents).map((agent) => agent.triggerPath)
   const importedFrom = detectedConfigs.some((path) => path === 'AGENTS.md' || path.startsWith('.codex/'))
@@ -67,6 +76,7 @@ export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: Readonly
     channels,
     members,
     agents,
-    permissions,
+    connectors,
+    permissionGrants,
   }
 }

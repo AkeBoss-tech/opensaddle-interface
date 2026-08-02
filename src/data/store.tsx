@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
-  AgentInterface, AppData, Chat, CodingProvider, CustomAgent, Dashboard, LocalProjectSettings, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
+  AgentInterface, AppData, Chat, CodingProvider, CustomAgent, Dashboard, LocalProjectSettings, Member, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, ServiceConn, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
 } from '../types'
 import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
 import {
@@ -26,6 +26,21 @@ import type {
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+// oxlint-disable-next-line react/only-export-components -- pure append semantics are covered independently of React.
+export function appendPermissionGrants(
+  existing: PermissionGrant[],
+  grants: Array<Omit<PermissionGrant, 'id' | 'createdAt' | 'createdBy'>>,
+  currentUserId: string,
+): PermissionGrant[] {
+  const createdAt = Date.now()
+  return [...existing, ...grants.map((grant) => ({
+    ...grant,
+    id: uid('grant'),
+    createdAt,
+    createdBy: currentUserId,
+  }))]
 }
 
 function messageFromDurable(message: DurableThreadMessage): Message {
@@ -95,6 +110,9 @@ interface StoreApi {
   removeLocalProject: (id: string) => void
   setPinnedArtifacts: (items: PinnedArtifact[]) => void
   createAgent: (input: Omit<CustomAgent, 'id' | 'createdAt'>) => CustomAgent
+  createMember: (input: Omit<Member, 'id'>) => Member
+  addServiceConnections: (projectId: string, connections: Array<Omit<ServiceConn, 'id' | 'projectId'>>) => ServiceConn[]
+  addPermissionGrants: (grants: Array<Omit<PermissionGrant, 'id' | 'createdAt' | 'createdBy'>>) => PermissionGrant[]
   updateAgent: (id: string, patch: Partial<Omit<CustomAgent, 'id' | 'projectId' | 'createdAt'>>) => void
   deleteAgent: (id: string) => void
   createSite: (input: Omit<Site, 'id' | 'createdAt' | 'updatedAt' | 'slug' | 'accent' | 'versions' | 'agentPlacement'> & Partial<Pick<Site, 'slug' | 'accent' | 'agentPlacement'>>) => Site
@@ -1128,6 +1146,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const agent: CustomAgent = { ...input, id: uid('agent'), createdAt: Date.now() }
       patch((d) => { d.agents.unshift(agent); return d })
       return agent
+    },
+    createMember: (input) => {
+      const member: Member = { ...input, id: uid('member') }
+      patch((d) => { d.members.unshift(member); return d })
+      return member
+    },
+    addServiceConnections: (projectId, connections) => {
+      const created = connections.map((connection) => ({ ...connection, id: uid('service'), projectId }))
+      patch((d) => { d.services.unshift(...created); return d })
+      return created
+    },
+    addPermissionGrants: (grants) => {
+      const created = appendPermissionGrants(dataRef.current.permissionGrants, grants, currentUserRef.current)
+        .slice(dataRef.current.permissionGrants.length)
+      patch((d) => { d.permissionGrants.push(...created); return d })
+      return created
     },
     updateAgent: (id, agentPatch) => patch((d) => {
       const agent = d.agents.find((item) => item.id === id)

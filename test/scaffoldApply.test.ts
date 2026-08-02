@@ -16,7 +16,7 @@ test('selecting a subset yields only the selected entities', () => {
   assert.deepEqual(result.channels, [{ id: 'channel', title: 'api' }])
   assert.equal(result.members.length, 0)
   assert.equal(result.agents.length, 1)
-  assert.equal(result.permissions.length, 0)
+  assert.equal(result.permissionGrants.length, 0)
 })
 
 test('selecting nothing yields no created entities', () => {
@@ -24,7 +24,8 @@ test('selecting nothing yields no created entities', () => {
   assert.deepEqual(result.channels, [])
   assert.deepEqual(result.members, [])
   assert.deepEqual(result.agents, [])
-  assert.deepEqual(result.permissions, [])
+  assert.deepEqual(result.connectors, [])
+  assert.deepEqual(result.permissionGrants, [])
 })
 
 test('created team is folder-backed with the requested root path', () => {
@@ -32,4 +33,13 @@ test('created team is folder-backed with the requested root path', () => {
   assert.equal(result.project.workspaceKind, 'local')
   assert.equal(result.project.local.rootPath, '/elsewhere/acme')
   assert.equal(result.project.local.importedFrom, 'folder')
+})
+
+test('a selected custom item survives scaffoldApply and remains marked custom', () => {
+  const customProposal: WorkspaceProposal = {
+    ...proposal,
+    channels: [{ id: 'custom-channel', label: 'Marketing', provenance: 'Added by you', recommended: true, custom: true, kind: 'custom' }],
+  }
+  const result = scaffoldApply(customProposal, new Set(['custom-channel']), '/work/acme')
+  assert.deepEqual(result.channels, [{ id: 'custom-channel', title: 'Marketing', custom: true }])
 })

@@ -152,6 +152,9 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
     importLocalProject,
     updateProject,
     createAgent,
+    createMember,
+    addServiceConnections,
+    addPermissionGrants,
     updateAgent,
     deleteAgent,
     createChat,
@@ -333,6 +336,7 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
       })
       await services?.localProjects?.registerProject?.(projectId, application.project.local.rootPath)
       application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
+      application.members.forEach((member) => createMember(member))
       application.agents.forEach((agent) => createAgent({
         projectId,
         name: agent.name,
@@ -348,8 +352,8 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
         knowledgeSourceIds: [],
         visibility: 'private',
       }))
-      await Promise.all(application.permissions.map((permission) => upsertPermissionGrant({
-        id: permission.id,
+      addServiceConnections(projectId, application.connectors)
+      addPermissionGrants(application.permissionGrants.map((permission) => ({
         principalKind: 'user',
         principalId: data.currentUserId,
         resourceKind: 'project',
@@ -358,14 +362,13 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
         effect: 'allow',
         inheritance: 'direct',
         approvalRequired: permission.approvalRequired,
-        createdBy: data.currentUserId,
       })))
       setSelectedId(projectId)
       setActiveProject(projectId)
       setSearchParams({ project: projectId })
       setManualPath('')
       setPendingProposal(null)
-      toast('Local workspace created', `${application.channels.length} channels · ${application.agents.length} agents · ${application.permissions.length} permissions`)
+      toast('Local workspace created', `${application.channels.length} channels · ${application.members.length} members · ${application.agents.length} agents · ${application.connectors.length} connectors · ${application.permissionGrants.length} permissions`)
     } catch (error) {
       toast('Could not create workspace', error instanceof Error ? error.message : String(error))
     } finally {
