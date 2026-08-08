@@ -182,9 +182,7 @@ test('policy projection drops denied evidence and every dependent leak', () => {
   assert.equal(presentation.lineage.length, 0)
   assert.equal(presentation.errors.length, 0)
   assert.deepEqual(presentation.omissions, [{
-    id: 'omission-1',
     reason: 'policy_denied',
-    count: 5,
     message: 'Evidence was omitted by policy.',
   }])
   for (const secret of ['secret-roadmap', 'Secret acquisition', 'Acquisition.pdf', 'Hidden Company', '$9B', 'Secret deal', 'Secret appendix', 'Secret version']) {
@@ -224,7 +222,10 @@ test('deny-by-default also removes unqualified narrative evidence', () => {
   assert.equal(presentation.gaps.length, 0)
   assert.equal(presentation.errors.length, 0)
   assert.equal(JSON.stringify(presentation).includes('Unqualified restricted'), false)
-  assert.equal(presentation.omissions[0]?.count, 3)
+  assert.deepEqual(presentation.omissions, [{
+    reason: 'policy_denied',
+    message: 'Evidence was omitted by policy.',
+  }])
 })
 
 test('operation state, phase, blocker, and outcome remain orthogonal', () => {

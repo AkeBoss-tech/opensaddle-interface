@@ -161,7 +161,7 @@ export function EvidenceInspector({ presentation }: { presentation: EvidencePres
       {!!presentation.omissions.length && (
         <section className="evidence-omissions" aria-labelledby="evidence-omissions-heading">
           <h3 id="evidence-omissions-heading">Policy omissions</h3>
-          <ul>{presentation.omissions.map((omission) => <li key={omission.id}><strong>{omission.count} omitted</strong><span>{omission.message}</span><small>{omission.reason.replaceAll('_', ' ')}</small></li>)}</ul>
+          <ul>{presentation.omissions.map((omission) => <li key={omission.reason}><strong>Evidence omitted</strong><span>{omission.message}</span><small>{omission.reason.replaceAll('_', ' ')}</small></li>)}</ul>
         </section>
       )}
 

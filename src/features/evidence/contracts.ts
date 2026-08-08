@@ -109,6 +109,12 @@ export interface PolicyOmission {
   message: string
 }
 
+/** Opaque disclosure for UI consumers; never carries hidden ids or cardinality. */
+export interface PresentationOmission {
+  reason: PolicyOmission['reason']
+  message: string
+}
+
 export interface EvidencePacket {
   schemaVersion: EvidenceSchemaVersion
   id: string
@@ -170,7 +176,7 @@ export interface EvidencePresentation {
   conflicts: EvidenceConflict[]
   gaps: EvidenceGap[]
   lineage: EvidenceLineage[]
-  omissions: PolicyOmission[]
+  omissions: PresentationOmission[]
   errors: EvidenceDomainError[]
 }
 

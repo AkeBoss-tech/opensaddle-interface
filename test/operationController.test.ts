@@ -102,3 +102,56 @@ test('owns the honest terminal receipt and keeps final output before closure', (
   assert.equal(runtime.unsubscribeCount.get('run-1'), 1)
   assert.ok(statuses.some((status) => /unavailable|could not finish|failed/i.test(status)))
 })
+
+test('keeps two runs isolated through navigation release, reconnect replay, and honest terminal receipts', () => {
+  const controller = new OperationController()
+  const runtime = harness()
+  const unavailable: string[] = []
+  const terminal: string[] = []
+  const attach = (runId: string) => controller.attach({
+    runId,
+    initialRun: run(runId),
+    subscribe: runtime.subscribe,
+    onUpdate: () => {},
+    onUnavailable: (_error, snapshot) => unavailable.push(`${runId}:${snapshot.run.done}`),
+    onTerminal: (snapshot) => terminal.push(`${runId}:${snapshot.run.done}:${snapshot.run.statusText}`),
+  })
+
+  attach('run-a')
+  attach('run-b')
+  runtime.listeners.get('run-a')!(event('run-a', 1, 'agent.output.delta', { text: 'alpha-1 ' }))
+  runtime.listeners.get('run-b')!(event('run-b', 1, 'agent.output.delta', { text: 'bravo-1 ' }))
+
+  // Navigating away releases live listeners without discarding per-run replay cursors.
+  controller.release('run-a')
+  controller.release('run-b')
+  attach('run-a')
+  attach('run-b')
+
+  // Replayed duplicates and stale out-of-order events are ignored per run.
+  runtime.listeners.get('run-a')!(event('run-a', 1, 'agent.output.delta', { text: 'duplicate-a ' }))
+  runtime.listeners.get('run-b')!(event('run-b', 3, 'agent.output.delta', { text: 'bravo-3 ' }))
+  runtime.listeners.get('run-b')!(event('run-b', 2, 'agent.output.delta', { text: 'stale-bravo-2 ' }))
+  runtime.listeners.get('run-a')!(event('run-a', 2, 'agent.output.delta', { text: 'alpha-2 ' }))
+
+  assert.equal(controller.get('run-a')?.text, 'alpha-1 alpha-2 ')
+  assert.equal(controller.get('run-b')?.text, 'bravo-1 bravo-3 ')
+
+  // A transport loss is degraded availability, not a fabricated completion.
+  runtime.errors.get('run-a')!(new Error('network unavailable'))
+  assert.deepEqual(unavailable, ['run-a:false'])
+  assert.equal(controller.get('run-a')?.run.done, false)
+  assert.equal(terminal.length, 0)
+
+  attach('run-a')
+  runtime.listeners.get('run-a')!(event('run-a', 3, 'session.closed', { status: 'completed' }))
+  runtime.listeners.get('run-b')!(event('run-b', 4, 'agent.failed', { error: 'provider denied' }))
+  assert.equal(controller.has('run-b'), true)
+  assert.equal(terminal.length, 1)
+  runtime.listeners.get('run-b')!(event('run-b', 5, 'session.closed', { status: 'failed' }))
+
+  assert.match(terminal[0] ?? '', /^run-a:true:/)
+  assert.match(terminal[1] ?? '', /^run-b:true:/)
+  assert.equal(controller.get('run-a')?.run.failure, undefined)
+  assert.equal(controller.get('run-b')?.run.failure?.message, 'provider denied')
+})

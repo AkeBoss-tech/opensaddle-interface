@@ -5,6 +5,7 @@ import type {
   EvidencePresentation,
   EvidencePacket,
   PolicyOmission,
+  PresentationOmission,
   PresentationCitation,
   ResourceRef,
 } from './contracts'
@@ -15,19 +16,21 @@ function effectFor(policy: EvidencePolicy, citationId: string, source: ResourceR
     ?? policy.defaultEffect
 }
 
-function safeOmission(reason: PolicyOmission['reason'], count: number, position: number): PolicyOmission {
-  const message = reason === 'redacted'
+function omissionMessage(reason: PolicyOmission['reason']): string {
+  return reason === 'redacted'
     ? 'Evidence was redacted before presentation.'
     : reason === 'provider_denied'
       ? 'Evidence was omitted because its provider denied access.'
       : 'Evidence was omitted by policy.'
-  return { id: `omission-${position}`, reason, count, message }
 }
 
-function mergeOmissions(omissions: readonly PolicyOmission[]): PolicyOmission[] {
-  const counts = new Map<PolicyOmission['reason'], number>()
-  for (const omission of omissions) counts.set(omission.reason, (counts.get(omission.reason) ?? 0) + omission.count)
-  return [...counts.entries()].map(([reason, count], position) => safeOmission(reason, count, position + 1))
+function safeOmission(reason: PolicyOmission['reason'], count: number, position: number): PolicyOmission {
+  return { id: `omission-${position}`, reason, count, message: omissionMessage(reason) }
+}
+
+function presentOmissions(omissions: readonly PolicyOmission[]): PresentationOmission[] {
+  return [...new Set(omissions.map((omission) => omission.reason))]
+    .map((reason) => ({ reason, message: omissionMessage(reason) }))
 }
 
 /**
@@ -124,7 +127,9 @@ export function applyEvidencePolicy(packet: EvidencePacket, policy: EvidencePoli
     conflicts,
     gaps,
     lineage,
-    omissions: mergeOmissions([...packet.policyOmissions, ...newOmissions]),
+    // Counts and ids belong to the source/audit packet. Omitting both from the
+    // presentation avoids leaking restricted collection shape to the UI.
+    omissions: presentOmissions([...packet.policyOmissions, ...newOmissions]),
     errors,
   }
 }
