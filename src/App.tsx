@@ -35,6 +35,7 @@ import { scaffoldApply } from './features/onboarding/scaffoldApply'
 import './styles/app.css'
 import './styles/thread-first.css'
 import './styles/liquid-glass.css'
+import './features/evidence/evidence.css'
 
 const IconPacksPage = lazy(() => import('./pages/IconPacksPage').then((module) => ({ default: module.IconPacksPage })))
 
