@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { OpenSaddleRuntimeClient } from '../src/services/opensaddleClient.ts'
+import type { RuntimeClient } from '../src/services/contracts.ts'
 
 function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -193,5 +194,30 @@ test('reconciles only missing durable events after the delivered cursor', async 
     } else {
       globalThis.window = originalWindow
     }
+  }
+})
+
+test('connected mode never falls back to simulated success when unavailable', async () => {
+  const originalFetch = globalThis.fetch
+  let fallbackStarts = 0
+  globalThis.fetch = async () => {
+    throw new TypeError('connection refused')
+  }
+  const fallback = {
+    startRun: async () => {
+      fallbackStarts += 1
+      return { runId: 'mock-run', sessionId: 'mock-session', mode: 'mock' }
+    },
+  } as unknown as RuntimeClient
+
+  try {
+    const client = new OpenSaddleRuntimeClient('http://daemon.test', fallback, { allowFallback: true })
+    await assert.rejects(
+      client.startRun({ projectId: 'project-1', task: 'must be real' }),
+      /control plane unavailable/,
+    )
+    assert.equal(fallbackStarts, 0)
+  } finally {
+    globalThis.fetch = originalFetch
   }
 })
