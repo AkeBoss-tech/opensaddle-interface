@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 import {
-  DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL, simulateAgentRun,
+  DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL,
   type RouteDecision,
 } from '../lib/simulation'
 import type { AgentRunBlock, CodingProvider, EntityReference, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
@@ -71,22 +71,6 @@ const EXECUTION_MODES: Array<{
   { id: 'project', label: 'Auto-edit', detail: 'Edit inside this project', icon: 'spark' },
   { id: 'full-access', label: 'Full access', detail: 'Local machine · no approvals', icon: 'terminal' },
 ]
-
-function routedModelLabel(route: RouteEstimate | undefined, fallback: ModelKey): string {
-  const provider = route?.providerKey
-  if (route?.nativeModelDefault && provider && provider !== 'auto') {
-    return `${PROVIDER_LABEL[provider] ?? 'Harness'} default`
-  }
-  return MODEL_LABEL[route?.modelKey ?? fallback]
-}
-
-function routedHarnessLabel(route: RouteEstimate | undefined, fallback: Harness): string {
-  const provider = route?.providerKey
-  if ((route?.harnessKey ?? fallback) === 'coding' && provider && provider !== 'auto') {
-    return PROVIDER_LABEL[provider] ?? HARNESS_LABEL[route?.harnessKey ?? fallback]
-  }
-  return HARNESS_LABEL[route?.harnessKey ?? fallback]
-}
 
 function routeDecisionFromEstimate(estimate: RouteEstimate, fallback: RouteDecision): RouteDecision {
   return {
@@ -265,7 +249,7 @@ export function ChatPage() {
   const location = useLocation()
   const store = useStore()
   const runRegistry = useRunRegistry()
-  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, setChatArchived, updateChatRunConfig, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, harnessCapabilities, refreshHarnessCapabilities } = store
+  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, setChatArchived, updateChatRunConfig, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, connection, harnessCapabilities, refreshHarnessCapabilities } = store
   const chat = data.chats.find((c) => c.id === (chatId ?? data.activeChatId))
   const durableRunConfigKey = JSON.stringify(chat?.runConfig ?? null)
   const continuationAction = chat?.continuation?.mode === 'fork' ? 'Fork' : 'Resume'
@@ -337,7 +321,7 @@ export function ChatPage() {
   const [reasoningEffort, setReasoningEffort] = useState('')
   const [freeModels, setFreeModels] = useState<Array<{ id: string; name: string; contextLength?: number }>>([])
   const [route, setRoute] = useState<RouteDecision>(() => deriveRoute('', data.settings.routingPref))
-  const [providerKey, setProviderKey] = useState<CodingProvider>('opensaddle')
+  const [, setProviderKey] = useState<CodingProvider>('opensaddle')
   const [perm, setPerm] = useState<ReturnType<typeof needsPermission>>(null)
   const [pending, setPending] = useState('')
   const [pendingSourceMessageId, setPendingSourceMessageId] = useState<string | undefined>()
@@ -722,14 +706,21 @@ export function ChatPage() {
     }))
   }, [serverRouting, text, pending, data.settings.routingPref, modelOv, harnessOv, runtimeOv, defaultRuntime])
 
-  const resolveRoute = async (prompt: string): Promise<RouteDecision> => {
+  const preflightOperation = async (prompt: string) => {
     const fallback = refreshRoute(prompt)
-    if (!serverRouting || !services) return fallback
-    const estimate = await services.runtime.estimate(prompt, routeEstimatePreferences)
-    const resolved = routeDecisionFromEstimate(estimate, fallback)
-    setRoute(resolved)
-    if (estimate.providerKey) setProviderKey(estimate.providerKey)
-    return resolved
+    const result = await runRegistry.preflight({
+      task: prompt,
+      projectId: project.id,
+      userId: data.currentUserId,
+      agentId: chat?.agentId,
+      grants: data.permissionGrants,
+      fallbackRoute: fallback,
+      serverRouting,
+      routePreferences: routeEstimatePreferences,
+    })
+    setRoute(result.route)
+    if (result.estimate?.providerKey) setProviderKey(result.estimate.providerKey)
+    return result
   }
 
   // Reflect the backend's actual route estimate in the pill while typing.
@@ -873,9 +864,9 @@ export function ChatPage() {
       setRouteOpen(true)
       return
     }
-    let r: RouteDecision
+    let preflight: Awaited<ReturnType<typeof preflightOperation>>
     try {
-      r = await resolveRoute(prompt)
+      preflight = await preflightOperation(prompt)
     } catch (error) {
       toast('Could not choose a ready harness', error instanceof Error ? error.message : String(error))
       return
@@ -911,7 +902,7 @@ export function ChatPage() {
           kind: 'info',
           t: 'now',
         }])
-        await runAgent(prompt, r, chat.id, undefined, sourceMessage.id)
+        await runAgent(prompt, preflight.route, preflight.execution, chat.id, undefined, sourceMessage.id)
         return
       }
       setPending(prompt)
@@ -919,7 +910,7 @@ export function ChatPage() {
       setPerm(permission)
       return
     }
-    await runAgent(prompt, r, chat.id, undefined, sourceMessage.id)
+    await runAgent(prompt, preflight.route, preflight.execution, chat.id, undefined, sourceMessage.id)
   }
 
   useEffect(() => {
@@ -939,18 +930,12 @@ export function ChatPage() {
   const runAgent = async (
     prompt: string,
     r: RouteDecision,
+    exec: ReturnType<typeof evaluatePermissions>,
     cid: string,
     approvalId?: string,
     sourceMessageId?: string,
   ) => {
     const agentId = chat?.agentId
-    const exec = evaluatePermissions(data.permissionGrants, {
-      userId: data.currentUserId,
-      agentId,
-      resourceKind: 'project',
-      resourceId: project.id,
-      action: 'execute',
-    })
     if (!exec.allowed) {
       toast('Blocked', exec.reason)
       setActivity([{ title: 'Permission denied', sub: exec.reason, kind: 'error', t: 'now' }])
@@ -959,7 +944,7 @@ export function ChatPage() {
     setActivity([{ title: 'Run started', sub: `${project.name} · ${RUNTIME_LABEL[r.runtimeKey]}`, kind: 'info', t: '0.0s' }])
     openInspector('overview')
 
-    if (r.klass === 'chat' && !services?.controlPlane.connected) {
+    if (r.klass === 'chat' && connection.mode === 'demo') {
       appendMessage({
         chatId: cid, role: 'assistant', text: '',
         lightHtml: `<p>Handled directly via <strong>${MODEL_LABEL[r.modelKey]}</strong> — lightweight answer, no side effects.</p><p>Ask me to build, research, or operate on a system for a full agent run.</p>`,
@@ -968,26 +953,12 @@ export function ChatPage() {
       return
     }
 
-    const runBlock: AgentRunBlock | undefined = r.klass === 'chat' ? undefined : {
-      id: 'pending', kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
-      executionMode,
-      title: 'Agent run', model: MODEL_LABEL[r.modelKey], reasoningEffort: reasoningEffort || undefined, harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
-      statusText: 'Planning', done: false, tools: [], plan: [], artifacts: [],
-    }
-    const placeholder = appendMessage({
-      chatId: cid, role: 'assistant', text: '',
-      routingNote: `Auto · ${MODEL_LABEL[r.modelKey]} · ${HARNESS_LABEL[r.harnessKey]} · ${RUNTIME_LABEL[r.runtimeKey]}`,
-      run: runBlock,
-    }, { persist: !services?.runtime })
-
-    if (services?.runtime) {
-      try {
-        const started = await services.runtime.startRun({
+    const result = await runRegistry.start({
           projectId: project.id,
           threadId: cid,
           sourceMessageId,
-          assistantMessageId: placeholder.id,
           task: prompt,
+          route: r,
           agentId,
           agentDefinitionPath,
           skillPaths: agentSkillPaths,
@@ -1005,85 +976,23 @@ export function ChatPage() {
           repo: repositoryPath,
           approvalId,
           reviewProviderKey: defaults?.reviewProviderKey === 'auto' ? undefined : defaults?.reviewProviderKey,
-        })
-        const mode = started.mode ?? 'mock'
-        const isMockMode = mode === 'mock' || mode === 'mock_with_repo'
-        const actualModel = started.route?.modelKey ?? r.modelKey
-        const actualHarness = started.route?.harnessKey ?? r.harnessKey
-        const actualRuntime = started.route?.runtimeKey ?? r.runtimeKey
-        const actualProvider = started.route?.providerKey ?? providerKey
-        const actualModelLabel = routedModelLabel(started.route, r.modelKey)
-        const actualHarnessLabel = routedHarnessLabel(started.route, r.harnessKey)
-        const providerNote = actualHarness === 'coding' && actualProvider && actualProvider !== 'auto' && actualProvider !== 'custom'
-          ? ` · ${PROVIDER_LABEL[actualProvider]}`
-          : ''
-        updateMessage(placeholder.id, {
-          runtimeRunId: started.runId,
-          routingNote: `${started.route ? 'Server' : 'Auto'} · ${actualModelLabel} · ${HARNESS_LABEL[actualHarness]}${providerNote} · ${RUNTIME_LABEL[actualRuntime]}`,
-        })
-        // Keep the composer pill consistent with what the server actually ran.
-        if (started.route) {
-          setRoute((prev) => ({ ...prev, modelKey: actualModel, harnessKey: actualHarness, runtimeKey: actualRuntime }))
-          if (started.route.providerKey) setProviderKey(started.route.providerKey)
-        }
-
-        if (isMockMode) {
-          // Local mock runtime: the simulation IS the event source.
-          await simulateAgentRun(prompt, r, (run: AgentRunBlock) => {
-            updateMessage(placeholder.id, { text: run.output ?? '', run: { ...run, id: started.runId, executionMode } })
+          onRunUpdate: (run) => {
             if (run.tools.length) {
               const last = run.tools[run.tools.length - 1]!
               setActivity((a) => a.some((x) => x.title === last.name) ? a : [...a, { title: last.name, sub: last.output, t: last.duration }])
             }
-          })
-          setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
-          return
-        }
-
-        // Real runtime (OpenSaddle simulated/safe_builtin/real_cli): build the
-        // run card entirely from live session events.
-        let liveRun: AgentRunBlock = {
-          id: started.runId, kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
-          executionMode,
-          providerKey: actualProvider,
-          title: 'Agent run', model: actualModelLabel, reasoningEffort: started.route?.reasoningEffort ?? (reasoningEffort || undefined), harness: actualHarnessLabel, runtime: RUNTIME_LABEL[actualRuntime],
-          statusText: mode.replace('_', ' '), done: false, tools: [], plan: [], artifacts: [],
-          cost: started.route?.cost ?? r.cost,
-        }
-        if (runBlock) updateMessage(placeholder.id, { run: liveRun })
-        runRegistry.track({
-          runId: started.runId,
-          threadId: cid,
-          messageId: placeholder.id,
-          initialRun: liveRun,
-          initialText: placeholder.text,
+          },
         })
-        return
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error)
-        updateMessage(placeholder.id, runBlock
-          ? {
-            text: `I couldn’t start the coding agent because its execution environment is unavailable. ${reason}`,
-            run: { ...runBlock, statusText: reason, done: true },
-          }
-          : { text: `OpenSaddle could not complete this message: ${reason}` })
-        setActivity((a) => [...a, { title: 'Run rejected', sub: reason, kind: 'error', t: 'now' }])
-        toast('Run failed', reason)
-        return
-      }
+    if ('route' in result && result.route) {
+      setRoute((previous) => ({ ...previous, modelKey: result.route!.modelKey, harnessKey: result.route!.harnessKey, runtimeKey: result.route!.runtimeKey }))
+      if (result.route.providerKey) setProviderKey(result.route.providerKey)
     }
-
-    await simulateAgentRun(prompt, r, (run: AgentRunBlock) => {
-      updateMessage(placeholder.id, { text: run.output ?? '', run })
-      if (run.tools.length) {
-        const last = run.tools[run.tools.length - 1]!
-        setActivity((a) => {
-          if (a.some((x) => x.title === last.name)) return a
-          return [...a, { title: last.name, sub: last.output, t: last.duration }]
-        })
-      }
-    })
-    setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
+    if (result.status === 'failed') {
+      setActivity((a) => [...a, { title: 'Run rejected', sub: result.error.message, kind: 'error', t: 'now' }])
+      toast('Run failed', result.error.message)
+    } else if (result.status === 'simulated') {
+      setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
+    }
   }
 
   const savePromptDecision = async (
@@ -1164,16 +1073,16 @@ export function ChatPage() {
       kind: 'info',
       t: 'now',
     }])
-    let r: RouteDecision
+    let preflight: Awaited<ReturnType<typeof preflightOperation>>
     try {
-      r = await resolveRoute(pending)
+      preflight = await preflightOperation(pending)
     } catch (error) {
       toast('Could not choose a ready harness', error instanceof Error ? error.message : String(error))
       return
     }
     const sourceMessageId = pendingSourceMessageId
     setPendingSourceMessageId(undefined)
-    await runAgent(pending, r, chat.id, approvalId, sourceMessageId)
+    await runAgent(pending, preflight.route, preflight.execution, chat.id, approvalId, sourceMessageId)
   }
 
   const denyPromptPermission = async (persist: boolean) => {
@@ -1631,82 +1540,33 @@ export function ChatPage() {
       return
     }
     const requestedRoute = deriveRoute(task, data.settings.routingPref)
-    const initial: AgentRunBlock = {
-      id: 'pending',
-      parentRunId: rootRun.id,
-      executionMode,
-      kind: requestedRoute.klass === 'research' ? 'research' : requestedRoute.klass === 'browser' ? 'browser' : 'coding',
-      title: `Subagent · ${task.slice(0, 52)}`,
-      model: MODEL_LABEL[requestedRoute.modelKey],
-      harness: HARNESS_LABEL[requestedRoute.harnessKey],
-      runtime: RUNTIME_LABEL[requestedRoute.runtimeKey],
-      statusText: 'Starting delegated run',
-      done: false,
-      tools: [],
-      plan: [],
-      artifacts: [],
-    }
     const sourceMessage = appendMessage({
       chatId: chat.id,
       role: 'user',
       text: task,
       routingNote: 'Delegated subtask',
     })
-    const message = appendMessage({
-      chatId: chat.id,
-      role: 'assistant',
-      text: '',
-      routingNote: `Subagent · ${initial.model} · ${initial.runtime}`,
-      run: initial,
-    }, { persist: false })
-    try {
-      const started = await services.runtime.startRun({
+    const result = await runRegistry.start({
         projectId: project.id,
         threadId: chat.id,
         sourceMessageId: sourceMessage.id,
-        assistantMessageId: message.id,
         task,
+        route: requestedRoute,
         agentId: chat.agentId,
         agentDefinitionPath,
         skillPaths: agentSkillPaths,
         parentRunId: rootRun.id,
         sourceIds: usedSources.map((source) => source.id),
+        title: `Subagent · ${task.slice(0, 52)}`,
         executionMode,
         capabilityIds: [...tools],
         repo: repositoryPath,
       })
-      const child: AgentRunBlock = {
-        ...initial,
-        id: started.runId,
-        model: MODEL_LABEL[started.route?.modelKey ?? requestedRoute.modelKey],
-        harness: HARNESS_LABEL[started.route?.harnessKey ?? requestedRoute.harnessKey],
-        runtime: RUNTIME_LABEL[started.route?.runtimeKey ?? requestedRoute.runtimeKey],
-        statusText: started.mode?.replaceAll('_', ' ') ?? 'Queued',
-      }
-      updateMessage(message.id, { runtimeRunId: started.runId, run: child })
-      if (started.mode === 'mock' || started.mode === 'mock_with_repo') {
-        await simulateAgentRun(task, requestedRoute, (run) => {
-          updateMessage(message.id, { text: run.output ?? '', run: { ...run, id: started.runId, parentRunId: rootRun.id, title: initial.title, executionMode } })
-        })
-      } else {
-        runRegistry.track({
-          runId: started.runId,
-          threadId: chat.id,
-          messageId: message.id,
-          initialRun: child,
-          initialText: message.text,
-          parentRunId: rootRun.id,
-        })
-      }
+    if (result.status !== 'failed') {
       setDelegateDraft('')
       setDelegateEditorOpen(false)
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-      updateMessage(message.id, {
-        text: `The delegated run could not start. ${reason}`,
-        run: { ...initial, statusText: `Failed · ${reason}`, done: true },
-      })
-      toast('Subagent failed to start', reason)
+    } else {
+      toast('Subagent failed to start', result.error.message)
     }
   }
 
@@ -2225,7 +2085,7 @@ export function ChatPage() {
                   {EXECUTION_MODES.find((mode) => mode.id === executionMode)?.label}
                 </button>
                 <span className="composer-spacer" />
-                <button className={`route-pill ${auto ? '' : 'manual'}`} title={serverRouting ? 'Routed by the OpenSaddle control plane' : 'Routed locally (mock)'} onClick={() => { setToolsOpen(false); setRouteOpen((v) => !v); refreshRoute(text || pending || 'build a feature') }}>
+                <button className={`route-pill ${auto ? '' : 'manual'}`} title={serverRouting ? 'Routed by the OpenSaddle control plane' : connection.mode === 'demo' ? 'Routed locally in Demo mode' : 'Control plane unavailable; runs will not be simulated'} onClick={() => { setToolsOpen(false); setRouteOpen((v) => !v); refreshRoute(text || pending || 'build a feature') }}>
                   {auto && <span className="pulse" />}
                   <HarnessVisual id={harnessPickerOption.id} className="provider-logo xs" />
                   <span className="route-seg">{harnessPickerOption.shortLabel}</span>

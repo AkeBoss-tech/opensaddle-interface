@@ -231,7 +231,7 @@ export interface RuntimeClient {
   }>
   listRuns?(): Promise<RuntimeRunSummary[]>
   listSurfaces?(projectId?: string): Promise<RegisteredSurface[]>
-  subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void
+  subscribe(runId: string, onEvent: (event: SessionEvent) => void, onError?: (error: Error) => void): () => void
   cancel(runId: string): Promise<void>
   pause(runId: string): Promise<void>
   resume(runId: string): Promise<void>

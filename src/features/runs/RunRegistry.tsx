@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useStore } from '../../data/store'
-import { applyRunEvent } from '../../lib/runEvents'
-import type { RuntimeRunSummary, SessionEvent } from '../../services/contracts'
-import type { AgentRunBlock } from '../../types'
+import { HARNESS_LABEL, MODEL_LABEL, RUNTIME_LABEL, simulateAgentRun, type RouteDecision } from '../../lib/simulation'
+import type { RouteEstimate, RuntimeRunSummary, RuntimeClient } from '../../services/contracts'
+import { evaluatePermissions } from '../../services/permissions'
+import type { AgentRunBlock, CodingProvider, Harness, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../../types'
 import {
   isRecoverableRuntimeRun,
   reconcileDurableRunBlock,
@@ -10,7 +11,7 @@ import {
   selectOrphanedRuntimeRuns,
   selectThreadLinkedRuntimeRuns,
 } from './recovery'
-import { appendTranscript, eventText } from './transcript'
+import { OperationController } from './operationController'
 
 export interface ManagedRun {
   runId: string
@@ -18,7 +19,7 @@ export interface ManagedRun {
   messageId: string
   parentRunId?: string
   run: AgentRunBlock
-  lastEvent?: SessionEvent
+  lastEvent?: import('../../services/contracts').SessionEvent
   eventCount: number
 }
 
@@ -57,6 +58,92 @@ interface RunRegistryApi {
     answers?: Record<string, string[]>
   }) => Promise<void>
   getForThread: (threadId: string) => ManagedRun[]
+  preflight: (input: OperationPreflightInput) => Promise<OperationPreflightResult>
+  start: (input: StartOperationInput) => Promise<StartOperationResult>
+}
+
+export interface OperationPreflightInput {
+  task: string
+  projectId: string
+  userId: string
+  agentId?: string
+  grants: PermissionGrant[]
+  fallbackRoute: RouteDecision
+  serverRouting: boolean
+  routePreferences: Parameters<RuntimeClient['estimate']>[1]
+}
+
+export interface OperationPreflightResult {
+  route: RouteDecision
+  estimate?: RouteEstimate
+  execution: ReturnType<typeof evaluatePermissions>
+}
+
+export interface StartOperationInput {
+  projectId: string
+  threadId: string
+  sourceMessageId?: string
+  task: string
+  route: RouteDecision
+  agentId?: string
+  parentRunId?: string
+  sourceIds?: string[]
+  title?: string
+  agentDefinitionPath?: string
+  skillPaths?: string[]
+  providerSessionId?: string
+  providerSessionMode?: 'resume' | 'fork'
+  providerTurnId?: string
+  modelKey?: ModelKey
+  modelId?: string
+  reasoningEffort?: string
+  harnessKey?: Harness
+  providerKey?: CodingProvider
+  runtimeKey?: RuntimeKind
+  executionMode?: RunExecutionMode
+  capabilityIds?: string[]
+  repo?: string
+  approvalId?: string
+  reviewProviderKey?: CodingProvider
+  onRunUpdate?: (run: AgentRunBlock) => void
+}
+
+export type StartOperationResult =
+  | { status: 'started'; runId: string; route?: RouteEstimate }
+  | { status: 'simulated'; runId: string; route?: RouteEstimate }
+  | { status: 'failed'; error: Error }
+
+const PROVIDER_LABEL: Partial<Record<CodingProvider, string>> = {
+  codex: 'Codex App Server', claude: 'Claude Code', cursor: 'Cursor', gemini: 'Gemini CLI',
+  opencode: 'OpenCode', antigravity: 'Antigravity CLI', opensaddle: 'OpenSaddle', custom: 'Custom harness',
+}
+
+function routeFromEstimate(estimate: RouteEstimate, fallback: RouteDecision): RouteDecision {
+  return {
+    klass: estimate.harnessKey === 'coding' ? 'coding'
+      : estimate.harnessKey === 'research' ? 'research'
+      : estimate.harnessKey === 'browser' ? 'browser'
+      : fallback.klass === 'ops' ? 'ops' : 'chat',
+    modelKey: estimate.modelKey,
+    harnessKey: estimate.harnessKey,
+    runtimeKey: estimate.runtimeKey,
+    reasons: estimate.reasons,
+    cost: estimate.cost,
+  }
+}
+
+function modelLabel(route: RouteEstimate | undefined, fallback: ModelKey): string {
+  const provider = route?.providerKey
+  return route?.nativeModelDefault && provider && provider !== 'auto'
+    ? `${PROVIDER_LABEL[provider] ?? 'Harness'} default`
+    : MODEL_LABEL[route?.modelKey ?? fallback]
+}
+
+function harnessLabel(route: RouteEstimate | undefined, fallback: Harness): string {
+  const provider = route?.providerKey
+  return (route?.harnessKey ?? fallback) === 'coding' && provider && provider !== 'auto'
+    ? PROVIDER_LABEL[provider] ?? HARNESS_LABEL[route?.harnessKey ?? fallback]
+    : HARNESS_LABEL[route?.harnessKey ?? fallback]
 }
 
 const RunRegistryContext = createContext<RunRegistryApi | null>(null)
@@ -64,7 +151,7 @@ const RunRegistryContext = createContext<RunRegistryApi | null>(null)
 export function RunRegistryProvider({ children }: { children: ReactNode }) {
   const {
     data,
-    services,
+    services, connection,
     threadHistoryHydrated,
     createChat,
     appendMessage,
@@ -73,25 +160,14 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
     toast,
   } = useStore()
   const [runs, setRuns] = useState<Record<string, ManagedRun>>({})
-  const subscriptions = useRef(new Map<string, () => void>())
-  const textByRun = useRef(new Map<string, string>())
-  const runById = useRef(new Map<string, AgentRunBlock>())
+  const controller = useRef(new OperationController())
   const dataRef = useRef(data)
   const recoveringRuns = useRef(new Set<string>())
   const validatedStoredRuns = useRef(new Set<string>())
   dataRef.current = data
 
-  const release = useCallback((runId: string) => {
-    subscriptions.current.get(runId)?.()
-    subscriptions.current.delete(runId)
-    textByRun.current.delete(runId)
-  }, [])
-
   const track = useCallback((input: TrackRunInput) => {
-    if (!services?.runtime || subscriptions.current.has(input.runId)) return
-
-    runById.current.set(input.runId, input.initialRun)
-    textByRun.current.set(input.runId, input.initialText ?? '')
+    if (!services?.runtime || controller.current.has(input.runId)) return
     setRuns((current) => ({
       ...current,
       [input.runId]: {
@@ -104,18 +180,13 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
       },
     }))
 
-    let closedBeforeAttach = false
-    const unsubscribe = services.runtime.subscribe(input.runId, (event) => {
-      const previous = runById.current.get(input.runId) ?? input.initialRun
-      if (event.sequence <= (previous.lastSequence ?? -1)) return
-
-      const delta = event.type === 'agent.output.delta' ? eventText(event.payload) : ''
-      const text = delta
-        ? appendTranscript(textByRun.current.get(input.runId) ?? '', delta)
-        : textByRun.current.get(input.runId) ?? ''
-      if (delta) textByRun.current.set(input.runId, text)
-
-      const next = applyRunEvent(previous, event)
+    controller.current.attach({
+      runId: input.runId,
+      initialRun: input.initialRun,
+      initialText: input.initialText,
+      subscribe: services.runtime.subscribe.bind(services.runtime),
+      onUpdate: ({ run: next, previousRun: previous = input.initialRun, text, lastEvent: event, eventCount }) => {
+      if (!event) return
       if (next.providerSessionId
         && (next.providerSessionId !== previous.providerSessionId || next.providerTurnId !== previous.providerTurnId)) {
         const provider = next.providerKey
@@ -124,8 +195,7 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
         }
       }
       const routingNote = `Server · ${next.model} · ${next.harness} · ${next.runtime}`
-      runById.current.set(input.runId, next)
-      updateMessage(input.messageId, delta ? { text, run: next, routingNote } : { run: next, routingNote })
+      updateMessage(input.messageId, event.type === 'agent.output.delta' ? { text, run: next, routingNote } : { run: next, routingNote })
       setRuns((current) => ({
         ...current,
         [input.runId]: {
@@ -135,22 +205,22 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
           parentRunId: input.parentRunId ?? next.parentRunId,
           run: next,
           lastEvent: event,
-          eventCount: (current[input.runId]?.eventCount ?? 0) + 1,
+          eventCount,
         },
       }))
-
-      // Stay attached through the server's canonical terminal event so final
-      // output, usage, tool results, and closure evidence are not dropped.
-      // Cancelled runs terminate at `agent.cancelled`; completed and failed
-      // provider sessions terminate at `session.closed`.
-      if (event.type === 'session.closed' || event.type === 'agent.cancelled') {
-        if (subscriptions.current.has(input.runId)) release(input.runId)
-        else closedBeforeAttach = true
-      }
+      },
+      onUnavailable: (error, snapshot) => {
+        const degraded = { ...snapshot.run, statusText: 'Connection lost · reconnecting' }
+        controller.current.replaceRun(input.runId, degraded)
+        updateMessage(input.messageId, { run: degraded })
+        setRuns((current) => current[input.runId] ? {
+          ...current,
+          [input.runId]: { ...current[input.runId], run: degraded },
+        } : current)
+        toast('Run connection unavailable', error.message)
+      },
     })
-    if (closedBeforeAttach) unsubscribe()
-    else subscriptions.current.set(input.runId, unsubscribe)
-  }, [adoptChatContinuation, release, services, updateMessage])
+  }, [adoptChatContinuation, services, toast, updateMessage])
 
   // Reattach durable runs after refresh or navigation. The runtime reconciles
   // the complete event snapshot before continuing the live stream.
@@ -161,7 +231,7 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
       message.run
       && !message.run.done
       && message.run.id !== 'pending'
-      && !subscriptions.current.has(message.run.id)
+      && !controller.current.has(message.run.id)
       && !validatedStoredRuns.current.has(message.run.id))
     if (!candidates.length) return
 
@@ -275,6 +345,16 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
             ) {
               updateMessage(message.id, { run: reconciled })
             }
+            if (isRecoverableRuntimeRun(durableRun) && !controller.current.has(durableRun.runId)) {
+              track({
+                runId: durableRun.runId,
+                threadId: message.chatId,
+                messageId: message.id,
+                initialRun: reconciled,
+                initialText: message.text,
+                parentRunId: durableRun.parentRunId,
+              })
+            }
             continue
           }
           if (
@@ -386,13 +466,13 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(async (runId: string) => {
     await services?.runtime.cancel(runId)
-    const current = runById.current.get(runId)
+    const current = controller.current.get(runId)?.run
     if (current && !current.done) {
-      const stopped = { ...current, statusText: 'Stopped', done: true }
-      runById.current.set(runId, stopped)
-      setRuns((items) => items[runId] ? { ...items, [runId]: { ...items[runId], run: stopped } } : items)
+      const stopping = { ...current, statusText: 'Stopping', done: false }
+      controller.current.replaceRun(runId, stopping)
+      setRuns((items) => items[runId] ? { ...items, [runId]: { ...items[runId], run: stopping } } : items)
       const messageId = runs[runId]?.messageId
-      if (messageId) updateMessage(messageId, { run: stopped })
+      if (messageId) updateMessage(messageId, { run: stopping })
     }
     // Stay subscribed until the server's canonical terminal event.
     // Cancellation can flush final output, usage, tool results, and closure
@@ -400,10 +480,10 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   }, [runs, services, updateMessage])
 
   const updateManagedRun = useCallback((runId: string, mutate: (run: AgentRunBlock) => AgentRunBlock) => {
-    const current = runById.current.get(runId)
+    const current = controller.current.get(runId)?.run
     if (!current) return
     const next = mutate(current)
-    runById.current.set(runId, next)
+    controller.current.replaceRun(runId, next)
     setRuns((items) => items[runId] ? { ...items, [runId]: { ...items[runId], run: next } } : items)
     const messageId = runs[runId]?.messageId
     if (messageId) updateMessage(messageId, { run: next })
@@ -486,19 +566,117 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
     // the message instead of overwriting its decision status optimistically.
   }, [services])
 
+  const preflight = useCallback(async (input: OperationPreflightInput): Promise<OperationPreflightResult> => {
+    const execution = evaluatePermissions(input.grants, {
+      userId: input.userId,
+      agentId: input.agentId,
+      resourceKind: 'project',
+      resourceId: input.projectId,
+      action: 'execute',
+    })
+    if (!input.serverRouting) return { route: input.fallbackRoute, execution }
+    if (!services?.runtime) throw new Error('OpenSaddle runtime is unavailable')
+    const estimate = await services.runtime.estimate(input.task, input.routePreferences)
+    return { route: routeFromEstimate(estimate, input.fallbackRoute), estimate, execution }
+  }, [services])
+
+  const start = useCallback(async (input: StartOperationInput): Promise<StartOperationResult> => {
+    const pendingRun: AgentRunBlock = {
+      id: 'pending',
+      parentRunId: input.parentRunId,
+      kind: input.route.klass === 'ops' ? 'ops' : input.route.klass === 'browser' ? 'browser' : input.route.klass === 'research' ? 'research' : 'coding',
+      executionMode: input.executionMode,
+      title: input.title ?? 'Agent run', model: MODEL_LABEL[input.route.modelKey], reasoningEffort: input.reasoningEffort,
+      harness: HARNESS_LABEL[input.route.harnessKey], runtime: RUNTIME_LABEL[input.route.runtimeKey],
+      statusText: 'Planning', done: false, tools: [], plan: [], artifacts: [],
+    }
+    const placeholder = appendMessage({
+      chatId: input.threadId, role: 'assistant', text: '',
+      routingNote: `Auto · ${pendingRun.model} · ${pendingRun.harness} · ${pendingRun.runtime}`,
+      run: pendingRun,
+    }, { persist: !services?.runtime })
+
+    if (!services?.runtime) {
+      const error = new Error('OpenSaddle runtime is unavailable')
+      updateMessage(placeholder.id, {
+        text: `OpenSaddle could not start this run: ${error.message}`,
+        run: { ...pendingRun, statusText: error.message, done: true, failure: {
+          kind: 'runtime', title: 'Runtime unavailable', message: error.message,
+          recovery: 'Restore the connection and start a new run.', retryable: true,
+        } },
+      })
+      return { status: 'failed', error }
+    }
+
+    try {
+      const started = await services.runtime.startRun({
+        projectId: input.projectId, threadId: input.threadId, sourceMessageId: input.sourceMessageId,
+        assistantMessageId: placeholder.id, task: input.task, agentId: input.agentId,
+        parentRunId: input.parentRunId, sourceIds: input.sourceIds,
+        agentDefinitionPath: input.agentDefinitionPath, skillPaths: input.skillPaths,
+        providerSessionId: input.providerSessionId, providerSessionMode: input.providerSessionMode,
+        providerTurnId: input.providerTurnId, modelKey: input.modelKey, modelId: input.modelId,
+        reasoningEffort: input.reasoningEffort, harnessKey: input.harnessKey, providerKey: input.providerKey,
+        runtimeKey: input.runtimeKey, executionMode: input.executionMode, capabilityIds: input.capabilityIds,
+        repo: input.repo, approvalId: input.approvalId, reviewProviderKey: input.reviewProviderKey,
+      })
+      const mockMode = started.mode === 'mock' || started.mode === 'mock_with_repo'
+      if (mockMode && connection.mode !== 'demo') {
+        throw new Error('Connected OpenSaddle returned a simulated run; no authoritative operation was started')
+      }
+      const actualRoute = started.route
+      const actualRuntime = actualRoute?.runtimeKey ?? input.route.runtimeKey
+      const liveRun: AgentRunBlock = {
+        ...pendingRun,
+        id: started.runId,
+        providerKey: actualRoute?.providerKey ?? input.providerKey,
+        model: modelLabel(actualRoute, input.route.modelKey),
+        reasoningEffort: actualRoute?.reasoningEffort ?? input.reasoningEffort,
+        harness: harnessLabel(actualRoute, input.route.harnessKey),
+        runtime: RUNTIME_LABEL[actualRuntime],
+        statusText: (started.mode ?? (connection.mode === 'demo' ? 'mock' : 'starting')).replace('_', ' '),
+        cost: actualRoute?.cost ?? input.route.cost,
+      }
+      updateMessage(placeholder.id, {
+        runtimeRunId: started.runId,
+        routingNote: `${actualRoute ? 'Server' : connection.mode === 'demo' ? 'Demo' : 'Connected'} · ${liveRun.model} · ${liveRun.harness} · ${liveRun.runtime}`,
+        run: liveRun,
+      })
+      if (mockMode) {
+        await simulateAgentRun(input.task, input.route, (run) => {
+          const simulated = { ...run, id: started.runId, parentRunId: input.parentRunId, title: pendingRun.title, executionMode: input.executionMode }
+          updateMessage(placeholder.id, { text: run.output ?? '', run: simulated })
+          input.onRunUpdate?.(simulated)
+        })
+        return { status: 'simulated', runId: started.runId, route: started.route }
+      }
+      track({ runId: started.runId, threadId: input.threadId, messageId: placeholder.id, initialRun: liveRun, initialText: placeholder.text })
+      return { status: 'started', runId: started.runId, route: started.route }
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error(String(cause))
+      updateMessage(placeholder.id, {
+        text: `I couldn’t start the agent because its execution environment is unavailable. ${error.message}`,
+        run: { ...pendingRun, statusText: error.message, done: true, failure: {
+          kind: 'runtime', title: 'Run could not start', message: error.message,
+          recovery: 'Restore the runtime connection and try again.', retryable: true,
+        } },
+      })
+      return { status: 'failed', error }
+    }
+  }, [appendMessage, connection.mode, services, track, updateMessage])
+
   const getForThread = useCallback(
     (threadId: string) => Object.values(runs).filter((run) => run.threadId === threadId),
     [runs],
   )
 
   useEffect(() => () => {
-    for (const unsubscribe of subscriptions.current.values()) unsubscribe()
-    subscriptions.current.clear()
+    controller.current.dispose()
   }, [])
 
   const value = useMemo<RunRegistryApi>(
-    () => ({ runs, track, stop, pause, resume, retry, steer, queue, updateQueue, respond, getForThread }),
-    [getForThread, pause, queue, respond, resume, retry, runs, steer, stop, track, updateQueue],
+    () => ({ runs, track, stop, pause, resume, retry, steer, queue, updateQueue, respond, getForThread, preflight, start }),
+    [getForThread, pause, preflight, queue, respond, resume, retry, runs, start, steer, stop, track, updateQueue],
   )
   return <RunRegistryContext.Provider value={value}>{children}</RunRegistryContext.Provider>
 }

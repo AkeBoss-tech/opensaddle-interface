@@ -72,7 +72,6 @@ export function initServices(opts: {
       const baseUrl = connection.baseUrl
       const token = connection.token
       const getUserId = opts.getCurrentUserId ?? (() => opts.currentUserId)
-      const allowFallback = connection.mode === 'demo' || connection.allowMockFallback
       let backendAvailable = false
       let backendMode: 'local' | 'company' | undefined
       let modelProvider: string | undefined
@@ -127,7 +126,9 @@ export function initServices(opts: {
           ? new OpenSaddleRuntimeClient(baseUrl, new MockRuntimeClient(), {
             token,
             getUserId,
-            allowFallback,
+            // Connected mode is authoritative. Demo mode selects the mock
+            // client directly and never reaches this connected client.
+            allowFallback: false,
           })
           : new MockRuntimeClient()
       const workspace = backendAvailable && (backendCapabilities.size === 0 || backendCapabilities.has('workspace'))
