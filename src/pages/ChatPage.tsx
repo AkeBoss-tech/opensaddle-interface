@@ -17,6 +17,8 @@ import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources 
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
 import { buildPlanRevision } from '../features/thread/planRevision'
 import { selectPublishFlowStep } from '../features/git/publishFlow'
+import { EvidenceInspector } from '../features/evidence/EvidenceInspector'
+import { adaptRunEvidencePacket, applyEvidencePolicy, EVIDENCE_SCHEMA_VERSION, type EvidencePresentation } from '../features/evidence'
 import { ArtifactCard, EntityPicker, MessageText, ReactionBar, type Reaction } from '../ui'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
@@ -1159,6 +1161,28 @@ export function ChatPage() {
   const repository = projectSources.find((source) => source.kind === 'github')
   const repositoryPath = repository?.folderPath ?? project.local?.rootPath
   const relationEvents = managedRuns.flatMap((managed) => managed.lastEvent ? [managed.lastEvent] : [])
+  const evidencePresentation = useMemo<EvidencePresentation>(() => {
+    if (!latestRun) {
+      return {
+        schemaVersion: EVIDENCE_SCHEMA_VERSION,
+        id: `thread-${chat?.id ?? 'unknown'}-evidence`,
+        generatedAt: Date.now(),
+        citations: [],
+        conflicts: [],
+        gaps: [],
+        lineage: [],
+        omissions: [],
+        errors: [],
+      }
+    }
+    const packet = adaptRunEvidencePacket({
+      run: latestRun,
+      projectSources,
+      events: relationEvents,
+      generatedAt: Date.now(),
+    })
+    return applyEvidencePolicy(packet, { defaultEffect: 'allow' })
+  }, [chat?.id, latestRun, projectSources, relationEvents])
   const childRuns = rootRun ? selectRelatedRuns({
     parentRunId: rootRun.id,
     runs: [
@@ -2326,6 +2350,7 @@ export function ChatPage() {
             </div>
             {itab !== 'overview' && <div className="inspector-tabs">
               {[
+                ['evidence', 'Evidence'],
                 ['changes', 'Changes'],
                 ['checks', 'Checks'],
                 ['activity', 'Activity'],
@@ -2612,6 +2637,13 @@ export function ChatPage() {
 
                 <section className="tf-state-card">
                   <div className="tf-state-heading"><span>Sources</span><Icon name="plus" className="icon sm" /></div>
+                  <button className="tf-state-row" onClick={() => selectInspectorTab('evidence')}>
+                    <Icon name="review" className="icon sm" />
+                    <span>Thread evidence</span>
+                    <small>{evidencePresentation.citations.length
+                      ? `${evidencePresentation.citations.length} citation${evidencePresentation.citations.length === 1 ? '' : 's'}`
+                      : evidencePresentation.gaps.length ? `${evidencePresentation.gaps.length} gap${evidencePresentation.gaps.length === 1 ? '' : 's'}` : 'No citations'}</small>
+                  </button>
                   {!!usedSources.length && <div className="tf-state-sublabel">Used in this run</div>}
                   <UsedSourcesList sources={usedSources.slice(0, 5)} onOpenSource={(source) => {
                     if (source.url) window.open(source.url, '_blank', 'noopener,noreferrer')
@@ -2693,6 +2725,9 @@ export function ChatPage() {
                   <button className="tf-state-view-all" onClick={() => selectInspectorTab('activity')}>View activity</button>
                 </section>
               </div>
+            )}
+            {itab === 'evidence' && (
+              <div className="ipanel active"><EvidenceInspector presentation={evidencePresentation} /></div>
             )}
             {itab === 'changes' && (
               <div className="ipanel active"><div className="inspector-section" style={{ borderTop: 0 }}>
