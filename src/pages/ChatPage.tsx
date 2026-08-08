@@ -352,7 +352,7 @@ export function ChatPage() {
   const [channelView, setChannelView] = useState<'messages' | 'canvas' | 'files'>('messages')
   const [channelSearchOpen, setChannelSearchOpen] = useState(false)
   const [channelSearch, setChannelSearch] = useState('')
-  const [channelPanel, setChannelPanel] = useState<'members' | 'details' | null>(null)
+  const [channelPanel, setChannelPanel] = useState<'members' | 'details' | 'evidence' | null>(null)
   const [channelAddOpen, setChannelAddOpen] = useState(false)
   const [replyingTo, setReplyingTo] = useState<{ id: string; name: string } | null>(null)
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null)
@@ -1702,7 +1702,7 @@ export function ChatPage() {
                     {message.artifactRefs?.map((artifact) => <ArtifactCard key={artifact.id} artifact={artifact} onActivate={() => toast(`${artifact.kind} opened`, artifact.title)} />)}
                     {'lightHtml' in message && message.lightHtml && <div className="slack-agent-card" dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.lightHtml) }} />}
                     {'run' in message && message.run && (
-                      <button className="slack-run-card" onClick={() => openInspector()}>
+                      <button className="slack-run-card" onClick={() => setChannelPanel('evidence')}>
                         <Icon name={message.run.done ? 'check' : 'activity'} />
                         <span><strong>{message.run.title}</strong><small>{message.run.statusText} · Open agent thread</small></span>
                         <Icon name="forward" className="icon sm" />
@@ -1764,9 +1764,11 @@ export function ChatPage() {
         )}
 
         {channelPanel && (
-          <aside className="slack-channel-panel" aria-label={channelPanel === 'members' ? 'Channel members' : 'Channel details'}>
-            <header><strong>{channelPanel === 'members' ? 'People & agents' : 'Channel details'}</strong><button onClick={() => setChannelPanel(null)}>×</button></header>
-            {channelPanel === 'members' ? (
+          <aside className="slack-channel-panel" aria-label={channelPanel === 'members' ? 'Channel members' : channelPanel === 'evidence' ? 'Thread evidence' : 'Channel details'}>
+            <header><strong>{channelPanel === 'members' ? 'People & agents' : channelPanel === 'evidence' ? 'Thread evidence' : 'Channel details'}</strong><button aria-label="Close channel panel" onClick={() => setChannelPanel(null)}>×</button></header>
+            {channelPanel === 'evidence' ? (
+              <EvidenceInspector presentation={evidencePresentation} />
+            ) : channelPanel === 'members' ? (
               <div className="slack-member-list">
                 {data.members.slice(0, 5).map((member) => <button key={member.id}><span>{member.initials}</span><div><strong>{member.name}</strong><small>Team member</small></div></button>)}
                 {channelAgents.map((agent) => <button key={agent.id}><span className="agent"><Icon name="spark" className="icon xs" /></span><div><strong>{agent.name}</strong><small>AI agent · available</small></div></button>)}

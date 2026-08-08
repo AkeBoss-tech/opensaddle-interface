@@ -78,7 +78,7 @@ test('renders versioned authority, freshness, lineage, issues, and semantic navi
     'Lineage',
     'derived from',
     'Policy omissions',
-    '2 omitted',
+    'Evidence omitted',
     'Evidence errors',
   ]) assert.match(html, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 
