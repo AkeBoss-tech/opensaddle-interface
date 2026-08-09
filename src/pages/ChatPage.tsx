@@ -18,7 +18,7 @@ import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition 
 import { buildPlanRevision } from '../features/thread/planRevision'
 import { selectPublishFlowStep } from '../features/git/publishFlow'
 import { EvidenceInspector } from '../features/evidence/EvidenceInspector'
-import { adaptRunEvidencePacket, applyEvidencePolicy, EVIDENCE_SCHEMA_VERSION, type EvidencePresentation } from '../features/evidence'
+import { adaptRunEvidencePacket, applyEvidencePolicy, EVIDENCE_SCHEMA_VERSION, selectEvidenceRun, type EvidencePresentation } from '../features/evidence'
 import { ArtifactCard, EntityPicker, MessageText, ReactionBar, type Reaction } from '../ui'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
@@ -353,12 +353,15 @@ export function ChatPage() {
   const [channelSearchOpen, setChannelSearchOpen] = useState(false)
   const [channelSearch, setChannelSearch] = useState('')
   const [channelPanel, setChannelPanel] = useState<'members' | 'details' | 'evidence' | null>(null)
+  const [channelEvidenceRunId, setChannelEvidenceRunId] = useState<string | null>(null)
   const [channelAddOpen, setChannelAddOpen] = useState(false)
   const [replyingTo, setReplyingTo] = useState<{ id: string; name: string } | null>(null)
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null)
   const [channelReactions, setChannelReactions] = useState<Record<string, Reaction[]>>({})
   const [savedChannelMessages, setSavedChannelMessages] = useState<Set<string>>(new Set())
   const channelComposerRef = useRef<HTMLTextAreaElement>(null)
+  const channelPanelRef = useRef<HTMLElement>(null)
+  const channelPanelReturnFocusRef = useRef<HTMLElement | null>(null)
   const attachRef = useRef<HTMLInputElement>(null)
   const persistInspector = (state: Partial<ThreadInspectorState>) => {
     const next = {
@@ -1161,6 +1164,10 @@ export function ChatPage() {
   const repository = projectSources.find((source) => source.kind === 'github')
   const repositoryPath = repository?.folderPath ?? project.local?.rootPath
   const relationEvents = managedRuns.flatMap((managed) => managed.lastEvent ? [managed.lastEvent] : [])
+  const channelEvidenceRun = selectEvidenceRun(
+    messages.flatMap((message) => message.run ? [message.run] : []),
+    channelEvidenceRunId,
+  )
   const evidencePresentation = useMemo<EvidencePresentation>(() => {
     if (!latestRun) {
       return {
@@ -1183,6 +1190,43 @@ export function ChatPage() {
     })
     return applyEvidencePolicy(packet, { defaultEffect: 'allow' })
   }, [chat?.id, latestRun, projectSources, relationEvents])
+  const channelEvidencePresentation = useMemo<EvidencePresentation>(() => {
+    if (!channelEvidenceRun) {
+      return {
+        schemaVersion: EVIDENCE_SCHEMA_VERSION,
+        id: `thread-${chat?.id ?? 'unknown'}-channel-evidence`,
+        generatedAt: Date.now(),
+        citations: [],
+        conflicts: [],
+        gaps: [],
+        lineage: [],
+        omissions: [],
+        errors: [],
+      }
+    }
+    return applyEvidencePolicy(adaptRunEvidencePacket({
+      run: channelEvidenceRun,
+      projectSources,
+      events: relationEvents,
+      generatedAt: Date.now(),
+    }), { defaultEffect: 'allow' })
+  }, [channelEvidenceRun, chat?.id, projectSources, relationEvents])
+
+  const closeChannelPanel = () => {
+    const returnFocus = channelPanel === 'evidence' ? channelPanelReturnFocusRef.current : null
+    setChannelPanel(null)
+    setChannelEvidenceRunId(null)
+    if (returnFocus) window.requestAnimationFrame(() => returnFocus.focus())
+  }
+
+  useEffect(() => {
+    if (channelPanel !== 'evidence') return
+    if (!channelEvidenceRun) {
+      closeChannelPanel()
+      return
+    }
+    window.requestAnimationFrame(() => channelPanelRef.current?.focus())
+  }, [channelPanel, channelEvidenceRun]) // eslint-disable-line react-hooks/exhaustive-deps
   const childRuns = rootRun ? selectRelatedRuns({
     parentRunId: rootRun.id,
     runs: [
@@ -1702,9 +1746,13 @@ export function ChatPage() {
                     {message.artifactRefs?.map((artifact) => <ArtifactCard key={artifact.id} artifact={artifact} onActivate={() => toast(`${artifact.kind} opened`, artifact.title)} />)}
                     {'lightHtml' in message && message.lightHtml && <div className="slack-agent-card" dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.lightHtml) }} />}
                     {'run' in message && message.run && (
-                      <button className="slack-run-card" onClick={() => setChannelPanel('evidence')}>
+                      <button className="slack-run-card" onClick={(event) => {
+                        channelPanelReturnFocusRef.current = event.currentTarget
+                        setChannelEvidenceRunId(message.run!.id)
+                        setChannelPanel('evidence')
+                      }}>
                         <Icon name={message.run.done ? 'check' : 'activity'} />
-                        <span><strong>{message.run.title}</strong><small>{message.run.statusText} · Open agent thread</small></span>
+                        <span><strong>{message.run.title}</strong><small>{message.run.statusText} · View run evidence</small></span>
                         <Icon name="forward" className="icon sm" />
                       </button>
                     )}
@@ -1764,10 +1812,20 @@ export function ChatPage() {
         )}
 
         {channelPanel && (
-          <aside className="slack-channel-panel" aria-label={channelPanel === 'members' ? 'Channel members' : channelPanel === 'evidence' ? 'Thread evidence' : 'Channel details'}>
-            <header><strong>{channelPanel === 'members' ? 'People & agents' : channelPanel === 'evidence' ? 'Thread evidence' : 'Channel details'}</strong><button aria-label="Close channel panel" onClick={() => setChannelPanel(null)}>×</button></header>
+          <aside
+            ref={channelPanelRef}
+            className="slack-channel-panel"
+            aria-label={channelPanel === 'members' ? 'Channel members' : channelPanel === 'evidence' ? 'Run evidence' : 'Channel details'}
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') return
+              event.preventDefault()
+              closeChannelPanel()
+            }}
+          >
+            <header><strong>{channelPanel === 'members' ? 'People & agents' : channelPanel === 'evidence' ? 'Run evidence' : 'Channel details'}</strong><button aria-label="Close channel panel" onClick={closeChannelPanel}>×</button></header>
             {channelPanel === 'evidence' ? (
-              <EvidenceInspector presentation={evidencePresentation} />
+              <EvidenceInspector presentation={channelEvidencePresentation} />
             ) : channelPanel === 'members' ? (
               <div className="slack-member-list">
                 {data.members.slice(0, 5).map((member) => <button key={member.id}><span>{member.initials}</span><div><strong>{member.name}</strong><small>Team member</small></div></button>)}
