@@ -179,6 +179,7 @@ test('snapshots exactly match the accepted OpenSaddle and KRAIL bytes', async ()
     ['src/features/investigation/domain/snapshots/opensaddle.grounded-investigation.v1/README.md', '8b4379bfdb8dd0150da25c635d24515cbdd657f85c400d168eef51562bcfd8d1'],
     ['src/features/investigation/domain/snapshots/opensaddle.grounded-investigation.v1/schema.json', '322f7724d6f855a5cc9e95f481eff7fa21f8c5f4980bee15094fe77c05f7ed60'],
     ['src/features/investigation/domain/snapshots/opensaddle.grounded-investigation.v1/fixtures/golden.json', 'b45ad5d3f434c748d8f4ba8ee252634dd80fdd06f2002feeb975fa6730bf7ffa'],
+    ['src/features/investigation/domain/snapshots/opensaddle.grounded-investigation.v1/fixtures/phase2-conformance.json', '0b308af6b2afa524fe48dd3411775432924288b1d13c28c8f7af04b291a7da8f'],
     ['src/features/investigation/domain/snapshots/krail.context-brief.v1/bundle.json', 'e6baed1891e5451aa4598e75d3b8fc93595ae8dc98f1b080c0f23d9c10eae434'],
     ['src/features/investigation/domain/snapshots/krail.context-brief.v1/manifest.json', 'b687da9caa99f690f439c84aaf3b767596d4005b678599f1e61a9ad3aed81cff'],
   ])

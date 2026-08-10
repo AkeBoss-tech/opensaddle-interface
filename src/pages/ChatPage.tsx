@@ -19,6 +19,7 @@ import { buildPlanRevision } from '../features/thread/planRevision'
 import { selectPublishFlowStep } from '../features/git/publishFlow'
 import { EvidenceInspector } from '../features/evidence/EvidenceInspector'
 import { adaptRunEvidencePacket, applyEvidencePolicy, EVIDENCE_SCHEMA_VERSION, selectEvidenceRun, type EvidencePresentation } from '../features/evidence'
+import { GroundedInvestigationThread, useGroundedInvestigation } from '../features/investigation'
 import { ArtifactCard, EntityPicker, MessageText, ReactionBar, type Reaction } from '../ui'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
@@ -256,6 +257,13 @@ export function ChatPage() {
   const durableRunConfigKey = JSON.stringify(chat?.runConfig ?? null)
   const continuationAction = chat?.continuation?.mode === 'fork' ? 'Fork' : 'Resume'
   const project = data.projects.find((p) => p.id === chat?.projectId) ?? data.projects.find((p) => p.id === data.activeProjectId) ?? data.projects[0]
+  const investigationId = useMemo(() => new URLSearchParams(location.search).get('investigation'), [location.search])
+  const groundedInvestigation = useGroundedInvestigation({
+    investigationId,
+    baseUrl: connection.baseUrl,
+    userId: data.currentUserId,
+    token: connection.token,
+  })
   const chatAgent = data.agents.find((agent) => agent.id === chat?.agentId)
   const agentDefinitionPath = chatAgent?.definitionPath?.startsWith('.opensaddle/agents/')
     ? chatAgent.definitionPath
@@ -1932,7 +1940,7 @@ export function ChatPage() {
             </div>
           )}
           <div className="chat-scroll" ref={transcript.containerRef} onScroll={transcript.onScroll}>
-            {!messages.length && (
+            {!messages.length && !groundedInvestigation && (
               <div className="welcome">
                 <div className="welcome-logo"><Icon name="saddle" className="icon xl" /></div>
                 <h1>What should we build?</h1>
@@ -1955,6 +1963,19 @@ export function ChatPage() {
                   ))}
                 </div>
               </div>
+            )}
+
+            {groundedInvestigation && (
+              <GroundedInvestigationThread
+                snapshot={groundedInvestigation.snapshot}
+                proposal={groundedInvestigation.proposal}
+                proposalLoading={groundedInvestigation.proposalLoading}
+                proposalError={groundedInvestigation.proposalError}
+                onRetry={groundedInvestigation.retry}
+                onCancel={groundedInvestigation.cancel}
+                onReconnect={groundedInvestigation.reconnect}
+                onSavePlan={groundedInvestigation.savePlan}
+              />
             )}
 
             <div className={`messages ${messages.length ? 'active' : ''}`}>

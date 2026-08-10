@@ -36,6 +36,7 @@ import './styles/app.css'
 import './styles/thread-first.css'
 import './styles/liquid-glass.css'
 import './features/evidence/evidence.css'
+import './features/investigation/components/investigation.css'
 
 const IconPacksPage = lazy(() => import('./pages/IconPacksPage').then((module) => ({ default: module.IconPacksPage })))
 
