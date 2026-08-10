@@ -30,6 +30,10 @@ export function validateEditChanges(capability: EditCapability, changes: readonl
       continue
     }
     const value = change.kind === 'json_patch' && change.op === 'remove' ? undefined : change.value
+    if (change.kind === 'json_patch' && change.op !== 'remove' && change.value === undefined) {
+      issues.push({ path: field.path, code: 'required', message: 'This patch operation requires a value.' })
+      continue
+    }
     if (value === undefined) {
       if (field.validation.required) issues.push({ path: field.path, code: 'required', message: 'A required value cannot be removed.' })
       continue
@@ -125,6 +129,7 @@ export function createEditSession(input: CreateEditSessionInput): EditSession {
 }
 
 export function replaceEditChanges(session: EditSession, capability: EditCapability, changes: readonly EditChange[]): EditSession {
+  if (session.state !== 'draft' && session.state !== 'ready') throw new EditingUnavailableError('validation_failed')
   const next = retainAllowedChanges(capability, changes)
   const validation = [
     ...(changes.length === next.length ? [] : [{ code: 'unavailable', message: 'A change targets an unavailable field.' } as const]),
@@ -146,6 +151,7 @@ export function markEditSessionStale(
   latest: EditSession['base'],
   canRebase: boolean,
 ): EditSession {
+  if (session.state === 'submitted' || session.state === 'discarded') throw new EditingUnavailableError('validation_failed')
   return Object.freeze({
     ...session,
     state: 'draft',
@@ -159,11 +165,19 @@ export function rebaseEditSession(
   latest: EditSession['base'],
   conflictingPaths: readonly string[] = [],
 ): EditSession {
+  if (session.state === 'submitted' || session.state === 'discarded') throw new EditingUnavailableError('validation_failed')
   const visiblePaths = new Set(capability.fields.map((field) => field.path))
   const safeConflicts = Object.freeze(conflictingPaths.filter((path) => visiblePaths.has(path)))
+  const validation = Object.freeze([
+    ...session.validation.filter((issue) => issue.code === 'unavailable' && issue.path === undefined),
+    ...validateEditChanges(capability, session.changes),
+  ])
   return Object.freeze({
     ...session,
     base: latest,
+    state: safeConflicts.length === 0 && validation.length === 0 ? 'ready' : 'draft',
+    validation,
+    diff: buildEditDiff(capability, session.changes),
     conflict: safeConflicts.length > 0
       ? Object.freeze({ status: 'conflicted', latest, paths: safeConflicts })
       : Object.freeze({ status: 'current' }),
@@ -171,6 +185,7 @@ export function rebaseEditSession(
 }
 
 export function undoEditChanges(session: EditSession, capability: EditCapability): EditSession {
+  if (session.state !== 'draft' && session.state !== 'ready') throw new EditingUnavailableError('validation_failed')
   const previous = session.undoStack.at(-1)
   if (!previous) return session
   const validation = validateEditChanges(capability, previous)

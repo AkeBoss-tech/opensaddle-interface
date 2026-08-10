@@ -15,8 +15,34 @@ function containsAll(actual: readonly string[], required: readonly string[]): bo
   return required.every((item) => values.has(item))
 }
 
-function commandId(session: EditSession): string {
-  return `edit:${session.sessionId}:${session.base.digest}`
+function normalizedChangeSet(changes: EditSession['changes']): string {
+  return JSON.stringify(changes.map((change) => change.kind === 'field'
+    ? ['field', change.path, change.value]
+    : ['json_patch', change.op, change.path, change.op === 'remove' ? null : change.value]))
+}
+
+function changeSetFingerprint(changes: EditSession['changes']): SharedEditCommand['changeSetFingerprint'] {
+  // Presentation identity only: deliberately named as non-cryptographic and never used as server authority.
+  let fingerprint = 0xcbf29ce484222325n
+  for (const byte of new TextEncoder().encode(normalizedChangeSet(changes))) {
+    fingerprint ^= BigInt(byte)
+    fingerprint = BigInt.asUintN(64, fingerprint * 0x100000001b3n)
+  }
+  return Object.freeze({
+    algorithm: 'presentation-fnv1a64/v1',
+    value: fingerprint.toString(16).padStart(16, '0'),
+    authoritative: false,
+  })
+}
+
+function commandId(session: EditSession, fingerprint: SharedEditCommand['changeSetFingerprint']): string {
+  return `edit:${session.sessionId}:${session.base.digest}:${encodeURIComponent(fingerprint.value)}`
+}
+
+function strongestEffect(effects: readonly EditEffectClass[]): EditEffectClass {
+  if (effects.includes('consequential')) return 'consequential'
+  if (effects.includes('low_risk')) return 'low_risk'
+  return 'draft'
 }
 
 /** Shared projection for human and agent authors. Author kind changes eligibility, never mutation semantics. */
@@ -26,6 +52,7 @@ export function projectEditSubmission(
   livePolicy: LiveEditPolicy,
 ): EditSubmissionProjection {
   if (!capability.available) throw new EditingUnavailableError(capability.availability.code === 'immutable_resource' ? 'immutable_resource' : 'unavailable')
+  if (session.state !== 'ready' || session.conflict.status !== 'current') throw new EditingUnavailableError('validation_failed')
   if (session.validation.length > 0 || session.changes.length === 0) throw new EditingUnavailableError('validation_failed')
   if (session.capabilityId !== capability.capabilityId || session.resource.kind !== capability.resource.kind || session.resource.id !== capability.resource.id) {
     throw new EditingUnavailableError('validation_failed')
@@ -59,21 +86,30 @@ export function projectEditSubmission(
   if (session.author.kind === 'agent' && !session.author.delegatedCapabilityIds.includes(capability.capabilityId)) {
     throw new EditingUnavailableError('delegation_denied')
   }
+  const fingerprint = changeSetFingerprint(session.changes)
   const command: SharedEditCommand = Object.freeze({
     contractVersion: EDITING_CONTRACT_VERSION,
-    commandId: commandId(session),
+    commandId: commandId(session, fingerprint),
     capabilityId: capability.capabilityId,
     resource: capability.resource,
     expected: session.base,
     policyRevision: livePolicy.revision,
     author: session.author,
     changes: session.changes,
+    changeSetFingerprint: fingerprint,
   })
-  if (effects.includes('consequential') || capability.workflow.publishMode === 'proposal_only') {
+  const effectClass = strongestEffect(effects)
+  const proposalReason = effectClass === 'consequential'
+    ? 'consequential_effect'
+    : capability.reversibility.requiresProposal
+      ? 'reversibility_required'
+      : 'workflow_required'
+  if (effectClass === 'consequential' || capability.workflow.publishMode === 'proposal_only' || capability.reversibility.requiresProposal) {
     return Object.freeze({
       kind: 'operation_proposal',
       command,
-      effectClass: 'consequential',
+      effectClass,
+      proposalReason,
       lifecycle: Object.freeze(['proposal', 'approval', 'execution'] as const),
       executionAvailable: false,
       transportAvailable: false,
