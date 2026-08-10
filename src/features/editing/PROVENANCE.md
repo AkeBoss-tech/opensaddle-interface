@@ -4,4 +4,6 @@
 
 No compatible authoritative edit-command or operation-proposal contract was present at the accepted Interface Phase 2 baseline (`792df03cf0659e47e167e5ae71fd0b0c4f20b6be`). Adapters therefore fail closed on unknown variants, project consequential changes only as non-executing proposal intent, and expose no production mutation transport.
 
+The `presentation-fnv1a64/v1` change-set fingerprint is a deterministic, non-cryptographic UI invalidation key. It is explicitly non-authoritative and must never be used as a server digest, integrity proof, freshness check, or authorization input. Immutable alternative workflow kinds are vocabulary only; their availability remains unconfirmed until an authoritative capability descriptor is adapted.
+
 A future backend integration must supply a versioned capability discovery contract, optimistic concurrency semantics for both version and digest, live policy/delegation evaluation, immutable proposal/approval/execution records, and a registered mutation transport. That contract must be adapted at this boundary rather than inferred from this client snapshot.

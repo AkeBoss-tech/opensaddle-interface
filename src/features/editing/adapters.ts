@@ -31,6 +31,7 @@ const SAFE_AVAILABILITY: Readonly<Record<EditAvailabilityCode, SafeAvailability>
   policy_denied: { code: 'policy_denied', message: 'Editing is unavailable under the active policy.' },
   provider_unavailable: { code: 'provider_unavailable', message: 'Editing is temporarily unavailable.' },
   unsupported_resource: { code: 'unsupported_resource', message: 'This resource cannot be edited here.' },
+  unconfirmed_capability: { code: 'unconfirmed_capability', message: 'Availability has not been confirmed.' },
 })
 
 function record(value: unknown): Record<string, unknown> {
@@ -69,6 +70,10 @@ function validation(value: unknown): FieldValidation {
       result[key] = raw
     }
   }
+  if (result.minLength !== undefined && (!Number.isInteger(result.minLength) || result.minLength < 0)) throw new EditingUnavailableError('invalid_snapshot')
+  if (result.maxLength !== undefined && (!Number.isInteger(result.maxLength) || result.maxLength < 0)) throw new EditingUnavailableError('invalid_snapshot')
+  if (result.minLength !== undefined && result.maxLength !== undefined && result.minLength > result.maxLength) throw new EditingUnavailableError('invalid_snapshot')
+  if (result.minimum !== undefined && result.maximum !== undefined && result.minimum > result.maximum) throw new EditingUnavailableError('invalid_snapshot')
   if (source.pattern !== undefined) {
     const pattern = text(source.pattern)
     try { new RegExp(pattern, 'u') } catch { throw new EditingUnavailableError('invalid_snapshot') }
@@ -82,8 +87,12 @@ function field(value: unknown): EditFieldSchema | undefined {
   const source = record(value)
   // Secret and denied field descriptors are dropped wholesale, including their path and validation metadata.
   if (source.sensitivity === 'secret' || source.availability === 'policy_denied') return undefined
+  if (source.sensitivity !== 'normal') throw new EditingUnavailableError('invalid_snapshot')
   if (source.availability !== 'available') throw new EditingUnavailableError('invalid_snapshot')
   const path = text(source.path)
+  const label = text(source.label)
+  const sensitiveName = /(?:^|[\s/_-])(secret|token|password|credential|private[\s_-]?key|api[\s_-]?key)(?:$|[\s/_-])/i
+  if (sensitiveName.test(path) || sensitiveName.test(label)) return undefined
   if (!path.startsWith('/') || path.includes('//') || path.includes('/-') || /(?:^|\/)__proto__(?:\/|$)/.test(path)) {
     throw new EditingUnavailableError('invalid_snapshot')
   }
@@ -93,23 +102,39 @@ function field(value: unknown): EditFieldSchema | undefined {
   if (typeof source.effect_class !== 'string' || !EFFECTS.has(source.effect_class as EditEffectClass)) {
     throw new EditingUnavailableError('invalid_snapshot')
   }
+  const fieldValidation = validation(source.validation ?? {})
+  if (source.value_type !== 'string' && source.value_type !== 'enum' && (
+    fieldValidation.minLength !== undefined
+    || fieldValidation.maxLength !== undefined
+    || fieldValidation.pattern !== undefined
+  )) throw new EditingUnavailableError('invalid_snapshot')
+  if (source.value_type !== 'number' && (
+    fieldValidation.minimum !== undefined
+    || fieldValidation.maximum !== undefined
+  )) throw new EditingUnavailableError('invalid_snapshot')
+  if (source.value_type === 'enum') {
+    if (!fieldValidation.options || fieldValidation.options.length === 0 || new Set(fieldValidation.options).size !== fieldValidation.options.length) {
+      throw new EditingUnavailableError('invalid_snapshot')
+    }
+  } else if (fieldValidation.options !== undefined) {
+    throw new EditingUnavailableError('invalid_snapshot')
+  }
   return Object.freeze({
     path,
-    label: text(source.label),
+    label,
     valueType: source.value_type as FieldValueType,
-    validation: validation(source.validation ?? {}),
+    validation: fieldValidation,
     requiredRoles: stringList(source.required_roles ?? []),
     requiredCapabilities: stringList(source.required_capabilities ?? []),
     effectClass: source.effect_class as EditEffectClass,
   })
 }
 
-function immutableAlternatives(kind: ImmutableResourceKind): readonly ImmutableAlternativeCapability[] {
-  const correction = kind === 'evidence' || kind === 'capture' || kind === 'receipt'
+function immutableAlternatives(): readonly ImmutableAlternativeCapability[] {
   return Object.freeze([
-    { kind: 'annotation', available: true, availability: SAFE_AVAILABILITY.available },
-    { kind: 'correction', available: correction, availability: correction ? SAFE_AVAILABILITY.available : SAFE_AVAILABILITY.unsupported_resource },
-    { kind: 'supersession', available: true, availability: SAFE_AVAILABILITY.available },
+    { kind: 'annotation', available: false, availability: SAFE_AVAILABILITY.unconfirmed_capability },
+    { kind: 'correction', available: false, availability: SAFE_AVAILABILITY.unconfirmed_capability },
+    { kind: 'supersession', available: false, availability: SAFE_AVAILABILITY.unconfirmed_capability },
   ])
 }
 
@@ -131,7 +156,7 @@ export function adaptEditCapabilitySnapshot(value: unknown): EditCapability {
     throw new EditingUnavailableError('invalid_snapshot')
   }
   const available = source.available && !immutable
-  const fields = immutable
+  const fields = immutable || !available
     ? []
     : (() => {
         if (!Array.isArray(source.fields)) throw new EditingUnavailableError('invalid_snapshot')
@@ -157,8 +182,8 @@ export function adaptEditCapabilitySnapshot(value: unknown): EditCapability {
     resource: Object.freeze({ kind, id: text(resource.id) }),
     current: version,
     fields: Object.freeze(fields),
-    requiredRoles: stringList(source.required_roles ?? []),
-    requiredCapabilities: stringList(source.required_capabilities ?? []),
+    requiredRoles: available ? stringList(source.required_roles ?? []) : Object.freeze([]),
+    requiredCapabilities: available ? stringList(source.required_capabilities ?? []) : Object.freeze([]),
     workflow: Object.freeze({
       draftFirst: true,
       publishMode: workflow.publish_mode,
@@ -167,7 +192,7 @@ export function adaptEditCapabilitySnapshot(value: unknown): EditCapability {
     reversibility: Object.freeze({ mode: reversibility.mode, requiresProposal: reversibility.requires_proposal }),
     available,
     availability: immutable ? SAFE_AVAILABILITY.immutable_resource : declaredAvailability,
-    immutableAlternatives: immutable ? immutableAlternatives(kind as ImmutableResourceKind) : Object.freeze([]),
-    policyRevision: text(source.policy_revision),
+    immutableAlternatives: immutable ? immutableAlternatives() : Object.freeze([]),
+    policyRevision: available ? text(source.policy_revision) : 'unavailable',
   })
 }

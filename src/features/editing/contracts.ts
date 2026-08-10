@@ -38,6 +38,7 @@ export type EditAvailabilityCode =
   | 'policy_denied'
   | 'provider_unavailable'
   | 'unsupported_resource'
+  | 'unconfirmed_capability'
 
 /** Safe for display. It cannot include resource values, field names, ids, or policy internals. */
 export interface SafeAvailability {
@@ -198,6 +199,11 @@ export interface SharedEditCommand {
   policyRevision: string
   author: EditAuthor
   changes: readonly EditChange[]
+  changeSetFingerprint: {
+    algorithm: 'presentation-fnv1a64/v1'
+    value: string
+    authoritative: false
+  }
 }
 
 export interface DirectCommitProjection {
@@ -209,7 +215,8 @@ export interface DirectCommitProjection {
 export interface OperationProposalProjection {
   kind: 'operation_proposal'
   command: SharedEditCommand
-  effectClass: 'consequential'
+  effectClass: EditEffectClass
+  proposalReason: 'consequential_effect' | 'workflow_required' | 'reversibility_required'
   lifecycle: readonly ['proposal', 'approval', 'execution']
   executionAvailable: false
   transportAvailable: false
