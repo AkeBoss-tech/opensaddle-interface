@@ -184,6 +184,7 @@ export function GroundedInvestigationThread({ snapshot, proposal, proposalLoadin
   const [saveError, setSaveError] = useState('')
   useEffect(() => setFields(planFields(projection)), [projection])
   const invalidated = isPlanBindingInvalidated(fields, projection)
+  const failedWithoutProjection = !projection && snapshot.lifecycle.phase === 'failed'
   const context = useMemo(() => {
     if (!projection?.contextBrief) return undefined
     try { return presentContextBrief(projection.contextBrief, projection) } catch { return undefined }
@@ -235,7 +236,12 @@ export function GroundedInvestigationThread({ snapshot, proposal, proposalLoadin
         </section>
 
         <ProposalReview proposal={proposal} invalidated={invalidated} loading={proposalLoading} error={proposalError} />
-      </> : <section className="gi-card gi-empty"><h1 id="gi-title">Loading grounded investigation</h1><p>Waiting for the authority-shaped OpenSaddle projection.</p></section>}
+      </> : <section className="gi-card gi-empty">
+        <h1 id="gi-title">{failedWithoutProjection ? 'Grounded investigation unavailable' : 'Loading grounded investigation'}</h1>
+        <p>{failedWithoutProjection
+          ? 'No authority-shaped projection is available. Nothing from another investigation, Thread, or project is shown.'
+          : 'Waiting for the authority-shaped OpenSaddle projection.'}</p>
+      </section>}
     </article>
   )
 }

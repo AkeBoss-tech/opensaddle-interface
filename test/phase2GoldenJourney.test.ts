@@ -35,6 +35,18 @@ const F = 'f'.repeat(64)
 const INV = 'inv_b62283b5cc0dba6da8d060381eb817b3'
 const THREAD = 'thread_b62283b5cc0dba6da8d060381eb817b3'
 
+function assertNoExecutionControls(html: string): void {
+  const interactive = /<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>|<input\b([^>]*)>/gi
+  for (const match of html.matchAll(interactive)) {
+    const attributes = `${match[2] ?? ''} ${match[4] ?? ''}`
+    const accessibleAttributes = [...attributes.matchAll(/\b(?:aria-label|title|value)\s*=\s*"([^"]*)"/gi)]
+      .map((attribute) => attribute[1])
+      .join(' ')
+    const content = (match[3] ?? '').replace(/<[^>]*>/g, ' ')
+    assert.doesNotMatch(`${accessibleAttributes} ${content}`, /\b(?:execute|authorize|approve)\b/i)
+  }
+}
+
 async function acceptedFixtures() {
   const [contextBundle, golden] = await Promise.all([
     readFile('src/features/investigation/domain/snapshots/krail.context-brief.v1/bundle.json', 'utf8'),
@@ -263,7 +275,7 @@ test('golden read-only issue journey resumes one Thread, reviews evidence, edits
     'Versioned source links', 'Editable · not authoritative', 'Resolve issue 184 using only pinned evidence',
     'Governed dry run', 'Approval required', 'Proposal only · no execution', 'this screen has no execute control',
   ]) assert.ok(html.includes(checkpoint), `golden journey omitted ${checkpoint}`)
-  assert.doesNotMatch(html, /<(button|a)[^>]*(execute|authorize|approve)[^>]*>/i)
+  assertNoExecutionControls(html)
   assert.equal('execute' in edited.operationProposal, false)
 })
 
@@ -360,6 +372,39 @@ test('stale Context Brief refresh exposes retry, cancel, unavailable, and versio
     assert.ok(html.includes('Reconnect'))
     assert.equal(html.includes('Retry'), failure.retryable)
   }
+})
+
+test('failed investigation without a projection renders a terminal accessible state and never claims to be loading', () => {
+  const failure = { code: 'unavailable' as const, message: 'OpenSaddle investigation service is unavailable', retryable: true }
+  const html = renderToStaticMarkup(React.createElement(GroundedInvestigationThread, {
+    snapshot: { lifecycle: { phase: 'failed', failure } },
+    ...noops,
+  }))
+
+  for (const expected of [
+    'aria-live="polite"',
+    'OpenSaddle investigation service is unavailable',
+    'Grounded investigation unavailable',
+    'No authority-shaped projection is available.',
+    '<button type="button">Retry</button>',
+    '<button type="button">Reconnect</button>',
+  ]) assert.ok(html.includes(expected), expected)
+  assert.equal(html.includes('Loading grounded investigation'), false)
+  assert.equal(html.includes('Waiting for the authority-shaped OpenSaddle projection.'), false)
+  assert.equal(html.includes('Resolve issue 184 safely'), false)
+  assertNoExecutionControls(html)
+})
+
+test('zero-execution-control guard inspects direct labels and accessible attributes', () => {
+  for (const unsafe of [
+    '<button>Execute</button>',
+    '<button><span>Approve</span></button>',
+    '<a href="#">Authorize</a>',
+    '<button aria-label="Execute operation"><span aria-hidden="true">Run</span></button>',
+    '<a href="#" title="Approve proposal">Review</a>',
+    '<input type="button" value="Authorize" />',
+  ]) assert.throws(() => assertNoExecutionControls(unsafe), /execute|approve|authorize/i)
+  assert.doesNotThrow(() => assertNoExecutionControls('<button type="button">Retry</button><a href="#evidence">Review evidence</a>'))
 })
 
 test('unauthorized evidence is filtered before presentation with one opaque omission and no content, identifier, or count leakage', async () => {
@@ -475,7 +520,7 @@ test('dry-run presentation covers approval, denial, budget, validation, and unav
     assert.ok(html.includes(label))
     assert.ok(html.includes(blockerCode))
     assert.ok(html.includes('Proposal only · no execution'))
-    assert.doesNotMatch(html, /<(button|a)[^>]*(execute|authorize|approve)[^>]*>/i)
+    assertNoExecutionControls(html)
   }
   const unavailableHtml = renderToStaticMarkup(React.createElement(GroundedInvestigationThread, {
     snapshot: { lifecycle: { phase: 'settled', projection }, projection },
@@ -484,7 +529,7 @@ test('dry-run presentation covers approval, denial, budget, validation, and unav
   }))
   assert.match(unavailableHtml, /role="alert"/)
   assert.match(unavailableHtml, /unavailable or restricted/)
-  assert.doesNotMatch(unavailableHtml, /<(button|a)[^>]*(execute|authorize|approve)[^>]*>/i)
+  assertNoExecutionControls(unavailableHtml)
 })
 
 test('objective, Context Brief, evidence links, editable plan, and proposal retain keyboard-accessible semantics', async () => {
