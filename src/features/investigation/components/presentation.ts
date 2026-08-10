@@ -1,4 +1,4 @@
-import type { ContextBriefProjection } from '../domain'
+import type { ContextBriefProjection, InvestigationProjection, InvestigationResourceRef } from '../domain'
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/
 const OPAQUE_OMISSION = 'Additional evidence may exist but is not visible in this authorization context.'
@@ -63,6 +63,18 @@ function resource(value: unknown): ContextResourcePresentation {
       digest: wireDigest(sourceVersion.digest, 'context resource source digest'),
     },
   }
+}
+
+function matchesOuterResource(context: ContextResourcePresentation, outer: InvestigationResourceRef): boolean {
+  return context.issuer === outer.issuer
+    && context.resourceId === outer.resourceId
+    && context.resourceType === outer.resourceType
+    && context.version === outer.version
+    && context.digest === outer.digest.value
+    && context.source.sourceId === outer.source.sourceId
+    && context.source.origin === outer.source.origin
+    && context.source.version === outer.source.version
+    && context.source.digest === outer.source.digest.value
 }
 
 export interface ContextFreshnessPresentation {
@@ -131,9 +143,14 @@ function locator(value: unknown): string {
  * Shapes an already-authorized KRAIL projection into bounded text-only UI data.
  * Provider content and omission cardinality are deliberately not exposed.
  */
-export function presentContextBrief(value: ContextBriefProjection): ContextBriefPresentation {
+export function presentContextBrief(value: ContextBriefProjection, investigation: InvestigationProjection): ContextBriefPresentation {
   const source = object(value, 'context brief')
   if (source.schema_version !== 'krail.context-brief.v1') throw new Error('context brief schema is unsupported')
+  const repository = resource(source.repository)
+  const issue = resource(source.issue)
+  if (!matchesOuterResource(repository, investigation.repository) || !matchesOuterResource(issue, investigation.issue)) {
+    throw new Error('Context Brief is not bound to this investigation')
+  }
   const evidencePacket = object(source.evidence, 'context brief evidence')
   const authorization = object(evidencePacket.authorization, 'context brief evidence authorization')
   if (authorization.shape !== 'authorized_projection') throw new Error('context brief is not an authorized projection')
@@ -169,8 +186,8 @@ export function presentContextBrief(value: ContextBriefProjection): ContextBrief
     schemaVersion: 'krail.context-brief.v1',
     briefDigest: digest(source.brief_digest, 'context brief digest'),
     evaluatedAt: string(source.evaluated_at, 'context brief evaluated_at'),
-    repository: resource(source.repository),
-    issue: resource(source.issue),
+    repository,
+    issue,
     assertions: array(source.assertions, 'context brief assertions', 32).map((item) => {
       const assertion = object(item, 'context assertion')
       return {

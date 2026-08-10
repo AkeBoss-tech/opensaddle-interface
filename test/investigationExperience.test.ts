@@ -7,8 +7,12 @@ import {
   GroundedInvestigationThread,
   adaptInvestigationProjection,
   isPlanBindingInvalidated,
+  operationProposalMatchesProjection,
   presentContextBrief,
   presentOperationProposal,
+  proposalBindingKey,
+  selectBoundInvestigationSnapshot,
+  selectBoundProposalState,
   type InvestigationProjection,
 } from '../src/features/investigation/index.ts'
 
@@ -28,14 +32,11 @@ async function contextBrief() {
 }
 
 function projectionWire(context: Record<string, unknown>, overrides: Record<string, unknown> = {}) {
-  const ref = (type: 'repository' | 'issue', id: string, version: string, value: string) => ({
-    issuer: 'https://knowledge.example.test/provider', resource_id: id, resource_type: type,
-    version, digest: { algorithm: 'sha-256', value },
-    source: { source_id: `source/${id}`, origin: 'git:https://example.test/acme/northstar.git', version, digest: { algorithm: 'sha-256', value } },
-  })
+  const repository = structuredClone(context.repository as Record<string, unknown>)
+  const issue = structuredClone(context.issue as Record<string, unknown>)
   return {
     schema_version: 'opensaddle.grounded-investigation.v1', investigation_id: INV, outcome_thread_id: THREAD,
-    project_id: 'p', repository: ref('repository', 'repository/northstar', 'git:8e4a1f0', A), issue: ref('issue', 'issue/184', 'git:9f7b2c1', B),
+    project_id: 'p', repository, issue,
     query: 'Investigate linux-arm64 verification', status: 'ready', failure: null, attempt: 2,
     context_brief: context,
     plan_draft: { schema_version: 'opensaddle.human-plan-draft.v1', title: 'Verify release', objective: 'Resolve issue 184 safely', steps: ['Inspect exact evidence', 'Verify linux-arm64'], assumptions: ['No external mutation'], authored_by: 'alice' },
@@ -83,7 +84,8 @@ test('shapes Context Brief evidence and policy omissions without leaking counts 
   evidence.authorization.count_precision = 'undisclosed'
   evidence.results[0]!.citations[0]!.content = '<script>restricted provider content</script>'
 
-  const presented = presentContextBrief(context as never)
+  const projection = adaptInvestigationProjection(projectionWire(context))
+  const presented = presentContextBrief(projection.contextBrief!, projection)
   assert.equal(presented.omissions.length, 1)
   assert.equal(JSON.stringify(presented).includes('omitted_count'), false)
   assert.equal(JSON.stringify(presented).includes('restricted provider content'), false)
@@ -101,6 +103,65 @@ test('requires exact proposal binding to project, investigation, Thread, and pla
   assert.throws(() => presentOperationProposal(proposalWire(projection, { protected_input_digest: A }), projection), /not bound/)
   assert.throws(() => presentOperationProposal(proposalWire(projection, { correlation_ids: [projection.investigationId] }), projection), /identity binding/)
   assert.throws(() => presentOperationProposal(proposalWire(projection, { blockers: [{ code: 'execute_now', message: 'unsafe' }] }), projection), /blocker is unsupported/)
+})
+
+test('rejects Context Brief text before presentation when repository or issue binding drifts', async () => {
+  const context = await contextBrief()
+  const projection = adaptInvestigationProjection(projectionWire(context))
+  for (const resourceName of ['repository', 'issue'] as const) {
+    const drifted = structuredClone(context)
+    const resource = drifted[resourceName] as { version: string }
+    resource.version = `git:unbound-${resourceName}`
+    ;(drifted.assertions as Array<{ text: string }>)[0]!.text = 'must never be presented'
+    assert.throws(() => presentContextBrief(drifted as never, projection), /not bound/)
+  }
+})
+
+test('synchronously fences investigation and proposal state by Thread, project, plan, and proposal binding', async () => {
+  const projection = adaptInvestigationProjection(projectionWire(await contextBrief()))
+  const proposal = presentOperationProposal(proposalWire(projection), projection)
+  const settled = { lifecycle: { phase: 'settled' as const, projection }, projection }
+
+  assert.equal(selectBoundInvestigationSnapshot({
+    investigationId: projection.investigationId, expectedThreadId: projection.outcomeThreadId,
+    expectedProjectId: projection.projectId,
+  }, { investigationId: projection.investigationId, snapshot: settled }).projection, projection)
+  assert.equal(selectBoundInvestigationSnapshot({
+    investigationId: projection.investigationId, expectedThreadId: 'thread_other',
+    expectedProjectId: projection.projectId,
+  }, { investigationId: projection.investigationId, snapshot: settled }).lifecycle.phase, 'failed')
+  assert.equal(selectBoundInvestigationSnapshot({
+    investigationId: projection.investigationId, expectedThreadId: projection.outcomeThreadId,
+    expectedProjectId: 'project_other',
+  }, { investigationId: projection.investigationId, snapshot: settled }).lifecycle.phase, 'failed')
+  assert.equal(selectBoundInvestigationSnapshot({
+    investigationId: projection.investigationId, expectedThreadId: null,
+    expectedProjectId: projection.projectId,
+  }, { investigationId: projection.investigationId, snapshot: settled }).lifecycle.phase, 'failed')
+  assert.equal(selectBoundInvestigationSnapshot({
+    investigationId: 'inv_other', expectedThreadId: projection.outcomeThreadId,
+    expectedProjectId: projection.projectId,
+  }, { investigationId: projection.investigationId, snapshot: settled }).lifecycle.phase, 'requesting')
+
+  const binding = proposalBindingKey(projection)
+  assert.ok(binding)
+  assert.deepEqual(selectBoundProposalState(projection, {
+    bindingKey: binding, proposal, loading: false, error: 'old error',
+  }), { proposal, loading: false, error: 'old error' })
+  const nextPlan = { ...projection, planVersion: projection.planVersion + 1, planDigest: A }
+  assert.equal(proposalBindingKey(nextPlan), null)
+  assert.deepEqual(selectBoundProposalState(nextPlan, {
+    bindingKey: binding, proposal, loading: true, error: 'must be fenced',
+  }), { loading: false })
+  assert.equal(operationProposalMatchesProjection(proposal, nextPlan), false)
+  const nextProposal = {
+    ...projection,
+    operationProposal: { ...projection.operationProposal, proposalId: 'proposal_other' },
+  }
+  assert.equal(proposalBindingKey(nextProposal) === binding, false)
+  assert.deepEqual(selectBoundProposalState(nextProposal, {
+    bindingKey: binding, proposal, loading: false, error: 'must be fenced',
+  }), { loading: true })
 })
 
 test('renders accessible grounded investigation, editable human draft, and non-executing proposal details', async () => {

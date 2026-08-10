@@ -186,8 +186,8 @@ export function GroundedInvestigationThread({ snapshot, proposal, proposalLoadin
   const invalidated = isPlanBindingInvalidated(fields, projection)
   const context = useMemo(() => {
     if (!projection?.contextBrief) return undefined
-    try { return presentContextBrief(projection.contextBrief) } catch { return undefined }
-  }, [projection?.contextBrief])
+    try { return presentContextBrief(projection.contextBrief, projection) } catch { return undefined }
+  }, [projection])
   const canSave = Boolean(projection && proposal && fields.title.trim() && fields.objective.trim() && lines(fields.steps).length && invalidated && !saving)
   const save = () => {
     setSaving(true)

@@ -263,6 +263,8 @@ export function ChatPage() {
     baseUrl: connection.baseUrl,
     userId: data.currentUserId,
     token: connection.token,
+    expectedThreadId: chat?.id ?? null,
+    expectedProjectId: chat?.projectId ?? null,
   })
   const chatAgent = data.agents.find((agent) => agent.id === chat?.agentId)
   const agentDefinitionPath = chatAgent?.definitionPath?.startsWith('.opensaddle/agents/')
