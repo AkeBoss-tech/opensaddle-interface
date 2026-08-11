@@ -1,5 +1,5 @@
 /**
- * KRAIL session service — resumable interactive execution bridge.
+ * OpenSaddle session bridge — resumable interactive execution runtime.
  *
  * Owns PTY/session lifecycle, event sequencing, approvals, OpenSaddle run
  * bridging, and browser observation stubs.
@@ -9,7 +9,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { WebSocketServer, type WebSocket } from 'ws'
 
-export type KrailEventType =
+export type SessionBridgeEventType =
   | 'session.created'
   | 'session.attached'
   | 'agent.started'
@@ -31,22 +31,27 @@ export type KrailEventType =
   | 'browser.screenshot'
   | 'session.closed'
 
-export interface KrailEvent {
+export interface SessionBridgeEvent {
   event_id: string
   session_id: string
   run_id: string
   sequence: number
   timestamp: string
-  type: KrailEventType
+  type: SessionBridgeEventType
   payload: Record<string, unknown>
 }
+
+/** @deprecated Use SessionBridgeEventType. */
+export type KrailEventType = SessionBridgeEventType
+/** @deprecated Use SessionBridgeEvent. */
+export type KrailEvent = SessionBridgeEvent
 
 interface Session {
   id: string
   runId: string
   kind: 'pty' | 'browser' | 'opensaddle'
   status: 'running' | 'paused' | 'completed' | 'failed'
-  events: KrailEvent[]
+  events: SessionBridgeEvent[]
   observers: Set<WebSocket>
   child?: ChildProcessWithoutNullStreams
   command?: string
@@ -57,8 +62,8 @@ interface Session {
 const sessions = new Map<string, Session>()
 const DEFAULT_OPENSADDLE = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
 
-function pushEvent(session: Session, type: KrailEventType, payload: Record<string, unknown> = {}) {
-  const event: KrailEvent = {
+function pushEvent(session: Session, type: SessionBridgeEventType, payload: Record<string, unknown> = {}) {
+  const event: SessionBridgeEvent = {
     event_id: `evt_${randomUUID().slice(0, 10)}`,
     session_id: session.id,
     run_id: session.runId,
@@ -179,7 +184,7 @@ async function bridgeOpenSaddle(input: {
         if (!line) continue
         try {
           const evt = JSON.parse(line.slice(6)) as { type: string; payload: Record<string, unknown> }
-          const type = (evt.type as KrailEventType) || 'agent.output.delta'
+          const type = (evt.type as SessionBridgeEventType) || 'agent.output.delta'
           pushEvent(session, type, { ...evt.payload, bridged: true })
           if (type === 'agent.completed' || type === 'agent.failed' || type === 'session.closed') {
             if (type !== 'session.closed') session.status = type === 'agent.completed' ? 'completed' : 'failed'
@@ -220,7 +225,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.end(raw)
 }
 
-export function startKrailServer(port = 8787) {
+export function startSessionBridgeServer(port = 8787) {
   const server = createServer(async (req, res) => {
     if (!req.url || !req.method) return sendJson(res, 400, { error: 'bad request' })
     if (req.method === 'OPTIONS') return sendJson(res, 204, {})
@@ -228,7 +233,7 @@ export function startKrailServer(port = 8787) {
     if (req.method === 'GET' && req.url === '/health') {
       return sendJson(res, 200, {
         ok: true,
-        service: 'krail',
+        service: 'session-bridge',
         sessions: sessions.size,
         opensaddle: DEFAULT_OPENSADDLE,
       })
@@ -330,12 +335,15 @@ export function startKrailServer(port = 8787) {
   })
 
   server.listen(port, '127.0.0.1', () => {
-    console.log(`krail listening on http://127.0.0.1:${port}`)
+    console.log(`session bridge listening on http://127.0.0.1:${port}`)
   })
 
   return server
 }
 
-if (process.argv[1] && /krail.*server\.(ts|js)$/.test(process.argv[1].replace(/\\/g, '/'))) {
-  startKrailServer(Number(process.env.KRAIL_PORT ?? 8787))
+/** @deprecated Import startSessionBridgeServer. */
+export const startKrailServer = startSessionBridgeServer
+
+if (process.argv[1] && /session-bridge.*server\.(ts|js)$/.test(process.argv[1].replace(/\\/g, '/'))) {
+  startSessionBridgeServer(Number(process.env.SESSION_BRIDGE_PORT ?? process.env.KRAIL_PORT ?? 8787))
 }

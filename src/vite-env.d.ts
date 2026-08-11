@@ -35,7 +35,7 @@ interface Navigator {
 interface Window {
   opensaddleDesktop?: boolean
   opensaddle?: {
-    getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; krailUrl: string; clis: string[] }>
+    getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; sessionBridgeUrl: string; /** @deprecated */ krailUrl: string; clis: string[] }>
     pickRepository: () => Promise<string | null>
     inspectProject: (path: string) => Promise<{
       rootPath: string

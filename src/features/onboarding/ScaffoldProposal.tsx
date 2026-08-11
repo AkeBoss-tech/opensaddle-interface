@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import type { WorkspaceAgentProposal, WorkspaceChannelProposal, WorkspaceConnectorProposal, WorkspaceMemberProposal, WorkspacePermissionProposal, WorkspaceProposal, WorkspaceProposalItem } from '../../types'
-import { StateBadge } from '../../ui'
-import '../../styles/scaffold.css'
+import { StateBadge } from '../../ui/StateBadge'
+import type { ProjectMemoryInitPlan, ProjectMemoryOperationStage } from '../../services/contracts'
+import { MEMORY_PROPOSAL_ID } from '../memory/projectMemory'
 
 type ProposalGroup = 'channels' | 'members' | 'agents' | 'connectors' | 'permissions'
 type CustomProposalGroup = Exclude<ProposalGroup, 'connectors'>
@@ -35,16 +36,25 @@ function countLabel(count: number, noun: string) {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
-export function ScaffoldProposal({ proposal, onCreate, creating = false }: {
+export function ScaffoldProposal({ proposal, onCreate, creating = false, memory }: {
   proposal: WorkspaceProposal
   onCreate: (selectedIds: Set<string>) => void
   creating?: boolean
+  memory?: {
+    loading: boolean
+    plan?: ProjectMemoryInitPlan | null
+    error?: string | null
+    stage?: ProjectMemoryOperationStage | null
+    onRetry?: () => void
+  }
 }) {
+  const offersMemory = memory !== undefined
   const initialSelection = useMemo(() => new Set([
     ...proposal.channels, ...proposal.members, ...proposal.agents, ...proposal.permissions,
   ].filter((item) => item.recommended).map((item) => item.id).concat(
     proposal.connectors.filter((connector) => connector.status === 'detected' && connector.recommended).flatMap((connector) => connector.scopes.map((scope) => scope.id)),
-  )), [proposal])
+    ...(offersMemory ? [MEMORY_PROPOSAL_ID] : []),
+  )), [offersMemory, proposal])
   const [selectedIds, setSelectedIds] = useState(initialSelection)
   const [customItems, setCustomItems] = useState<Record<CustomProposalGroup, CustomItem[]>>({ channels: [], members: [], agents: [], permissions: [] })
   const reviewProposal = useMemo(() => ({
@@ -60,9 +70,11 @@ export function ScaffoldProposal({ proposal, onCreate, creating = false }: {
       ? reviewProposal.connectors.filter((connector) => connector.scopes.some((scope) => selectedIds.has(scope.id))).length
       : reviewProposal[key].filter((item) => selectedIds.has(item.id)).length,
   ])) as Record<ProposalGroup, number>, [reviewProposal, selectedIds])
-  const total = GROUPS.reduce((sum, { key }) => sum + selectedCounts[key], 0)
+  const memorySelected = Boolean(memory && selectedIds.has(MEMORY_PROPOSAL_ID))
+  const total = GROUPS.reduce((sum, { key }) => sum + selectedCounts[key], 0) + (memorySelected ? 1 : 0)
   const hasInvalidSelectedCustom = GROUPS.some(({ key }) => reviewProposal[key].some((item) =>
     selectedIds.has(item.id) && item.custom && !isCompleteCustomItem(item)))
+  const memoryBlocked = memorySelected && (memory?.loading || Boolean(memory?.error) || !memory?.plan || (!memory.plan.canApply && memory.plan.state !== 'already_configured'))
   const toggle = (id: string) => setSelectedIds((current) => {
     const next = new Set(current)
     if (next.has(id)) next.delete(id)
@@ -113,6 +125,20 @@ export function ScaffoldProposal({ proposal, onCreate, creating = false }: {
           </div>}
         </section>
       })}
+      {memory && <section className="scaffold-group" aria-labelledby="scaffold-memory">
+        <header className="scaffold-group__header"><div><h3 id="scaffold-memory">Project Memory</h3><p className="scaffold-group__disclosure">Managed by the OpenSaddle backend; the browser stores only this status projection.</p></div></header>
+        <div className="scaffold-group__rows"><div className="scaffold-row">
+          <input aria-label="Select Project Memory" type="checkbox" checked={memorySelected} disabled={memory.loading || memory.plan?.state === 'already_configured'} onChange={() => toggle(MEMORY_PROPOSAL_ID)} />
+          <span className="scaffold-row__copy"><strong>{memory.plan?.state === 'already_configured' ? 'Existing Project Memory' : 'Enable Project Memory'}</strong>
+            <small>{memory.loading ? 'Inspecting authoritative memory state…' : memory.error ? memory.error : memory.plan?.summary ?? 'Project Memory planning is unavailable.'}</small>
+            {memory.plan?.effects.length ? <ul>{memory.plan.effects.map((effect) => <li key={effect.id}><code>{effect.kind}</code> {effect.target} — {effect.description}</li>)}</ul> : null}
+            {memory.plan?.warnings.map((warning) => <small key={warning}>Warning: {warning}</small>)}
+            {memory.stage && <small role={memory.stage === 'failed' ? 'alert' : 'status'}>Setup: registering → initializing memory → indexing → ready · current: {memory.stage.replaceAll('_', ' ')}</small>}
+          </span>
+          {memory.error && memory.onRetry && <button className="tiny-btn" type="button" onClick={memory.onRetry}>Retry preview</button>}
+          <StateBadge state={memory.error ? 'blocked' : memory.plan?.state === 'already_configured' ? 'done' : 'actionable'} />
+        </div></div>
+      </section>}
     </div>
 
     <footer className="scaffold-proposal__footer">
@@ -123,9 +149,10 @@ export function ScaffoldProposal({ proposal, onCreate, creating = false }: {
           selectedCounts.agents && countLabel(selectedCounts.agents, 'agent'),
           selectedCounts.connectors && countLabel(selectedCounts.connectors, 'connector'),
           selectedCounts.permissions && countLabel(selectedCounts.permissions, 'permission'),
+          memorySelected && 'Project Memory',
         ].filter(Boolean).join(', ')
         : 'Select at least one item to create.'}</p>
-      <button className="primary-btn" disabled={!total || hasInvalidSelectedCustom || creating} onClick={() => onCreate(new Set(selectedIds))}>{creating ? 'Creating…' : 'Create workspace'}</button>
+      <button className="primary-btn" disabled={!total || hasInvalidSelectedCustom || memoryBlocked || creating} onClick={() => onCreate(new Set(selectedIds))}>{creating ? 'Creating…' : 'Create workspace'}</button>
     </footer>
   </section>
 }

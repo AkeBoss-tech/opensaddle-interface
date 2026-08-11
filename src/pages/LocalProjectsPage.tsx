@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 import { ScaffoldProposal } from '../features/onboarding/ScaffoldProposal'
 import { scaffoldApply } from '../features/onboarding/scaffoldApply'
-import type { HarnessCapability, ManagedArtifactArchive, ProjectArtifactManifest } from '../services/contracts'
+import type { HarnessCapability, ManagedArtifactArchive, ProjectArtifactManifest, ProjectMemoryInitPlan, ProjectMemoryOperationStage } from '../services/contracts'
 import { scanWorkspaceFolder } from '../services/workspaceScaffold'
+import { managedMemoryProjectId, MEMORY_PROPOSAL_ID, waitForMemoryOperation } from '../features/memory/projectMemory'
 import type {
   AgentPermissionPolicy,
   CodingProvider,
@@ -183,6 +184,10 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
   const [clis, setClis] = useState<string[]>([])
   const [importing, setImporting] = useState(false)
   const [pendingProposal, setPendingProposal] = useState<WorkspaceProposal | null>(null)
+  const [memoryPlan, setMemoryPlan] = useState<ProjectMemoryInitPlan | null>(null)
+  const [memoryPlanLoading, setMemoryPlanLoading] = useState(false)
+  const [memoryPlanError, setMemoryPlanError] = useState<string | null>(null)
+  const [memorySetupStage, setMemorySetupStage] = useState<ProjectMemoryOperationStage | null>(null)
   const [manualPath, setManualPath] = useState('')
   const [harnessDraft, setHarnessDraft] = useState<HarnessDraft>(EMPTY_HARNESS_DRAFT)
   const [agentDraft, setAgentDraft] = useState({ name: '', description: '', prompt: '', harnessId: '' })
@@ -298,6 +303,28 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
     }
   }
 
+  const previewMemory = useCallback(async (proposal: WorkspaceProposal) => {
+    setMemoryPlan(null)
+    setMemoryPlanError(null)
+    setMemorySetupStage(null)
+    if (!services?.localProjects?.memoryInitPlan) {
+      setMemoryPlanError('The connected backend does not support managed Project Memory setup.')
+      return
+    }
+    setMemoryPlanLoading(true)
+    try {
+      setMemoryPlan(await services.localProjects.memoryInitPlan(managedMemoryProjectId(proposal.folderPath), { root: proposal.folderPath }))
+    } catch (error) {
+      setMemoryPlanError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setMemoryPlanLoading(false)
+    }
+  }, [services?.localProjects])
+
+  useEffect(() => {
+    if (pendingProposal) void previewMemory(pendingProposal)
+  }, [pendingProposal, previewMemory])
+
   useEffect(() => {
     const requestedPath = searchParams.get('import')
     if (!requestedPath || importing) return
@@ -329,12 +356,26 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
     setImporting(true)
     try {
       const application = scaffoldApply(pendingProposal, selectedIds, pendingProposal.folderPath)
-      const projectId = importLocalProject({
-        name: application.project.name,
-        description: application.project.description,
-        local: application.project.local,
-      })
+      const projectId = managedMemoryProjectId(application.project.local.rootPath)
+      if (!data.projects.some((candidate) => candidate.id === projectId)) {
+        importLocalProject({
+          id: projectId,
+          name: application.project.name,
+          description: application.project.description,
+          local: application.project.local,
+        })
+      }
+      setMemorySetupStage('registering')
       await services?.localProjects?.registerProject?.(projectId, application.project.local.rootPath)
+      if (selectedIds.has(MEMORY_PROPOSAL_ID) && memoryPlan?.state !== 'already_configured') {
+        if (!memoryPlan || !services?.localProjects?.memoryInitApply) throw new Error('Project Memory setup is not available from the connected backend.')
+        setMemorySetupStage('initializing')
+        const operation = await services.localProjects.memoryInitApply(projectId, memoryPlan.planId)
+        await waitForMemoryOperation(services.localProjects, projectId, operation, {
+          onUpdate: (current) => setMemorySetupStage(current.status === 'failed' ? 'failed' : current.status === 'succeeded' ? 'ready' : current.stage),
+        })
+        setMemorySetupStage('ready')
+      }
       application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
       application.members.forEach((member) => createMember(member))
       application.agents.forEach((agent) => createAgent({
@@ -370,6 +411,7 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
       setPendingProposal(null)
       toast('Local workspace created', `${application.channels.length} channels · ${application.members.length} members · ${application.agents.length} agents · ${application.connectors.length} connectors · ${application.permissionGrants.length} permissions`)
     } catch (error) {
+      setMemorySetupStage('failed')
       toast('Could not create workspace', error instanceof Error ? error.message : String(error))
     } finally {
       setImporting(false)
@@ -862,7 +904,7 @@ export function LocalProjectsPage({ focusedTab }: { focusedTab?: 'agents' | 'ski
 
   if (pendingProposal) {
     return <div className="local-projects-page">
-      <ScaffoldProposal proposal={pendingProposal} onCreate={(selectedIds) => void applyProposal(selectedIds)} creating={importing} />
+      <ScaffoldProposal proposal={pendingProposal} onCreate={(selectedIds) => void applyProposal(selectedIds)} creating={importing} memory={{ loading: memoryPlanLoading, plan: memoryPlan, error: memoryPlanError, stage: memorySetupStage, onRetry: () => void previewMemory(pendingProposal) }} />
     </div>
   }
 

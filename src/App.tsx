@@ -35,6 +35,7 @@ import { scaffoldApply } from './features/onboarding/scaffoldApply'
 import './styles/app.css'
 import './styles/thread-first.css'
 import './styles/liquid-glass.css'
+import './styles/scaffold.css'
 import './features/evidence/evidence.css'
 import './features/investigation/components/investigation.css'
 

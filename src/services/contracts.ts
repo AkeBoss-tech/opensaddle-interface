@@ -479,16 +479,46 @@ export interface ProjectSessionSummary {
   authorityModes: Array<'source_managed' | 'opensaddle_managed' | 'hybrid'>
 }
 
-export interface KrailKnowledgeStatus {
+export type ProjectMemoryState = 'not_configured' | 'initializing' | 'indexing' | 'ready' | 'degraded' | 'invalid' | 'failed'
+export type ProjectMemoryOperationKind = 'initialize' | 'doctor' | 'reindex'
+export type ProjectMemoryOperationStage = 'registering' | 'initializing' | 'indexing' | 'ready' | 'failed'
+
+export interface ProjectMemorySource {
+  id: string
+  label: string
+  path?: string
+  kind: string
+  status: 'pending' | 'indexed' | 'stale' | 'failed' | 'excluded'
+  indexedItems: number
+  lastIndexedAt?: string
+  error?: string
+}
+
+export interface ProjectMemoryOperation {
+  operationId: string
+  projectId: string
+  kind: ProjectMemoryOperationKind
+  stage: ProjectMemoryOperationStage
+  status: 'queued' | 'running' | 'succeeded' | 'failed'
+  createdAt: string
+  updatedAt: string
+  retryable: boolean
+  message?: string
+  error?: string
+}
+
+export interface ProjectMemoryStatus {
   projectId: string
   provider: 'krail'
   detected: boolean
-  inspectionMode: 'read_only'
+  authority: 'backend'
+  inspectionMode: 'read_only' | 'managed'
   root: string
-  status: 'ready' | 'not_configured' | 'invalid'
+  status: ProjectMemoryState
   manifestPath?: string
   manifestVersion?: string | number
   error?: string
+  retryable?: boolean
   project?: {
     name?: string
     slug?: string
@@ -525,6 +555,84 @@ export interface KrailKnowledgeStatus {
     claudeImportSupported: boolean
     executionRequiresExplicitAction: boolean
   }
+  health?: {
+    status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown'
+    checkedAt?: string
+    summary?: string
+    issues: Array<{ code: string; message: string; retryable: boolean }>
+  }
+  integrity?: {
+    status: 'verified' | 'warning' | 'failed' | 'unknown'
+    checkedAt?: string
+    summary?: string
+  }
+  sources?: ProjectMemorySource[]
+  lastOperation?: ProjectMemoryOperation
+}
+
+/** @deprecated Use ProjectMemoryStatus. Kept for clients compiled against the read-only bridge. */
+export type KrailKnowledgeStatus = ProjectMemoryStatus
+
+export interface ProjectMemoryInitPlan {
+  projectId: string
+  planId: string
+  state: 'already_configured' | 'not_configured' | 'repair_required'
+  root: string
+  summary: string
+  effects: Array<{
+    id: string
+    kind: 'create' | 'update' | 'index' | 'register' | 'command'
+    target: string
+    description: string
+  }>
+  warnings: string[]
+  canApply: boolean
+}
+
+export interface ProjectMemoryDoctorResult {
+  projectId: string
+  status: 'healthy' | 'degraded' | 'unhealthy'
+  checkedAt: string
+  checks: Array<{ id: string; label: string; status: 'passed' | 'warning' | 'failed'; detail?: string }>
+  operation?: ProjectMemoryOperation
+}
+
+export interface ProjectMemoryContextBrief {
+  projectId: string
+  query: string
+  briefDigest?: string
+  summary: string
+  evidence: Array<{
+    id: string
+    sourceId: string
+    title: string
+    path?: string
+    excerpt: string
+    locator?: string
+  }>
+  gaps: string[]
+  truncated: boolean
+  maxItems: number
+  maxTotalBytes: number
+}
+
+export interface ProjectMemoryCandidate {
+  candidateId: string
+  kind: 'source' | 'claim' | 'artifact'
+  title: string
+  summary: string
+  status: 'candidate' | 'proposed' | 'promoted' | 'rejected'
+  sourceIds: string[]
+  createdAt: string
+  reviewedAt?: string
+  reviewReason?: string
+  proposal?: { proposalId?: string; protectedInputDigest?: string; status?: string } | null
+}
+
+export interface ProjectMemoryCandidateReview {
+  candidateId: string
+  decision: 'promote' | 'reject'
+  reason?: string
 }
 
 export interface ProjectFileEntry {
@@ -573,6 +681,16 @@ export interface LocalProjectClient {
   refreshHarnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
   localSessions(provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]>
   projectSessions?(projectId: string, provider?: LocalSessionSummary['provider']): Promise<ProjectSessionSummary>
+  memoryStatus?(projectId: string): Promise<ProjectMemoryStatus>
+  memoryInitPlan?(projectId: string, input?: { root?: string }): Promise<ProjectMemoryInitPlan>
+  memoryInitApply?(projectId: string, planId: string): Promise<ProjectMemoryOperation>
+  memoryDoctor?(projectId: string): Promise<ProjectMemoryDoctorResult>
+  memoryReindex?(projectId: string): Promise<ProjectMemoryOperation>
+  memoryOperation?(projectId: string, operationId: string): Promise<ProjectMemoryOperation>
+  memoryContextBrief?(projectId: string, input: { query: string; maxItems?: number; maxTotalBytes?: number }): Promise<ProjectMemoryContextBrief>
+  memoryCandidates?(projectId: string): Promise<ProjectMemoryCandidate[]>
+  reviewMemoryCandidate?(projectId: string, review: ProjectMemoryCandidateReview): Promise<ProjectMemoryCandidate>
+  /** @deprecated Compatibility alias for the former read-only knowledge bridge. */
   knowledgeStatus?(projectId: string): Promise<KrailKnowledgeStatus>
   listFiles(projectId: string, input?: { path?: string; limit?: number }): Promise<{
     root: string

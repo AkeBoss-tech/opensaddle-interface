@@ -45,7 +45,7 @@ function registerRendererProtocol() {
 
 let mainWindow: BrowserWindow | null = null
 let opensaddleProc: ChildProcess | null = null
-let krailProc: ChildProcess | null = null
+let sessionBridgeProc: ChildProcess | null = null
 let embeddedBrowser: WebContentsView | null = null
 let sidecarsShuttingDown = false
 let opensaddleRestartTimer: NodeJS.Timeout | null = null
@@ -57,7 +57,7 @@ let sidecarsStopPromise: Promise<void> | null = null
 let quitAfterSidecars = false
 
 const OPENSADDLE_URL = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
-const KRAIL_URL = process.env.KRAIL_URL ?? 'http://127.0.0.1:8787'
+const SESSION_BRIDGE_URL = process.env.SESSION_BRIDGE_URL ?? process.env.KRAIL_URL ?? 'http://127.0.0.1:8787'
 
 const CLI_CANDIDATES = ['codex', 'claude', 'cursor-agent', 'agent', 'gemini', 'opencode', 'antigravity', 'aider', 'copilot', 'amp', 'agy', 'openclaw', 'hermes', 'pi']
 const APP_ICON = isDev ? path.resolve(__dirname, '../assets/opensaddle-icon.png') : path.join(process.resourcesPath, 'opensaddle-icon.png')
@@ -639,12 +639,12 @@ async function startSidecars(): Promise<void> {
     if (!sidecarsShuttingDown) void ensureOpenSaddle()
   }, 3_000)
   if (!isDev) return
-  const krailEntry = path.resolve(__dirname, '../../packages/krail/src/server.ts')
-  if (existsSync(krailEntry)) {
-    krailProc = spawn('npx', ['tsx', krailEntry], {
+  const sessionBridgeEntry = path.resolve(__dirname, '../../packages/session-bridge/src/server.ts')
+  if (existsSync(sessionBridgeEntry)) {
+    sessionBridgeProc = spawn('npx', ['tsx', sessionBridgeEntry], {
       cwd: path.resolve(__dirname, '../..'),
       stdio: 'ignore',
-      env: { ...process.env, KRAIL_PORT: '8787' },
+      env: { ...process.env, SESSION_BRIDGE_PORT: '8787' },
     })
   }
 }
@@ -720,15 +720,15 @@ async function stopSidecars(): Promise<void> {
   opensaddleHealthTimer = null
   const opensaddle = opensaddleProc
   const ownedPid = opensaddleOwnedPid
-  const krail = krailProc
+  const sessionBridge = sessionBridgeProc
   opensaddleProc = null
   opensaddleOwnedPid = null
-  krailProc = null
+  sessionBridgeProc = null
   await Promise.all([
     ownedPid
       ? terminateOwnedSidecar(ownedPid)
       : terminateSidecar(opensaddle),
-    terminateSidecar(krail),
+    terminateSidecar(sessionBridge),
   ])
   if (ownedPid) await clearOpenSaddleOwnership(ownedPid)
 }
@@ -777,7 +777,8 @@ app.whenReady().then(async () => {
     opensaddleUrl: OPENSADDLE_URL,
     opensaddleConnected: await opensaddleHealthy(),
     opensaddleError: opensaddleLaunchError,
-    krailUrl: KRAIL_URL,
+    sessionBridgeUrl: SESSION_BRIDGE_URL,
+    krailUrl: SESSION_BRIDGE_URL,
     clis: await discoverClis(),
   }))
 

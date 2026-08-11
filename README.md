@@ -32,9 +32,9 @@ Optional sidecars:
 npm install --prefix packages/control-plane
 npm run server
 
-# KRAIL session service
-npm install --prefix packages/krail
-npm run krail
+# Session execution bridge (the `krail` script remains a compatibility alias)
+npm install --prefix packages/session-bridge
+npm run session-bridge
 ```
 
 Desktop harness:

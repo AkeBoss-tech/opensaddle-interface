@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 import { evaluatePermissions } from '../services/permissions'
+import { ProjectMemoryPanel } from '../features/memory/ProjectMemoryPanel'
 import type { CodingProvider, ModelKey, RuntimeKind, Visibility } from '../types'
 
 const TABS = ['chats', 'library', 'sites', 'context', 'access'] as const
@@ -53,7 +54,6 @@ export function ProjectPage() {
   )
   const children = data.projects.filter((p) => p.parentId === project.id)
   const caps = data.capabilities[project.id] ?? data.capabilities['proj-coding'] ?? []
-  const knowledge = data.knowledge.filter((k) => k.projectId === project.id || !k.projectId)
   const services = data.services.filter((s) => s.projectId === project.id || s.projectId === 'proj-corp')
   const projectWorkflows = data.workflows.filter((workflow) => workflow.projectId === project.id)
   const projectWorkflowRuns = data.workflowRuns.filter((run) => run.projectId === project.id).slice(0, 3)
@@ -286,16 +286,7 @@ export function ProjectPage() {
 
       {tab === 'context' && (
         <>
-          <h3 className="proj-section-title">Knowledge sources</h3>
-          <div className="knowledge-card-grid" style={{ marginBottom: 20 }}>
-            {knowledge.map((k) => (
-              <div key={k.id} className="knowledge-card">
-                <div className="knowledge-card-top"><h4>{k.name}</h4></div>
-                <p>{k.kind} · {k.items} items · Owner {k.owner}</p>
-                <div className="knowledge-card-footer"><span className={`status-pill ${k.status === 'Error' ? 'red' : k.status === 'Partial' ? 'yellow' : 'green'}`}>{k.status}</span><span>{k.lastSync}</span><span className="vis-badge">{k.sensitivity}</span></div>
-              </div>
-            ))}
-          </div>
+          <ProjectMemoryPanel projectId={project.id} root={project.local?.rootPath} client={serviceBundle?.localProjects} notify={toast} />
           <h3 className="proj-section-title">Internal services</h3>
           <div className="card"><div className="card-body row-list">
             {services.map((s) => (

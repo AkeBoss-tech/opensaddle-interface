@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('opensaddle', {
     opensaddleUrl: string
     opensaddleConnected: boolean
     opensaddleError: string | null
+    sessionBridgeUrl: string
+    /** @deprecated Compatibility alias for sessionBridgeUrl. */
     krailUrl: string
     clis: string[]
   }>,

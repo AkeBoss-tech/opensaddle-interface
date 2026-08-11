@@ -105,7 +105,7 @@ interface StoreApi {
   ) => Message
   updateMessage: (id: string, patch: Partial<Message>) => void
   createProject: (name: string, parentId: string | null, description: string) => string
-  importLocalProject: (input: { name: string; description: string; local: LocalProjectSettings }) => string
+  importLocalProject: (input: { id?: string; name: string; description: string; local: LocalProjectSettings }) => string
   updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description' | 'routingDefaults' | 'workspaceKind' | 'local'>>) => void
   removeLocalProject: (id: string) => void
   setPinnedArtifacts: (items: PinnedArtifact[]) => void
@@ -1057,8 +1057,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
       return id
     },
-    importLocalProject: ({ name, description, local }) => {
-      const id = uid('local')
+    importLocalProject: ({ id: requestedId, name, description, local }) => {
+      const id = requestedId ?? uid('local')
       patch((d) => {
         d.projects.push({
           id,
