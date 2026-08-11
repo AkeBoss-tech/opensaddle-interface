@@ -1,0 +1,15 @@
+{
+  "contract_version": "opensaddle.governed-delivery.v1",
+  "authoritative_base_commit": "ab25b92f5c3da8cfd7eaa4298655433ea2f78da2",
+  "schema_digest": "sha256:b0f2d6a0ad4991a8ee3cc78024189203fc0f3785b1e71a6ce89302c2968805dd",
+  "fixtures": {
+    "golden.json": "sha256:d7b9d434efcc851e4638d419bf7865eeaa450f21aad5bfb432162e97600f1a4e",
+    "conformance.json": "sha256:3abf4b15f1e3d5c4058bf37b3d535b4a7c6c0619431f4c4e5febcf4d62506a50"
+  },
+  "compatibility": {
+    "execution": "opensaddle.execution-admission.v1",
+    "publication": "opensaddle.publication-proposal.v1",
+    "effect_receipt": "opensaddle.effect-receipt.v1",
+    "krail_verification_fixture_base": "81a163f9744bc34b4b98dd4e1b82fb8d9c965f62"
+  }
+}

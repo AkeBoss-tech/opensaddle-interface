@@ -1,0 +1,618 @@
+{
+  "approval": {
+    "admission_digest": "fc4657396f534cb6f26a7c74de6b3b5cdf21aa6f9abb28be16f38bdccc9d09e1",
+    "approval_digest": "aafd85aa8d676afa2d00ff645013bd0696c3f526ac69a16c1719dcf0f7c0ee1d",
+    "approval_id": "08M5rKGoCa_YuvsqqpPm6Bx3",
+    "consequence_digest": "c1942bbc4ef4b0e484e4c9872d7f38dacd6979c82c5b62e9c1669e90a07f156a",
+    "consumed": true,
+    "expires_at": "2026-08-10T00:05:00Z",
+    "policy_hash": "policy-current",
+    "principal": "alice",
+    "request_digest": "0ca311db12f903ce64e2ca178d06bd8daacb8c1c82fea8c9de23bced31f84981",
+    "run_id": "publish-184",
+    "single_use": true
+  },
+  "credential_lease": {
+    "action": "create_pull_request",
+    "connector": "github",
+    "expires_at": "2026-08-10T00:01:00+00:00",
+    "lease_id": "sl_0000000000000001",
+    "policy_hash": "policy-current",
+    "run_id": "publish-184",
+    "secret_material_omitted": true
+  },
+  "effect_receipt": {
+    "actual_effects": [
+      "github.pull_request.created"
+    ],
+    "adapter_capability_digest": "59c96ec46fde8771986a0120205de7cacde94506818a074e3077f896f261ab8d",
+    "adapter_capability_id": "github.create_pull_request",
+    "adapter_capability_version": "1.0.0",
+    "admission_digest": "fc4657396f534cb6f26a7c74de6b3b5cdf21aa6f9abb28be16f38bdccc9d09e1",
+    "admission_id": "adm_fc4657396f534cb6f26a7c74de6b3b5c",
+    "approval_ids": [
+      "08M5rKGoCa_YuvsqqpPm6Bx3"
+    ],
+    "base_revision": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "ci": {
+      "checks_ref": "https://api.github.com/repos/acme/northstar/commits/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/check-suites",
+      "head_revision": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "observed_at": "2026-08-10T00:00:00+00:00",
+      "provider": "github",
+      "state": "passed"
+    },
+    "compensating_action": {
+      "available": true,
+      "capability_id": "github.close_pull_request",
+      "requires_new_approval": true,
+      "target_head_revision": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "target_url": "https://github.com/acme/northstar/pull/184"
+    },
+    "completed_at": "2026-08-10T00:00:00+00:00",
+    "consequence_digest": "c1942bbc4ef4b0e484e4c9872d7f38dacd6979c82c5b62e9c1669e90a07f156a",
+    "costs": {
+      "authorized_microunits": 20,
+      "currency": "USD",
+      "provider_cost": "not_reported"
+    },
+    "credential_lease_id": "sl_0000000000000001",
+    "diff_ref": {
+      "digest": {
+        "algorithm": "sha-256",
+        "value": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "issuer": "https://knowledge.example.test/provider",
+      "resource_id": "changes/184.diff",
+      "resource_type": "diff",
+      "source": {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "origin": "https://github.com/acme/northstar",
+        "source_id": "northstar-source",
+        "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "fence_epoch": 1,
+    "head_revision": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "idempotency_result": "committed",
+    "omissions": [],
+    "operation_id": "publish-184",
+    "outcome": "effect_applied_verified",
+    "patch_ref": {
+      "digest": {
+        "algorithm": "sha-256",
+        "value": "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "issuer": "https://knowledge.example.test/provider",
+      "resource_id": "changes/184.patch",
+      "resource_type": "patch",
+      "source": {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "origin": "https://github.com/acme/northstar",
+        "source_id": "northstar-source",
+        "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "policy_hash": "policy-current",
+    "proposal_digest": "930d670f5c190dd75386b7f5444466798aeabba76aacb8e5f995c9cd49079e76",
+    "proposal_request_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "publication_digest": "104649964f88315df005a1442879781204b05956f4883aa4fda99a7e97a93b9f",
+    "pull_request": {
+      "base_revision": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "head_revision": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "number": 184,
+      "provider": "github",
+      "url": "https://github.com/acme/northstar/pull/184"
+    },
+    "receipt_digest": "b178dea023c65f4eeeeb841d7899d58becef9e14b9f25887a897b31264eb0796",
+    "receipt_id": "eff_b178dea023c65f4eeeeb841d",
+    "registered_action_digest": "755094085fb0a0b9c7ede11a85ccbfe17adea5fad3cd67d87d980a1da90d9120",
+    "registered_action_id": "act_80d610786d0746a68dd0ccbfd410018d",
+    "registered_action_version": 1,
+    "repository_ref": {
+      "digest": {
+        "algorithm": "sha-256",
+        "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "issuer": "https://knowledge.example.test/provider",
+      "resource_id": "northstar",
+      "resource_type": "repository",
+      "source": {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "origin": "https://github.com/acme/northstar",
+        "source_id": "northstar-source",
+        "version": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "version": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "request_digest": "0ca311db12f903ce64e2ca178d06bd8daacb8c1c82fea8c9de23bced31f84981",
+    "schema_version": "opensaddle.effect-receipt.v1",
+    "verification_evidence_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "verification_evidence_ref": "packet:verification:fixture",
+    "verified_completion": true
+  },
+  "effect_request": {
+    "action_availability_version": 1,
+    "adapter_capability_digest": "59c96ec46fde8771986a0120205de7cacde94506818a074e3077f896f261ab8d",
+    "adapter_capability_id": "github.create_pull_request",
+    "adapter_capability_version": "1.0.0",
+    "admission_digest": "fc4657396f534cb6f26a7c74de6b3b5cdf21aa6f9abb28be16f38bdccc9d09e1",
+    "admission_id": "adm_fc4657396f534cb6f26a7c74de6b3b5c",
+    "base_ref_digest": "e4a9e4d8baa71a9d8ebf56ec8ae3ea1e82be9f96ae6fe89e36d701d4a5337f30",
+    "base_revision": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "consequence_digest": "c1942bbc4ef4b0e484e4c9872d7f38dacd6979c82c5b62e9c1669e90a07f156a",
+    "delegation_chain": [
+      "planner-agent"
+    ],
+    "fence_epoch": 1,
+    "head_ref_digest": "ce7070e1ac81c2452d2c4842c8e205ea30d9a9ffb7a9d40a4021065628bff1e2",
+    "head_revision": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "idempotency_key_digest": "823afef1ee6f4c3f2db44ca88960ffbc564669011f5e86c5e5f2a0155f1738f4",
+    "operation_id": "publish-184",
+    "publication_digest": "104649964f88315df005a1442879781204b05956f4883aa4fda99a7e97a93b9f",
+    "registered_action_digest": "755094085fb0a0b9c7ede11a85ccbfe17adea5fad3cd67d87d980a1da90d9120",
+    "registered_action_id": "act_80d610786d0746a68dd0ccbfd410018d",
+    "registered_action_version": 1,
+    "repository_ref": {
+      "digest": {
+        "algorithm": "sha-256",
+        "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "issuer": "https://knowledge.example.test/provider",
+      "resource_id": "northstar",
+      "resource_type": "repository",
+      "source": {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "origin": "https://github.com/acme/northstar",
+        "source_id": "northstar-source",
+        "version": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "version": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "request_digest": "0ca311db12f903ce64e2ca178d06bd8daacb8c1c82fea8c9de23bced31f84981",
+    "requester": "alice"
+  },
+  "execution": {
+    "admission_digest": "fc4657396f534cb6f26a7c74de6b3b5cdf21aa6f9abb28be16f38bdccc9d09e1",
+    "admission_id": "adm_fc4657396f534cb6f26a7c74de6b3b5c",
+    "evidence": {
+      "base_revision": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "changed_files": [
+        {
+          "digest": {
+            "algorithm": "sha-256",
+            "value": "9999999999999999999999999999999999999999999999999999999999999999"
+          },
+          "issuer": "https://knowledge.example.test/provider",
+          "resource_id": "src/release_controller.py",
+          "resource_type": "file",
+          "source": {
+            "digest": {
+              "algorithm": "sha-256",
+              "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "origin": "https://github.com/acme/northstar",
+            "source_id": "northstar-source",
+            "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "checks": [
+        {
+          "artifact_refs": [
+            {
+              "bounded_summary": "Bounded test-result summary",
+              "byte_length": 100,
+              "media_type": "application/json",
+              "ref": {
+                "authority": "https://knowledge.example.test/provider",
+                "digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+                "resource_id": "pytest-focused.json",
+                "resource_type": "test-result",
+                "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "role": "test-result"
+            }
+          ],
+          "check_id": "pytest-focused",
+          "command": {
+            "arguments": [
+              "-q",
+              "tests/test_release_controller.py"
+            ],
+            "descriptor_digest": "sha256:0d0be6f49a23b64c2ba1833d47eb80f9b52eb22e0722685c77f4402ff40f37b5",
+            "program": "pytest",
+            "working_directory_ref": null
+          },
+          "exit_code": 0,
+          "exit_status_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "kind": "test",
+          "result_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "status": "passed",
+          "summary": "Focused verification result."
+        }
+      ],
+      "commits": [
+        {
+          "digest": {
+            "algorithm": "sha-256",
+            "value": "9999999999999999999999999999999999999999999999999999999999999999"
+          },
+          "issuer": "https://knowledge.example.test/provider",
+          "resource_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "resource_type": "commit",
+          "source": {
+            "digest": {
+              "algorithm": "sha-256",
+              "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "origin": "https://github.com/acme/northstar",
+            "source_id": "northstar-source",
+            "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "diff": {
+        "bounded_summary": "Bounded diff summary",
+        "byte_length": 100,
+        "media_type": "text/x-diff",
+        "ref": {
+          "authority": "https://knowledge.example.test/provider",
+          "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "resource_id": "changes/184.diff",
+          "resource_type": "diff",
+          "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "role": "diff"
+      },
+      "environment_versions": [
+        {
+          "component": "python-linux-x86_64",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "version": "3.13.5"
+        }
+      ],
+      "head_revision": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "patch": {
+        "bounded_summary": "Bounded patch summary",
+        "byte_length": 100,
+        "media_type": "text/x-diff",
+        "ref": {
+          "authority": "https://knowledge.example.test/provider",
+          "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "resource_id": "changes/184.patch",
+          "resource_type": "patch",
+          "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "role": "patch"
+      },
+      "tool_versions": [
+        {
+          "component": "pytest",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "version": "8.4.1"
+        }
+      ],
+      "verification_state": "passed"
+    },
+    "fence_epoch": 1,
+    "verification_receipt": {
+      "capability_id": "krail.verification-evidence",
+      "causation_id": "prp_c76bb1be0a6e403fb07b92696204fcd3",
+      "correlation_id": "corr-184",
+      "descriptor_digest": "sha256:4f785df879d61da9fcea2689120621274fed71ec385cea226c7b6a904d6513af",
+      "evidence_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "evidence_packet_id": "packet:verification:fixture",
+      "omissions": [],
+      "operation_id": "adm_fc4657396f534cb6f26a7c74de6b3b5c"
+    }
+  },
+  "execution_admission": {
+    "actor": "alice",
+    "admission_digest": "fc4657396f534cb6f26a7c74de6b3b5cdf21aa6f9abb28be16f38bdccc9d09e1",
+    "admission_id": "adm_fc4657396f534cb6f26a7c74de6b3b5c",
+    "approval_ids": [],
+    "approval_request_digest": null,
+    "budget": {
+      "currency": "USD",
+      "max_microunits": 20
+    },
+    "context_brief_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "correlation_ids": [
+      "corr-184"
+    ],
+    "delegation_chain": [
+      "planner-agent"
+    ],
+    "evidence_packet_refs": [
+      "packet:context:fixture"
+    ],
+    "expected_resource_versions": {
+      "[\"https://knowledge.example.test/provider\",\"issue\",\"northstar/issues/184\",\"northstar-issue-source\",\"https://github.com/acme/northstar\"]": "etag:issue-184-v3",
+      "[\"https://knowledge.example.test/provider\",\"repository\",\"northstar\",\"northstar-source\",\"https://github.com/acme/northstar\"]": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "expires_at": "2026-08-10T01:00:00+00:00",
+    "policy_hash": "policy-current",
+    "project_id": "p",
+    "proposal_digest": "930d670f5c190dd75386b7f5444466798aeabba76aacb8e5f995c9cd49079e76",
+    "proposal_id": "prp_c76bb1be0a6e403fb07b92696204fcd3",
+    "proposal_request_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "registered_action_digest": "58da670efdc9489c44f01e2bcd0391c1f7f2ffcd4818bfbb2ca040c30d2756cf",
+    "registered_action_id": "act_1a08fd01aa0849b09e583c471a830ffd",
+    "registered_action_version": 1,
+    "runtime": {
+      "isolation": "deterministic_fake",
+      "network": "disabled"
+    },
+    "schema_version": "opensaddle.execution-admission.v1",
+    "source_revisions": [
+      {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "issuer": "https://knowledge.example.test/provider",
+        "resource_id": "northstar",
+        "resource_type": "repository",
+        "source": {
+          "digest": {
+            "algorithm": "sha-256",
+            "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "origin": "https://github.com/acme/northstar",
+          "source_id": "northstar-source",
+          "version": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "version": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        "issuer": "https://knowledge.example.test/provider",
+        "resource_id": "northstar/issues/184",
+        "resource_type": "issue",
+        "source": {
+          "digest": {
+            "algorithm": "sha-256",
+            "value": "8888888888888888888888888888888888888888888888888888888888888888"
+          },
+          "origin": "https://github.com/acme/northstar",
+          "source_id": "northstar-issue-source",
+          "version": "etag:issue-184-v3"
+        },
+        "version": "etag:issue-184-v3"
+      }
+    ]
+  },
+  "operation": {
+    "admission_id": "adm_fc4657396f534cb6f26a7c74de6b3b5c",
+    "cancel": {
+      "prevents_new_dispatch": true,
+      "revokes_active_credential_leases": true
+    },
+    "fence_epoch": 1,
+    "lifecycle": [
+      {
+        "event_type": "execution.admitted",
+        "fence_epoch": 1,
+        "occurred_at": "2026-08-10T00:00:00+00:00",
+        "omission": null,
+        "receipt_id": null,
+        "request_digest": null,
+        "sequence": 1,
+        "state": "admitted"
+      },
+      {
+        "event_type": "publication.proposed",
+        "fence_epoch": 1,
+        "occurred_at": "2026-08-10T00:00:00+00:00",
+        "omission": null,
+        "receipt_id": null,
+        "request_digest": "0ca311db12f903ce64e2ca178d06bd8daacb8c1c82fea8c9de23bced31f84981",
+        "sequence": 2,
+        "state": "proposed"
+      },
+      {
+        "event_type": "effect.applied",
+        "fence_epoch": 1,
+        "occurred_at": "2026-08-10T00:00:00+00:00",
+        "omission": null,
+        "receipt_id": "eff_b178dea023c65f4eeeeb841d",
+        "request_digest": "0ca311db12f903ce64e2ca178d06bd8daacb8c1c82fea8c9de23bced31f84981",
+        "sequence": 3,
+        "state": "terminal"
+      }
+    ],
+    "operation_id": "publish-184",
+    "reconnect": {
+      "requires_same_fence": true,
+      "supported": true
+    },
+    "replay": {
+      "request_digest": "0ca311db12f903ce64e2ca178d06bd8daacb8c1c82fea8c9de23bced31f84981",
+      "result": "committed"
+    },
+    "state": "terminal"
+  },
+  "provenance": {
+    "authoritative_base_commit": "ab25b92f5c3da8cfd7eaa4298655433ea2f78da2",
+    "contract_version": "opensaddle.governed-delivery.v1",
+    "effect_receipt_schema_version": "opensaddle.effect-receipt.v1",
+    "execution_schema_version": "opensaddle.execution-admission.v1",
+    "publication_schema_version": "opensaddle.publication-proposal.v1"
+  },
+  "publication_proposal": {
+    "base_revision": "git:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "body": "Provider-neutral body",
+    "changed_files": [
+      {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "9999999999999999999999999999999999999999999999999999999999999999"
+        },
+        "issuer": "https://knowledge.example.test/provider",
+        "resource_id": "src/release_controller.py",
+        "resource_type": "file",
+        "source": {
+          "digest": {
+            "algorithm": "sha-256",
+            "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "origin": "https://github.com/acme/northstar",
+          "source_id": "northstar-source",
+          "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "diff_ref": {
+      "digest": {
+        "algorithm": "sha-256",
+        "value": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "issuer": "https://knowledge.example.test/provider",
+      "resource_id": "changes/184.diff",
+      "resource_type": "diff",
+      "source": {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "origin": "https://github.com/acme/northstar",
+        "source_id": "northstar-source",
+        "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "editable_fields": [
+      "title",
+      "body"
+    ],
+    "head_revision": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "patch_ref": {
+      "digest": {
+        "algorithm": "sha-256",
+        "value": "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "issuer": "https://knowledge.example.test/provider",
+      "resource_id": "changes/184.patch",
+      "resource_type": "patch",
+      "source": {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "origin": "https://github.com/acme/northstar",
+        "source_id": "northstar-source",
+        "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "version": "git:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "schema_version": "opensaddle.publication-proposal.v1",
+    "state": "draft",
+    "target_kind": "code-review",
+    "title": "Fix release controller",
+    "verification_evidence_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "verification_evidence_packet_id": "packet:verification:fixture",
+    "verification_state": "passed"
+  },
+  "redaction": {
+    "error_details": "typed_constant_disclosures_only",
+    "mode": "allowlist",
+    "provider_request_selectors": "omitted",
+    "raw_provider_bodies": "omitted",
+    "secret_material": "omitted"
+  },
+  "schema_version": "opensaddle.governed-delivery.v1",
+  "typed_failures": [
+    {
+      "code": "membership_denied",
+      "disclosure": "constant",
+      "phase": "admission",
+      "retryable": false
+    },
+    {
+      "code": "policy_drift",
+      "disclosure": "constant",
+      "phase": "admission",
+      "retryable": true
+    },
+    {
+      "code": "proposal_digest_stale",
+      "disclosure": "constant",
+      "phase": "admission",
+      "retryable": false
+    },
+    {
+      "code": "resource_version_drift",
+      "disclosure": "constant",
+      "phase": "admission",
+      "retryable": true
+    },
+    {
+      "code": "approval_expired_or_consumed",
+      "disclosure": "constant",
+      "phase": "approval",
+      "retryable": true
+    },
+    {
+      "code": "credential_lease_invalid",
+      "disclosure": "constant",
+      "phase": "dispatch",
+      "retryable": true
+    },
+    {
+      "code": "provider_unavailable",
+      "disclosure": "constant",
+      "phase": "dispatch",
+      "retryable": true
+    },
+    {
+      "code": "provider_effect_unconfirmed",
+      "disclosure": "constant",
+      "phase": "dispatch",
+      "retryable": false
+    },
+    {
+      "code": "idempotency_conflict",
+      "disclosure": "constant",
+      "phase": "dispatch",
+      "retryable": false
+    },
+    {
+      "code": "operation_fenced",
+      "disclosure": "constant",
+      "phase": "lifecycle",
+      "retryable": false
+    },
+    {
+      "code": "cancelled",
+      "disclosure": "constant",
+      "phase": "lifecycle",
+      "retryable": false
+    },
+    {
+      "code": "ci_observation_invalid",
+      "disclosure": "constant",
+      "phase": "observation",
+      "retryable": true
+    }
+  ]
+}
