@@ -13,12 +13,15 @@ import {
   validateAuthoritativeEditDocument,
   type AdaptPresentationCommandInput,
   type AuthoritativeAuthor,
+  type AuthoritativeCapabilityAuthority,
   type AuthoritativeClientFixture,
   type AuthoritativeEditSession,
   type AuthoritativeLiveAuthority,
+  type AuthoritativeOpeningBinding,
   type EditAuthor,
   type EditSession,
   type EditSubmissionProjection,
+  type MapAuthoritativeCapabilityInput,
 } from '../src/features/editing/index.ts'
 
 const SNAPSHOT_ROOT = new URL('../src/features/editing/authority/opensaddle.edit-command.v1/', import.meta.url)
@@ -55,10 +58,34 @@ function presentationAuthor(kind: 'human' | 'agent'): EditAuthor {
       }
 }
 
+async function capabilityMappingInput(): Promise<MapAuthoritativeCapabilityInput> {
+  const source = await fixture()
+  const resourceRef = source.operation_proposal_request.targets[0].resource_ref
+  const opening: AuthoritativeOpeningBinding = {
+    projectId: 'project-184',
+    policy: POLICY,
+    availabilityVersion: 7,
+  }
+  const live: AuthoritativeCapabilityAuthority = {
+    projectId: opening.projectId,
+    permissions: ['edit:investigation.plan-draft'],
+    policy: POLICY,
+    availabilityVersion: opening.availabilityVersion,
+    available: true,
+    capabilityId: source.capability.capability_id,
+    capabilityVersion: source.capability.capability_version,
+    capabilityDigest: source.capability.capability_digest,
+    currentResourceRef: resourceRef,
+    registeredAction: source.capability.consequential_action,
+  }
+  return { capability: source.capability, resourceRef, opening, live }
+}
+
 async function setup(kind: 'human' | 'agent' = 'human'): Promise<AdaptPresentationCommandInput> {
   const source = await fixture()
   const ref = source.operation_proposal_request.targets[0].resource_ref
-  const capability = await mapAuthoritativeCapabilityToPresentation(source.capability, ref, POLICY.revision)
+  const mapping = await capabilityMappingInput()
+  const capability = await mapAuthoritativeCapabilityToPresentation(mapping)
   const changes = source.patch.operations.map((operation) => operation.operation === 'remove'
     ? { kind: 'json_patch' as const, op: 'remove' as const, path: `/${operation.field}` }
     : { kind: 'field' as const, path: `/${operation.field}`, value: operation.value as string | readonly string[] })
@@ -94,19 +121,10 @@ async function setup(kind: 'human' | 'agent' = 'human'): Promise<AdaptPresentati
     history_length: 1,
   }
   const live: AuthoritativeLiveAuthority = {
-    projectId: authSession.project_id,
+    ...mapping.live,
     subject: authSession.author.subject,
-    permissions: ['edit:investigation.plan-draft'],
-    policy: POLICY,
-    availabilityVersion: 7,
-    available: true,
-    capabilityId: source.capability.capability_id,
-    capabilityVersion: source.capability.capability_version,
-    capabilityDigest: source.capability.capability_digest,
     currentSessionVersion: authSession.version,
     currentDraftDigest: authSession.draft_digest,
-    currentResourceRef: ref,
-    registeredAction: source.capability.consequential_action,
     activeDelegation: kind === 'human' ? null : {
       delegationId: 'delegation-1',
       delegate: 'agent-1',
@@ -129,7 +147,7 @@ async function setup(kind: 'human' | 'agent' = 'human'): Promise<AdaptPresentati
     presentationSession: session,
     authoritativeSession: authSession,
     capability: source.capability,
-    opening: { policy: POLICY, availabilityVersion: 7 },
+    opening: mapping.opening,
     live,
     idempotencyKey: 'edit-command-184',
     proposal: { correlationIds: ['investigation:184'] },
@@ -171,6 +189,54 @@ test('authoritative fixture documents strictly validate and its supported patch 
   assert.equal(adapted.execution_available, false)
 })
 
+test('capability mapping requires exact project, live permission, availability, policy, capability, action, and resource authority', async () => {
+  const valid = await capabilityMappingInput()
+  const mapped = await mapAuthoritativeCapabilityToPresentation(valid)
+  assert.equal(mapped.available, true)
+  assert.deepEqual(mapped.fields.map((field) => field.path), ['/title', '/objective', '/steps', '/assumptions'])
+
+  const denied = await capabilityMappingInput()
+  denied.opening = {
+    ...denied.opening,
+    policy: { ...denied.opening.policy, outcome: 'deny' },
+  }
+  denied.live = {
+    ...denied.live,
+    policy: { ...denied.live.policy, outcome: 'deny' },
+  }
+  assert.equal(await failureCode(() => mapAuthoritativeCapabilityToPresentation(denied)), 'policy_denied')
+
+  const unavailable = await capabilityMappingInput()
+  unavailable.live = { ...unavailable.live, available: false }
+  assert.equal(await failureCode(() => mapAuthoritativeCapabilityToPresentation(unavailable)), 'policy_denied')
+
+  const crossProject = await capabilityMappingInput()
+  crossProject.live = { ...crossProject.live, projectId: 'project-other' }
+  assert.equal(await failureCode(() => mapAuthoritativeCapabilityToPresentation(crossProject)), 'policy_changed')
+
+  const staleResource = await capabilityMappingInput()
+  staleResource.live = {
+    ...staleResource.live,
+    currentResourceRef: { ...staleResource.live.currentResourceRef, version: 'git:bbbbbbbb' },
+  }
+  assert.equal(await failureCode(() => mapAuthoritativeCapabilityToPresentation(staleResource)), 'stale_resource')
+
+  const permission = await capabilityMappingInput()
+  permission.live = { ...permission.live, permissions: [] }
+  assert.equal(await failureCode(() => mapAuthoritativeCapabilityToPresentation(permission)), 'policy_denied')
+
+  const capability = await capabilityMappingInput()
+  capability.live = { ...capability.live, capabilityVersion: 2 }
+  assert.equal(await failureCode(() => mapAuthoritativeCapabilityToPresentation(capability)), 'capability_changed')
+
+  const action = await capabilityMappingInput()
+  action.live = {
+    ...action.live,
+    registeredAction: { ...action.live.registeredAction, registered_action_version: 2 },
+  }
+  assert.equal(await failureCode(() => mapAuthoritativeCapabilityToPresentation(action)), 'action_changed')
+})
+
 test('human and harness-agent callers share command semantics with exact delegation differences', async () => {
   const human = await adaptPresentationCommandToAuthority(await setup('human'))
   const agent = await adaptPresentationCommandToAuthority(await setup('agent'))
@@ -179,6 +245,21 @@ test('human and harness-agent callers share command semantics with exact delegat
   assert.deepEqual(human.operation_proposal_request?.delegation_chain, [])
   assert.deepEqual(agent.operation_proposal_request?.delegation_chain, ['user-1', 'agent-1'])
   assert.equal(agent.authority_binding.author.delegation_id, 'delegation-1')
+})
+
+test('human and agent command adaptation bind opening and live authority to the authoritative session project', async () => {
+  for (const kind of ['human', 'agent'] as const) {
+    const crossProject = await setup(kind)
+    crossProject.opening = { ...crossProject.opening, projectId: 'project-other' }
+    crossProject.live = {
+      ...crossProject.live,
+      projectId: 'project-other',
+      ...(kind === 'agent'
+        ? { activeDelegation: { ...crossProject.live.activeDelegation!, projectId: 'project-other' } }
+        : {}),
+    }
+    assert.equal(await failureCode(() => adaptPresentationCommandToAuthority(crossProject)), 'identity_conflict')
+  }
 })
 
 test('authoritative request digest ignores presentation FNV identity but binds every command field', async () => {

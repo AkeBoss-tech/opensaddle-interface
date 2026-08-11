@@ -94,9 +94,8 @@ export interface AuthoritativeDelegationSnapshot {
   validUntil: string
 }
 
-export interface AuthoritativeLiveAuthority {
+export interface AuthoritativeCapabilityAuthority {
   projectId: string
-  subject: string
   permissions: readonly string[]
   policy: AuthoritativePolicySnapshot
   availabilityVersion: number
@@ -104,18 +103,30 @@ export interface AuthoritativeLiveAuthority {
   capabilityId: string
   capabilityVersion: number
   capabilityDigest: string
-  currentSessionVersion: number
-  currentDraftDigest: string
   currentResourceRef: AuthoritativeResourceRef
   registeredAction: AuthoritativeConsequentialAction
+}
+
+export interface AuthoritativeLiveAuthority extends AuthoritativeCapabilityAuthority {
+  subject: string
+  currentSessionVersion: number
+  currentDraftDigest: string
   activeDelegation: AuthoritativeDelegationSnapshot | null
   revokedDelegationIds: readonly string[]
   now: string
 }
 
 export interface AuthoritativeOpeningBinding {
+  projectId: string
   policy: AuthoritativePolicySnapshot
   availabilityVersion: number
+}
+
+export interface MapAuthoritativeCapabilityInput {
+  capability: unknown
+  resourceRef: unknown
+  opening: AuthoritativeOpeningBinding
+  live: AuthoritativeCapabilityAuthority
 }
 
 export interface AuthoritativeProposalOptions {
@@ -239,16 +250,14 @@ function presentationField(rule: AuthoritativeFieldRule, lowRisk: boolean): Edit
  * The single supported resource mapping is deliberately explicit and bijective.
  */
 export async function mapAuthoritativeCapabilityToPresentation(
-  capabilityValue: unknown,
-  resourceRefValue: unknown,
-  policyRevision: string,
+  input: MapAuthoritativeCapabilityInput,
 ): Promise<EditCapability> {
-  const capability = validateAuthoritativeEditCapability(capabilityValue)
+  const capability = validateAuthoritativeEditCapability(input.capability)
   await assertCapabilityDigest(capability)
-  const resourceRef = validateAuthoritativeResourceRef(resourceRefValue)
+  const resourceRef = validateAuthoritativeResourceRef(input.resourceRef)
   const schema = schemaFor(capability, resourceRef.resource_type)
   const kind = presentationKind(resourceRef.resource_type)
-  if (!policyRevision || policyRevision.length > 512) fail('policy_changed')
+  assertCapabilityAuthority(input.opening, input.live, capability, resourceRef)
   return Object.freeze({
     contractVersion: EDITING_CONTRACT_VERSION,
     provenance: EDITING_CONTRACT_PROVENANCE,
@@ -273,7 +282,7 @@ export async function mapAuthoritativeCapabilityToPresentation(
     available: true,
     availability: Object.freeze({ code: 'available', message: 'Editing is available.' }),
     immutableAlternatives: Object.freeze([]),
-    policyRevision,
+    policyRevision: input.opening.policy.revision,
   })
 }
 
@@ -317,9 +326,15 @@ function assertPresentationAuthor(command: SharedEditCommand, session: Authorita
   ) fail('delegation_denied')
 }
 
-function assertPolicy(opening: AuthoritativeOpeningBinding, live: AuthoritativeLiveAuthority, command: SharedEditCommand, session: EditSession): void {
+function assertOpeningAuthority(
+  opening: AuthoritativeOpeningBinding,
+  live: AuthoritativeCapabilityAuthority,
+): void {
   if (
-    !IDENTIFIER.test(opening.policy.id)
+    !IDENTIFIER.test(opening.projectId)
+    || opening.projectId !== live.projectId
+    || !IDENTIFIER.test(live.projectId)
+    || !IDENTIFIER.test(opening.policy.id)
     || !IDENTIFIER.test(opening.policy.version)
     || !DIGEST.test(opening.policy.hash)
     || !IDENTIFIER.test(opening.policy.revision)
@@ -332,11 +347,45 @@ function assertPolicy(opening: AuthoritativeOpeningBinding, live: AuthoritativeL
     || opening.policy.hash !== live.policy.hash
     || opening.policy.outcome !== live.policy.outcome
     || opening.availabilityVersion !== live.availabilityVersion
-    || command.policyRevision !== opening.policy.revision
-    || session.policyRevision !== opening.policy.revision
     || live.policy.revision !== opening.policy.revision
   ) fail('policy_changed')
   if (!live.available || live.policy.outcome === 'deny') fail('policy_denied')
+}
+
+function assertCapabilityAuthority(
+  opening: AuthoritativeOpeningBinding,
+  live: AuthoritativeCapabilityAuthority,
+  capability: AuthoritativeEditCapability,
+  resourceRef: AuthoritativeResourceRef,
+): void {
+  assertOpeningAuthority(opening, live)
+  if (
+    live.capabilityId !== capability.capability_id
+    || live.capabilityVersion !== capability.capability_version
+    || live.capabilityDigest !== capability.capability_digest
+  ) fail('capability_changed')
+  if (!equal(live.registeredAction, capability.consequential_action)) fail('action_changed')
+  if (!equal(validateAuthoritativeResourceRef(live.currentResourceRef), resourceRef)) fail('stale_resource')
+  const permission = `edit:${resourceRef.resource_type}`
+  if (!live.permissions.includes(permission) && !live.permissions.includes('edit:*')) fail('policy_denied')
+}
+
+function assertPolicy(
+  opening: AuthoritativeOpeningBinding,
+  live: AuthoritativeLiveAuthority,
+  authoritativeSession: AuthoritativeEditSession,
+  command: SharedEditCommand,
+  session: EditSession,
+): void {
+  assertOpeningAuthority(opening, live)
+  if (
+    opening.projectId !== authoritativeSession.project_id
+    || live.projectId !== authoritativeSession.project_id
+  ) fail('identity_conflict')
+  if (
+    command.policyRevision !== opening.policy.revision
+    || session.policyRevision !== opening.policy.revision
+  ) fail('policy_changed')
 }
 
 function assertCapabilityAndAction(
@@ -506,7 +555,7 @@ export async function adaptPresentationCommandToAuthority(
   if (!equal(presentationSession.author, command.author) || !equal(presentationSession.changes, command.changes)) fail('identity_conflict')
   if (presentationSession.state !== 'ready' || presentationSession.conflict.status !== 'current' || presentationSession.validation.length > 0) fail('stale_session')
   assertCapabilityAndAction(capability, authoritativeSession, input.live)
-  assertPolicy(input.opening, input.live, command, presentationSession)
+  assertPolicy(input.opening, input.live, authoritativeSession, command, presentationSession)
   assertPresentationAuthor(command, authoritativeSession, input.live)
   assertResource(command, presentationSession, authoritativeSession, input.live)
   const schema = schemaFor(capability, authoritativeSession.resource_ref.resource_type)
