@@ -187,8 +187,8 @@ export interface AuthoritativeProposalContinuation {
   readonly contract_version: typeof EDITING_CONTRACT_VERSION
   readonly kind: 'post_patch_result_required'
   readonly authority: 'non-authoritative'
-  readonly request_digest: string
-  readonly envelope: AuthoritativeApplyPatchEnvelope
+  /** The v1 result has no request correlation, so this binds only an authoritative session successor. */
+  readonly binding_scope: 'authoritative_session_successor_only'
   readonly pre_patch: {
     readonly session_id: string
     readonly project_id: string
@@ -209,8 +209,7 @@ export interface AuthoritativeProposalContinuation {
     readonly consequential_action: AuthoritativeConsequentialAction
   }
   readonly opening_binding: AuthoritativeOpeningBinding
-  readonly changed_fields: readonly string[]
-  /** Public checksum for accidental corruption/tamper detection. It grants no authority. */
+  /** Public checksum detects accidental corruption only; recomputation is trivial and grants no authority. */
   readonly integrity: {
     readonly algorithm: 'sha-256/canonical-json'
     readonly value: string
@@ -654,6 +653,10 @@ function positiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1
 }
 
+function nonnegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
 function parseContinuationAuthor(value: unknown): AuthoritativeAuthor {
   const source = record(value)
   exactKeys(source, ['subject', 'kind', 'delegation_id', 'delegator'])
@@ -709,14 +712,14 @@ function parseContinuationOpening(value: unknown): AuthoritativeOpeningBinding {
 async function parseProposalContinuation(value: unknown): Promise<AuthoritativeProposalContinuation> {
   const source = record(value)
   exactKeys(source, [
-    'contract_version', 'kind', 'authority', 'request_digest', 'envelope', 'pre_patch',
-    'capability_binding', 'opening_binding', 'changed_fields', 'integrity',
+    'contract_version', 'kind', 'authority', 'binding_scope', 'pre_patch',
+    'capability_binding', 'opening_binding', 'integrity',
   ])
   if (
     source.contract_version !== EDITING_CONTRACT_VERSION
     || source.kind !== 'post_patch_result_required'
     || source.authority !== 'non-authoritative'
-    || !digest(source.request_digest)
+    || source.binding_scope !== 'authoritative_session_successor_only'
   ) fail('proposal_required')
 
   const integrity = record(source.integrity)
@@ -724,22 +727,6 @@ async function parseProposalContinuation(value: unknown): Promise<AuthoritativeP
   if (integrity.algorithm !== 'sha-256/canonical-json' || !digest(integrity.value) || integrity.authoritative !== false) fail('proposal_required')
   const { integrity: _integrity, ...unsigned } = source
   if (await sha256(unsigned) !== integrity.value) fail('proposal_required')
-
-  const envelope = record(source.envelope)
-  exactKeys(envelope, ['operation', 'session_id', 'expected_version', 'expected_resource_ref', 'patch', 'allow_rebase'])
-  if (
-    envelope.operation !== 'apply_patch'
-    || !identifier(envelope.session_id)
-    || !positiveInteger(envelope.expected_version)
-    || envelope.allow_rebase !== false
-  ) fail('proposal_required')
-  const resourceRef = validateAuthoritativeResourceRef(envelope.expected_resource_ref)
-  const patch = validateAuthoritativeTypedPatch(envelope.patch)
-  const parsedEnvelope: AuthoritativeApplyPatchEnvelope = {
-    operation: 'apply_patch', session_id: envelope.session_id, expected_version: envelope.expected_version,
-    expected_resource_ref: resourceRef, patch, allow_rebase: false,
-  }
-  if (await sha256(parsedEnvelope) !== source.request_digest) fail('digest_mismatch')
 
   const pre = record(source.pre_patch)
   exactKeys(pre, [
@@ -749,9 +736,9 @@ async function parseProposalContinuation(value: unknown): Promise<AuthoritativeP
   if (
     !identifier(pre.session_id) || !identifier(pre.project_id) || !identifier(pre.capability_id)
     || !positiveInteger(pre.capability_version) || !digest(pre.capability_digest)
-    || !positiveInteger(pre.version) || !digest(pre.draft_digest)
+    || !nonnegativeInteger(pre.version) || !digest(pre.draft_digest)
     || (pre.resource_state !== 'draft' && pre.resource_state !== 'published')
-    || !positiveInteger(pre.history_length)
+    || !nonnegativeInteger(pre.history_length)
   ) fail('proposal_required')
   const preResourceRef = validateAuthoritativeResourceRef(pre.resource_ref)
   const preAuthor = parseContinuationAuthor(pre.author)
@@ -761,26 +748,19 @@ async function parseProposalContinuation(value: unknown): Promise<AuthoritativeP
   if (!identifier(capability.capability_id) || !positiveInteger(capability.capability_version) || !digest(capability.capability_digest)) fail('capability_changed')
   const action = parseContinuationAction(capability.consequential_action)
   const opening = parseContinuationOpening(source.opening_binding)
-  if (!Array.isArray(source.changed_fields) || source.changed_fields.length < 1 || source.changed_fields.some((field) => typeof field !== 'string' || !FIELD_POINTER.test(`/${field}`))) fail('invalid_patch')
-  const changedFields = [...source.changed_fields].sort()
-  if (new Set(changedFields).size !== changedFields.length) fail('ambiguous_mapping')
 
   if (
-    envelope.session_id !== pre.session_id || envelope.expected_version !== pre.version
-    || !equal(resourceRef, preResourceRef)
-    || capability.capability_id !== pre.capability_id
+    capability.capability_id !== pre.capability_id
     || capability.capability_version !== pre.capability_version
     || capability.capability_digest !== pre.capability_digest
     || opening.projectId !== pre.project_id
-    || !equal([...patch.operations.map((operation) => operation.field)].sort(), changedFields)
   ) fail('proposal_required')
 
   return {
     contract_version: EDITING_CONTRACT_VERSION,
     kind: 'post_patch_result_required',
     authority: 'non-authoritative',
-    request_digest: source.request_digest,
-    envelope: parsedEnvelope,
+    binding_scope: 'authoritative_session_successor_only',
     pre_patch: {
       session_id: pre.session_id, project_id: pre.project_id, capability_id: pre.capability_id,
       capability_version: pre.capability_version, capability_digest: pre.capability_digest,
@@ -792,27 +772,20 @@ async function parseProposalContinuation(value: unknown): Promise<AuthoritativeP
       capability_digest: capability.capability_digest, consequential_action: action,
     },
     opening_binding: opening,
-    changed_fields: changedFields,
     integrity: { algorithm: 'sha-256/canonical-json', value: integrity.value, authoritative: false },
   }
 }
 
 async function issueProposalContinuation(
-  requestDigest: string,
   prePatchSession: AuthoritativeEditSession,
   capability: AuthoritativeEditCapability,
   opening: AuthoritativeOpeningBinding,
-  patch: AuthoritativeTypedPatch,
 ): Promise<AuthoritativeProposalContinuation> {
   const unsigned: ProposalContinuationUnsigned = {
     contract_version: EDITING_CONTRACT_VERSION,
     kind: 'post_patch_result_required' as const,
     authority: 'non-authoritative',
-    request_digest: requestDigest,
-    envelope: {
-      operation: 'apply_patch', session_id: prePatchSession.session_id, expected_version: prePatchSession.version,
-      expected_resource_ref: prePatchSession.resource_ref, patch, allow_rebase: false,
-    },
+    binding_scope: 'authoritative_session_successor_only',
     pre_patch: {
       session_id: prePatchSession.session_id, project_id: prePatchSession.project_id,
       capability_id: prePatchSession.capability_id, capability_version: prePatchSession.capability_version,
@@ -829,7 +802,6 @@ async function issueProposalContinuation(
       policy: { ...opening.policy },
       availabilityVersion: opening.availabilityVersion,
     },
-    changed_fields: patch.operations.map((operation) => operation.field).sort(),
   }
   return Object.freeze({
     ...unsigned,
@@ -886,16 +858,16 @@ function assertPostPatchResult(
     || result.published !== false
     || result.diff.before_digest !== pre.draft_digest
     || result.diff.after_digest !== post.draft_digest
-    || !equal([...result.diff.changed_fields].sort(), state.changed_fields)
     || result.diff.validation.some((finding) => finding.level === 'error')
   ) fail('invalid_patch')
 }
 
 /**
- * Produces proposal input only from the exact authoritative result of the issued
- * apply_patch command. The serializable continuation is recovery metadata, not authority:
- * its public checksum cannot authorize anything and every binding is rechecked against
- * the authoritative result and current live authority.
+ * Produces proposal input only from an exact authoritative N+1 session result. OpenSaddle
+ * edit-result.v1 does not carry a request/patch correlation, so the serializable recovery
+ * metadata deliberately makes no claim that it identifies a particular patch. Its public
+ * checksum cannot authorize anything; every retained binding is rechecked against the
+ * authoritative result and current live authority.
  */
 export async function adaptPostPatchResultToProposal(
   input: AdaptPostPatchResultInput,
@@ -952,7 +924,7 @@ export async function adaptPresentationCommandToAuthority(
   }
   const requestDigest = await sha256(envelope)
   const continuation = proposalRequired
-    ? await issueProposalContinuation(requestDigest, authoritativeSession, capability, input.opening, patch)
+    ? await issueProposalContinuation(authoritativeSession, capability, input.opening)
     : null
   return Object.freeze({
     envelope: Object.freeze(envelope),

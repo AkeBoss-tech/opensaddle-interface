@@ -581,12 +581,16 @@ test('proposal input is a result-bound N+1 continuation and never an atomic pre-
   assert.deepEqual(proposal.delegation_chain, ['user-1', 'agent-1'])
 })
 
-test('proposal continuation survives JSON recovery and fails closed for every authority binding tamper', async () => {
+test('proposal continuation survives JSON recovery and fails closed for every retained authority binding tamper', async () => {
   const input = await setup('agent')
   const command = await adaptPresentationCommandToAuthority(input)
   assert.ok(command.proposal_continuation)
   assert.equal(command.proposal_continuation.authority, 'non-authoritative')
+  assert.equal(command.proposal_continuation.binding_scope, 'authoritative_session_successor_only')
   assert.equal(command.proposal_continuation.integrity.authoritative, false)
+  assert.equal('request_digest' in command.proposal_continuation, false)
+  assert.equal('envelope' in command.proposal_continuation, false)
+  assert.equal('changed_fields' in command.proposal_continuation, false)
   const result = postPatchResult(input)
   const live = postPatchLive(input, result)
 
@@ -599,11 +603,7 @@ test('proposal continuation survives JSON recovery and fails closed for every au
   }))
 
   const mutations: Array<[string, (continuation: any) => void]> = [
-    ['request digest', (c) => { c.request_digest = '1'.repeat(64) }],
-    ['envelope session', (c) => { c.envelope.session_id = `edit_${'2'.repeat(32)}` }],
-    ['envelope version', (c) => { c.envelope.expected_version += 1 }],
-    ['envelope resource', (c) => { c.envelope.expected_resource_ref.resource_id = 'plan-other' }],
-    ['envelope patch', (c) => { c.envelope.patch.operations[0].field = 'title' }],
+    ['binding scope', (c) => { c.binding_scope = 'particular_patch' }],
     ['pre-patch session', (c) => { c.pre_patch.session_id = `edit_${'2'.repeat(32)}` }],
     ['pre-patch project', (c) => { c.pre_patch.project_id = 'project-other' }],
     ['pre-patch capability id', (c) => { c.pre_patch.capability_id = 'resource.other' }],
@@ -631,7 +631,6 @@ test('proposal continuation survives JSON recovery and fails closed for every au
     ['opening policy revision', (c) => { c.opening_binding.policy.revision = 'policy:13' }],
     ['opening policy outcome', (c) => { c.opening_binding.policy.outcome = 'deny' }],
     ['opening availability', (c) => { c.opening_binding.availabilityVersion += 1 }],
-    ['changed fields', (c) => { c.changed_fields[0] = 'title' }],
     ['coordinated cross-project binding', (c) => {
       c.opening_binding.projectId = 'project-other'
       c.pre_patch.project_id = 'project-other'
@@ -659,6 +658,64 @@ test('proposal continuation survives JSON recovery and fails closed for every au
     live,
     proposal: { correlationIds: ['investigation:184'] },
   })), 'proposal_required')
+})
+
+test('continuation omits unprovable patch identity and rejects coordinated recomputed patch claims', async () => {
+  const input = await setup()
+  const first = await adaptPresentationCommandToAuthority(input)
+  assert.ok(first.proposal_continuation)
+
+  const changedChanges = [...input.submission.command.changes]
+  changedChanges[0] = { kind: 'field', path: '/objective', value: 'A different exact set value.' }
+  const changedCommand = { ...input.submission.command, changes: changedChanges }
+  const changedInput: AdaptPresentationCommandInput = {
+    ...input,
+    presentationSession: { ...input.presentationSession, changes: changedChanges },
+    submission: { ...input.submission, command: changedCommand },
+  }
+  const second = await adaptPresentationCommandToAuthority(changedInput)
+  assert.ok(second.proposal_continuation)
+  assert.notEqual(first.request_digest, second.request_digest)
+  assert.deepEqual(first.proposal_continuation, second.proposal_continuation)
+
+  for (const operation of [
+    { operation: 'set', field: 'objective', value: 'Coordinated mutation.' },
+    { operation: 'remove', field: 'objective' },
+  ]) {
+    const forged = structuredClone(first.proposal_continuation) as any
+    forged.envelope = {
+      ...structuredClone(first.envelope),
+      patch: { schema_version: 'opensaddle.typed-patch.v1', operations: [operation] },
+    }
+    forged.request_digest = digestJson(forged.envelope)
+    const resigned = resignContinuation(forged)
+    const result = postPatchResult(input)
+    assert.equal(await failureCode(() => adaptPostPatchResultToProposal({
+      continuation: resigned,
+      authoritativeResult: result,
+      live: postPatchLive(input, result),
+      proposal: { correlationIds: ['investigation:184'] },
+    })), 'proposal_required')
+  }
+})
+
+test('first edit at session version and history zero survives JSON restart recovery', async () => {
+  const input = await setup()
+  input.authoritativeSession = { ...input.authoritativeSession, version: 0, history_length: 0 }
+  input.live = { ...input.live, currentSessionVersion: 0 }
+  const command = await adaptPresentationCommandToAuthority(input)
+  assert.ok(command.proposal_continuation)
+  assert.equal(command.envelope.expected_version, 0)
+  const recovered = JSON.parse(JSON.stringify(command.proposal_continuation)) as AuthoritativeProposalContinuation
+  const result = postPatchResult(input)
+  assert.equal(result.session.version, 1)
+  assert.equal(result.session.history_length, 1)
+  assert.ok(await adaptPostPatchResultToProposal({
+    continuation: recovered,
+    authoritativeResult: result,
+    live: postPatchLive(input, result),
+    proposal: { correlationIds: ['investigation:first-edit'] },
+  }))
 })
 
 test('ambiguous resource, unsafe pointer, unsupported patch, digest encoding, and secret fields are rejected opaquely', async () => {
