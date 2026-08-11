@@ -1,0 +1,355 @@
+name: Desktop release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing desktop-vX.Y.Z tag to release
+        required: true
+        default: desktop-v0.1.1
+        type: string
+      python_archive_url:
+        description: Immutable URL for the arm64 install-only Python .tar.gz
+        required: true
+        type: string
+      python_archive_sha256:
+        description: SHA-256 of the Python archive
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Sign, notarize, and publish
+    runs-on: macos-15
+    environment: desktop-release
+    env:
+      KRAIL_VERSION: 1.1.13
+      KRAIL_WHEEL_URL: https://files.pythonhosted.org/packages/bf/c8/2d916c513febf9a3d9b17ce6af91f05c68e307c6bb725394bed7f9086c3d/krail-1.1.13-py3-none-any.whl
+      KRAIL_WHEEL_SHA256: f4f153e3c5499d98af44a67258f9c540cc6df554e8d9becada7b9eccd6dcec1c
+      OPENSADDLE_VERSION: 1.1.1
+      MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      GH_TOKEN: ${{ secrets.RELEASE_ADMIN_TOKEN }}
+
+    steps:
+      - name: Check out the existing release tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Validate release source and credentials
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^desktop-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || {
+            echo "Tag must match desktop-vX.Y.Z" >&2
+            exit 1
+          }
+          VERSION="${BASH_REMATCH[1]}"
+          [[ "$(node -p "require('./electron/package.json').version")" == "$VERSION" ]] || {
+            echo "Tag version does not match electron/package.json" >&2
+            exit 1
+          }
+          [[ "$(git rev-parse HEAD)" == "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" ]] || {
+            echo "Checkout is not the requested tag" >&2
+            exit 1
+          }
+          [[ "$(uname -m)" == arm64 ]] || {
+            echo "Desktop release requires an arm64 macOS runner" >&2
+            exit 1
+          }
+          [[ "${{ inputs.python_archive_sha256 }}" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "Python archive SHA-256 must be 64 lowercase hexadecimal characters" >&2
+            exit 1
+          }
+          for required in MACOS_CERTIFICATE_BASE64 MACOS_CERTIFICATE_PASSWORD MACOS_SIGNING_IDENTITY MACOS_KEYCHAIN_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID GH_TOKEN; do
+            [[ -n "${!required:-}" ]] || {
+              echo "Required release secret $required is missing" >&2
+              exit 1
+            }
+          done
+          [[ "$(gh api -H 'X-GitHub-Api-Version: 2026-03-10' "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" == true ]] || {
+            echo "GitHub immutable releases must be enabled" >&2
+            exit 1
+          }
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists and will not be modified" >&2
+            exit 1
+          fi
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Install JavaScript dependencies
+        run: |
+          set -euo pipefail
+          npm ci
+          npm ci --prefix electron
+
+      - name: Download and verify official runtime inputs
+        env:
+          PYTHON_ARCHIVE_URL: ${{ inputs.python_archive_url }}
+          PYTHON_ARCHIVE_SHA256: ${{ inputs.python_archive_sha256 }}
+        run: |
+          set -euo pipefail
+          KRAIL_WHEEL="$RUNNER_TEMP/krail-${KRAIL_VERSION}-py3-none-any.whl"
+          OPENSADDLE_METADATA="$RUNNER_TEMP/opensaddle-pypi.json"
+          OPENSADDLE_WHEEL="$RUNNER_TEMP/opensaddle-${OPENSADDLE_VERSION}-py3-none-any.whl"
+          PYTHON_ARCHIVE="$RUNNER_TEMP/opensaddle-python-runtime.tar.gz"
+
+          curl --fail --location --proto '=https' --tlsv1.2 "$KRAIL_WHEEL_URL" --output "$KRAIL_WHEEL"
+          echo "$KRAIL_WHEEL_SHA256  $KRAIL_WHEEL" | shasum -a 256 -c -
+
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            "https://pypi.org/pypi/opensaddle/${OPENSADDLE_VERSION}/json" \
+            --output "$OPENSADDLE_METADATA"
+          export OPENSADDLE_METADATA OPENSADDLE_WHEEL
+          OPENSADDLE_WHEEL_URL="$(node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const metadata = JSON.parse(fs.readFileSync(process.env.OPENSADDLE_METADATA, 'utf8'));
+          const filename = `opensaddle-${process.env.OPENSADDLE_VERSION}-py3-none-any.whl`;
+          const matches = metadata.urls.filter((item) => item.filename === filename && item.packagetype === 'bdist_wheel');
+          if (matches.length !== 1 || !/^https:\/\/files\.pythonhosted\.org\//.test(matches[0].url)) {
+            throw new Error(`Expected one official PyPI wheel named ${filename}`);
+          }
+          if (!/^[0-9a-f]{64}$/.test(matches[0].digests?.sha256 ?? '')) {
+            throw new Error('OpenSaddle PyPI metadata has no valid SHA-256');
+          }
+          process.stdout.write(matches[0].url);
+          NODE
+          )"
+          OPENSADDLE_WHEEL_SHA256="$(node -p "JSON.parse(require('fs').readFileSync(process.env.OPENSADDLE_METADATA, 'utf8')).urls.find(item => item.filename === 'opensaddle-' + process.env.OPENSADDLE_VERSION + '-py3-none-any.whl' && item.packagetype === 'bdist_wheel').digests.sha256")"
+          curl --fail --location --proto '=https' --tlsv1.2 "$OPENSADDLE_WHEEL_URL" --output "$OPENSADDLE_WHEEL"
+          echo "$OPENSADDLE_WHEEL_SHA256  $OPENSADDLE_WHEEL" | shasum -a 256 -c -
+
+          curl --fail --location --proto '=https' --tlsv1.2 "$PYTHON_ARCHIVE_URL" --output "$PYTHON_ARCHIVE"
+          echo "$PYTHON_ARCHIVE_SHA256  $PYTHON_ARCHIVE" | shasum -a 256 -c -
+
+          {
+            echo "KRAIL_WHEEL=$KRAIL_WHEEL"
+            echo "OPENSADDLE_WHEEL=$OPENSADDLE_WHEEL"
+            echo "OPENSADDLE_WHEEL_URL=$OPENSADDLE_WHEEL_URL"
+            echo "OPENSADDLE_WHEEL_SHA256=$OPENSADDLE_WHEEL_SHA256"
+            echo "PYTHON_ARCHIVE=$PYTHON_ARCHIVE"
+            echo "PYTHON_ARCHIVE_URL=$PYTHON_ARCHIVE_URL"
+            echo "PYTHON_ARCHIVE_SHA256=$PYTHON_ARCHIVE_SHA256"
+          } >> "$GITHUB_ENV"
+
+      - name: Build and smoke-test bundled runtimes
+        run: |
+          set -euo pipefail
+          KRAIL_WHEEL="$KRAIL_WHEEL" \
+          OPENSADDLE_WHEEL="$OPENSADDLE_WHEEL" \
+          KRAIL_PYTHON_RUNTIME="$PYTHON_ARCHIVE" \
+          KRAIL_PYTHON_RUNTIME_SHA256="$PYTHON_ARCHIVE_SHA256" \
+            node scripts/build-krail-runtime.mjs
+
+          export EXPECTED_KRAIL_SHA="$KRAIL_WHEEL_SHA256"
+          export EXPECTED_OPENSADDLE_SHA="$OPENSADDLE_WHEEL_SHA256"
+          export EXPECTED_PYTHON_SHA="$PYTHON_ARCHIVE_SHA256"
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          const krail = JSON.parse(fs.readFileSync('electron/runtime-bundle/krail-runtime/manifest.json', 'utf8'));
+          if (krail.wheel?.sha256 !== process.env.EXPECTED_KRAIL_SHA) throw new Error('KRAIL manifest SHA mismatch');
+          if (krail.opensaddle?.sha256 !== process.env.EXPECTED_OPENSADDLE_SHA) throw new Error('OpenSaddle manifest SHA mismatch');
+          if (krail.python?.sha256 !== process.env.EXPECTED_PYTHON_SHA) throw new Error('Python manifest SHA mismatch');
+          const report = fs.readFileSync('electron/runtime-bundle/krail-runtime/dependency-install-report.json');
+          if (crypto.createHash('sha256').update(report).digest('hex') !== krail.dependencies?.sha256) throw new Error('Dependency report SHA mismatch');
+          NODE
+
+          SMOKE_HOME="$RUNNER_TEMP/prepackage-home"
+          mkdir -p "$SMOKE_HOME"
+          env -i PATH=/usr/bin:/bin HOME="$SMOKE_HOME" TMPDIR="$RUNNER_TEMP" \
+            electron/runtime-bundle/krail-runtime/bin/krail-admin --help
+          env -i PATH=/usr/bin:/bin HOME="$SMOKE_HOME" TMPDIR="$RUNNER_TEMP" \
+            electron/runtime-bundle/krail-runtime/bin/krail-mutate --help
+          env -i PATH=/usr/bin:/bin HOME="$SMOKE_HOME" TMPDIR="$RUNNER_TEMP" \
+            electron/runtime-bundle/opensaddle-backend/opensaddle --help
+
+      - name: Build renderer and Electron main process
+        run: |
+          set -euo pipefail
+          npm run build
+          npm run electron:build
+
+      - name: Import Developer ID certificate
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/opensaddle-release.keychain-db"
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          printf '%s' "$MACOS_CERTIFICATE_BASE64" | /usr/bin/base64 -D > "$CERTIFICATE_PATH"
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -F "$MACOS_SIGNING_IDENTITY"
+          rm -f "$CERTIFICATE_PATH"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Package signed arm64 DMG
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          set -euo pipefail
+          export CSC_KEYCHAIN="$KEYCHAIN_PATH"
+          ./electron/node_modules/.bin/electron-builder \
+            --projectDir electron \
+            --mac dmg \
+            --arm64 \
+            --publish never \
+            --config.mac.identity="$MACOS_SIGNING_IDENTITY"
+          DMG_COUNT="$(find electron/dist -maxdepth 1 -type f -name '*.dmg' | wc -l | tr -d ' ')"
+          [[ "$DMG_COUNT" == 1 ]] || {
+            echo "Expected exactly one DMG, found $DMG_COUNT" >&2
+            exit 1
+          }
+          DMG_RELATIVE="$(find electron/dist -maxdepth 1 -type f -name '*.dmg' -print)"
+          echo "DMG_PATH=$(cd "$(dirname "$DMG_RELATIVE")" && pwd)/$(basename "$DMG_RELATIVE")" >> "$GITHUB_ENV"
+
+      - name: Notarize and staple DMG
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+
+      - name: Verify packaged application and bundled launchers
+        run: |
+          set -euo pipefail
+          MOUNT_PATH="$RUNNER_TEMP/opensaddle-dmg"
+          SMOKE_HOME="$RUNNER_TEMP/postpackage-home"
+          mkdir -p "$MOUNT_PATH" "$SMOKE_HOME"
+          cleanup_mount() { hdiutil detach "$MOUNT_PATH" >/dev/null 2>&1 || true; }
+          trap cleanup_mount EXIT
+          hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT_PATH" "$DMG_PATH"
+          APP_COUNT="$(find "$MOUNT_PATH" -maxdepth 1 -type d -name '*.app' | wc -l | tr -d ' ')"
+          [[ "$APP_COUNT" == 1 ]] || {
+            echo "Expected exactly one packaged app" >&2
+            exit 1
+          }
+          APP_PATH="$(find "$MOUNT_PATH" -maxdepth 1 -type d -name '*.app' -print)"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          spctl --assess --verbose=2 --type execute "$APP_PATH"
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")" == "$RELEASE_VERSION" ]]
+
+          RESOURCES="$APP_PATH/Contents/Resources"
+          env -i PATH=/usr/bin:/bin HOME="$SMOKE_HOME" TMPDIR="$RUNNER_TEMP" \
+            "$RESOURCES/krail-runtime/bin/krail-admin" --help
+          env -i PATH=/usr/bin:/bin HOME="$SMOKE_HOME" TMPDIR="$RUNNER_TEMP" \
+            "$RESOURCES/krail-runtime/bin/krail-mutate" --help
+          env -i PATH=/usr/bin:/bin HOME="$SMOKE_HOME" TMPDIR="$RUNNER_TEMP" \
+            "$RESOURCES/opensaddle-backend/opensaddle" --help
+
+          export EXPECTED_KRAIL_SHA="$KRAIL_WHEEL_SHA256"
+          export EXPECTED_OPENSADDLE_SHA="$OPENSADDLE_WHEEL_SHA256"
+          export EXPECTED_PYTHON_SHA="$PYTHON_ARCHIVE_SHA256"
+          export PACKAGED_RESOURCES="$RESOURCES"
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const read = (relative) => JSON.parse(fs.readFileSync(path.join(process.env.PACKAGED_RESOURCES, relative), 'utf8'));
+          const krail = read('krail-runtime/manifest.json');
+          if (krail.wheel?.sha256 !== process.env.EXPECTED_KRAIL_SHA) throw new Error('Packaged KRAIL SHA mismatch');
+          if (krail.opensaddle?.sha256 !== process.env.EXPECTED_OPENSADDLE_SHA) throw new Error('Packaged OpenSaddle SHA mismatch');
+          if (krail.python?.sha256 !== process.env.EXPECTED_PYTHON_SHA) throw new Error('Packaged Python SHA mismatch');
+          const report = fs.readFileSync(path.join(process.env.PACKAGED_RESOURCES, 'krail-runtime/dependency-install-report.json'));
+          if (crypto.createHash('sha256').update(report).digest('hex') !== krail.dependencies?.sha256) throw new Error('Packaged dependency report SHA mismatch');
+          NODE
+          cleanup_mount
+          trap - EXIT
+
+      - name: Generate checksums and provenance
+        run: |
+          set -euo pipefail
+          DMG_DIRECTORY="$(dirname "$DMG_PATH")"
+          DMG_FILENAME="$(basename "$DMG_PATH")"
+          CHECKSUM_PATH="$DMG_PATH.sha256"
+          (cd "$DMG_DIRECTORY" && shasum -a 256 "$DMG_FILENAME") > "$CHECKSUM_PATH"
+          DMG_SHA256="$(awk '{print $1}' "$CHECKSUM_PATH")"
+          PROVENANCE_PATH="$DMG_PATH.provenance.json"
+          RELEASE_NOTES_PATH="$RUNNER_TEMP/desktop-release-notes.md"
+          export DMG_FILENAME DMG_SHA256 PROVENANCE_PATH
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const provenance = {
+            schemaVersion: 1,
+            tag: process.env.RELEASE_TAG,
+            version: process.env.RELEASE_VERSION,
+            commit: process.env.SOURCE_SHA,
+            architecture: 'arm64',
+            krail: {version: process.env.KRAIL_VERSION, url: process.env.KRAIL_WHEEL_URL, sha256: process.env.KRAIL_WHEEL_SHA256},
+            opensaddle: {version: process.env.OPENSADDLE_VERSION, url: process.env.OPENSADDLE_WHEEL_URL, sha256: process.env.OPENSADDLE_WHEEL_SHA256},
+            python: {url: process.env.PYTHON_ARCHIVE_URL, sha256: process.env.PYTHON_ARCHIVE_SHA256},
+            dependencyReport: {path: 'krail-runtime/dependency-install-report.json', verifiedByManifest: true},
+            dmg: {filename: process.env.DMG_FILENAME, sha256: process.env.DMG_SHA256},
+            signing: {notarized: true, stapled: true},
+          };
+          fs.writeFileSync(process.env.PROVENANCE_PATH, `${JSON.stringify(provenance, null, 2)}\n`);
+          NODE
+          cat > "$RELEASE_NOTES_PATH" <<EOF
+          Signed and notarized OpenSaddle Desktop ${RELEASE_VERSION} for Apple silicon.
+
+          This release bundles official PyPI wheels for KRAIL ${KRAIL_VERSION} and OpenSaddle ${OPENSADDLE_VERSION}, plus a pinned Python runtime. Verify the DMG with the attached SHA-256 file and inspect the provenance JSON for all source digests.
+          EOF
+          {
+            echo "CHECKSUM_PATH=$CHECKSUM_PATH"
+            echo "PROVENANCE_PATH=$PROVENANCE_PATH"
+            echo "RELEASE_NOTES_PATH=$RELEASE_NOTES_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Upload verified release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opensaddle-desktop-${{ inputs.tag }}-arm64
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            electron/dist/*.dmg
+            electron/dist/*.dmg.sha256
+            electron/dist/*.dmg.provenance.json
+
+      - name: Publish immutable GitHub release
+        run: |
+          set -euo pipefail
+          [[ "$(gh api -H 'X-GitHub-Api-Version: 2026-03-10' "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" == true ]]
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists and will not be modified" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            "$DMG_PATH" \
+            "$CHECKSUM_PATH" \
+            "$PROVENANCE_PATH" \
+            --verify-tag \
+            --title "OpenSaddle Desktop v$RELEASE_VERSION" \
+            --notes-file "$RELEASE_NOTES_PATH" \
+            --latest
+
+      - name: Remove temporary signing keychain
+        if: always()
+        run: |
+          if [[ -n "${KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH" >/dev/null 2>&1 || true
+          fi

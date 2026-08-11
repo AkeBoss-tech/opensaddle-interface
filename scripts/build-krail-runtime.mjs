@@ -6,17 +6,32 @@ import { fileURLToPath } from 'node:url'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const staging = path.join(repositoryRoot, 'electron', 'runtime-bundle', 'krail-runtime')
+const backendStaging = path.join(repositoryRoot, 'electron', 'runtime-bundle', 'opensaddle-backend')
 const wheelFlag = process.argv.indexOf('--wheel')
 const wheelInput = wheelFlag >= 0 ? process.argv[wheelFlag + 1] : process.env.KRAIL_WHEEL
+const opensaddleWheelInput = process.env.OPENSADDLE_WHEEL
+const runtimeFlag = process.argv.indexOf('--python-runtime')
+const runtimeInput = runtimeFlag >= 0 ? process.argv[runtimeFlag + 1] : process.env.KRAIL_PYTHON_RUNTIME
+const runtimeDigest = process.env.KRAIL_PYTHON_RUNTIME_SHA256?.toLowerCase()
+
+function sha256(file) {
+  return createHash('sha256').update(readFileSync(file)).digest('hex')
+}
+
+function run(command, args, errorMessage, options = {}) {
+  const result = spawnSync(command, args, { stdio: 'inherit', ...options })
+  if (result.status !== 0) throw new Error(errorMessage)
+}
 
 function clean() {
   rmSync(staging, { recursive: true, force: true })
+  rmSync(backendStaging, { recursive: true, force: true })
   mkdirSync(staging, { recursive: true })
 }
 
 clean()
 if (!wheelInput) {
-  console.log('KRAIL runtime not bundled: provide --wheel PATH or KRAIL_WHEEL')
+  console.log('KRAIL runtime not bundled: provide a wheel and pinned Python runtime')
   process.exit(0)
 }
 
@@ -25,30 +40,91 @@ if (!existsSync(wheel) || !/^krail-1\.1\.13-.*\.whl$/.test(path.basename(wheel))
   console.error('KRAIL_WHEEL must point to a krail-1.1.13 wheel')
   process.exit(1)
 }
+if (!opensaddleWheelInput) {
+  console.error('OPENSADDLE_WHEEL is required for an out-of-box managed desktop runtime')
+  process.exit(1)
+}
+const opensaddleWheel = path.resolve(opensaddleWheelInput)
+if (!existsSync(opensaddleWheel) || !/^opensaddle-1\.1\.1-.*\.whl$/.test(path.basename(opensaddleWheel))) {
+  console.error('OPENSADDLE_WHEEL must point to an opensaddle-1.1.1 wheel')
+  process.exit(1)
+}
+if (!runtimeInput || !runtimeDigest || !/^[a-f0-9]{64}$/.test(runtimeDigest)) {
+  console.error('KRAIL_PYTHON_RUNTIME and its 64-character KRAIL_PYTHON_RUNTIME_SHA256 are required')
+  process.exit(1)
+}
+const runtimeArchive = path.resolve(runtimeInput)
+if (!existsSync(runtimeArchive) || !/\.tar\.gz$/.test(path.basename(runtimeArchive))) {
+  console.error('KRAIL_PYTHON_RUNTIME must point to a pinned install-only Python .tar.gz archive')
+  process.exit(1)
+}
+if (sha256(runtimeArchive) !== runtimeDigest) {
+  console.error('KRAIL Python runtime digest does not match KRAIL_PYTHON_RUNTIME_SHA256')
+  process.exit(1)
+}
 
 try {
+  const listing = spawnSync('tar', ['-tzf', runtimeArchive], { encoding: 'utf8' })
+  if (listing.status !== 0) throw new Error('could not inspect the KRAIL Python runtime archive')
+  const members = listing.stdout.split('\n').filter(Boolean)
+  if (!members.length || members.some((member) => member.startsWith('/') || member.split('/').includes('..'))) {
+    throw new Error('KRAIL Python runtime archive contains an unsafe path')
+  }
+  run('tar', ['-xzf', runtimeArchive, '-C', staging], 'could not extract the KRAIL Python runtime')
+  const python = path.join(staging, 'python', 'bin', 'python3')
+  if (!existsSync(python)) throw new Error('KRAIL Python runtime archive does not contain python/bin/python3')
+
   const sitePackages = path.join(staging, 'site-packages')
-  const python = process.env.PYTHON || 'python3'
-  const installed = spawnSync(
+  const dependencyReport = path.join(staging, 'dependency-install-report.json')
+  run(
     python,
-    ['-m', 'pip', 'install', '--disable-pip-version-check', '--target', sitePackages, wheel],
-    { stdio: 'inherit' },
+    ['-m', 'pip', 'install', '--disable-pip-version-check', '--only-binary=:all:', '--report', dependencyReport, '--target', sitePackages, wheel, opensaddleWheel],
+    'pip failed to stage the KRAIL runtime',
   )
-  if (installed.status !== 0) throw new Error('pip failed to stage the KRAIL runtime')
 
   const bin = path.join(staging, 'bin')
   mkdirSync(bin, { recursive: true })
   for (const [name, module] of [['krail-admin', 'krail.admin'], ['krail-mutate', 'krail.mutation']]) {
     const launcher = path.join(bin, name)
-    writeFileSync(launcher, `#!/bin/sh\nHERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexport PYTHONPATH="$HERE/../site-packages${'${PYTHONPATH:+:$PYTHONPATH}'}"\nexec "${'${PYTHON:-python3}'}" -m ${module} "$@"\n`)
+    writeFileSync(launcher, `#!/bin/sh\nHERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$HERE/../python/bin/python3" -I -c 'import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); runpy.run_module("${module}", run_name="__main__")' "$HERE/../site-packages" "$@"\n`)
     chmodSync(launcher, 0o755)
   }
+  for (const launcher of ['krail-admin', 'krail-mutate']) {
+    run(
+      '/usr/bin/env',
+      ['-i', 'PATH=/usr/bin:/bin', path.join(bin, launcher), '--help'],
+      `${launcher} failed its sanitized bundled-runtime smoke test`,
+    )
+  }
+  mkdirSync(backendStaging, { recursive: true })
+  const backendLauncher = path.join(backendStaging, 'opensaddle')
+  writeFileSync(backendLauncher, `#!/bin/sh\nHERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$HERE/../krail-runtime/python/bin/python3" -I -c 'import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); runpy.run_module("opensaddle.cli.main", run_name="__main__")' "$HERE/../krail-runtime/site-packages" "$@"\n`)
+  chmodSync(backendLauncher, 0o755)
+  run(
+    '/usr/bin/env',
+    ['-i', 'PATH=/usr/bin:/bin', backendLauncher, '--help'],
+    'opensaddle backend failed its sanitized bundled-runtime smoke test',
+  )
   const manifest = {
     schemaVersion: 1,
     runtime: 'krail',
     wheel: {
       name: path.basename(wheel),
-      sha256: createHash('sha256').update(readFileSync(wheel)).digest('hex'),
+      sha256: sha256(wheel),
+    },
+    opensaddle: {
+      name: path.basename(opensaddleWheel),
+      sha256: sha256(opensaddleWheel),
+      command: '../opensaddle-backend/opensaddle',
+    },
+    python: {
+      name: path.basename(runtimeArchive),
+      sha256: runtimeDigest,
+      command: 'python/bin/python3',
+    },
+    dependencies: {
+      report: 'dependency-install-report.json',
+      sha256: sha256(dependencyReport),
     },
     commands: { admin: 'bin/krail-admin', mutation: 'bin/krail-mutate' },
     builtAt: new Date().toISOString(),

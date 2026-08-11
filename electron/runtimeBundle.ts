@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { accessSync, constants, existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -5,6 +6,9 @@ export interface KrailRuntimeManifest {
   schemaVersion: 1
   runtime: 'krail'
   wheel: { name: string; sha256: string }
+  opensaddle: { name: string; sha256: string; command: string }
+  python: { name: string; sha256: string; command: string }
+  dependencies: { report: string; sha256: string }
   commands: { admin: string; mutation: string }
   builtAt: string
 }
@@ -28,15 +32,30 @@ function bundledCommand(root: string, candidate: unknown): string | null {
   return resolved
 }
 
+function bundledDigest(root: string, candidate: unknown, expected: unknown): boolean {
+  if (typeof candidate !== 'string' || !candidate || path.isAbsolute(candidate) || typeof expected !== 'string' || !/^[a-f0-9]{64}$/.test(expected)) return false
+  const resolved = path.resolve(root, candidate)
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) return false
+  try {
+    return createHash('sha256').update(readFileSync(resolved)).digest('hex') === expected
+  } catch {
+    return false
+  }
+}
+
 export function resolveKrailRuntime(resourceRoot: string): ResolvedKrailRuntime | null {
   const root = path.resolve(resourceRoot, 'krail-runtime')
   try {
     const manifest = JSON.parse(readFileSync(path.join(root, 'manifest.json'), 'utf8')) as KrailRuntimeManifest
     if (manifest.schemaVersion !== 1 || manifest.runtime !== 'krail') return null
     if (!manifest.wheel || typeof manifest.wheel.name !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.wheel.sha256)) return null
+    if (!manifest.opensaddle || typeof manifest.opensaddle.name !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.opensaddle.sha256) || manifest.opensaddle.command !== '../opensaddle-backend/opensaddle') return null
+    if (!manifest.python || typeof manifest.python.name !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.python.sha256)) return null
+    if (!manifest.dependencies || !bundledDigest(root, manifest.dependencies.report, manifest.dependencies.sha256)) return null
+    const pythonCommand = bundledCommand(root, manifest.python.command)
     const adminCommand = bundledCommand(root, manifest.commands?.admin)
     const mutationCommand = bundledCommand(root, manifest.commands?.mutation)
-    return adminCommand && mutationCommand
+    return pythonCommand && adminCommand && mutationCommand
       ? { manifest, adminCommand, mutationCommand }
       : null
   } catch {
