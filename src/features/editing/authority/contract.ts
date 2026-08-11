@@ -154,6 +154,30 @@ const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/
 const FIELD = /^[a-z][a-z0-9_]{0,127}$/
 const URI = /^[A-Za-z][A-Za-z0-9+.-]*:[^\s]+$/
 
+function rfc3339Instant(value: unknown): string {
+  const result = text(value, 1, 200)
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/.exec(result)
+  if (!match) return fail()
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  const second = Number(match[6])
+  const offsetHour = match[8] === undefined ? 0 : Number(match[8])
+  const offsetMinute = match[9] === undefined ? 0 : Number(match[9])
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  if (
+    month < 1 || month > 12
+    || day < 1 || day > days[month - 1]
+    || hour > 23 || minute > 59 || second > 59
+    || offsetHour > 23 || offsetMinute > 59
+    || Number.isNaN(Date.parse(result))
+  ) return fail()
+  return result
+}
+
 export type AuthoritativeValidationCode =
   | 'unsupported_schema'
   | 'invalid_document'
@@ -362,8 +386,7 @@ function session(value: unknown): AuthoritativeEditSession {
   if (source.schema_version !== 'opensaddle.edit-session.v1') fail('unsupported_schema')
   const sessionId = text(source.session_id, 37, 37)
   if (!/^edit_[a-f0-9]{32}$/.test(sessionId)) fail('invalid_identity')
-  const at = text(source.last_autosaved_at, 1, 200)
-  if (!/^\d{4}-\d{2}-\d{2}T/.test(at) || Number.isNaN(Date.parse(at))) fail()
+  const at = rfc3339Instant(source.last_autosaved_at)
   if (source.resource_state !== 'draft' && source.resource_state !== 'published') fail()
   return {
     schema_version: 'opensaddle.edit-session.v1',
@@ -492,6 +515,12 @@ export function validateAuthoritativeTypedPatch(value: unknown): AuthoritativeTy
 export function validateAuthoritativeEditSession(value: unknown): AuthoritativeEditSession {
   const document = validateAuthoritativeEditDocument(value)
   if (!('schema_version' in document) || document.schema_version !== 'opensaddle.edit-session.v1') fail('unsupported_schema')
+  return document
+}
+
+export function validateAuthoritativeEditResult(value: unknown): AuthoritativeEditResult {
+  const document = validateAuthoritativeEditDocument(value)
+  if (!('schema_version' in document) || document.schema_version !== 'opensaddle.edit-result.v1') fail('unsupported_schema')
   return document
 }
 

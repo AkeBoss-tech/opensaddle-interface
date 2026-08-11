@@ -5,6 +5,7 @@ import test from 'node:test'
 import {
   AuthorityAdapterFailure,
   AuthoritativeEditValidationError,
+  adaptPostPatchResultToProposal,
   adaptPresentationCommandToAuthority,
   createEditSession,
   mapAuthoritativeCapabilityToPresentation,
@@ -16,7 +17,9 @@ import {
   type AuthoritativeCapabilityAuthority,
   type AuthoritativeClientFixture,
   type AuthoritativeEditSession,
+  type AuthoritativeEditResult,
   type AuthoritativeLiveAuthority,
+  type AuthoritativeProposalInput,
   type AuthoritativeOpeningBinding,
   type EditAuthor,
   type EditSession,
@@ -150,8 +153,67 @@ async function setup(kind: 'human' | 'agent' = 'human'): Promise<AdaptPresentati
     opening: mapping.opening,
     live,
     idempotencyKey: 'edit-command-184',
-    proposal: { correlationIds: ['investigation:184'] },
   }
+}
+
+function postPatchResult(input: AdaptPresentationCommandInput, afterDigest = 'f'.repeat(64)): AuthoritativeEditResult {
+  const pre = input.authoritativeSession
+  return {
+    schema_version: 'opensaddle.edit-result.v1',
+    session: {
+      ...pre,
+      version: pre.version + 1,
+      draft_digest: afterDigest,
+      last_autosaved_at: '2026-08-11T00:01:00+00:00',
+      recovery_token_digest: 'a'.repeat(64),
+      history_length: pre.history_length + 1,
+    },
+    diff: {
+      changed_fields: input.submission.command.changes.map((change) => change.path.slice(1)).sort(),
+      before_digest: pre.draft_digest,
+      after_digest: afterDigest,
+      validation: [],
+    },
+    applied: true,
+    rebased: false,
+    omissions_present: false,
+    proposal_required: true,
+    published: false,
+  }
+}
+
+function postPatchLive(input: AdaptPresentationCommandInput, result: AuthoritativeEditResult): AuthoritativeLiveAuthority {
+  return {
+    ...input.live,
+    currentSessionVersion: result.session.version,
+    currentDraftDigest: result.session.draft_digest,
+  }
+}
+
+async function completeProposal(
+  input: AdaptPresentationCommandInput,
+): Promise<{ proposal: AuthoritativeProposalInput; result: AuthoritativeEditResult }> {
+  const command = await adaptPresentationCommandToAuthority(input)
+  assert.ok(command.proposal_continuation)
+  const result = postPatchResult(input)
+  const proposal = await adaptPostPatchResultToProposal({
+    continuation: command.proposal_continuation,
+    authoritativeResult: result,
+    live: postPatchLive(input, result),
+    proposal: { correlationIds: ['investigation:184'] },
+  })
+  return { proposal, result }
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  const source = value as Record<string, unknown>
+  return `{${Object.keys(source).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(source[key])}`).join(',')}}`
+}
+
+function digestJson(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex')
 }
 
 async function failureCode(action: () => Promise<unknown>): Promise<string | undefined> {
@@ -184,6 +246,8 @@ test('authoritative fixture documents strictly validate and its supported patch 
   const adapted = await adaptPresentationCommandToAuthority(await setup())
   assert.deepEqual(adapted.envelope.patch, source.patch)
   assert.equal(adapted.envelope.expected_resource_ref.version, source.operation_proposal_request.targets[0].expected_version)
+  assert.ok(adapted.proposal_continuation)
+  assert.equal('operation_proposal_request' in adapted, false)
   assert.equal(adapted.transport_available, false)
   assert.equal(adapted.approval_available, false)
   assert.equal(adapted.execution_available, false)
@@ -238,12 +302,14 @@ test('capability mapping requires exact project, live permission, availability, 
 })
 
 test('human and harness-agent callers share command semantics with exact delegation differences', async () => {
-  const human = await adaptPresentationCommandToAuthority(await setup('human'))
-  const agent = await adaptPresentationCommandToAuthority(await setup('agent'))
+  const humanInput = await setup('human')
+  const agentInput = await setup('agent')
+  const human = await adaptPresentationCommandToAuthority(humanInput)
+  const agent = await adaptPresentationCommandToAuthority(agentInput)
   assert.deepEqual(agent.envelope, human.envelope)
   assert.equal(agent.request_digest, human.request_digest)
-  assert.deepEqual(human.operation_proposal_request?.delegation_chain, [])
-  assert.deepEqual(agent.operation_proposal_request?.delegation_chain, ['user-1', 'agent-1'])
+  assert.deepEqual((await completeProposal(humanInput)).proposal.delegation_chain, [])
+  assert.deepEqual((await completeProposal(agentInput)).proposal.delegation_chain, ['user-1', 'agent-1'])
   assert.equal(agent.authority_binding.author.delegation_id, 'delegation-1')
 })
 
@@ -361,6 +427,154 @@ test('agent delegation must be exact, unrevoked, unexpired, and live-policy boun
     activeDelegation: { ...rebound.live.activeDelegation!, policyHash: 'f'.repeat(64) },
   }
   assert.equal(await failureCode(() => adaptPresentationCommandToAuthority(rebound)), 'delegation_denied')
+
+  const nullBypass = await setup('agent')
+  const nullAuthor = {
+    ...nullBypass.submission.command.author,
+    delegatedBy: null,
+    delegationId: null,
+  }
+  nullBypass.submission = {
+    ...nullBypass.submission,
+    command: { ...nullBypass.submission.command, author: nullAuthor },
+  } as unknown as EditSubmissionProjection
+  nullBypass.presentationSession = {
+    ...nullBypass.presentationSession,
+    author: nullAuthor,
+  } as unknown as EditSession
+  nullBypass.authoritativeSession = {
+    ...nullBypass.authoritativeSession,
+    author: { ...nullBypass.authoritativeSession.author, delegation_id: null, delegator: null },
+  }
+  nullBypass.live = {
+    ...nullBypass.live,
+    activeDelegation: {
+      ...nullBypass.live.activeDelegation!,
+      delegationId: null,
+      delegator: null,
+    } as unknown as NonNullable<AuthoritativeLiveAuthority['activeDelegation']>,
+  }
+  assert.equal(await failureCode(() => adaptPresentationCommandToAuthority(nullBypass)), 'delegation_denied')
+})
+
+test('timestamps require explicit RFC3339 timezone and runtime policy outcomes are exact enums', async () => {
+  const autosave = await setup()
+  autosave.authoritativeSession = {
+    ...autosave.authoritativeSession,
+    last_autosaved_at: '2026-08-11T00:00:00',
+  }
+  assert.equal(await failureCode(() => adaptPresentationCommandToAuthority(autosave)), 'invalid_document')
+
+  const delegationTime = await setup('agent')
+  delegationTime.live = {
+    ...delegationTime.live,
+    activeDelegation: { ...delegationTime.live.activeDelegation!, validUntil: '2026-08-12T00:00:00' },
+  }
+  assert.equal(await failureCode(() => adaptPresentationCommandToAuthority(delegationTime)), 'delegation_denied')
+
+  const liveTime = await setup('agent')
+  liveTime.live = { ...liveTime.live, now: '2026-08-11T00:00:00' }
+  assert.equal(await failureCode(() => adaptPresentationCommandToAuthority(liveTime)), 'delegation_denied')
+
+  const offset = await setup('agent')
+  offset.live = {
+    ...offset.live,
+    now: '2026-08-11T05:30:00+05:30',
+    activeDelegation: { ...offset.live.activeDelegation!, validUntil: '2026-08-12T05:30:00+05:30' },
+  }
+  assert.ok((await adaptPresentationCommandToAuthority(offset)).proposal_continuation)
+
+  const policy = await setup()
+  const invalidOutcome = 'allow_everything'
+  policy.opening = {
+    ...policy.opening,
+    policy: { ...policy.opening.policy, outcome: invalidOutcome },
+  } as unknown as AdaptPresentationCommandInput['opening']
+  policy.live = {
+    ...policy.live,
+    policy: { ...policy.live.policy, outcome: invalidOutcome },
+  } as unknown as AuthoritativeLiveAuthority
+  assert.equal(await failureCode(() => adaptPresentationCommandToAuthority(policy)), 'policy_changed')
+
+  const mapping = await capabilityMappingInput()
+  mapping.opening = {
+    ...mapping.opening,
+    policy: { ...mapping.opening.policy, outcome: invalidOutcome },
+  } as unknown as AuthoritativeOpeningBinding
+  mapping.live = {
+    ...mapping.live,
+    policy: { ...mapping.live.policy, outcome: invalidOutcome },
+  } as unknown as AuthoritativeCapabilityAuthority
+  assert.equal(await failureCode(() => mapAuthoritativeCapabilityToPresentation(mapping)), 'policy_changed')
+})
+
+test('proposal input is a result-bound N+1 continuation and never an atomic pre-patch body', async () => {
+  const input = await setup('agent')
+  const command = await adaptPresentationCommandToAuthority(input)
+  assert.ok(command.proposal_continuation)
+  assert.equal('operation_proposal_request' in command, false)
+
+  const post = postPatchResult(input)
+  const preVersion = {
+    ...post,
+    session: {
+      ...post.session,
+      version: input.authoritativeSession.version,
+      history_length: input.authoritativeSession.history_length,
+    },
+  }
+  assert.equal(await failureCode(() => adaptPostPatchResultToProposal({
+    continuation: command.proposal_continuation!,
+    authoritativeResult: preVersion,
+    live: input.live,
+    proposal: { correlationIds: ['investigation:184'] },
+  })), 'stale_session')
+
+  const wrongDigest = {
+    ...post,
+    session: { ...post.session, draft_digest: 'b'.repeat(64) },
+  }
+  assert.equal(await failureCode(() => adaptPostPatchResultToProposal({
+    continuation: command.proposal_continuation!,
+    authoritativeResult: wrongDigest,
+    live: postPatchLive(input, wrongDigest),
+    proposal: { correlationIds: ['investigation:184'] },
+  })), 'invalid_patch')
+
+  assert.equal(await failureCode(() => adaptPostPatchResultToProposal({
+    continuation: {
+      kind: 'post_patch_result_required',
+      request_digest: command.request_digest,
+      expected_post_patch_version: post.session.version,
+    },
+    authoritativeResult: post,
+    live: postPatchLive(input, post),
+    proposal: { correlationIds: ['investigation:184'] },
+  })), 'proposal_required')
+
+  const proposal = await adaptPostPatchResultToProposal({
+    continuation: command.proposal_continuation!,
+    authoritativeResult: post,
+    live: postPatchLive(input, post),
+    proposal: { correlationIds: ['investigation:184'] },
+  })
+  const expectedPostDigest = digestJson({
+    resource_ref: post.session.resource_ref,
+    draft_digest: post.session.draft_digest,
+    session_version: post.session.version,
+    capability_digest: input.capability.capability_digest,
+    consequential_action: input.capability.consequential_action,
+  })
+  const forbiddenPreDigest = digestJson({
+    resource_ref: input.authoritativeSession.resource_ref,
+    draft_digest: input.authoritativeSession.draft_digest,
+    session_version: input.authoritativeSession.version,
+    capability_digest: input.capability.capability_digest,
+    consequential_action: input.capability.consequential_action,
+  })
+  assert.equal(proposal.protected_input_digest, expectedPostDigest)
+  assert.notEqual(proposal.protected_input_digest, forbiddenPreDigest)
+  assert.deepEqual(proposal.delegation_chain, ['user-1', 'agent-1'])
 })
 
 test('ambiguous resource, unsafe pointer, unsupported patch, digest encoding, and secret fields are rejected opaquely', async () => {
@@ -432,9 +646,12 @@ test('consequential and reversibility-required edits cannot bypass immutable pro
   }
   assert.equal(await failureCode(() => adaptPresentationCommandToAuthority(input)), 'proposal_required')
 
-  const valid = await adaptPresentationCommandToAuthority(await setup())
-  assert.ok(valid.operation_proposal_request)
-  assert.deepEqual(valid.operation_proposal_request?.validation_results.map((item) => item.code), [
+  const validInput = await setup()
+  const valid = await adaptPresentationCommandToAuthority(validInput)
+  assert.ok(valid.proposal_continuation)
+  assert.equal('operation_proposal_request' in valid, false)
+  const completed = await completeProposal(validInput)
+  assert.deepEqual(completed.proposal.validation_results.map((item) => item.code), [
     'edit.schema_validated',
     'edit.draft_has_changes',
     'edit.proposal_required',

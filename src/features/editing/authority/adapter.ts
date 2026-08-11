@@ -13,6 +13,7 @@ import {
   type AuthoritativeAuthor,
   type AuthoritativeConsequentialAction,
   type AuthoritativeEditCapability,
+  type AuthoritativeEditResult,
   type AuthoritativeEditSession,
   type AuthoritativeFieldRule,
   type AuthoritativeProposalInput,
@@ -21,6 +22,7 @@ import {
   type AuthoritativeTypedPatch,
   type JsonValue,
   validateAuthoritativeEditCapability,
+  validateAuthoritativeEditResult,
   validateAuthoritativeEditSession,
   validateAuthoritativeProposalInput,
   validateAuthoritativeResourceRef,
@@ -145,7 +147,6 @@ export interface AdaptPresentationCommandInput {
   opening: AuthoritativeOpeningBinding
   live: AuthoritativeLiveAuthority
   idempotencyKey: string
-  proposal?: AuthoritativeProposalOptions
 }
 
 export interface AuthoritativeApplyPatchEnvelope {
@@ -176,10 +177,68 @@ export interface ValidatedAuthoritativeEditCommand {
     registered_action_version: number
     registered_action_digest: string
   }
-  operation_proposal_request: AuthoritativeProposalInput | null
+  proposal_continuation: AuthoritativeProposalContinuation | null
   approval_available: false
   execution_available: false
   transport_available: false
+}
+
+export interface AuthoritativeProposalContinuation {
+  readonly kind: 'post_patch_result_required'
+  readonly request_digest: string
+  readonly expected_post_patch_version: number
+}
+
+export interface AdaptPostPatchResultInput {
+  continuation: AuthoritativeProposalContinuation
+  authoritativeResult: unknown
+  live: AuthoritativeLiveAuthority
+  proposal: AuthoritativeProposalOptions
+}
+
+interface ProposalContinuationState {
+  requestDigest: string
+  prePatchSession: AuthoritativeEditSession
+  capability: AuthoritativeEditCapability
+  opening: AuthoritativeOpeningBinding
+  changedFields: readonly string[]
+}
+
+const PROPOSAL_CONTINUATIONS = new WeakMap<object, ProposalContinuationState>()
+
+function identifier(value: unknown): value is string {
+  return typeof value === 'string' && IDENTIFIER.test(value)
+}
+
+function digest(value: unknown): value is string {
+  return typeof value === 'string' && DIGEST.test(value)
+}
+
+function policyOutcome(value: unknown): value is AuthoritativePolicyOutcome {
+  return value === 'allow_draft' || value === 'allow_commit' || value === 'proposal_required' || value === 'deny'
+}
+
+function rfc3339Instant(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/.exec(value)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  const second = Number(match[6])
+  const offsetHour = match[8] === undefined ? 0 : Number(match[8])
+  const offsetMinute = match[9] === undefined ? 0 : Number(match[9])
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return (
+    month >= 1 && month <= 12
+    && day >= 1 && day <= days[month - 1]
+    && hour <= 23 && minute <= 59 && second <= 59
+    && offsetHour <= 23 && offsetMinute <= 59
+    && !Number.isNaN(Date.parse(value))
+  )
 }
 
 function equal(left: unknown, right: unknown): boolean {
@@ -286,32 +345,39 @@ export async function mapAuthoritativeCapabilityToPresentation(
   })
 }
 
-function assertPresentationAuthor(command: SharedEditCommand, session: AuthoritativeEditSession, live: AuthoritativeLiveAuthority): void {
-  const author = command.author
+function assertLiveAuthor(author: AuthoritativeAuthor, live: AuthoritativeLiveAuthority): void {
   if (
-    !IDENTIFIER.test(session.author.subject)
-    || author.principalId !== session.author.subject
-    || live.subject !== session.author.subject
-    || author.kind !== session.author.kind
-  ) {
-    fail('identity_conflict')
-  }
+    !identifier(author.subject)
+    || !identifier(live.subject)
+    || live.subject !== author.subject
+  ) fail('identity_conflict')
   if (author.kind === 'human') {
-    if (session.author.delegation_id !== null || session.author.delegator !== null || live.activeDelegation !== null) fail('identity_conflict')
+    if (author.delegation_id !== null || author.delegator !== null || live.activeDelegation !== null) fail('identity_conflict')
     return
   }
   if (
-    !IDENTIFIER.test(author.delegationId) || !IDENTIFIER.test(author.delegatedBy)
-    || author.delegationId !== session.author.delegation_id
-    || author.delegatedBy !== session.author.delegator
-    || live.revokedDelegationIds.includes(author.delegationId)
+    !identifier(author.delegation_id)
+    || !identifier(author.delegator)
+    || live.revokedDelegationIds.includes(author.delegation_id)
   ) fail('delegation_denied')
   const delegation = live.activeDelegation
   if (
     delegation === null
-    || delegation.delegationId !== author.delegationId
-    || delegation.delegate !== author.principalId
-    || delegation.delegator !== author.delegatedBy
+    || !identifier(delegation.delegationId)
+    || !identifier(delegation.delegate)
+    || !identifier(delegation.delegator)
+    || !identifier(delegation.projectId)
+    || !identifier(delegation.capabilityId)
+    || !identifier(delegation.policyId)
+    || !identifier(delegation.policyVersion)
+    || !digest(delegation.capabilityDigest)
+    || !digest(delegation.policyHash)
+    || !policyOutcome(delegation.policyOutcome)
+    || !rfc3339Instant(delegation.validUntil)
+    || !rfc3339Instant(live.now)
+    || delegation.delegationId !== author.delegation_id
+    || delegation.delegate !== author.subject
+    || delegation.delegator !== author.delegator
     || delegation.projectId !== live.projectId
     || delegation.capabilityId !== live.capabilityId
     || delegation.capabilityVersion !== live.capabilityVersion
@@ -320,10 +386,29 @@ function assertPresentationAuthor(command: SharedEditCommand, session: Authorita
     || delegation.policyVersion !== live.policy.version
     || delegation.policyHash !== live.policy.hash
     || delegation.policyOutcome !== live.policy.outcome
-    || Number.isNaN(Date.parse(delegation.validUntil))
-    || Number.isNaN(Date.parse(live.now))
     || Date.parse(live.now) >= Date.parse(delegation.validUntil)
   ) fail('delegation_denied')
+}
+
+function assertPresentationAuthor(command: SharedEditCommand, session: AuthoritativeEditSession, live: AuthoritativeLiveAuthority): void {
+  const author = command.author
+  if (
+    author.principalId !== session.author.subject
+    || author.kind !== session.author.kind
+  ) fail('identity_conflict')
+  if (author.kind === 'human') {
+    assertLiveAuthor(session.author, live)
+    return
+  }
+  if (
+    !identifier(author.delegationId)
+    || !identifier(author.delegatedBy)
+    || !identifier(session.author.delegation_id)
+    || !identifier(session.author.delegator)
+    || author.delegationId !== session.author.delegation_id
+    || author.delegatedBy !== session.author.delegator
+  ) fail('delegation_denied')
+  assertLiveAuthor(session.author, live)
 }
 
 function assertOpeningAuthority(
@@ -331,13 +416,15 @@ function assertOpeningAuthority(
   live: AuthoritativeCapabilityAuthority,
 ): void {
   if (
-    !IDENTIFIER.test(opening.projectId)
+    !identifier(opening.projectId)
     || opening.projectId !== live.projectId
-    || !IDENTIFIER.test(live.projectId)
-    || !IDENTIFIER.test(opening.policy.id)
-    || !IDENTIFIER.test(opening.policy.version)
-    || !DIGEST.test(opening.policy.hash)
-    || !IDENTIFIER.test(opening.policy.revision)
+    || !identifier(live.projectId)
+    || !identifier(opening.policy.id)
+    || !identifier(opening.policy.version)
+    || !digest(opening.policy.hash)
+    || !identifier(opening.policy.revision)
+    || !policyOutcome(opening.policy.outcome)
+    || !policyOutcome(live.policy.outcome)
     || !Number.isSafeInteger(opening.availabilityVersion)
     || opening.availabilityVersion < 1
   ) fail('policy_changed')
@@ -530,6 +617,97 @@ async function proposalInput(
   return validateAuthoritativeProposalInput(value)
 }
 
+function issueProposalContinuation(
+  requestDigest: string,
+  prePatchSession: AuthoritativeEditSession,
+  capability: AuthoritativeEditCapability,
+  opening: AuthoritativeOpeningBinding,
+  patch: AuthoritativeTypedPatch,
+): AuthoritativeProposalContinuation {
+  const continuation = Object.freeze({
+    kind: 'post_patch_result_required' as const,
+    request_digest: requestDigest,
+    expected_post_patch_version: prePatchSession.version + 1,
+  })
+  PROPOSAL_CONTINUATIONS.set(continuation, {
+    requestDigest,
+    prePatchSession,
+    capability,
+    opening: {
+      projectId: opening.projectId,
+      policy: { ...opening.policy },
+      availabilityVersion: opening.availabilityVersion,
+    },
+    changedFields: Object.freeze(patch.operations.map((operation) => operation.field).sort()),
+  })
+  return continuation
+}
+
+function assertPostPatchResult(
+  state: ProposalContinuationState,
+  result: AuthoritativeEditResult,
+  live: AuthoritativeLiveAuthority,
+): void {
+  const pre = state.prePatchSession
+  const post = result.session
+  assertOpeningAuthority(state.opening, live)
+  if (
+    state.opening.projectId !== pre.project_id
+    || live.projectId !== pre.project_id
+    || post.project_id !== pre.project_id
+  ) fail('identity_conflict')
+  assertCapabilityAndAction(state.capability, post, live)
+  assertCapabilityAuthority(state.opening, live, state.capability, post.resource_ref)
+  assertLiveAuthor(post.author, live)
+  if (
+    post.session_id !== pre.session_id
+    || post.capability_id !== pre.capability_id
+    || post.capability_version !== pre.capability_version
+    || post.capability_digest !== pre.capability_digest
+    || !equal(post.resource_ref, pre.resource_ref)
+    || !equal(post.author, pre.author)
+    || post.resource_state !== pre.resource_state
+  ) fail('identity_conflict')
+  if (
+    post.version !== pre.version + 1
+    || live.currentSessionVersion !== post.version
+    || live.currentDraftDigest !== post.draft_digest
+    || post.history_length !== pre.history_length + 1
+  ) fail('stale_session')
+  if (
+    result.applied !== true
+    || result.rebased !== false
+    || result.omissions_present !== false
+    || result.proposal_required !== true
+    || result.published !== false
+    || result.diff.before_digest !== pre.draft_digest
+    || result.diff.after_digest !== post.draft_digest
+    || !equal([...result.diff.changed_fields].sort(), state.changedFields)
+    || result.diff.validation.some((finding) => finding.level === 'error')
+  ) fail('invalid_patch')
+}
+
+/**
+ * Produces proposal input only from the exact authoritative result of the issued
+ * apply_patch command. A pre-patch session or caller-created continuation fails closed.
+ */
+export async function adaptPostPatchResultToProposal(
+  input: AdaptPostPatchResultInput,
+): Promise<AuthoritativeProposalInput> {
+  if (typeof input.continuation !== 'object' || input.continuation === null) fail('proposal_required')
+  const state = PROPOSAL_CONTINUATIONS.get(input.continuation)
+  if (
+    !state
+    || input.continuation.kind !== 'post_patch_result_required'
+    || input.continuation.request_digest !== state.requestDigest
+    || input.continuation.expected_post_patch_version !== state.prePatchSession.version + 1
+  ) fail('proposal_required')
+  const result = validateAuthoritativeEditResult(input.authoritativeResult)
+  await assertCapabilityDigest(state.capability)
+  assertPostPatchResult(state, result, input.live)
+  return proposalInput(result.session, state.capability, input.proposal)
+}
+
 /**
  * The only presentation-to-authority inverse adapter.
  * It returns validated command data and opaque failures; it cannot send, approve, or execute anything.
@@ -565,7 +743,7 @@ export async function adaptPresentationCommandToAuthority(
   const proposalRequired = input.opening.policy.outcome === 'proposal_required' || !schema.low_risk_draft_commit
   if (!proposalRequired && input.live.policy.outcome !== 'allow_commit') fail('policy_denied')
   assertSubmission(input.submission, command, proposalRequired)
-  if (!IDENTIFIER.test(input.idempotencyKey)) fail('invalid_patch')
+  if (!identifier(input.idempotencyKey)) fail('invalid_patch')
   const envelope: AuthoritativeApplyPatchEnvelope = {
     operation: 'apply_patch',
     session_id: authoritativeSession.session_id,
@@ -575,8 +753,8 @@ export async function adaptPresentationCommandToAuthority(
     allow_rebase: false,
   }
   const requestDigest = await sha256(envelope)
-  const proposal = proposalRequired
-    ? await proposalInput(authoritativeSession, capability, input.proposal)
+  const continuation = proposalRequired
+    ? issueProposalContinuation(requestDigest, authoritativeSession, capability, input.opening, patch)
     : null
   return Object.freeze({
     envelope: Object.freeze(envelope),
@@ -597,7 +775,7 @@ export async function adaptPresentationCommandToAuthority(
       registered_action_version: capability.consequential_action.registered_action_version,
       registered_action_digest: capability.consequential_action.registered_action_digest,
     }),
-    operation_proposal_request: proposal,
+    proposal_continuation: continuation,
     approval_available: false,
     execution_available: false,
     transport_available: false,
