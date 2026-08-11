@@ -1,0 +1,73 @@
+{
+  "create_request": {
+    "evaluated_at": "2026-08-07T15:30:00Z",
+    "issue": {
+      "digest": {
+        "algorithm": "sha-256",
+        "value": "b5fb04ab024b190a4dfeb4ad7a9a9230d249f7a80bb01a14ca7dbfe8fb95ce47"
+      },
+      "issuer": "https://knowledge.example.test/provider",
+      "resource_id": "issue/184",
+      "resource_type": "issue",
+      "source": {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "b5fb04ab024b190a4dfeb4ad7a9a9230d249f7a80bb01a14ca7dbfe8fb95ce47"
+        },
+        "origin": "git:https://example.test/acme/northstar.git",
+        "source_id": "source/issue/184",
+        "version": "git:9f7b2c1"
+      },
+      "version": "git:9f7b2c1"
+    },
+    "project_id": "p",
+    "query": "Northstar issue 184 linux-arm64 verification",
+    "repository": {
+      "digest": {
+        "algorithm": "sha-256",
+        "value": "f56c2dfef91cbd00c1aa3c1c9a51358c0450cb0fb9c20fda2d90b0464f767244"
+      },
+      "issuer": "https://knowledge.example.test/provider",
+      "resource_id": "repository/northstar",
+      "resource_type": "repository",
+      "source": {
+        "digest": {
+          "algorithm": "sha-256",
+          "value": "f56c2dfef91cbd00c1aa3c1c9a51358c0450cb0fb9c20fda2d90b0464f767244"
+        },
+        "origin": "git:https://example.test/acme/northstar.git",
+        "source_id": "source/repository/northstar",
+        "version": "git:8e4a1f0"
+      },
+      "version": "git:8e4a1f0"
+    }
+  },
+  "expected_contract": {
+    "capability_id": "krail.context-brief.opensaddle-v1",
+    "descriptor_digest": "sha256:bfe1bd6af513f24df70b59617565a2262610119f13d0a8a7fb937fbca70098fd",
+    "manifest_digest": "sha256:3fa4bb326946fe0555321b0790150dbbb2a92964fba23eae492f448e8c0655a7",
+    "source_commit": "21da6d42619410e8d1cfc4f823681e4eac47d21a"
+  },
+  "expected_identity": {
+    "investigation_id": "inv_b62283b5cc0dba6da8d060381eb817b3",
+    "outcome_thread_id": "thread_b62283b5cc0dba6da8d060381eb817b3"
+  },
+  "fixture_version": "opensaddle.grounded-investigation.fixture.v1",
+  "operation_proposal": {
+    "execution_available": false,
+    "path": "/api/v2/operation-proposals"
+  },
+  "provider_golden": {
+    "request_digest": "sha256:5df577943ae811f14aa0789b1b7683036e08362e87f1254fe1db63c33d12b1c6",
+    "result_digest": "sha256:ea29049958f406ba52c6dea7bc9119a1471f1194bcd9f544e1fa825b663bfce6"
+  },
+  "typed_failures": [
+    "policy_denied",
+    "approval_required",
+    "stale_evidence",
+    "version_conflict",
+    "provider_unavailable",
+    "invalid_evidence",
+    "cancelled"
+  ]
+}

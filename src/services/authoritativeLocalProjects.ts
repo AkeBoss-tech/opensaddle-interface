@@ -7,6 +7,13 @@ import type {
   ProjectArtifactManifest,
   ProjectFileEntry,
   ProjectSessionSummary,
+  ProjectMemoryCandidate,
+  ProjectMemoryCandidateReview,
+  ProjectMemoryContextBrief,
+  ProjectMemoryDoctorResult,
+  ProjectMemoryInitPlan,
+  ProjectMemoryOperation,
+  ProjectMemoryStatus,
   RegisteredLocalProject,
 } from './contracts'
 
@@ -60,6 +67,89 @@ type DomainHarness = {
 type DomainRescan = {
   project_id: string
   discoveries: Partial<Record<'instructions' | 'skills' | 'mcp_configs' | 'knowledge' | 'sites' | 'documentation', string[]>>
+}
+
+function camelizeMemoryWire(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(camelizeMemoryWire)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+    key.replace(/_([a-z])/g, (_match, letter: string) => letter.toUpperCase()),
+    camelizeMemoryWire(item),
+  ]))
+}
+
+function memoryId(prefix: string): string {
+  const suffix = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  return `${prefix}-${suffix}`
+}
+
+function memoryOperationFromReceipt(
+  value: unknown,
+  projectId: string,
+  fallbackKind: ProjectMemoryOperation['kind'],
+): ProjectMemoryOperation {
+  const receipt = camelizeMemoryWire(value) as Record<string, any>
+  const rawOperation = String(receipt.operation ?? '')
+  const kind: ProjectMemoryOperation['kind'] = rawOperation === 'reindex'
+    ? 'reindex'
+    : rawOperation === 'doctor'
+      ? 'doctor'
+      : fallbackKind
+  const succeeded = receipt.status === 'succeeded' || receipt.status === 'planned'
+  const failed = receipt.status === 'failed'
+  const now = new Date().toISOString()
+  return {
+    operationId: String(receipt.operationId ?? memoryId('memory')),
+    projectId,
+    kind,
+    stage: failed ? 'failed' : succeeded ? 'ready' : kind === 'reindex' ? 'indexing' : 'initializing',
+    status: failed ? 'failed' : succeeded ? 'succeeded' : 'running',
+    createdAt: String(receipt.createdAt ?? now),
+    updatedAt: String(receipt.updatedAt ?? now),
+    retryable: Boolean(receipt.error?.retryable),
+    message: receipt.result?.message ?? receipt.result?.status,
+    error: receipt.error?.message,
+  }
+}
+
+function memoryStatusFromDomain(value: unknown): ProjectMemoryStatus {
+  const wire = camelizeMemoryWire(value) as Record<string, any>
+  if (!wire.binding || !wire.provider) return {
+    ...wire,
+    authority: wire.authority ?? 'backend',
+  } as ProjectMemoryStatus
+  const provider = wire.provider as Record<string, any>
+  const enabled = Boolean(wire.binding.enabled)
+  const detected = Boolean(provider.detected)
+  const providerStatus = String(provider.status ?? 'not_configured')
+  const status: ProjectMemoryStatus['status'] = enabled
+    ? detected ? 'ready' : 'degraded'
+    : providerStatus === 'not_configured' ? 'not_configured' : providerStatus as ProjectMemoryStatus['status']
+  return {
+    projectId: String(wire.projectId),
+    provider: 'krail',
+    detected,
+    authority: 'backend',
+    inspectionMode: enabled ? 'managed' : 'read_only',
+    root: String(provider.root ?? ''),
+    status,
+    manifestPath: provider.manifestPath,
+    manifestVersion: provider.manifestVersion,
+    error: provider.error,
+    runtime: provider.runtime ?? { installed: false, cliAvailable: false },
+    workspace: provider.workspace,
+    capabilities: provider.capabilities ?? [],
+    mcp: provider.mcp,
+    workflowBridge: provider.workflowBridge,
+    health: enabled ? {
+      status: detected ? 'healthy' : 'degraded',
+      summary: detected ? 'KRAIL is initialized and managed by OpenSaddle.' : 'The binding exists but KRAIL discovery is degraded.',
+      issues: [],
+    } : undefined,
+    sources: provider.sources ?? [],
+    lastOperation: wire.lastOperation,
+  }
 }
 
 const HARNESS_ID_ALIASES: Record<string, string> = {
@@ -183,6 +273,8 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   private readonly token?: string
   private readonly fetchImpl: Fetcher
   private readonly roots = new Map<string, string>()
+  private localActionCredential: { header: string; token: string } | null = null
+  private localActionCredentialRequest: Promise<{ header: string; token: string }> | null = null
 
   constructor(baseUrl: string, getUserId: () => string, token?: string, fetchImpl?: Fetcher) {
     this.baseUrl = baseUrl.replace(/\/$/, '')
@@ -213,6 +305,40 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
     })
     if (!response.ok) throw await this.error(response)
     return await response.json() as T
+  }
+
+  private async memoryRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    return camelizeMemoryWire(await this.request<unknown>(path, init)) as T
+  }
+
+  private async getLocalActionCredential(): Promise<{ header: string; token: string }> {
+    if (this.localActionCredential) return this.localActionCredential
+    if (!this.localActionCredentialRequest) {
+      this.localActionCredentialRequest = this.request<{ token?: unknown; header?: unknown }>(
+        '/api/local-action-token',
+      ).then((value) => {
+        const token = typeof value.token === 'string' ? value.token : ''
+        const header = value.header === undefined
+          ? 'X-OpenSaddle-Local-Action'
+          : typeof value.header === 'string' ? value.header : ''
+        if (!token || header.toLowerCase() !== 'x-opensaddle-local-action') {
+          throw new Error('OpenSaddle returned an invalid local-action credential')
+        }
+        return (this.localActionCredential = {
+          header: 'X-OpenSaddle-Local-Action', token,
+        })
+      }).finally(() => {
+        this.localActionCredentialRequest = null
+      })
+    }
+    return this.localActionCredentialRequest
+  }
+
+  private async memoryMutationRequest<T>(path: string, init: RequestInit): Promise<T> {
+    const credential = await this.getLocalActionCredential()
+    const headers = new Headers(init.headers)
+    headers.set(credential.header, credential.token)
+    return this.memoryRequest<T>(path, { ...init, headers })
   }
 
   private async root(projectId: string): Promise<string> {
@@ -275,7 +401,117 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   }
 
   knowledgeStatus(projectId: string): Promise<KrailKnowledgeStatus> {
-    return this.request<KrailKnowledgeStatus>(this.projectPath(projectId, 'knowledge'))
+    return this.memoryStatus(projectId)
+  }
+
+  async memoryStatus(projectId: string): Promise<ProjectMemoryStatus> {
+    try {
+      return memoryStatusFromDomain(await this.request<unknown>(this.projectPath(projectId, 'memory')))
+    } catch (error) {
+      if (!(error instanceof AuthoritativeProjectHttpError) || error.status !== 404) throw error
+      try {
+        return memoryStatusFromDomain(
+          await this.request<unknown>(this.projectPath(projectId, 'memory/status')),
+        )
+      } catch (managedError) {
+        // Old daemons only expose read-only discovery. Preserve that as an
+        // explicit compatibility projection; it never becomes managed state.
+        if (!(managedError instanceof AuthoritativeProjectHttpError) || managedError.status !== 404) throw managedError
+      }
+      const legacy = await this.request<Omit<KrailKnowledgeStatus, 'authority'>>(this.projectPath(projectId, 'knowledge'))
+      return { ...legacy, authority: 'backend', inspectionMode: 'read_only' }
+    }
+  }
+
+  async memoryInitPlan(projectId: string, input: { root?: string } = {}): Promise<ProjectMemoryInitPlan> {
+    const raw = await this.request<Record<string, any>>(this.projectPath(projectId, 'memory/init/plan'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idempotency_key: memoryId('memory-plan'),
+        parameters: input.root ? { requested_root: input.root } : {},
+      }),
+    })
+    const receipt = camelizeMemoryWire(raw) as Record<string, any>
+    const plan = receipt.result?.plan ?? {}
+    const effects = Array.isArray(plan.effects) ? plan.effects : []
+    return {
+      projectId,
+      planId: String(receipt.operationId),
+      state: 'not_configured',
+      root: input.root ?? '',
+      summary: `Initialize KRAIL with ${effects.length} bounded filesystem effects.`,
+      effects: effects.map((effect: Record<string, any>, index: number) => ({
+        id: `${receipt.operationId}:${index}`,
+        kind: effect.action === 'createDirectory' ? 'create' : 'update',
+        target: String(effect.path),
+        description: `${String(effect.action).replaceAll('_', ' ')} (${Number(effect.size ?? 0)} bytes)`,
+      })),
+      warnings: [],
+      canApply: receipt.status === 'planned',
+    }
+  }
+
+  async memoryInitApply(projectId: string, planId: string): Promise<ProjectMemoryOperation> {
+    const receipt = await this.memoryMutationRequest<unknown>(this.projectPath(projectId, 'memory/init'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idempotency_key: memoryId('memory-init'), plan_id: planId }),
+    })
+    return memoryOperationFromReceipt(receipt, projectId, 'initialize')
+  }
+
+  async memoryDoctor(projectId: string): Promise<ProjectMemoryDoctorResult> {
+    const raw = await this.request<Record<string, any>>(this.projectPath(projectId, 'memory/doctor'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idempotency_key: memoryId('memory-doctor') }),
+    })
+    const receipt = camelizeMemoryWire(raw) as Record<string, any>
+    const report = receipt.result?.report ?? {}
+    const checks = Array.isArray(report.checks) ? report.checks : []
+    return {
+      projectId,
+      status: report.ok === false ? 'unhealthy' : checks.some((check: any) => check.status === 'warning') ? 'degraded' : 'healthy',
+      checkedAt: new Date().toISOString(),
+      checks: checks.map((check: any, index: number) => ({
+        id: String(check.id ?? `check-${index}`),
+        label: String(check.label ?? check.name ?? check.id ?? `Check ${index + 1}`),
+        status: check.ok === false || check.status === 'failed' ? 'failed' : check.status === 'warning' ? 'warning' : 'passed',
+        detail: check.detail ?? check.message,
+      })),
+    }
+  }
+
+  async memoryReindex(projectId: string): Promise<ProjectMemoryOperation> {
+    const receipt = await this.memoryMutationRequest<unknown>(this.projectPath(projectId, 'memory/reindex'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idempotency_key: memoryId('memory-reindex') }),
+    })
+    return memoryOperationFromReceipt(receipt, projectId, 'reindex')
+  }
+
+  async memoryOperation(projectId: string, operationId: string): Promise<ProjectMemoryOperation> {
+    const receipt = await this.request<unknown>(this.projectPath(projectId, `memory/operations/${encodeURIComponent(operationId)}`))
+    return memoryOperationFromReceipt(receipt, projectId, 'initialize')
+  }
+
+  memoryContextBrief(projectId: string, input: { query: string; maxItems?: number; maxTotalBytes?: number }): Promise<ProjectMemoryContextBrief> {
+    return this.memoryRequest(this.projectPath(projectId, 'memory/context-brief'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: input.query, max_items: input.maxItems, max_total_bytes: input.maxTotalBytes }),
+    })
+  }
+
+  async memoryCandidates(projectId: string): Promise<ProjectMemoryCandidate[]> {
+    const result = await this.memoryRequest<{ candidates: ProjectMemoryCandidate[] }>(this.projectPath(projectId, 'memory/candidates'))
+    return result.candidates
+  }
+
+  reviewMemoryCandidate(projectId: string, review: ProjectMemoryCandidateReview): Promise<ProjectMemoryCandidate> {
+    return this.memoryMutationRequest(this.projectPath(projectId, `memory/candidates/${encodeURIComponent(review.candidateId)}/${review.decision}`), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: review.reason }),
+    })
   }
 
   async listFiles(projectId: string, input: { path?: string; limit?: number } = {}) {

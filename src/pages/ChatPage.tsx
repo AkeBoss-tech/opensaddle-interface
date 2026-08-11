@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 import {
-  DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL, simulateAgentRun,
+  DEMO_FLOWS, deriveRoute, HARNESS_LABEL, MODEL_LABEL, needsPermission, RUNTIME_LABEL,
   type RouteDecision,
 } from '../lib/simulation'
-import type { AgentRunBlock, CodingProvider, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
+import type { AgentRunBlock, CodingProvider, EntityReference, Harness, Message, ModelKey, PermissionGrant, RunExecutionMode, RuntimeKind } from '../types'
 import { PROVIDER_NAME, ProviderLogo, providerFromLabel } from '../components/common/ProviderLogo'
 import { evaluatePermissions } from '../services/permissions'
 import { sanitizeHtml } from '../lib/sanitizeHtml'
@@ -17,6 +17,10 @@ import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources 
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
 import { buildPlanRevision } from '../features/thread/planRevision'
 import { selectPublishFlowStep } from '../features/git/publishFlow'
+import { EvidenceInspector } from '../features/evidence/EvidenceInspector'
+import { adaptRunEvidencePacket, applyEvidencePolicy, EVIDENCE_SCHEMA_VERSION, selectEvidenceRun, type EvidencePresentation } from '../features/evidence'
+import { GroundedInvestigationThread, useGroundedInvestigation } from '../features/investigation'
+import { ArtifactCard, EntityPicker, MessageText, ReactionBar, type Reaction } from '../ui'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
   THREAD_INSPECTOR_STORAGE_KEY,
@@ -70,22 +74,6 @@ const EXECUTION_MODES: Array<{
   { id: 'project', label: 'Auto-edit', detail: 'Edit inside this project', icon: 'spark' },
   { id: 'full-access', label: 'Full access', detail: 'Local machine · no approvals', icon: 'terminal' },
 ]
-
-function routedModelLabel(route: RouteEstimate | undefined, fallback: ModelKey): string {
-  const provider = route?.providerKey
-  if (route?.nativeModelDefault && provider && provider !== 'auto') {
-    return `${PROVIDER_LABEL[provider] ?? 'Harness'} default`
-  }
-  return MODEL_LABEL[route?.modelKey ?? fallback]
-}
-
-function routedHarnessLabel(route: RouteEstimate | undefined, fallback: Harness): string {
-  const provider = route?.providerKey
-  if ((route?.harnessKey ?? fallback) === 'coding' && provider && provider !== 'auto') {
-    return PROVIDER_LABEL[provider] ?? HARNESS_LABEL[route?.harnessKey ?? fallback]
-  }
-  return HARNESS_LABEL[route?.harnessKey ?? fallback]
-}
 
 function routeDecisionFromEstimate(estimate: RouteEstimate, fallback: RouteDecision): RouteDecision {
   return {
@@ -264,11 +252,20 @@ export function ChatPage() {
   const location = useLocation()
   const store = useStore()
   const runRegistry = useRunRegistry()
-  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, setChatArchived, updateChatRunConfig, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, harnessCapabilities, refreshHarnessCapabilities } = store
+  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, setChatArchived, updateChatRunConfig, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, connection, harnessCapabilities, refreshHarnessCapabilities } = store
   const chat = data.chats.find((c) => c.id === (chatId ?? data.activeChatId))
   const durableRunConfigKey = JSON.stringify(chat?.runConfig ?? null)
   const continuationAction = chat?.continuation?.mode === 'fork' ? 'Fork' : 'Resume'
   const project = data.projects.find((p) => p.id === chat?.projectId) ?? data.projects.find((p) => p.id === data.activeProjectId) ?? data.projects[0]
+  const investigationId = useMemo(() => new URLSearchParams(location.search).get('investigation'), [location.search])
+  const groundedInvestigation = useGroundedInvestigation({
+    investigationId,
+    baseUrl: connection.baseUrl,
+    userId: data.currentUserId,
+    token: connection.token,
+    expectedThreadId: chat?.id ?? null,
+    expectedProjectId: chat?.projectId ?? null,
+  })
   const chatAgent = data.agents.find((agent) => agent.id === chat?.agentId)
   const agentDefinitionPath = chatAgent?.definitionPath?.startsWith('.opensaddle/agents/')
     ? chatAgent.definitionPath
@@ -336,7 +333,7 @@ export function ChatPage() {
   const [reasoningEffort, setReasoningEffort] = useState('')
   const [freeModels, setFreeModels] = useState<Array<{ id: string; name: string; contextLength?: number }>>([])
   const [route, setRoute] = useState<RouteDecision>(() => deriveRoute('', data.settings.routingPref))
-  const [providerKey, setProviderKey] = useState<CodingProvider>('opensaddle')
+  const [, setProviderKey] = useState<CodingProvider>('opensaddle')
   const [perm, setPerm] = useState<ReturnType<typeof needsPermission>>(null)
   const [pending, setPending] = useState('')
   const [pendingSourceMessageId, setPendingSourceMessageId] = useState<string | undefined>()
@@ -361,16 +358,20 @@ export function ChatPage() {
   const [delegateEditorOpen, setDelegateEditorOpen] = useState(false)
   const [delegateDraft, setDelegateDraft] = useState('')
   const [mentionOpen, setMentionOpen] = useState(false)
+  const [messageReferences, setMessageReferences] = useState<EntityReference[]>([])
   const [channelView, setChannelView] = useState<'messages' | 'canvas' | 'files'>('messages')
   const [channelSearchOpen, setChannelSearchOpen] = useState(false)
   const [channelSearch, setChannelSearch] = useState('')
-  const [channelPanel, setChannelPanel] = useState<'members' | 'details' | null>(null)
+  const [channelPanel, setChannelPanel] = useState<'members' | 'details' | 'evidence' | null>(null)
+  const [channelEvidenceRunId, setChannelEvidenceRunId] = useState<string | null>(null)
   const [channelAddOpen, setChannelAddOpen] = useState(false)
   const [replyingTo, setReplyingTo] = useState<{ id: string; name: string } | null>(null)
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null)
-  const [channelReactions, setChannelReactions] = useState<Record<string, number>>({})
+  const [channelReactions, setChannelReactions] = useState<Record<string, Reaction[]>>({})
   const [savedChannelMessages, setSavedChannelMessages] = useState<Set<string>>(new Set())
   const channelComposerRef = useRef<HTMLTextAreaElement>(null)
+  const channelPanelRef = useRef<HTMLElement>(null)
+  const channelPanelReturnFocusRef = useRef<HTMLElement | null>(null)
   const attachRef = useRef<HTMLInputElement>(null)
   const persistInspector = (state: Partial<ThreadInspectorState>) => {
     const next = {
@@ -720,14 +721,21 @@ export function ChatPage() {
     }))
   }, [serverRouting, text, pending, data.settings.routingPref, modelOv, harnessOv, runtimeOv, defaultRuntime])
 
-  const resolveRoute = async (prompt: string): Promise<RouteDecision> => {
+  const preflightOperation = async (prompt: string) => {
     const fallback = refreshRoute(prompt)
-    if (!serverRouting || !services) return fallback
-    const estimate = await services.runtime.estimate(prompt, routeEstimatePreferences)
-    const resolved = routeDecisionFromEstimate(estimate, fallback)
-    setRoute(resolved)
-    if (estimate.providerKey) setProviderKey(estimate.providerKey)
-    return resolved
+    const result = await runRegistry.preflight({
+      task: prompt,
+      projectId: project.id,
+      userId: data.currentUserId,
+      agentId: chat?.agentId,
+      grants: data.permissionGrants,
+      fallbackRoute: fallback,
+      serverRouting,
+      routePreferences: routeEstimatePreferences,
+    })
+    setRoute(result.route)
+    if (result.estimate?.providerKey) setProviderKey(result.estimate.providerKey)
+    return result
   }
 
   // Reflect the backend's actual route estimate in the pill while typing.
@@ -748,21 +756,19 @@ export function ChatPage() {
   const send = async (forced?: string) => {
     const prompt = (forced ?? text).trim()
     if (!prompt || !chat) return
-    const mentionedAgent = chat.visibility !== 'private'
-      ? data.agents.find((agent) => {
-        if (agent.projectId !== project.id) return false
-        const mention = `@${agent.name}`.toLowerCase()
-        return prompt.toLowerCase().includes(mention)
-          || prompt.toLowerCase().includes(`@${agent.name.replaceAll(' ', '')}`.toLowerCase())
-      })
+    const references = forced === undefined ? messageReferences : []
+    const mentionedAgentReference = chat.visibility !== 'private'
+      ? references.find((reference) => reference.kind === 'agent')
+      : undefined
+    const mentionedAgent = mentionedAgentReference
+      ? data.agents.find((agent) => agent.id === mentionedAgentReference.id)
       : undefined
     if (mentionedAgent && chat.agentId !== mentionedAgent.id) {
       setText('')
+      setMessageReferences([])
       setMentionOpen(false)
-      appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+      appendMessage({ chatId: chat.id, role: 'user', text: prompt, references })
       const taskPrompt = prompt
-        .replace(new RegExp(`@${mentionedAgent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'ig'), '')
-        .trim()
       const agentThread = createChat(
         project.id,
         `${mentionedAgent.name} · ${taskPrompt || 'Channel request'}`,
@@ -782,7 +788,8 @@ export function ChatPage() {
     }
     if (chat.visibility !== 'private') {
       setText('')
-      appendMessage({ chatId: chat.id, role: 'user', text: prompt })
+      setMessageReferences([])
+      appendMessage({ chatId: chat.id, role: 'user', text: prompt, references })
       return
     }
     if (forced === undefined && activeManagedRun) {
@@ -872,9 +879,9 @@ export function ChatPage() {
       setRouteOpen(true)
       return
     }
-    let r: RouteDecision
+    let preflight: Awaited<ReturnType<typeof preflightOperation>>
     try {
-      r = await resolveRoute(prompt)
+      preflight = await preflightOperation(prompt)
     } catch (error) {
       toast('Could not choose a ready harness', error instanceof Error ? error.message : String(error))
       return
@@ -910,7 +917,7 @@ export function ChatPage() {
           kind: 'info',
           t: 'now',
         }])
-        await runAgent(prompt, r, chat.id, undefined, sourceMessage.id)
+        await runAgent(prompt, preflight.route, preflight.execution, chat.id, undefined, sourceMessage.id)
         return
       }
       setPending(prompt)
@@ -918,7 +925,7 @@ export function ChatPage() {
       setPerm(permission)
       return
     }
-    await runAgent(prompt, r, chat.id, undefined, sourceMessage.id)
+    await runAgent(prompt, preflight.route, preflight.execution, chat.id, undefined, sourceMessage.id)
   }
 
   useEffect(() => {
@@ -938,18 +945,12 @@ export function ChatPage() {
   const runAgent = async (
     prompt: string,
     r: RouteDecision,
+    exec: ReturnType<typeof evaluatePermissions>,
     cid: string,
     approvalId?: string,
     sourceMessageId?: string,
   ) => {
     const agentId = chat?.agentId
-    const exec = evaluatePermissions(data.permissionGrants, {
-      userId: data.currentUserId,
-      agentId,
-      resourceKind: 'project',
-      resourceId: project.id,
-      action: 'execute',
-    })
     if (!exec.allowed) {
       toast('Blocked', exec.reason)
       setActivity([{ title: 'Permission denied', sub: exec.reason, kind: 'error', t: 'now' }])
@@ -958,7 +959,7 @@ export function ChatPage() {
     setActivity([{ title: 'Run started', sub: `${project.name} · ${RUNTIME_LABEL[r.runtimeKey]}`, kind: 'info', t: '0.0s' }])
     openInspector('overview')
 
-    if (r.klass === 'chat' && !services?.controlPlane.connected) {
+    if (r.klass === 'chat' && connection.mode === 'demo') {
       appendMessage({
         chatId: cid, role: 'assistant', text: '',
         lightHtml: `<p>Handled directly via <strong>${MODEL_LABEL[r.modelKey]}</strong> — lightweight answer, no side effects.</p><p>Ask me to build, research, or operate on a system for a full agent run.</p>`,
@@ -967,26 +968,12 @@ export function ChatPage() {
       return
     }
 
-    const runBlock: AgentRunBlock | undefined = r.klass === 'chat' ? undefined : {
-      id: 'pending', kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
-      executionMode,
-      title: 'Agent run', model: MODEL_LABEL[r.modelKey], reasoningEffort: reasoningEffort || undefined, harness: HARNESS_LABEL[r.harnessKey], runtime: RUNTIME_LABEL[r.runtimeKey],
-      statusText: 'Planning', done: false, tools: [], plan: [], artifacts: [],
-    }
-    const placeholder = appendMessage({
-      chatId: cid, role: 'assistant', text: '',
-      routingNote: `Auto · ${MODEL_LABEL[r.modelKey]} · ${HARNESS_LABEL[r.harnessKey]} · ${RUNTIME_LABEL[r.runtimeKey]}`,
-      run: runBlock,
-    }, { persist: !services?.runtime })
-
-    if (services?.runtime) {
-      try {
-        const started = await services.runtime.startRun({
+    const result = await runRegistry.start({
           projectId: project.id,
           threadId: cid,
           sourceMessageId,
-          assistantMessageId: placeholder.id,
           task: prompt,
+          route: r,
           agentId,
           agentDefinitionPath,
           skillPaths: agentSkillPaths,
@@ -1004,85 +991,23 @@ export function ChatPage() {
           repo: repositoryPath,
           approvalId,
           reviewProviderKey: defaults?.reviewProviderKey === 'auto' ? undefined : defaults?.reviewProviderKey,
-        })
-        const mode = started.mode ?? 'mock'
-        const isMockMode = mode === 'mock' || mode === 'mock_with_repo'
-        const actualModel = started.route?.modelKey ?? r.modelKey
-        const actualHarness = started.route?.harnessKey ?? r.harnessKey
-        const actualRuntime = started.route?.runtimeKey ?? r.runtimeKey
-        const actualProvider = started.route?.providerKey ?? providerKey
-        const actualModelLabel = routedModelLabel(started.route, r.modelKey)
-        const actualHarnessLabel = routedHarnessLabel(started.route, r.harnessKey)
-        const providerNote = actualHarness === 'coding' && actualProvider && actualProvider !== 'auto' && actualProvider !== 'custom'
-          ? ` · ${PROVIDER_LABEL[actualProvider]}`
-          : ''
-        updateMessage(placeholder.id, {
-          runtimeRunId: started.runId,
-          routingNote: `${started.route ? 'Server' : 'Auto'} · ${actualModelLabel} · ${HARNESS_LABEL[actualHarness]}${providerNote} · ${RUNTIME_LABEL[actualRuntime]}`,
-        })
-        // Keep the composer pill consistent with what the server actually ran.
-        if (started.route) {
-          setRoute((prev) => ({ ...prev, modelKey: actualModel, harnessKey: actualHarness, runtimeKey: actualRuntime }))
-          if (started.route.providerKey) setProviderKey(started.route.providerKey)
-        }
-
-        if (isMockMode) {
-          // Local mock runtime: the simulation IS the event source.
-          await simulateAgentRun(prompt, r, (run: AgentRunBlock) => {
-            updateMessage(placeholder.id, { text: run.output ?? '', run: { ...run, id: started.runId, executionMode } })
+          onRunUpdate: (run) => {
             if (run.tools.length) {
               const last = run.tools[run.tools.length - 1]!
               setActivity((a) => a.some((x) => x.title === last.name) ? a : [...a, { title: last.name, sub: last.output, t: last.duration }])
             }
-          })
-          setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
-          return
-        }
-
-        // Real runtime (OpenSaddle simulated/safe_builtin/real_cli): build the
-        // run card entirely from live session events.
-        let liveRun: AgentRunBlock = {
-          id: started.runId, kind: r.klass === 'ops' ? 'ops' : r.klass === 'browser' ? 'browser' : r.klass === 'research' ? 'research' : 'coding',
-          executionMode,
-          providerKey: actualProvider,
-          title: 'Agent run', model: actualModelLabel, reasoningEffort: started.route?.reasoningEffort ?? (reasoningEffort || undefined), harness: actualHarnessLabel, runtime: RUNTIME_LABEL[actualRuntime],
-          statusText: mode.replace('_', ' '), done: false, tools: [], plan: [], artifacts: [],
-          cost: started.route?.cost ?? r.cost,
-        }
-        if (runBlock) updateMessage(placeholder.id, { run: liveRun })
-        runRegistry.track({
-          runId: started.runId,
-          threadId: cid,
-          messageId: placeholder.id,
-          initialRun: liveRun,
-          initialText: placeholder.text,
+          },
         })
-        return
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error)
-        updateMessage(placeholder.id, runBlock
-          ? {
-            text: `I couldn’t start the coding agent because its execution environment is unavailable. ${reason}`,
-            run: { ...runBlock, statusText: reason, done: true },
-          }
-          : { text: `OpenSaddle could not complete this message: ${reason}` })
-        setActivity((a) => [...a, { title: 'Run rejected', sub: reason, kind: 'error', t: 'now' }])
-        toast('Run failed', reason)
-        return
-      }
+    if ('route' in result && result.route) {
+      setRoute((previous) => ({ ...previous, modelKey: result.route!.modelKey, harnessKey: result.route!.harnessKey, runtimeKey: result.route!.runtimeKey }))
+      if (result.route.providerKey) setProviderKey(result.route.providerKey)
     }
-
-    await simulateAgentRun(prompt, r, (run: AgentRunBlock) => {
-      updateMessage(placeholder.id, { text: run.output ?? '', run })
-      if (run.tools.length) {
-        const last = run.tools[run.tools.length - 1]!
-        setActivity((a) => {
-          if (a.some((x) => x.title === last.name)) return a
-          return [...a, { title: last.name, sub: last.output, t: last.duration }]
-        })
-      }
-    })
-    setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
+    if (result.status === 'failed') {
+      setActivity((a) => [...a, { title: 'Run rejected', sub: result.error.message, kind: 'error', t: 'now' }])
+      toast('Run failed', result.error.message)
+    } else if (result.status === 'simulated') {
+      setActivity((a) => [...a, { title: 'Run completed', sub: 'Artifacts ready for review', kind: 'info', t: 'done' }])
+    }
   }
 
   const savePromptDecision = async (
@@ -1163,16 +1088,16 @@ export function ChatPage() {
       kind: 'info',
       t: 'now',
     }])
-    let r: RouteDecision
+    let preflight: Awaited<ReturnType<typeof preflightOperation>>
     try {
-      r = await resolveRoute(pending)
+      preflight = await preflightOperation(pending)
     } catch (error) {
       toast('Could not choose a ready harness', error instanceof Error ? error.message : String(error))
       return
     }
     const sourceMessageId = pendingSourceMessageId
     setPendingSourceMessageId(undefined)
-    await runAgent(pending, r, chat.id, approvalId, sourceMessageId)
+    await runAgent(pending, preflight.route, preflight.execution, chat.id, approvalId, sourceMessageId)
   }
 
   const denyPromptPermission = async (persist: boolean) => {
@@ -1249,6 +1174,69 @@ export function ChatPage() {
   const repository = projectSources.find((source) => source.kind === 'github')
   const repositoryPath = repository?.folderPath ?? project.local?.rootPath
   const relationEvents = managedRuns.flatMap((managed) => managed.lastEvent ? [managed.lastEvent] : [])
+  const channelEvidenceRun = selectEvidenceRun(
+    messages.flatMap((message) => message.run ? [message.run] : []),
+    channelEvidenceRunId,
+  )
+  const evidencePresentation = useMemo<EvidencePresentation>(() => {
+    if (!latestRun) {
+      return {
+        schemaVersion: EVIDENCE_SCHEMA_VERSION,
+        id: `thread-${chat?.id ?? 'unknown'}-evidence`,
+        generatedAt: Date.now(),
+        citations: [],
+        conflicts: [],
+        gaps: [],
+        lineage: [],
+        omissions: [],
+        errors: [],
+      }
+    }
+    const packet = adaptRunEvidencePacket({
+      run: latestRun,
+      projectSources,
+      events: relationEvents,
+      generatedAt: Date.now(),
+    })
+    return applyEvidencePolicy(packet, { defaultEffect: 'allow' })
+  }, [chat?.id, latestRun, projectSources, relationEvents])
+  const channelEvidencePresentation = useMemo<EvidencePresentation>(() => {
+    if (!channelEvidenceRun) {
+      return {
+        schemaVersion: EVIDENCE_SCHEMA_VERSION,
+        id: `thread-${chat?.id ?? 'unknown'}-channel-evidence`,
+        generatedAt: Date.now(),
+        citations: [],
+        conflicts: [],
+        gaps: [],
+        lineage: [],
+        omissions: [],
+        errors: [],
+      }
+    }
+    return applyEvidencePolicy(adaptRunEvidencePacket({
+      run: channelEvidenceRun,
+      projectSources,
+      events: relationEvents,
+      generatedAt: Date.now(),
+    }), { defaultEffect: 'allow' })
+  }, [channelEvidenceRun, chat?.id, projectSources, relationEvents])
+
+  const closeChannelPanel = () => {
+    const returnFocus = channelPanel === 'evidence' ? channelPanelReturnFocusRef.current : null
+    setChannelPanel(null)
+    setChannelEvidenceRunId(null)
+    if (returnFocus) window.requestAnimationFrame(() => returnFocus.focus())
+  }
+
+  useEffect(() => {
+    if (channelPanel !== 'evidence') return
+    if (!channelEvidenceRun) {
+      closeChannelPanel()
+      return
+    }
+    window.requestAnimationFrame(() => channelPanelRef.current?.focus())
+  }, [channelPanel, channelEvidenceRun]) // eslint-disable-line react-hooks/exhaustive-deps
   const childRuns = rootRun ? selectRelatedRuns({
     parentRunId: rootRun.id,
     runs: [
@@ -1630,145 +1618,68 @@ export function ChatPage() {
       return
     }
     const requestedRoute = deriveRoute(task, data.settings.routingPref)
-    const initial: AgentRunBlock = {
-      id: 'pending',
-      parentRunId: rootRun.id,
-      executionMode,
-      kind: requestedRoute.klass === 'research' ? 'research' : requestedRoute.klass === 'browser' ? 'browser' : 'coding',
-      title: `Subagent · ${task.slice(0, 52)}`,
-      model: MODEL_LABEL[requestedRoute.modelKey],
-      harness: HARNESS_LABEL[requestedRoute.harnessKey],
-      runtime: RUNTIME_LABEL[requestedRoute.runtimeKey],
-      statusText: 'Starting delegated run',
-      done: false,
-      tools: [],
-      plan: [],
-      artifacts: [],
-    }
     const sourceMessage = appendMessage({
       chatId: chat.id,
       role: 'user',
       text: task,
       routingNote: 'Delegated subtask',
     })
-    const message = appendMessage({
-      chatId: chat.id,
-      role: 'assistant',
-      text: '',
-      routingNote: `Subagent · ${initial.model} · ${initial.runtime}`,
-      run: initial,
-    }, { persist: false })
-    try {
-      const started = await services.runtime.startRun({
+    const result = await runRegistry.start({
         projectId: project.id,
         threadId: chat.id,
         sourceMessageId: sourceMessage.id,
-        assistantMessageId: message.id,
         task,
+        route: requestedRoute,
         agentId: chat.agentId,
         agentDefinitionPath,
         skillPaths: agentSkillPaths,
         parentRunId: rootRun.id,
         sourceIds: usedSources.map((source) => source.id),
+        title: `Subagent · ${task.slice(0, 52)}`,
         executionMode,
         capabilityIds: [...tools],
         repo: repositoryPath,
       })
-      const child: AgentRunBlock = {
-        ...initial,
-        id: started.runId,
-        model: MODEL_LABEL[started.route?.modelKey ?? requestedRoute.modelKey],
-        harness: HARNESS_LABEL[started.route?.harnessKey ?? requestedRoute.harnessKey],
-        runtime: RUNTIME_LABEL[started.route?.runtimeKey ?? requestedRoute.runtimeKey],
-        statusText: started.mode?.replaceAll('_', ' ') ?? 'Queued',
-      }
-      updateMessage(message.id, { runtimeRunId: started.runId, run: child })
-      if (started.mode === 'mock' || started.mode === 'mock_with_repo') {
-        await simulateAgentRun(task, requestedRoute, (run) => {
-          updateMessage(message.id, { text: run.output ?? '', run: { ...run, id: started.runId, parentRunId: rootRun.id, title: initial.title, executionMode } })
-        })
-      } else {
-        runRegistry.track({
-          runId: started.runId,
-          threadId: chat.id,
-          messageId: message.id,
-          initialRun: child,
-          initialText: message.text,
-          parentRunId: rootRun.id,
-        })
-      }
+    if (result.status !== 'failed') {
       setDelegateDraft('')
       setDelegateEditorOpen(false)
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-      updateMessage(message.id, {
-        text: `The delegated run could not start. ${reason}`,
-        run: { ...initial, statusText: `Failed · ${reason}`, done: true },
-      })
-      toast('Subagent failed to start', reason)
+    } else {
+      toast('Subagent failed to start', result.error.message)
     }
   }
 
   if (!chat) return <div className="content-page"><div className="empty-state"><h3>No chat selected</h3></div></div>
   const isTeamChannel = chat.visibility !== 'private'
   const channelAgents = data.agents.filter((agent) => agent.projectId === project.id)
-  const demoChannelFeed = [
-    {
-      id: 'demo-maya',
-      role: 'user' as const,
-      name: 'Maya Chen',
-      initials: 'MC',
-      createdAt: Date.now() - 58 * 60 * 1000,
-      text: 'I pulled the secure VM acceptance criteria into one place. The remaining question is whether background sessions should pause or terminate when a permission expires.',
-    },
-    {
-      id: 'demo-jordan',
-      role: 'user' as const,
-      name: 'Jordan Lee',
-      initials: 'JL',
-      createdAt: Date.now() - 51 * 60 * 1000,
-      text: 'Pause feels safer and gives the user a clear recovery path. @Secure Coding Agent can you verify that against the current runtime policy?',
-    },
-    {
-      id: 'demo-agent-run',
-      role: 'assistant' as const,
-      name: channelAgents[0]?.name ?? 'Secure Coding Agent',
-      initials: 'AI',
-      createdAt: Date.now() - 48 * 60 * 1000,
-      text: 'Checked the runtime and permission policies. Expired grants pause the VM, preserve the encrypted workspace, and create an approval request for the owner.',
-      demoRun: {
-        title: 'Permission-expiry policy review',
-        status: 'Completed in 8.4s · 3 sources · Open agent thread',
-      },
-    },
-    {
-      id: 'demo-akash',
-      role: 'user' as const,
-      name: 'Akash Dubey',
-      initials: 'AD',
-      createdAt: Date.now() - 34 * 60 * 1000,
-      text: 'Great. Let’s use that behavior in the demo and link the full agent thread from the release note.',
-    },
-  ]
-  const liveChannelFeed = messages.map((message) => {
-    const member = message.role === 'user'
-      ? data.members.find((item) => item.id === data.currentUserId)
-      : undefined
+  // Authorship comes from the message, not from the viewer. Falling back to the
+  // current user is what made every channel look like a monologue.
+  const channelFeed = [...messages].sort((a, b) => a.createdAt - b.createdAt).map((message) => {
+    const member = data.members.find((item) => item.id === message.authorId)
+      ?? (message.role === 'user' && !message.authorId
+        ? data.members.find((item) => item.id === data.currentUserId)
+        : undefined)
     const agent = message.role === 'assistant'
-      ? data.agents.find((item) => item.id === chat.agentId) ?? channelAgents[0]
+      ? data.agents.find((item) => item.id === (message.authorId ?? chat.agentId)) ?? channelAgents[0]
       : undefined
     return {
       id: message.id,
       role: message.role,
-      name: member?.name ?? agent?.name ?? (message.role === 'assistant' ? 'OpenSaddle Agent' : 'Team member'),
-      initials: member?.initials ?? (agent ? 'AI' : 'TM'),
+      name: member?.name ?? agent?.name ?? 'Unknown author',
+      initials: member?.initials ?? (agent ? 'AI' : '??'),
       createdAt: message.createdAt,
       text: message.text,
+      references: message.references,
       lightHtml: message.lightHtml,
       run: message.run,
+      artifactRefs: message.artifactRefs ?? [],
     }
   })
-  const channelFeed = [...demoChannelFeed, ...liveChannelFeed]
+  // The unread marker is derived from the chat's own unread count rather than
+  // from where a hardcoded demo block happened to end.
+  const unreadBoundary = chat.unreadCount && chat.unreadCount > 0
+    ? Math.max(0, channelFeed.length - chat.unreadCount)
+    : null
+  const visibleFeed = channelFeed
     .filter((message) => !channelSearch.trim() || `${message.name} ${message.text}`.toLowerCase().includes(channelSearch.trim().toLowerCase()))
 
   if (isTeamChannel) {
@@ -1818,46 +1729,44 @@ export function ChatPage() {
         {channelView === 'messages' && (
           <div className="slack-channel-scroll">
             <div className="slack-channel-intro">
-              <span>#</span>
               <h2>{chat.title}</h2>
               <p>A shared space for people and AI to coordinate. Agent reasoning stays in linked agent threads, while decisions and results remain readable here.</p>
             </div>
             <div className="slack-day-divider"><span>Today</span></div>
             <div className="slack-message-list">
-              {channelFeed.map((message, index) => (
-                <article className={`slack-message ${message.role === 'assistant' ? 'agent' : ''}`} key={message.id}>
+              {visibleFeed.map((message, index) => {
+                const previous = channelFeed[index - 1]
+                const isGrouped = Boolean(
+                  previous
+                  && previous.role === message.role
+                  && previous.name === message.name
+                  && Math.abs(message.createdAt - previous.createdAt) <= 5 * 60 * 1000,
+                )
+                const timestamp = new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                return <Fragment key={message.id}>
+                  {unreadBoundary !== null && index === unreadBoundary && <div className="slack-new-divider"><span>New messages</span></div>}
+                  <article className={`slack-message ${message.role === 'assistant' ? 'agent' : ''} ${isGrouped ? 'is-grouped' : ''}`}>
                   <span
                     className="slack-message-avatar"
-                    style={message.role === 'assistant' ? undefined : {
-                      '--message-avatar': ['#536de8', '#b15fba', '#d4674c', '#2d9b82', '#c18a32'][index % 5],
-                    } as React.CSSProperties}
                   >{message.role === 'assistant' ? <Icon name="spark" className="icon sm" /> : message.initials}</span>
-                  <div>
-                    <header><strong>{message.name}</strong>{message.role === 'assistant' && <span>APP</span>}<time>{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></header>
-                    {message.text && <p>{message.text}</p>}
+                  {isGrouped && <time className="slack-message-gutter-time">{timestamp}</time>}
+                  <div className="slack-message-content">
+                    {!isGrouped && <header><strong>{message.name}</strong>{message.role === 'assistant' && <span>APP</span>}<time>{timestamp}</time></header>}
+                    {message.text && <MessageText text={message.text} references={message.references} onActivate={(reference) => toast(`${reference.kind} opened`, reference.label)} />}
+                    {message.artifactRefs?.map((artifact) => <ArtifactCard key={artifact.id} artifact={artifact} onActivate={() => toast(`${artifact.kind} opened`, artifact.title)} />)}
                     {'lightHtml' in message && message.lightHtml && <div className="slack-agent-card" dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.lightHtml) }} />}
                     {'run' in message && message.run && (
-                      <button className="slack-run-card" onClick={() => openInspector()}>
+                      <button className="slack-run-card" onClick={(event) => {
+                        channelPanelReturnFocusRef.current = event.currentTarget
+                        setChannelEvidenceRunId(message.run!.id)
+                        setChannelPanel('evidence')
+                      }}>
                         <Icon name={message.run.done ? 'check' : 'activity'} />
-                        <span><strong>{message.run.title}</strong><small>{message.run.statusText} · Open agent thread</small></span>
+                        <span><strong>{message.run.title}</strong><small>{message.run.statusText} · View run evidence</small></span>
                         <Icon name="forward" className="icon sm" />
                       </button>
                     )}
-                    {'demoRun' in message && message.demoRun && (
-                      <button className="slack-run-card" onClick={() => toast('Agent thread opened', 'The complete model reasoning, output, sources, and trace live in the agent thread.')}>
-                        <Icon name="check" />
-                        <span><strong>{message.demoRun.title}</strong><small>{message.demoRun.status}</small></span>
-                        <Icon name="forward" className="icon sm" />
-                      </button>
-                    )}
-                    {Boolean(channelReactions[message.id]) && (
-                      <button className="slack-reaction-chip" onClick={() => setChannelReactions((current) => ({ ...current, [message.id]: Math.max(0, (current[message.id] ?? 0) - 1) }))}>👍 {channelReactions[message.id]}</button>
-                    )}
-                  </div>
-                  <div className="slack-message-hover" aria-label={`Actions for message ${index + 1}`}>
-                    <button title="Add reaction" onClick={() => setChannelReactions((current) => ({ ...current, [message.id]: (current[message.id] ?? 0) + 1 }))}>☺</button>
-                    <button title="Reply" onClick={() => { setReplyingTo({ id: message.id, name: message.name }); channelComposerRef.current?.focus() }}><Icon name="message" className="icon xs" /></button>
-                    <button title="More" onClick={() => setMessageMenuId((value) => value === message.id ? null : message.id)}><Icon name="more" className="icon xs" /></button>
+                    <ReactionBar reactions={channelReactions[message.id] ?? []} onChange={(reactions) => setChannelReactions((current) => ({ ...current, [message.id]: reactions }))} onReply={() => { setReplyingTo({ id: message.id, name: message.name }); channelComposerRef.current?.focus() }} onOverflow={() => setMessageMenuId((value) => value === message.id ? null : message.id)} />
                   </div>
                   {messageMenuId === message.id && (
                     <div className="slack-message-menu">
@@ -1874,8 +1783,9 @@ export function ChatPage() {
                       <button onClick={() => { setReplyingTo({ id: message.id, name: message.name }); setMessageMenuId(null); channelComposerRef.current?.focus() }}>Reply in thread</button>
                     </div>
                   )}
-                </article>
-              ))}
+                  </article>
+                </Fragment>
+              })}
               {!channelFeed.length && <div className="slack-empty-results">No messages match “{channelSearch}”.</div>}
             </div>
           </div>
@@ -1912,9 +1822,21 @@ export function ChatPage() {
         )}
 
         {channelPanel && (
-          <aside className="slack-channel-panel" aria-label={channelPanel === 'members' ? 'Channel members' : 'Channel details'}>
-            <header><strong>{channelPanel === 'members' ? 'People & agents' : 'Channel details'}</strong><button onClick={() => setChannelPanel(null)}>×</button></header>
-            {channelPanel === 'members' ? (
+          <aside
+            ref={channelPanelRef}
+            className="slack-channel-panel"
+            aria-label={channelPanel === 'members' ? 'Channel members' : channelPanel === 'evidence' ? 'Run evidence' : 'Channel details'}
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') return
+              event.preventDefault()
+              closeChannelPanel()
+            }}
+          >
+            <header><strong>{channelPanel === 'members' ? 'People & agents' : channelPanel === 'evidence' ? 'Run evidence' : 'Channel details'}</strong><button aria-label="Close channel panel" onClick={closeChannelPanel}>×</button></header>
+            {channelPanel === 'evidence' ? (
+              <EvidenceInspector presentation={channelEvidencePresentation} />
+            ) : channelPanel === 'members' ? (
               <div className="slack-member-list">
                 {data.members.slice(0, 5).map((member) => <button key={member.id}><span>{member.initials}</span><div><strong>{member.name}</strong><small>Team member</small></div></button>)}
                 {channelAgents.map((agent) => <button key={agent.id}><span className="agent"><Icon name="spark" className="icon xs" /></span><div><strong>{agent.name}</strong><small>AI agent · available</small></div></button>)}
@@ -1933,28 +1855,30 @@ export function ChatPage() {
 
         {channelView === 'messages' && <div className="slack-composer-wrap">
           {mentionOpen && (
-            <div className="slack-agent-picker" aria-label="Mention an agent">
-              <span>Assign work to</span>
-              {channelAgents.map((agent) => (
-                <button key={agent.id} onClick={() => {
-                  setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@${agent.name} `)
-                  setMentionOpen(false)
-                }}><Icon name="spark" className="icon xs" />{agent.name}</button>
-              ))}
-            </div>
+            <EntityPicker kinds={['agent']} projectId={project.id} query={(text.match(/(?:^|\s)@([^\s]*)$/)?.[1] ?? '')} onDismiss={() => setMentionOpen(false)} onSelect={(reference) => {
+              setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@${reference.label} `)
+              setMessageReferences((current) => [...current.filter((item) => item.kind !== reference.kind || item.id !== reference.id), reference])
+              setMentionOpen(false)
+              channelComposerRef.current?.focus()
+            }} />
           )}
           <div className="slack-composer">
             {replyingTo && <div className="slack-reply-context"><span>Replying to <strong>{replyingTo.name}</strong></span><button onClick={() => setReplyingTo(null)}>×</button></div>}
-            <div className="slack-format-row">
-              <button title="Bold"><strong>B</strong></button><button title="Italic"><em>I</em></button><button title="Link"><Icon name="paperclip" className="icon xs" /></button><button title="Code"><Icon name="code" className="icon xs" /></button>
-            </div>
             <textarea
               ref={channelComposerRef}
               aria-label={`Message #${chat.title}`}
               placeholder={`Message #${chat.title}`}
               value={text}
-              rows={3}
-              onChange={(event) => setText(event.target.value)}
+              rows={1}
+              onChange={(event) => {
+                const next = event.target.value
+                setText(next)
+                setMentionOpen(/(?:^|\s)@[^\s]*$/.test(next))
+              }}
+              onInput={(event) => {
+                event.currentTarget.style.height = 'auto'
+                event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 160)}px`
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
@@ -1964,6 +1888,7 @@ export function ChatPage() {
             />
             <div className="slack-compose-actions">
               <div>
+                <button title="Bold"><strong>B</strong></button><button title="Italic"><em>I</em></button><button title="Link"><Icon name="paperclip" className="icon xs" /></button><button title="Code"><Icon name="code" className="icon xs" /></button>
                 <button title="Attach" aria-label="Attach" onClick={() => { setChannelView('files'); toast('Files view opened', 'Choose a file or paste a link to share it with the channel.') }}><Icon name="plus" className="icon sm" /></button>
                 <button title="Mention agent" aria-label="Mention agent" onClick={() => setMentionOpen((value) => !value)}>@</button>
                 <button title="Emoji" aria-label="Emoji" onClick={() => { setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}👍`); channelComposerRef.current?.focus() }}>☺</button>
@@ -2017,7 +1942,7 @@ export function ChatPage() {
             </div>
           )}
           <div className="chat-scroll" ref={transcript.containerRef} onScroll={transcript.onScroll}>
-            {!messages.length && (
+            {!messages.length && !groundedInvestigation && (
               <div className="welcome">
                 <div className="welcome-logo"><Icon name="saddle" className="icon xl" /></div>
                 <h1>What should we build?</h1>
@@ -2040,6 +1965,19 @@ export function ChatPage() {
                   ))}
                 </div>
               </div>
+            )}
+
+            {groundedInvestigation && (
+              <GroundedInvestigationThread
+                snapshot={groundedInvestigation.snapshot}
+                proposal={groundedInvestigation.proposal}
+                proposalLoading={groundedInvestigation.proposalLoading}
+                proposalError={groundedInvestigation.proposalError}
+                onRetry={groundedInvestigation.retry}
+                onCancel={groundedInvestigation.cancel}
+                onReconnect={groundedInvestigation.reconnect}
+                onSavePlan={groundedInvestigation.savePlan}
+              />
             )}
 
             <div className={`messages ${messages.length ? 'active' : ''}`}>
@@ -2087,24 +2025,6 @@ export function ChatPage() {
           />
 
           <div className="composer-wrap">
-            {isTeamChannel && mentionOpen && (
-              <div className="team-channel-mentions" aria-label="Mention an agent">
-                <span>Assign in channel</span>
-                {channelAgents.map((agent) => (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    onClick={() => {
-                      setText((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@${agent.name} `)
-                      setMentionOpen(false)
-                    }}
-                  >
-                    <Icon name="spark" className="icon xs" />{agent.name}
-                  </button>
-                ))}
-                {!channelAgents.length && <button type="button" onClick={() => nav(`/agents/${project.id}`)}>Create the first team agent</button>}
-              </div>
-            )}
             {!!queuedManagedRuns.length && (
               <div className="queued-followups" aria-label="Queued follow-ups">
                 <div className="queued-followups-head">
@@ -2272,7 +2192,7 @@ export function ChatPage() {
                   {EXECUTION_MODES.find((mode) => mode.id === executionMode)?.label}
                 </button>
                 <span className="composer-spacer" />
-                <button className={`route-pill ${auto ? '' : 'manual'}`} title={serverRouting ? 'Routed by the OpenSaddle control plane' : 'Routed locally (mock)'} onClick={() => { setToolsOpen(false); setRouteOpen((v) => !v); refreshRoute(text || pending || 'build a feature') }}>
+                <button className={`route-pill ${auto ? '' : 'manual'}`} title={serverRouting ? 'Routed by the OpenSaddle control plane' : connection.mode === 'demo' ? 'Routed locally in Demo mode' : 'Control plane unavailable; runs will not be simulated'} onClick={() => { setToolsOpen(false); setRouteOpen((v) => !v); refreshRoute(text || pending || 'build a feature') }}>
                   {auto && <span className="pulse" />}
                   <HarnessVisual id={harnessPickerOption.id} className="provider-logo xs" />
                   <span className="route-seg">{harnessPickerOption.shortLabel}</span>
@@ -2513,6 +2433,7 @@ export function ChatPage() {
             </div>
             {itab !== 'overview' && <div className="inspector-tabs">
               {[
+                ['evidence', 'Evidence'],
                 ['changes', 'Changes'],
                 ['checks', 'Checks'],
                 ['activity', 'Activity'],
@@ -2799,6 +2720,13 @@ export function ChatPage() {
 
                 <section className="tf-state-card">
                   <div className="tf-state-heading"><span>Sources</span><Icon name="plus" className="icon sm" /></div>
+                  <button className="tf-state-row" onClick={() => selectInspectorTab('evidence')}>
+                    <Icon name="review" className="icon sm" />
+                    <span>Thread evidence</span>
+                    <small>{evidencePresentation.citations.length
+                      ? `${evidencePresentation.citations.length} citation${evidencePresentation.citations.length === 1 ? '' : 's'}`
+                      : evidencePresentation.gaps.length ? `${evidencePresentation.gaps.length} gap${evidencePresentation.gaps.length === 1 ? '' : 's'}` : 'No citations'}</small>
+                  </button>
                   {!!usedSources.length && <div className="tf-state-sublabel">Used in this run</div>}
                   <UsedSourcesList sources={usedSources.slice(0, 5)} onOpenSource={(source) => {
                     if (source.url) window.open(source.url, '_blank', 'noopener,noreferrer')
@@ -2880,6 +2808,9 @@ export function ChatPage() {
                   <button className="tf-state-view-all" onClick={() => selectInspectorTab('activity')}>View activity</button>
                 </section>
               </div>
+            )}
+            {itab === 'evidence' && (
+              <div className="ipanel active"><EvidenceInspector presentation={evidencePresentation} /></div>
             )}
             {itab === 'changes' && (
               <div className="ipanel active"><div className="inspector-section" style={{ borderTop: 0 }}>

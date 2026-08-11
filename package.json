@@ -15,12 +15,16 @@
     "server:build": "npm run build --prefix packages/control-plane",
     "server:test": "npm test --prefix packages/control-plane",
     "server:typecheck": "npm run typecheck --prefix packages/control-plane",
-    "real:check": "npm run typecheck && npm run lint && npm run test && npm run server:typecheck && npm run server:test && npm run build && npm run server:build",
-    "krail": "npm run start --prefix packages/krail",
+    "real:check": "npm run typecheck && npm run lint && npm run test && npm run server:typecheck && npm run server:test && npm run session-bridge:typecheck && npm run build && npm run server:build && npm run session-bridge:build",
+    "session-bridge": "npm run start --prefix packages/session-bridge",
+    "session-bridge:typecheck": "npm run typecheck --prefix packages/session-bridge",
+    "session-bridge:build": "npm run build --prefix packages/session-bridge",
+    "runtime:krail:bundle": "node scripts/build-krail-runtime.mjs",
+    "krail": "npm run session-bridge",
     "electron:build": "npm run build --prefix electron",
-    "electron:dev": "npm run build && npm run build --prefix electron && npm run start --prefix electron",
+    "electron:dev": "VITE_APP_BASE=./ npm run build && npm run build --prefix electron && npm run start --prefix electron",
     "desktop": "npm run electron:dev",
-    "desktop:package": "VITE_APP_BASE=./ npm run build && npm run package:mac --prefix electron"
+    "desktop:package": "npm run runtime:krail:bundle && VITE_APP_BASE=./ npm run build && npm run package:mac --prefix electron"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

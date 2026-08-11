@@ -4,8 +4,19 @@ const now = Date.now()
 const hour = 3600_000
 const day = 24 * hour
 
-export const DATA_VERSION = 5
-export const STORAGE_KEY = 'opensaddle-data-v5'
+export const DATA_VERSION = 8
+export const STORAGE_KEY = 'opensaddle-data-v8'
+
+/**
+ * Ids minted by the seed. A stored workspace is migrated forward rather than
+ * re-seeded, so demo content is identified by id at load time — a `demo` flag
+ * added to this file alone would never reach an existing workspace.
+ */
+export const SEED_PROJECT_IDS = new Set([
+  'proj-corp', 'proj-customer', 'proj-claims', 'proj-cold',
+  'proj-eng', 'proj-coding', 'proj-router', 'proj-audit',
+])
+export const SEED_MEMBER_IDS = new Set(['user-maya', 'user-jordan', 'user-sec', 'user-priya'])
 
 export function createSeedData(): AppData {
   const corp = 'proj-corp'
@@ -21,44 +32,87 @@ export function createSeedData(): AppData {
   const chatResearch = 'chat-research'
   const chatClaims = 'chat-claims'
   const chatNew = 'chat-welcome'
+  const chatDmMaya = 'chat-dm-maya'
+  const chatDmResearch = 'chat-dm-research'
+  const chatDmCoder = 'chat-dm-coder'
 
   return {
     version: DATA_VERSION,
     workspaceName: 'Acme enterprise workspace',
     currentUserId: 'user-ad',
     members: [
-      { id: 'user-ad', name: 'Akash Dubey', initials: 'AD', role: 'Admin', email: 'akash@acme.com' },
-      { id: 'user-maya', name: 'Maya Chen', initials: 'MC', role: 'Editor', email: 'maya@acme.com' },
-      { id: 'user-jordan', name: 'Jordan Lee', initials: 'JL', role: 'Reviewer', email: 'jordan@acme.com' },
-      { id: 'user-sec', name: 'Security Ops', initials: 'SO', role: 'Reviewer', email: 'secops@acme.com' },
-      { id: 'user-priya', name: 'Priya Shah', initials: 'PS', role: 'Viewer', email: 'priya@acme.com' },
+      { id: 'user-ad', name: 'Akash Dubey', initials: 'AD', role: 'Admin', email: 'akash@acme.com', presence: 'online' },
+      { id: 'user-maya', name: 'Maya Chen', initials: 'MC', role: 'Editor', email: 'maya@acme.com', presence: 'online', demo: true },
+      { id: 'user-jordan', name: 'Jordan Lee', initials: 'JL', role: 'Reviewer', email: 'jordan@acme.com', presence: 'away', demo: true },
+      { id: 'user-sec', name: 'Security Ops', initials: 'SO', role: 'Reviewer', email: 'secops@acme.com', presence: 'offline', demo: true },
+      { id: 'user-priya', name: 'Priya Shah', initials: 'PS', role: 'Viewer', email: 'priya@acme.com', presence: 'online', demo: true },
     ],
     projects: [
-      { id: corp, name: 'Corporate Base Agent', parentId: null, description: 'Default enterprise agent with corporate-safe routing, shared knowledge, and a permission gateway.', iconColor: '#80a9ff', knowledgeCount: 12, serviceCount: 8, childCount: 4, autoConfidence: 93, lineage: ['Organization', 'Corporate Base Agent'] },
-      { id: cust, name: 'Customer Operations', parentId: corp, description: 'Claims, outreach, and customer-facing workflows.', iconColor: '#9b83ff', knowledgeCount: 6, serviceCount: 4, childCount: 2, autoConfidence: 88, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations'] },
-      { id: claims, name: 'Claims Assistant', parentId: cust, description: 'Drafts claim responses with human approval on writes.', iconColor: '#8f78de', knowledgeCount: 4, serviceCount: 3, childCount: 0, autoConfidence: 91, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Claims Assistant'] },
-      { id: cold, name: 'Cold Emailer', parentId: cust, description: 'Outreach drafts with send gated by approval.', iconColor: '#d6af63', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 84, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Cold Emailer'] },
-      { id: eng, name: 'Engineering', parentId: corp, description: 'Repositories, CI systems, and coding agents.', iconColor: '#73a8dd', knowledgeCount: 9, serviceCount: 5, childCount: 3, autoConfidence: 95, lineage: ['Organization', 'Corporate Base Agent', 'Engineering'] },
-      { id: coding, name: 'Coding Agent', parentId: eng, description: 'Repository-aware planning, patches, tests, and PRs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 0, autoConfidence: 96, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Coding Agent'], routingDefaults: { providerKey: 'codex', modelKey: 'auto', runtimeKey: 'sandbox', reviewProviderKey: 'claude' } },
-      { id: router, name: 'Model Router', parentId: eng, description: 'Routing policy, cost controls, and harness selection.', iconColor: '#73a8dd', knowledgeCount: 5, serviceCount: 2, childCount: 0, autoConfidence: 90, lineage: ['Organization', 'Engineering', 'Model Router'] },
-      { id: audit, name: 'Degree Audit', parentId: coding, description: 'Nested project that inherits GitHub but denies production DB writes.', iconColor: '#65c78b', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 89, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Degree Audit'] },
+      { id: corp, name: 'Corporate Base Agent', parentId: null, description: 'Default enterprise agent with corporate-safe routing, shared knowledge, and a permission gateway.', iconColor: '#80a9ff', knowledgeCount: 12, serviceCount: 8, childCount: 4, autoConfidence: 93, lineage: ['Organization', 'Corporate Base Agent'], demo: true },
+      { id: cust, name: 'Customer Operations', parentId: corp, description: 'Claims, outreach, and customer-facing workflows.', iconColor: '#9b83ff', knowledgeCount: 6, serviceCount: 4, childCount: 2, autoConfidence: 88, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations'], demo: true },
+      { id: claims, name: 'Claims Assistant', parentId: cust, description: 'Drafts claim responses with human approval on writes.', iconColor: '#8f78de', knowledgeCount: 4, serviceCount: 3, childCount: 0, autoConfidence: 91, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Claims Assistant'], demo: true },
+      { id: cold, name: 'Cold Emailer', parentId: cust, description: 'Outreach drafts with send gated by approval.', iconColor: '#d6af63', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 84, lineage: ['Organization', 'Corporate Base Agent', 'Customer Operations', 'Cold Emailer'], demo: true },
+      { id: eng, name: 'Engineering', parentId: corp, description: 'Repositories, CI systems, and coding agents.', iconColor: '#73a8dd', knowledgeCount: 9, serviceCount: 5, childCount: 3, autoConfidence: 95, lineage: ['Organization', 'Corporate Base Agent', 'Engineering'], demo: true },
+      { id: coding, name: 'Coding Agent', parentId: eng, description: 'Repository-aware planning, patches, tests, and PRs.', iconColor: '#cf7979', knowledgeCount: 7, serviceCount: 3, childCount: 0, autoConfidence: 96, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Coding Agent'], demo: true, routingDefaults: { providerKey: 'codex', modelKey: 'auto', runtimeKey: 'sandbox', reviewProviderKey: 'claude' } },
+      { id: router, name: 'Model Router', parentId: eng, description: 'Routing policy, cost controls, and harness selection.', iconColor: '#73a8dd', knowledgeCount: 5, serviceCount: 2, childCount: 0, autoConfidence: 90, lineage: ['Organization', 'Engineering', 'Model Router'], demo: true },
+      { id: audit, name: 'Degree Audit', parentId: coding, description: 'Nested project that inherits GitHub but denies production DB writes.', iconColor: '#65c78b', knowledgeCount: 3, serviceCount: 2, childCount: 0, autoConfidence: 89, lineage: ['Organization', 'Engineering', 'Scarlet Sync', 'Degree Audit'], demo: true },
     ],
     chats: [
       { id: chatNew, projectId: corp, title: 'New chat', visibility: 'private', createdAt: now, updatedAt: now, sharedWith: [] },
-      { id: chatCoding, projectId: coding, title: 'Secure VM background feature', visibility: 'shared', createdAt: now - 2 * hour, updatedAt: now - hour, sharedWith: ['user-maya', 'user-jordan'], agentId: 'agent-coder' },
+      { id: chatCoding, projectId: coding, title: 'Secure VM background feature', visibility: 'shared', createdAt: now - 2 * hour, updatedAt: now - hour, sharedWith: ['user-maya', 'user-jordan'], agentId: 'agent-coder', unreadCount: 2 },
       { id: chatResearch, projectId: corp, title: 'Model gateway architecture review', visibility: 'project', createdAt: now - day, updatedAt: now - 3 * hour, sharedWith: [], agentId: 'agent-research' },
       { id: chatClaims, projectId: claims, title: 'At-risk Salesforce renewals', visibility: 'shared', createdAt: now - 5 * hour, updatedAt: now - 4 * hour, sharedWith: ['user-maya'], agentId: 'agent-claims' },
+      { id: chatDmMaya, projectId: corp, title: 'Maya Chen', visibility: 'private', createdAt: now - 4 * hour, updatedAt: now - 18 * 60_000, sharedWith: [], directMessageWith: { kind: 'human', id: 'user-maya' }, unreadCount: 3 },
+      { id: chatDmResearch, projectId: corp, title: 'Research Analyst', visibility: 'private', createdAt: now - 3 * hour, updatedAt: now - 42 * 60_000, sharedWith: [], agentId: 'agent-research', directMessageWith: { kind: 'agent', id: 'agent-research' }, unreadCount: 1 },
+      { id: chatDmCoder, projectId: coding, title: 'Secure Coding Agent', visibility: 'private', createdAt: now - 2 * hour, updatedAt: now - 75 * 60_000, sharedWith: [], agentId: 'agent-coder', directMessageWith: { kind: 'agent', id: 'agent-coder' } },
       { id: 'chat-policy', projectId: router, title: 'Audit policy-aware routing', visibility: 'project', createdAt: now - 2 * day, updatedAt: now - day, sharedWith: [] },
       { id: 'chat-sharepoint', projectId: corp, title: 'Create SharePoint knowledge index', visibility: 'private', createdAt: now - 3 * day, updatedAt: now - 2 * day, sharedWith: [] },
       { id: 'chat-prs', projectId: coding, title: 'Review GitHub pull requests', visibility: 'shared', createdAt: now - 4 * day, updatedAt: now - 3 * day, sharedWith: ['user-jordan'] },
     ],
     messages: [
+      { id: 'dm-maya-1', chatId: chatDmMaya, role: 'assistant', createdAt: now - 18 * 60_000, text: 'I added the customer feedback to the launch brief. Want me to pull Priya into the review?' },
+      { id: 'dm-research-1', chatId: chatDmResearch, role: 'assistant', createdAt: now - 42 * 60_000, text: 'The source comparison is ready. I flagged two assumptions that need a human decision.' },
+      { id: 'dm-coder-1', chatId: chatDmCoder, role: 'assistant', createdAt: now - 75 * 60_000, text: 'I found the likely regression boundary and can prepare a focused patch when you are ready.' },
+      // Multi-author channel conversation. These carry `authorId`, which is what
+      // lets a channel show more than one person without hardcoding a feed.
       {
-        id: 'm1', chatId: chatCoding, role: 'user', createdAt: now - 2 * hour,
+        id: 'ch-maya-1', chatId: chatCoding, role: 'user', authorId: 'user-maya', createdAt: now - 58 * 60_000,
+        text: 'I pulled the secure VM acceptance criteria into one place. The remaining question is whether background sessions should pause or terminate when a permission expires.',
+      },
+      {
+        id: 'ch-maya-2', chatId: chatCoding, role: 'user', authorId: 'user-maya', createdAt: now - 56 * 60_000,
+        text: 'Either way we should say so explicitly in the release note.',
+      },
+      {
+        id: 'ch-jordan-1', chatId: chatCoding, role: 'user', authorId: 'user-jordan', createdAt: now - 51 * 60_000,
+        text: 'Pause feels safer and gives the user a clear recovery path. @Secure Coding Agent can you verify that against the current runtime policy?',
+        references: [{ kind: 'agent', id: 'agent-coder', label: '@Secure Coding Agent' }],
+        artifactRefs: [{
+          id: 'gh-pr-1932', provider: 'GitHub', kind: 'PR',
+          title: 'Pause background sessions when grants expire',
+          state: 'actionable', fetchedAt: now - 2 * 60_000,
+        }],
+      },
+      {
+        id: 'ch-agent-1', chatId: chatCoding, role: 'assistant', authorId: 'agent-coder', createdAt: now - 48 * 60_000,
+        text: 'Checked the runtime and permission policies. Expired grants pause the VM, preserve the encrypted workspace, and create an approval request for the owner.',
+        artifactRefs: [{
+          id: 'os-run-4471', provider: 'OpenSaddle', kind: 'Run',
+          title: 'Permission-expiry policy review',
+          state: 'done', fetchedAt: now - 48 * 60_000,
+        }],
+      },
+      {
+        id: 'ch-akash-1', chatId: chatCoding, role: 'user', authorId: 'user-ad', createdAt: now - 34 * 60_000,
+        text: 'Great. Let’s use that behavior in the demo and link the full agent thread from the release note. Thanks @Maya Chen for pulling the criteria together.',
+        references: [{ kind: 'user', id: 'user-maya', label: '@Maya Chen' }],
+      },
+      {
+        id: 'm1', chatId: chatCoding, role: 'user', authorId: 'user-ad', createdAt: now - 2 * hour,
         text: 'Build a new feature that lets a user request a secure VM and continue the task in the background.',
       },
       {
-        id: 'm2', chatId: chatCoding, role: 'assistant', createdAt: now - 2 * hour + 60_000,
+        id: 'm2', chatId: chatCoding, role: 'assistant', authorId: 'agent-coder', createdAt: now - 2 * hour + 60_000,
         text: 'Implemented the secure background-VM flow in two files. Provisioning now requires budget approval and records an audit event; background tasks are queued with the allocated VM.\n\nVerification passed with 18 runtime tests and no failures. The proposed changes are ready for review below.',
         routingNote: 'Auto · Claude Opus · Coding · Local',
         run: {
@@ -194,12 +248,12 @@ export function createSeedData(): AppData {
       },
     ],
     agents: [
-      { id: 'agent-coder', projectId: coding, name: 'Secure Coding Agent', description: 'Plans, edits, tests, and opens PRs in managed sandboxes.', systemPrompt: 'You are a careful coding agent. Prefer smallest diffs. Never deploy without approval.', modelPolicy: 'claude', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub', 'Terminal', 'VM'], knowledgeSourceIds: ['kn-github'], interfaceId: 'iface-chat-diff', visibility: 'shared', createdAt: now - 10 * day },
-      { id: 'agent-research', projectId: corp, name: 'Research Analyst', description: 'Searches knowledge and produces cited reports.', systemPrompt: 'Cite sources. Prefer internal knowledge over web.', modelPolicy: 'gpt', harness: 'research', runtime: 'sandbox', tools: ['Knowledge', 'Web'], knowledgeSourceIds: ['kn-sharepoint', 'kn-drive'], interfaceId: 'iface-doc', visibility: 'project', createdAt: now - 8 * day },
-      { id: 'agent-claims', projectId: claims, name: 'Claims Copilot', description: 'Drafts claim responses; writes require approval.', systemPrompt: 'Never invent policy. Escalate ambiguous cases.', modelPolicy: 'sonnet', harness: 'browser', runtime: 'local', tools: ['Salesforce', 'Files'], knowledgeSourceIds: ['kn-claims'], interfaceId: 'iface-form', visibility: 'shared', createdAt: now - 6 * day },
-      { id: 'agent-cold', projectId: cold, name: 'Cold Email Drafter', description: 'Writes outreach drafts; sending is gated by human approval.', systemPrompt: 'Draft concise, personalized outreach. Never send without approval.', modelPolicy: 'sonnet', harness: 'chat', runtime: 'browser', tools: ['Files', 'Email'], knowledgeSourceIds: [], visibility: 'project', createdAt: now - 6 * day },
-      { id: 'agent-router', projectId: router, name: 'Routing Policy Analyst', description: 'Audits routing decisions, cost controls, and harness selection.', systemPrompt: 'Explain routing decisions with policy citations and cost impact.', modelPolicy: 'gpt', harness: 'research', runtime: 'sandbox', tools: ['Knowledge'], knowledgeSourceIds: ['kn-github'], visibility: 'project', createdAt: now - 7 * day },
-      { id: 'agent-audit', projectId: audit, name: 'Degree Audit Agent', description: 'Repository-aware checks that inherit GitHub but deny production DB writes.', systemPrompt: 'Read-only against production data. Propose changes as diffs.', modelPolicy: 'sonnet', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub'], knowledgeSourceIds: ['kn-github'], visibility: 'project', createdAt: now - 5 * day },
+      { id: 'agent-coder', projectId: coding, name: 'Secure Coding Agent', description: 'Plans, edits, tests, and opens PRs in managed sandboxes.', systemPrompt: 'You are a careful coding agent. Prefer smallest diffs. Never deploy without approval.', modelPolicy: 'claude', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub', 'Terminal', 'VM'], knowledgeSourceIds: ['kn-github'], interfaceId: 'iface-chat-diff', visibility: 'shared', presence: 'online', createdAt: now - 10 * day },
+      { id: 'agent-research', projectId: corp, name: 'Research Analyst', description: 'Searches knowledge and produces cited reports.', systemPrompt: 'Cite sources. Prefer internal knowledge over web.', modelPolicy: 'gpt', harness: 'research', runtime: 'sandbox', tools: ['Knowledge', 'Web'], knowledgeSourceIds: ['kn-sharepoint', 'kn-drive'], interfaceId: 'iface-doc', visibility: 'project', presence: 'away', createdAt: now - 8 * day },
+      { id: 'agent-claims', projectId: claims, name: 'Claims Copilot', description: 'Drafts claim responses; writes require approval.', systemPrompt: 'Never invent policy. Escalate ambiguous cases.', modelPolicy: 'sonnet', harness: 'browser', runtime: 'local', tools: ['Salesforce', 'Files'], knowledgeSourceIds: ['kn-claims'], interfaceId: 'iface-form', visibility: 'shared', presence: 'online', createdAt: now - 6 * day },
+      { id: 'agent-cold', projectId: cold, name: 'Cold Email Drafter', description: 'Writes outreach drafts; sending is gated by human approval.', systemPrompt: 'Draft concise, personalized outreach. Never send without approval.', modelPolicy: 'sonnet', harness: 'chat', runtime: 'browser', tools: ['Files', 'Email'], knowledgeSourceIds: [], visibility: 'project', presence: 'offline', createdAt: now - 6 * day },
+      { id: 'agent-router', projectId: router, name: 'Routing Policy Analyst', description: 'Audits routing decisions, cost controls, and harness selection.', systemPrompt: 'Explain routing decisions with policy citations and cost impact.', modelPolicy: 'gpt', harness: 'research', runtime: 'sandbox', tools: ['Knowledge'], knowledgeSourceIds: ['kn-github'], visibility: 'project', presence: 'away', createdAt: now - 7 * day },
+      { id: 'agent-audit', projectId: audit, name: 'Degree Audit Agent', description: 'Repository-aware checks that inherit GitHub but deny production DB writes.', systemPrompt: 'Read-only against production data. Propose changes as diffs.', modelPolicy: 'sonnet', harness: 'coding', runtime: 'sandbox', tools: ['Files', 'GitHub'], knowledgeSourceIds: ['kn-github'], visibility: 'project', presence: 'offline', createdAt: now - 5 * day },
     ],
     sites: [
       {

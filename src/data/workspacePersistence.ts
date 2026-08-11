@@ -1,5 +1,5 @@
 import type { AppData } from '../types'
-import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
+import { createSeedData, DATA_VERSION, SEED_MEMBER_IDS, SEED_PROJECT_IDS, STORAGE_KEY } from './seed'
 
 const RECOVERY_INDEX_KEY = 'opensaddle-recovery-index-v1'
 const LEGACY_STORAGE_KEYS = Array.from(
@@ -30,6 +30,13 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 
 export function normalizeWorkspace(data: AppData): AppData {
+  // Label seeded sample content wherever it came from, so a demo team is never
+  // mistaken for a real one and can be removed in one action.
+  data = {
+    ...data,
+    projects: data.projects.map((project) => SEED_PROJECT_IDS.has(project.id) ? { ...project, demo: true as const } : project),
+    members: data.members.map((member) => SEED_MEMBER_IDS.has(member.id) ? { ...member, demo: true as const } : member),
+  }
   data.pinnedArtifacts ??= []
   for (const project of data.projects) {
     project.workspaceKind ??= project.local ? 'local' : 'enterprise'

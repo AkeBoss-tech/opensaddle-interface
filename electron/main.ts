@@ -1,16 +1,52 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, WebContentsView } from 'electron'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, WebContentsView } from 'electron'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync } from 'node:fs'
 import { readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { resolveKrailRuntime } from './runtimeBundle.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
 
+/**
+ * The renderer is an ES-module bundle, and a module script cannot be fetched
+ * from a `file://` origin — Chromium requires CORS for modules and file origins
+ * are opaque, so `loadFile` yields a blank window. Serving the same directory
+ * over a privileged scheme keeps webSecurity on and works packaged or not.
+ */
+const RENDERER_SCHEME = 'opensaddle'
+protocol.registerSchemesAsPrivileged([{
+  scheme: RENDERER_SCHEME,
+  // `standard` is what lets module scripts load; deliberately NOT `secure`,
+  // because a secure origin treats the local control plane's plain http://
+  // endpoint as mixed content and blocks every API call.
+  privileges: { standard: true, supportFetchAPI: true, corsEnabled: true },
+}])
+
+function rendererRoot(): string {
+  return isDev
+    ? path.resolve(__dirname, '../../dist')
+    : path.join(process.resourcesPath, 'renderer')
+}
+
+function registerRendererProtocol() {
+  const root = rendererRoot()
+  protocol.handle(RENDERER_SCHEME, (request) => {
+    const requested = decodeURIComponent(new URL(request.url).pathname)
+    const resolved = path.join(root, requested)
+    // Any unknown path resolves to the shell so hash routing still works, and a
+    // traversal attempt outside the bundle root can never escape it.
+    const safe = resolved.startsWith(root) && existsSync(resolved) && !resolved.endsWith('/')
+      ? resolved
+      : path.join(root, 'index.html')
+    return net.fetch(`file://${safe}`)
+  })
+}
+
 let mainWindow: BrowserWindow | null = null
 let opensaddleProc: ChildProcess | null = null
-let krailProc: ChildProcess | null = null
+let sessionBridgeProc: ChildProcess | null = null
 let embeddedBrowser: WebContentsView | null = null
 let sidecarsShuttingDown = false
 let opensaddleRestartTimer: NodeJS.Timeout | null = null
@@ -22,7 +58,13 @@ let sidecarsStopPromise: Promise<void> | null = null
 let quitAfterSidecars = false
 
 const OPENSADDLE_URL = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
-const KRAIL_URL = process.env.KRAIL_URL ?? 'http://127.0.0.1:8787'
+const SESSION_BRIDGE_URL = process.env.SESSION_BRIDGE_URL ?? process.env.KRAIL_URL ?? 'http://127.0.0.1:8787'
+
+function packagedKrailRuntime() {
+  return resolveKrailRuntime(
+    process.env.OPENSADDLE_KRAIL_RUNTIME_DIR ?? process.resourcesPath,
+  )
+}
 
 const CLI_CANDIDATES = ['codex', 'claude', 'cursor-agent', 'agent', 'gemini', 'opencode', 'antigravity', 'aider', 'copilot', 'amp', 'agy', 'openclaw', 'hermes', 'pi']
 const APP_ICON = isDev ? path.resolve(__dirname, '../assets/opensaddle-icon.png') : path.join(process.resourcesPath, 'opensaddle-icon.png')
@@ -37,6 +79,136 @@ interface LocalProjectInspection {
   skills: Array<{ name: string; path: string; description: string }>
   fileCount: number
   languages: string[]
+}
+
+interface WorkspaceScanSnapshot {
+  scannedAt?: number
+  folderPath: string
+  folderName: string
+  directories: string[]
+  configPaths: string[]
+  packageScripts: string[]
+  dependencyNames: string[]
+  makefile: string | null
+  envExamplePaths: string[]
+  envExampleVariableNames: string[]
+  connectorPaths: string[]
+  git: {
+    readable: boolean
+    reason?: string
+    branches: string[]
+    commitCount: number
+    directoryCommitCounts?: Record<string, number>
+    authors: Array<{ name: string; email: string; commitCount: number }>
+    hasRemote: boolean
+    remoteHost?: string
+    branchActivity?: Record<string, number>
+  }
+}
+
+function gitOutput(folderPath: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile('git', args, { cwd: folderPath, windowsHide: true }, (error, stdout) => {
+      resolve(error ? null : stdout)
+    })
+  })
+}
+
+function gitRemoteHost(remote: string | null): string | undefined {
+  const value = remote?.trim()
+  if (!value) return undefined
+  try { return new URL(value).hostname.toLowerCase() || undefined } catch { /* try scp-style remotes */ }
+  return value.match(/^[^@\s]+@([^:/\s]+):/)?.[1]?.toLowerCase()
+}
+
+function parseEnvExampleVariableNames(source: string): string[] {
+  return [...new Set(source.split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/)
+    return match ? [match[1]] : []
+  }))]
+}
+
+async function scanWorkspaceFolder(input: string): Promise<WorkspaceScanSnapshot> {
+  const folderPath = await realpath(input).catch(() => input)
+  const folderName = path.basename(folderPath) || folderPath
+  const entries = await readdir(folderPath, { withFileTypes: true }).catch(() => [])
+  const names = new Set(entries.map((entry) => entry.name))
+  const directories = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+  const configPaths = ['.claude/', '.codex/', '.cursor/', 'AGENTS.md', 'CLAUDE.md', '.opensaddle/']
+    .filter((marker) => names.has(marker.replace(/\/$/, '')))
+  const packageMetadata = await readFile(path.join(folderPath, 'package.json'), 'utf8')
+    .then((source) => {
+      const pkg = JSON.parse(source) as { scripts?: Record<string, unknown>; dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown> }
+      return {
+        packageScripts: Object.entries(pkg.scripts ?? {}).flatMap(([name, command]) => typeof command === 'string' ? [`${name}: ${command}`] : []),
+        dependencyNames: [...new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})])],
+      }
+    })
+    .catch(() => ({ packageScripts: [], dependencyNames: [] }))
+  const { packageScripts, dependencyNames } = packageMetadata
+  const makefile = names.has('Makefile')
+    ? await readFile(path.join(folderPath, 'Makefile'), 'utf8').catch(() => '')
+    : null
+  const envExamplePaths = names.has('.env.example') ? ['.env.example'] : []
+  const envExampleVariableNames = names.has('.env.example')
+    ? parseEnvExampleVariableNames(await readFile(path.join(folderPath, '.env.example'), 'utf8').catch(() => '')) : []
+  const connectorPaths = ['netlify.toml', 'vercel.json', 'cloudbuild.yaml', 'app.yaml', 'Dockerfile', '.gcloudignore', 'supabase/', '.github/workflows/']
+    .filter((marker) => marker === '.github/workflows/'
+      ? entries.some((entry) => entry.name === '.github' && entry.isDirectory()) && existsSync(path.join(folderPath, '.github', 'workflows'))
+      : names.has(marker.replace(/\/$/, '')))
+
+  const isGitRepository = (await gitOutput(folderPath, ['rev-parse', '--is-inside-work-tree']))?.trim() === 'true'
+  if (!isGitRepository) {
+    return {
+      scannedAt: Date.now(),
+      folderPath, folderName, directories, configPaths, packageScripts, dependencyNames, makefile, envExamplePaths, envExampleVariableNames, connectorPaths,
+      git: { readable: false, reason: 'No readable git history was found for this folder.', branches: [], commitCount: 0, authors: [], hasRemote: false },
+    }
+  }
+
+  // Branches carry their last-commit date so stale ones can be filtered out.
+  // A long-lived repo accumulates dead branches; proposing all of them as
+  // channels buries the handful anyone is actually working on.
+  const branchLines = ((await gitOutput(folderPath, [
+    'for-each-ref', '--sort=-committerdate', '--format=%(refname:short)|%(committerdate:unix)', 'refs/heads',
+  ])) ?? '').split(/\r?\n/).filter(Boolean)
+  const branches = branchLines.map((line) => line.split('|')[0]!.trim()).filter(Boolean)
+  const branchActivity: Record<string, number> = {}
+  for (const line of branchLines) {
+    const [name, when] = line.split('|')
+    const seconds = Number(when)
+    if (name && Number.isFinite(seconds)) branchActivity[name.trim()] = seconds * 1000
+  }
+  const authorCounts = new Map<string, { name: string; email: string; commitCount: number }>()
+  const authorLines = ((await gitOutput(folderPath, ['log', '--format=%an|%ae'])) ?? '').split(/\r?\n/)
+  for (const line of authorLines) {
+    const separator = line.lastIndexOf('|')
+    if (separator < 1) continue
+    const name = line.slice(0, separator).trim()
+    const email = line.slice(separator + 1).trim()
+    if (!name || !email) continue
+    const key = `${name}\u0000${email}`
+    const author = authorCounts.get(key)
+    if (author) author.commitCount += 1
+    else authorCounts.set(key, { name, email, commitCount: 1 })
+  }
+  const authors = [...authorCounts.values()]
+  const hasRemote = Boolean((await gitOutput(folderPath, ['remote']))?.trim())
+  const remoteHost = gitRemoteHost(await gitOutput(folderPath, ['remote', 'get-url', 'origin']))
+
+  // Per-directory commit counts so a proposed channel can justify itself with a
+  // number that actually describes that directory. Bounded to keep the scan quick.
+  const directoryCommitCounts: Record<string, number> = {}
+  for (const directory of directories.slice(0, 40)) {
+    const log = await gitOutput(folderPath, ['log', '--oneline', '--', directory])
+    if (log !== null) directoryCommitCounts[directory] = log.split(/\r?\n/).filter(Boolean).length
+  }
+
+  return {
+    scannedAt: Date.now(),
+    folderPath, folderName, directories, configPaths, packageScripts, dependencyNames, makefile, envExamplePaths, envExampleVariableNames, connectorPaths,
+    git: { readable: true, branches, branchActivity, commitCount: authorLines.filter(Boolean).length, directoryCommitCounts, authors, hasRemote, remoteHost },
+  }
 }
 
 async function inspectLocalProject(input: string): Promise<LocalProjectInspection> {
@@ -404,10 +576,16 @@ async function launchOpenSaddle(): Promise<void> {
     return
   }
   opensaddleLaunchError = null
+  const krailRuntime = packagedKrailRuntime()
+  const launchEnv: NodeJS.ProcessEnv = { ...process.env, OPENSADDLE_DESKTOP: '1' }
+  if (krailRuntime) {
+    launchEnv.OPENSADDLE_KRAIL_ADMIN_COMMAND ??= krailRuntime.adminCommand
+    launchEnv.OPENSADDLE_KRAIL_MUTATION_COMMAND ??= krailRuntime.mutationCommand
+  }
   const child = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
     stdio: 'ignore',
-    env: { ...process.env, OPENSADDLE_DESKTOP: '1' },
+    env: launchEnv,
     detached: process.platform !== 'win32',
   })
   opensaddleProc = child
@@ -474,12 +652,12 @@ async function startSidecars(): Promise<void> {
     if (!sidecarsShuttingDown) void ensureOpenSaddle()
   }, 3_000)
   if (!isDev) return
-  const krailEntry = path.resolve(__dirname, '../../packages/krail/src/server.ts')
-  if (existsSync(krailEntry)) {
-    krailProc = spawn('npx', ['tsx', krailEntry], {
+  const sessionBridgeEntry = path.resolve(__dirname, '../../packages/session-bridge/src/server.ts')
+  if (existsSync(sessionBridgeEntry)) {
+    sessionBridgeProc = spawn('npx', ['tsx', sessionBridgeEntry], {
       cwd: path.resolve(__dirname, '../..'),
       stdio: 'ignore',
-      env: { ...process.env, KRAIL_PORT: '8787' },
+      env: { ...process.env, SESSION_BRIDGE_PORT: '8787' },
     })
   }
 }
@@ -555,15 +733,15 @@ async function stopSidecars(): Promise<void> {
   opensaddleHealthTimer = null
   const opensaddle = opensaddleProc
   const ownedPid = opensaddleOwnedPid
-  const krail = krailProc
+  const sessionBridge = sessionBridgeProc
   opensaddleProc = null
   opensaddleOwnedPid = null
-  krailProc = null
+  sessionBridgeProc = null
   await Promise.all([
     ownedPid
       ? terminateOwnedSidecar(ownedPid)
       : terminateSidecar(opensaddle),
-    terminateSidecar(krail),
+    terminateSidecar(sessionBridge),
   ])
   if (ownedPid) await clearOpenSaddleOwnership(ownedPid)
 }
@@ -590,27 +768,44 @@ function createWindow() {
     void mainWindow?.webContents.executeJavaScript('window.opensaddleDesktop = true')
   })
 
-  if (isDev) {
-    void mainWindow.loadURL('http://127.0.0.1:5173/opensaddle-interface/')
-  } else {
-    void mainWindow.loadFile(path.join(process.resourcesPath, 'renderer/index.html'))
+  // Set OPENSADDLE_DEV_SERVER=1 to attach to a running Vite for hot reload.
+  // Vite binds [::1] rather than 127.0.0.1, so address it by hostname.
+  if (isDev && process.env.OPENSADDLE_DEV_SERVER) {
+    void mainWindow.loadURL('http://localhost:5173/opensaddle-interface/')
+    return
   }
+
+  void mainWindow.loadURL(`${RENDERER_SCHEME}://bundle/index.html`)
 }
 
 app.whenReady().then(async () => {
   app.setName('OpenSaddle')
   if (process.platform === 'darwin') app.dock?.setIcon(APP_ICON)
+  registerRendererProtocol()
   await startSidecars()
   createWindow()
 
-  ipcMain.handle('runtime:info', async () => ({
+  ipcMain.handle('runtime:info', async () => {
+    const krailRuntime = packagedKrailRuntime()
+    const environmentConfigured = Boolean(
+      process.env.OPENSADDLE_KRAIL_ADMIN_COMMAND
+      || process.env.OPENSADDLE_KRAIL_MUTATION_COMMAND,
+    )
+    return ({
     mode: 'desktop',
     opensaddleUrl: OPENSADDLE_URL,
     opensaddleConnected: await opensaddleHealthy(),
     opensaddleError: opensaddleLaunchError,
-    krailUrl: KRAIL_URL,
+    sessionBridgeUrl: SESSION_BRIDGE_URL,
+    krailUrl: SESSION_BRIDGE_URL,
+    krailRuntime: {
+      bundled: Boolean(krailRuntime),
+      source: krailRuntime ? 'bundle' : environmentConfigured ? 'environment' : 'path',
+      version: krailRuntime?.manifest.wheel.name,
+    },
     clis: await discoverClis(),
-  }))
+    })
+  })
 
   ipcMain.handle('runtime:pick-repo', async () => {
     const result = await dialog.showOpenDialog({
@@ -621,6 +816,8 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('runtime:inspect-project', async (_evt, target: string) => inspectLocalProject(target))
+
+  ipcMain.handle('runtime:scan-workspace', async (_evt, folderPath: string) => scanWorkspaceFolder(folderPath))
 
   ipcMain.handle('runtime:open-path', async (_evt, target: string) => {
     await shell.openPath(target)

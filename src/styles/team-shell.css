@@ -12,6 +12,48 @@
   font-size: 13px;
 }
 
+.tf-team-header-menu {
+  position: absolute;
+  z-index: 50;
+  top: 48px;
+  right: 38px;
+  width: 184px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+
+.tf-team-header-menu button {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+}
+
+.tf-team-header-menu button:hover,
+.tf-team-header-menu button:focus-visible {
+  color: var(--text);
+  background: var(--card-hover);
+}
+
+.tf-team-header-menu button:focus-visible {
+  outline: none;
+  box-shadow: var(--os-focus-ring);
+}
+
 .tf-team-rail {
   min-height: 0;
 }
@@ -279,6 +321,10 @@
 .tf-thread-row:hover,
 .tf-thread-row:focus-within {
   background: var(--card-hover);
+}
+
+.tf-direct-messages {
+  margin-top: 12px;
 }
 
 .tf-thread-open {

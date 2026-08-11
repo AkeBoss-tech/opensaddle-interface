@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
-  AgentInterface, AppData, Chat, CodingProvider, CustomAgent, Dashboard, LocalProjectSettings, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
+  AgentInterface, AppData, Chat, CodingProvider, CustomAgent, Dashboard, LocalProjectSettings, Member, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, ServiceConn, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
 } from '../types'
 import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
 import {
@@ -28,6 +28,21 @@ function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+// oxlint-disable-next-line react/only-export-components -- pure append semantics are covered independently of React.
+export function appendPermissionGrants(
+  existing: PermissionGrant[],
+  grants: Array<Omit<PermissionGrant, 'id' | 'createdAt' | 'createdBy'>>,
+  currentUserId: string,
+): PermissionGrant[] {
+  const createdAt = Date.now()
+  return [...existing, ...grants.map((grant) => ({
+    ...grant,
+    id: uid('grant'),
+    createdAt,
+    createdBy: currentUserId,
+  }))]
+}
+
 function messageFromDurable(message: DurableThreadMessage): Message {
   const payload = message.payload ?? {}
   return {
@@ -37,6 +52,15 @@ function messageFromDurable(message: DurableThreadMessage): Message {
     role: message.role,
     text: message.text,
     createdAt: message.createdAt,
+    references: Array.isArray(payload.references)
+      ? payload.references.filter((reference): reference is NonNullable<Message['references']>[number] => Boolean(
+        reference
+        && typeof reference === 'object'
+        && typeof (reference as Record<string, unknown>).kind === 'string'
+        && typeof (reference as Record<string, unknown>).id === 'string'
+        && typeof (reference as Record<string, unknown>).label === 'string',
+      ))
+      : undefined,
     runtimeRunId: typeof payload.runtime_run_id === 'string'
       ? payload.runtime_run_id
       : typeof payload.runtimeRunId === 'string'
@@ -81,11 +105,14 @@ interface StoreApi {
   ) => Message
   updateMessage: (id: string, patch: Partial<Message>) => void
   createProject: (name: string, parentId: string | null, description: string) => string
-  importLocalProject: (input: { name: string; description: string; local: LocalProjectSettings }) => string
+  importLocalProject: (input: { id?: string; name: string; description: string; local: LocalProjectSettings }) => string
   updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description' | 'routingDefaults' | 'workspaceKind' | 'local'>>) => void
   removeLocalProject: (id: string) => void
   setPinnedArtifacts: (items: PinnedArtifact[]) => void
   createAgent: (input: Omit<CustomAgent, 'id' | 'createdAt'>) => CustomAgent
+  createMember: (input: Omit<Member, 'id'>) => Member
+  addServiceConnections: (projectId: string, connections: Array<Omit<ServiceConn, 'id' | 'projectId'>>) => ServiceConn[]
+  addPermissionGrants: (grants: Array<Omit<PermissionGrant, 'id' | 'createdAt' | 'createdBy'>>) => PermissionGrant[]
   updateAgent: (id: string, patch: Partial<Omit<CustomAgent, 'id' | 'projectId' | 'createdAt'>>) => void
   deleteAgent: (id: string) => void
   createSite: (input: Omit<Site, 'id' | 'createdAt' | 'updatedAt' | 'slug' | 'accent' | 'versions' | 'agentPlacement'> & Partial<Pick<Site, 'slug' | 'accent' | 'agentPlacement'>>) => Site
@@ -114,6 +141,8 @@ interface StoreApi {
   attachSource: (input: Omit<ProjectSource, 'id' | 'lastSyncAt'>) => ProjectSource
   updateSource: (id: string, patch: Partial<Pick<ProjectSource, 'name' | 'url' | 'status' | 'branch' | 'folderPath'>>) => void
   updateHunk: (messageId: string, hunkId: string, status: 'accepted' | 'rejected') => void
+  /** Deletes seeded sample teams, people and conversations. Snapshot kept. */
+  removeDemoData: () => void
   resetData: () => void
   exportData: () => string
   toast: (title: string, message: string) => void
@@ -502,6 +531,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             || JSON.stringify(existing.run) !== JSON.stringify(message.run)
             || existing.routingNote !== message.routingNote
             || existing.lightHtml !== message.lightHtml
+            || JSON.stringify(existing.references) !== JSON.stringify(message.references)
         })
         if (!changed) return current
         const remoteIds = new Set(remote.map((message) => message.id))
@@ -655,6 +685,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ...(message.run ? { run: message.run } : {}),
     ...(message.lightHtml ? { lightHtml: message.lightHtml } : {}),
     ...(message.runtimeRunId ? { runtime_run_id: message.runtimeRunId } : {}),
+    ...(message.references?.length ? { references: message.references } : {}),
   }), [])
 
   const reportThreadSyncError = useCallback((error: unknown) => {
@@ -1026,8 +1057,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
       return id
     },
-    importLocalProject: ({ name, description, local }) => {
-      const id = uid('local')
+    importLocalProject: ({ id: requestedId, name, description, local }) => {
+      const id = requestedId ?? uid('local')
       patch((d) => {
         d.projects.push({
           id,
@@ -1117,6 +1148,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const agent: CustomAgent = { ...input, id: uid('agent'), createdAt: Date.now() }
       patch((d) => { d.agents.unshift(agent); return d })
       return agent
+    },
+    createMember: (input) => {
+      const member: Member = { ...input, id: uid('member') }
+      patch((d) => { d.members.unshift(member); return d })
+      return member
+    },
+    addServiceConnections: (projectId, connections) => {
+      const created = connections.map((connection) => ({ ...connection, id: uid('service'), projectId }))
+      patch((d) => { d.services.unshift(...created); return d })
+      return created
+    },
+    addPermissionGrants: (grants) => {
+      const created = appendPermissionGrants(dataRef.current.permissionGrants, grants, currentUserRef.current)
+        .slice(dataRef.current.permissionGrants.length)
+      patch((d) => { d.permissionGrants.push(...created); return d })
+      return created
     },
     updateAgent: (id, agentPatch) => patch((d) => {
       const agent = d.agents.find((item) => item.id === id)
@@ -1481,6 +1528,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       for (const f of files) for (const h of f.hunks) if (h.id === hunkId) h.status = status
       return d
     }),
+    removeDemoData: () => {
+      captureWorkspaceRecovery(localStorage, STORAGE_KEY, JSON.stringify(data), 'Snapshot before removing demo data')
+      setWorkspaceRecoveries(listWorkspaceRecoveries())
+      setData((current) => {
+        const demoProjectIds = new Set(current.projects.filter((project) => project.demo).map((project) => project.id))
+        const demoChatIds = new Set(current.chats.filter((chat) => demoProjectIds.has(chat.projectId)).map((chat) => chat.id))
+        const survivingProjects = current.projects.filter((project) => !demoProjectIds.has(project.id))
+        return normalizeWorkspace({
+          ...current,
+          projects: survivingProjects,
+          // The signed-in user is never demo data, so they always survive.
+          members: current.members.filter((member) => !member.demo || member.id === current.currentUserId),
+          chats: current.chats.filter((chat) => !demoChatIds.has(chat.id)),
+          messages: current.messages.filter((message) => !demoChatIds.has(message.chatId)),
+          agents: current.agents.filter((agent) => !demoProjectIds.has(agent.projectId)),
+          services: current.services.filter((service) => !demoProjectIds.has(service.projectId)),
+          permissionGrants: current.permissionGrants.filter((grant) =>
+            !(grant.resourceKind === 'project' && demoProjectIds.has(grant.resourceId))),
+          activeProjectId: survivingProjects[0]?.id ?? '',
+          activeChatId: '',
+        })
+      })
+      toast('Demo data removed', 'Sample teams and people are gone. A snapshot is available in recovery.')
+    },
     resetData: () => {
       resetServices()
       captureWorkspaceRecovery(localStorage, STORAGE_KEY, JSON.stringify(data), 'Snapshot before reset to seed')

@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
-import type { Project } from '../../types'
+import type { DirectMessagePrincipalKind, Project } from '../../types'
 import { selectThreadSummaries } from '../thread/domain'
+import { PrincipalAvatar } from '../../ui/PrincipalAvatar'
 import '../../styles/team-shell.css'
 
 const TEAM_COLORS_KEY = 'opensaddle.team-colors'
@@ -13,6 +14,7 @@ const PINNED_SHORTCUTS_KEY = 'opensaddle.pinned-shortcuts'
 const SEEN_THREADS_KEY = 'opensaddle.seen-threads'
 const HIDDEN_TEAMS_KEY = 'opensaddle.hidden-teams'
 const PROJECT_ACCESS_KEY = 'opensaddle.project-access'
+const DIRECT_MESSAGE_THREADS_KEY = 'opensaddle.direct-message-threads'
 
 function readLocalRecord(key: string): Record<string, string> {
   try {
@@ -29,6 +31,12 @@ function readLocalList(key: string): string[] {
   } catch {
     return []
   }
+}
+
+type DirectMessageThreadMap = Record<string, string>
+
+function directMessageKey(kind: DirectMessagePrincipalKind, id: string) {
+  return `${kind}:${id}`
 }
 
 function relativeTime(timestamp: number) {
@@ -79,6 +87,7 @@ export function ThreadFirstSidebar({
   collapsed,
   globalMode,
   onCollapsedChange,
+  onCreateProject,
   onResizeStart,
   onResetWidth,
 }: {
@@ -97,6 +106,7 @@ export function ThreadFirstSidebar({
     setActiveChat,
     setActiveProject,
     services,
+    removeDemoData,
     removeLocalProject,
     toast,
     updateProject,
@@ -105,8 +115,7 @@ export function ThreadFirstSidebar({
   const navigate = useNavigate()
   const location = useLocation()
   const [projectsOpen, setProjectsOpen] = useState(true)
-  const [channelsOpen, setChannelsOpen] = useState(true)
-  const [adminOpen, setAdminOpen] = useState(true)
+  const [teamSettingsOpen, setTeamSettingsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [agentChooserOpen, setAgentChooserOpen] = useState(false)
   const [configureTeam, setConfigureTeam] = useState<Project | null>(null)
@@ -121,6 +130,7 @@ export function ThreadFirstSidebar({
   const [hiddenTeamIds, setHiddenTeamIds] = useState<string[]>(() => readLocalList(HIDDEN_TEAMS_KEY))
   const [projectAccess, setProjectAccess] = useState<Record<string, string>>(() => readLocalRecord(PROJECT_ACCESS_KEY))
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
+  const [directMessageThreads, setDirectMessageThreads] = useState<DirectMessageThreadMap>(() => readLocalRecord(DIRECT_MESSAGE_THREADS_KEY))
 
   const organizationRoots = useMemo(
     () => data.projects.filter((project) => project.parentId === null && project.workspaceKind !== 'local'),
@@ -151,12 +161,6 @@ export function ThreadFirstSidebar({
       .sort((a, b) => Number(projectAccess[b.id] ?? 0) - Number(projectAccess[a.id] ?? 0)),
     [data.projects, projectAccess, scopedProjectIds],
   )
-  const channels = useMemo(
-    () => selectThreadSummaries(data)
-      .filter((thread) => scopedProjectIds.has(thread.projectId) && thread.visibility !== 'private')
-      .slice(0, 5),
-    [data, scopedProjectIds],
-  )
   const recent = useMemo(
     () => selectThreadSummaries(data).filter((thread) => scopedProjectIds.has(thread.projectId)).slice(0, 5),
     [data, scopedProjectIds],
@@ -169,6 +173,22 @@ export function ThreadFirstSidebar({
     () => data.agents.filter((agent) => scopedProjectIds.has(agent.projectId)),
     [data.agents, scopedProjectIds],
   )
+  const directMessages = useMemo(() => {
+    const chatsByPrincipal = new Map(
+      data.chats
+        .filter((chat) => chat.directMessageWith && scopedProjectIds.has(chat.projectId))
+        .map((chat) => [directMessageKey(chat.directMessageWith!.kind, chat.directMessageWith!.id), chat]),
+    )
+    const contacts = [
+      ...data.members
+        .filter((member) => member.id !== data.currentUserId)
+        .map((member) => ({ id: member.id, kind: 'human' as const, name: member.name, presence: member.presence, projectId: activeTeam.id })),
+      ...scopedAgents.map((agent) => ({ id: agent.id, kind: 'agent' as const, name: agent.name, presence: agent.presence, projectId: agent.projectId })),
+    ]
+    return contacts
+      .map((contact) => ({ ...contact, chat: chatsByPrincipal.get(directMessageKey(contact.kind, contact.id)) ?? data.chats.find((chat) => chat.id === directMessageThreads[directMessageKey(contact.kind, contact.id)]) }))
+      .sort((left, right) => (right.chat?.updatedAt ?? 0) - (left.chat?.updatedAt ?? 0) || left.name.localeCompare(right.name))
+  }, [activeTeam.id, data.chats, data.currentUserId, data.members, directMessageThreads, scopedAgents, scopedProjectIds])
   const me = data.members.find((member) => member.id === data.currentUserId)
   const isAdmin = me?.role === 'Admin'
   const closeMobileNavigation = () => document.getElementById('sidebar')?.classList.remove('mobile-open')
@@ -267,6 +287,7 @@ export function ThreadFirstSidebar({
     const closeMenus = () => {
       setThreadMenu(null)
       setTeamMenu(null)
+      setTeamSettingsOpen(false)
       setProfileOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
@@ -337,6 +358,22 @@ export function ThreadFirstSidebar({
     setActiveProject(projectId)
     setActiveChat(chatId)
     navigate(`/chat/${chatId}`)
+    closeMobileNavigation()
+  }
+
+  const openDirectMessage = (contact: (typeof directMessages)[number]) => {
+    const key = directMessageKey(contact.kind, contact.id)
+    const existing = contact.chat
+    if (existing) {
+      openThread(existing.id, existing.projectId)
+      return
+    }
+    const chat = createChat(contact.projectId, contact.name, contact.kind === 'agent' ? contact.id : undefined)
+    const next = { ...directMessageThreads, [key]: chat.id }
+    setDirectMessageThreads(next)
+    localStorage.setItem(DIRECT_MESSAGE_THREADS_KEY, JSON.stringify(next))
+    setActiveChat(chat.id)
+    navigate(`/chat/${chat.id}`)
     closeMobileNavigation()
   }
 
@@ -440,7 +477,12 @@ export function ThreadFirstSidebar({
   if (!activeTeam) return null
 
   return (
-    <aside className={`tf-sidebar tf-team-shell ${collapsed ? 'collapsed' : ''} ${globalMode ? 'global-mode' : ''} ${services?.mode === 'desktop' ? 'desktop-mode' : ''}`} id="sidebar" aria-label="OpenSaddle navigation">
+    <aside
+      className={`tf-sidebar tf-team-shell ${collapsed ? 'collapsed' : ''} ${globalMode ? 'global-mode' : ''} ${services?.mode === 'desktop' ? 'desktop-mode' : ''}`}
+      id="sidebar"
+      aria-label="OpenSaddle navigation"
+      style={{ '--team-color': teamColors[activeTeam.id] ?? activeTeam.iconColor } as React.CSSProperties}
+    >
       <nav className="tf-team-rail" aria-label="Teams">
         <button className="tf-team-brand" onClick={() => navigate('/start')} aria-label="OpenSaddle home">
           <Icon name="saddle" className="icon sm" />
@@ -464,7 +506,7 @@ export function ThreadFirstSidebar({
               {teamInitials(team.name)}
             </button>
           ))}
-          <button className="tf-team-switch tf-add-team" onClick={() => navigate('/local')} aria-label="Add local team" title="Add team from a folder or Git repository">
+          <button className="tf-team-switch tf-add-team" onClick={onCreateProject} aria-label="Add project" title="Add a local or cloud project">
             <Icon name="plus" className="icon sm" />
           </button>
         </div>
@@ -487,8 +529,18 @@ export function ThreadFirstSidebar({
           <header className="tf-selected-team-head">
             <div>
               <strong>{activeTeam.name}</strong>
+              {activeTeam.demo && <em className="tf-demo-tag">Demo data</em>}
             </div>
-            <button className="tf-icon-button" onClick={() => openConfigureTeam(activeTeam)} aria-label="Configure team name and appearance" title="Configure team">
+            <button
+              className="tf-icon-button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setTeamSettingsOpen((value) => !value)
+              }}
+              aria-label="Open team administration"
+              aria-expanded={teamSettingsOpen}
+              title="Team administration"
+            >
               <Icon name="settings" className="icon sm" />
             </button>
             <button
@@ -510,8 +562,10 @@ export function ThreadFirstSidebar({
                 <Icon name="plus" className="icon sm" />
                 <span>New task</span>
               </button>
-              <button className="tf-icon-button" onClick={() => window.dispatchEvent(new CustomEvent('opensaddle:palette'))} aria-label="Search">
+              <button className="tf-team-search" type="button" onClick={() => window.dispatchEvent(new CustomEvent('opensaddle:palette'))} aria-label="Search commands" title="Search commands">
                 <Icon name="search" className="icon sm" />
+                <span>Search</span>
+                <kbd>⌘ K</kbd>
               </button>
             </div>
 
@@ -552,24 +606,6 @@ export function ThreadFirstSidebar({
                 </div>
               </div>
             )}
-
-            <div className="tf-team-section">
-              <button className="tf-team-section-label" onClick={() => setChannelsOpen((value) => !value)} aria-expanded={channelsOpen}>
-                <span>Team channels</span>
-                <Icon name="chevron" className={`icon xs tf-chevron ${channelsOpen ? 'open' : ''}`} />
-              </button>
-              {channelsOpen && (
-                <div className="tf-team-section-list">
-                  {channels.map((channel) => (
-                    <button key={channel.id} onClick={() => openThread(channel.chatId, channel.projectId)}>
-                      <span className="tf-channel-mark">#</span>
-                      <span>{channel.title}</span>
-                    </button>
-                  ))}
-                  {!channels.length && <p>No shared channels yet.</p>}
-                </div>
-              )}
-            </div>
 
             <div className="tf-team-section">
               <button className="tf-team-section-label" onClick={() => setProjectsOpen((value) => !value)} aria-expanded={projectsOpen}>
@@ -617,15 +653,23 @@ export function ThreadFirstSidebar({
               )}
             </div>
 
-            {isAdmin && (
-              <div className="tf-team-section">
-                <button className="tf-team-section-label" onClick={() => setAdminOpen((value) => !value)} aria-expanded={adminOpen}>
-                  <span>Admin</span>
-                  <Icon name="chevron" className={`icon xs tf-chevron ${adminOpen ? 'open' : ''}`} />
-                </button>
-                {adminOpen && <div className="tf-team-section-list">{shortcuts.slice(4).map(renderShortcut)}</div>}
+            <div className="tf-team-section tf-direct-messages">
+              <div className="tf-team-section-label static"><span>Direct messages</span></div>
+              <div className="tf-team-section-list">
+                {directMessages.map((contact) => (
+                  <button
+                    className={`tf-direct-message-row ${contact.chat?.id === data.activeChatId ? 'active' : ''}`}
+                    key={directMessageKey(contact.kind, contact.id)}
+                    onClick={() => openDirectMessage(contact)}
+                    aria-label={`Direct message ${contact.name}`}
+                  >
+                    <PrincipalAvatar name={contact.name} kind={contact.kind} presence={contact.presence ?? 'offline'} size="sm" />
+                    <span>{contact.name}</span>
+                    {(contact.chat?.unreadCount ?? 0) > 0 && <small>{contact.chat!.unreadCount}</small>}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
 
             <div className="tf-team-section tf-team-recent">
               <div className="tf-team-section-label static"><span>Recent work</span></div>
@@ -634,6 +678,29 @@ export function ThreadFirstSidebar({
               </div>
             </div>
           </div>
+
+          {teamSettingsOpen && (
+            <div className="tf-team-header-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+              {data.projects.some((project) => project.demo) && (
+                <button role="menuitem" onClick={() => {
+                  if (confirm('Remove all demo teams, people and conversations? A snapshot is kept in recovery.')) {
+                    removeDemoData()
+                    setTeamSettingsOpen(false)
+                  }
+                }}>
+                  <Icon name="trash" className="icon sm" />Remove demo data
+                </button>
+              )}
+              {isAdmin && shortcuts.slice(4).map((shortcut) => (
+                <button key={shortcut.id} role="menuitem" onClick={() => { shortcut.open(); setTeamSettingsOpen(false) }}>
+                  <Icon name={shortcut.icon} className="icon sm" /><span>{shortcut.label}</span>
+                </button>
+              ))}
+              <button role="menuitem" onClick={() => { openConfigureTeam(activeTeam); setTeamSettingsOpen(false) }}>
+                <Icon name="settings" className="icon sm" /><span>Name &amp; appearance</span>
+              </button>
+            </div>
+          )}
 
           <div
             className="tf-sidebar-resizer"

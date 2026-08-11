@@ -1,5 +1,7 @@
 export type Theme = 'dark' | 'light' | 'liquid' | 'hc'
 export type Visibility = 'private' | 'shared' | 'project'
+export type PresenceState = 'online' | 'away' | 'offline'
+export type DirectMessagePrincipalKind = 'human' | 'agent'
 export type Inheritance = 'org' | 'parent' | 'override' | 'denied'
 export type Harness = 'chat' | 'research' | 'coding' | 'browser' | 'vm'
 export type CodingProvider =
@@ -18,6 +20,120 @@ export type InterfaceKind = 'chat' | 'form' | 'dashboard' | 'document' | 'custom
 export type TaskType = 'now' | 'scheduled' | 'background' | 'monitor'
 export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'failed' | 'paused'
 export type MessageRole = 'user' | 'assistant' | 'system'
+export type EntityKind = 'user' | 'agent' | 'artifact' | 'thread' | 'run' | 'skill' | 'project'
+export type ActionabilityState = 'blocked' | 'actionable' | 'claimed' | 'in-progress' | 'done'
+
+/** Read-only evidence collected by the desktop process before a workspace exists. */
+export interface WorkspaceScanSnapshot {
+  /** When the desktop process collected this evidence; keeps derivation pure. */
+  scannedAt?: number
+  folderPath: string
+  folderName: string
+  directories: string[]
+  configPaths: string[]
+  packageScripts: string[]
+  /** Package dependency names only; versions and package contents are never scanned. */
+  dependencyNames: string[]
+  makefile: string | null
+  envExamplePaths: string[]
+  /** Variable names from .env.example only; values are never collected. */
+  envExampleVariableNames: string[]
+  /** Recognized deployment and service markers present at the repository root. */
+  connectorPaths: string[]
+  git: {
+    readable: boolean
+    reason?: string
+    branches: string[]
+    commitCount: number
+    /** Commits touching each top-level directory, so channel provenance is specific. */
+    directoryCommitCounts?: Record<string, number>
+    /** Epoch millis of each branch's last commit, so stale branches can be dropped. */
+    branchActivity?: Record<string, number>
+    authors: Array<{ name: string; email: string; commitCount: number }>
+    hasRemote: boolean
+    /** Sanitized remote host, never the remote URL. */
+    remoteHost?: string
+  }
+}
+
+export interface WorkspaceProposalItem {
+  id: string
+  label: string
+  provenance: string
+  recommended: boolean
+  /** Present only for review items authored in the proposal UI. */
+  custom?: true
+}
+
+export interface WorkspaceChannelProposal extends WorkspaceProposalItem {
+  kind: 'directory' | 'branch' | 'custom'
+}
+
+/** Git identities are intentionally proposal-only and individually deselectable. */
+export interface WorkspaceMemberProposal extends WorkspaceProposalItem {
+  name: string
+  email: string
+  commitCount: number
+  deselectable: true
+}
+
+export interface WorkspaceAgentProposal extends WorkspaceProposalItem {
+  harness: 'claude' | 'codex' | 'cursor' | 'opensaddle'
+  triggerPath: string
+}
+
+export interface WorkspacePermissionProposal extends WorkspaceProposalItem {
+  scope: string
+  needsApproval: boolean
+}
+
+export interface WorkspaceConnectorScopeProposal {
+  id: string
+  name: string
+  description: string
+  needsApproval: boolean
+}
+
+/** A connector inferred solely from the read-only folder scan evidence. */
+export interface WorkspaceConnectorProposal extends WorkspaceProposalItem {
+  status: 'detected' | 'unconfigured'
+  scopes: WorkspaceConnectorScopeProposal[]
+}
+
+/** A disposable projection of a folder. Applying it is a separate, explicit action. */
+export interface WorkspaceProposal {
+  id: string
+  folderPath: string
+  label: string
+  channels: WorkspaceChannelProposal[]
+  members: WorkspaceMemberProposal[]
+  agents: WorkspaceAgentProposal[]
+  connectors: WorkspaceConnectorProposal[]
+  permissions: WorkspacePermissionProposal[]
+  memberAnalysis: {
+    source: 'git log'
+    reason: string
+  }
+  notes: string[]
+}
+
+/** A source-backed artifact attached to a message or rendered in an unfurl. */
+export interface ArtifactRef {
+  id: string
+  provider: string
+  kind: string
+  title: string
+  state: ActionabilityState
+  fetchedAt: number
+  degraded?: boolean
+}
+
+/** A durable, typed link from a message to a substrate entity. */
+export interface EntityReference {
+  kind: EntityKind
+  id: string
+  label: string
+}
 export type LocalSandboxMode = 'read-only' | 'workspace-write' | 'full-access'
 export type LocalApprovalMode = 'always' | 'on-request' | 'never'
 export type RunExecutionMode = 'plan' | 'review' | 'project' | 'full-access'
@@ -80,6 +196,9 @@ export interface Member {
   initials: string
   role: 'Admin' | 'Editor' | 'Reviewer' | 'Viewer'
   email: string
+  presence?: PresenceState
+  /** Seeded sample person, removed with the rest of the demo data. */
+  demo?: true
 }
 
 export interface Project {
@@ -94,6 +213,8 @@ export interface Project {
   autoConfidence: number
   lineage: string[]
   workspaceKind?: 'enterprise' | 'local'
+  /** Seeded sample data. Labelled in the UI and removable in one action. */
+  demo?: true
   local?: LocalProjectSettings
   routingDefaults?: {
     modelKey: ModelKey
@@ -119,6 +240,13 @@ export interface Chat {
   sharedWith: string[]
   archived?: boolean
   agentId?: string
+  /** The principal at the other end of a one-to-one direct message. */
+  directMessageWith?: {
+    kind: DirectMessagePrincipalKind
+    id: string
+  }
+  /** Projected unread messages for a direct-message row. */
+  unreadCount?: number
   runConfig?: {
     auto: boolean
     providerKey: CodingProvider
@@ -290,6 +418,16 @@ export interface Message {
   chatId: string
   role: MessageRole
   text: string
+  /**
+   * Who wrote this. A member id for `user` messages, an agent id for
+   * `assistant` ones. Without it a channel can only ever attribute messages to
+   * the viewer, which is why multi-person transcripts used to be hardcoded.
+   */
+  authorId?: string
+  /** Entity links are data, never inferred by re-parsing message prose. */
+  references?: EntityReference[]
+  /** External artifacts unfurled beneath the message body. */
+  artifactRefs?: ArtifactRef[]
   createdAt: number
   routingNote?: string
   /** Durable server run projected through this conversation message. */
@@ -319,6 +457,7 @@ export interface CustomAgent {
   knowledgeSourceIds: string[]
   interfaceId?: string
   visibility: Visibility
+  presence?: PresenceState
   createdAt: number
 }
 

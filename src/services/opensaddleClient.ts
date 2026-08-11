@@ -1,5 +1,5 @@
 import { MockRuntimeClient } from './mockRuntime'
-import type { GitComparisonResult, GitStatusResult, RuntimeClient, RouteEstimate, RuntimeRunSummary, SessionEvent } from './contracts'
+import type { GitComparisonResult, GitStatusResult, RegisteredSurface, RuntimeClient, RouteEstimate, RuntimeRunSummary, SessionEvent } from './contracts'
 import type { CodingProvider, Harness, ModelKey, RunExecutionMode, RuntimeKind } from '../types'
 import { createOrderedEventEmitter } from './orderedEvents'
 
@@ -12,18 +12,17 @@ export function shouldStopRunReconciliation(responseStatus: number, runStatus?: 
 }
 
 /**
- * Talks to a local OpenSaddle daemon when available; falls back to mock simulation.
+ * Talks to an authoritative OpenSaddle daemon. Demo simulation is selected by
+ * the service factory and is never a fallback for a connected client.
  */
 export class OpenSaddleRuntimeClient implements RuntimeClient {
   private baseUrl: string
-  private fallback: RuntimeClient
   private token?: string
   private getUserId: () => string
-  private allowFallback: boolean
 
   constructor(
     baseUrl: string,
-    fallback: RuntimeClient = new MockRuntimeClient(),
+    _fallback: RuntimeClient = new MockRuntimeClient(),
     options: {
       token?: string
       getUserId?: () => string
@@ -31,10 +30,8 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     } = {},
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '')
-    this.fallback = fallback
     this.token = options.token
     this.getUserId = options.getUserId ?? (() => 'user-ad')
-    this.allowFallback = options.allowFallback ?? true
   }
 
   private headers(json = false): Record<string, string> {
@@ -86,7 +83,6 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     runtimeKey?: RuntimeKind
   }): Promise<RouteEstimate> {
     if (!(await this.healthy())) {
-      if (this.allowFallback) return this.fallback.estimate(task, prefs)
       throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     }
     try {
@@ -132,7 +128,6 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         })),
       }
     } catch (error) {
-      if (this.allowFallback && error instanceof TypeError) return this.fallback.estimate(task, prefs)
       throw error
     }
   }
@@ -172,7 +167,6 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     route?: RouteEstimate
   }> {
     if (!(await this.healthy())) {
-      if (this.allowFallback) return this.fallback.startRun(input)
       throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     }
     try {
@@ -227,13 +221,12 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         route: routeFromApi(data.route ?? data.estimate),
       }
     } catch (error) {
-      if (this.allowFallback && error instanceof TypeError) return this.fallback.startRun(input)
       throw error
     }
   }
 
   async listRuns(): Promise<RuntimeRunSummary[]> {
-    if (!(await this.healthy())) return []
+    if (!(await this.healthy())) throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     const response = await fetch(`${this.baseUrl}/api/runs`, { headers: this.headers() })
     if (!response.ok) throw await this.responseError(response)
     const rows = await response.json() as Array<{
@@ -292,6 +285,15 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       error: run.error,
       lastEventType: run.last_event_type,
     }))
+  }
+
+  async listSurfaces(projectId?: string): Promise<RegisteredSurface[]> {
+    if (!(await this.healthy())) return []
+    const query = projectId ? `?${new URLSearchParams({ project_id: projectId })}` : ''
+    const response = await fetch(`${this.baseUrl}/api/surfaces${query}`, { headers: this.headers() })
+    if (!response.ok) throw await this.responseError(response)
+    const body = await response.json() as { surfaces?: Array<{ id: string; project_id: string; title: string }> }
+    return (body.surfaces ?? []).map((surface) => ({ id: surface.id, projectId: surface.project_id, title: surface.title }))
   }
 
   async resolveDiff(
@@ -563,10 +565,9 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     }
   }
 
-  subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void {
+  subscribe(runId: string, onEvent: (event: SessionEvent) => void, onError?: (error: Error) => void): () => void {
     const url = `${this.baseUrl}/api/runs/${runId}/events`
     const controller = new AbortController()
-    let fallbackStop: (() => void) | null = null
     let receivedEvents = 0
     let snapshotCursor = 0
     // The authoritative Python run store numbers durable events from one.
@@ -582,7 +583,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
 
     void (async () => {
       if (!(await this.healthy())) {
-        if (this.allowFallback) fallbackStop = this.fallback.subscribe(runId, onEvent)
+        onError?.(new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`))
         return
       }
       try {
@@ -648,9 +649,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
           }
         }
       } catch (error) {
-        if (!controller.signal.aborted && receivedEvents === 0 && this.allowFallback && error instanceof TypeError) {
-          fallbackStop = this.fallback.subscribe(runId, onEvent)
-        }
+        if (!controller.signal.aborted) onError?.(error instanceof Error ? error : new Error(String(error)))
       } finally {
         // The reconciliation loop is intentionally detached so it can race
         // the SSE attach. Always stop it when that stream exits or rejects.
@@ -660,7 +659,6 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
 
     return () => {
       controller.abort()
-      fallbackStop?.()
     }
   }
 
@@ -674,14 +672,14 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
         if (!res.ok) throw await this.responseError(res)
         return
       } catch (error) {
-        if (!this.allowFallback || !(error instanceof TypeError)) throw error
+        throw error
       }
     }
-    return this.fallback.cancel(runId)
+    throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
   }
 
   async pause(runId: string): Promise<void> {
-    if (!(await this.healthy())) return this.fallback.pause(runId)
+    if (!(await this.healthy())) throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     const res = await fetch(`${this.baseUrl}/api/runs/${runId}/pause`, {
       method: 'POST',
       headers: this.headers(),
@@ -690,7 +688,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
   }
 
   async resume(runId: string): Promise<void> {
-    if (!(await this.healthy())) return this.fallback.resume(runId)
+    if (!(await this.healthy())) throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     const res = await fetch(`${this.baseUrl}/api/runs/${runId}/resume`, {
       method: 'POST',
       headers: this.headers(),
@@ -707,7 +705,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     parentRunId?: string
     route?: RouteEstimate
   }> {
-    if (!(await this.healthy())) return this.fallback.retry(runId)
+    if (!(await this.healthy())) throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     const res = await fetch(`${this.baseUrl}/api/runs/${runId}/retry`, {
       method: 'POST',
       headers: this.headers(),
@@ -734,7 +732,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
   }
 
   async steer(runId: string, text: string): Promise<void> {
-    if (!(await this.healthy())) return this.fallback.steer(runId, text)
+    if (!(await this.healthy())) throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     const res = await fetch(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/steer`, {
       method: 'POST',
       headers: this.headers(true),
@@ -753,7 +751,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     queuedAfterRunId?: string
     route?: RouteEstimate
   }> {
-    if (!(await this.healthy())) return this.fallback.queue(runId, text)
+    if (!(await this.healthy())) throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     const res = await fetch(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/queue`, {
       method: 'POST',
       headers: this.headers(true),
@@ -783,7 +781,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
   }
 
   async updateQueue(runId: string, text: string): Promise<void> {
-    if (!(await this.healthy())) return this.fallback.updateQueue(runId, text)
+    if (!(await this.healthy())) throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     const res = await fetch(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/queue`, {
       method: 'PATCH',
       headers: this.headers(true),
@@ -799,7 +797,7 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
     answers?: Record<string, string[]>
     form?: Record<string, unknown>
   }): Promise<void> {
-    if (!(await this.healthy())) return this.fallback.respondToRequest(runId, requestId, response)
+    if (!(await this.healthy())) throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
     const res = await fetch(
       `${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/requests/${encodeURIComponent(requestId)}/respond`,
       {

@@ -30,6 +30,7 @@
   --os-color-danger-soft: rgb(240 138 138 / 14%);
   --os-color-approval: #b69af8;
   --os-color-approval-soft: rgb(182 154 248 / 15%);
+  --os-color-team-sidebar: color-mix(in srgb, var(--team-color, var(--os-color-accent)) 12%, var(--os-color-surface));
 
   /* Typography */
   --os-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -67,6 +68,7 @@
 }
 
 :root[data-theme="light"],
+[data-theme="light"],
 [data-os-theme="light"] {
   color-scheme: light;
   --os-color-canvas: #f7f7f4;
@@ -95,15 +97,33 @@
   --os-color-approval-soft: rgb(102 66 173 / 11%);
   --os-shadow-popover: 0 16px 44px rgb(28 31 27 / 16%), 0 2px 8px rgb(28 31 27 / 10%);
   --os-shadow-dialog: 0 24px 80px rgb(28 31 27 / 22%);
+
+  /* Re-declared per theme: a custom property is substituted in the scope that
+     declares it, so the :root copy would resolve --os-color-surface against the
+     dark palette even when the light theme is active on <body>. */
+  --os-color-team-sidebar: color-mix(in srgb, var(--team-color, var(--os-color-accent)) 12%, var(--os-color-surface));
 }
 
 :root[data-contrast="high"],
+[data-theme="hc"],
 [data-os-contrast="high"] {
   --os-color-border: currentColor;
   --os-color-border-strong: currentColor;
   --os-color-text-muted: var(--os-color-text);
   --os-color-text-subtle: var(--os-color-text);
   --os-focus-ring: 0 0 0 3px var(--os-color-accent);
+  --os-color-team-sidebar: var(--os-color-surface);
+}
+
+body[data-theme="hc"] {
+  --os-color-canvas: #000;
+  --os-color-surface: #000;
+  --os-color-surface-raised: #000;
+  --os-color-surface-hover: #111;
+  --os-color-overlay: rgb(0 0 0 / 82%);
+  --os-color-text: #fff;
+  --os-color-text-muted: #fff;
+  --os-color-text-subtle: #fff;
 }
 
 @media (prefers-contrast: more) {

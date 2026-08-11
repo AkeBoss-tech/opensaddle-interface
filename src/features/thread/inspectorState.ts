@@ -2,7 +2,7 @@ import type { AgentRunBlock } from '../../types'
 
 export const THREAD_INSPECTOR_STORAGE_KEY = 'opensaddle-thread-inspectors-v1'
 
-export type ThreadInspectorTab = 'overview' | 'changes' | 'checks' | 'activity' | 'environment' | 'access'
+export type ThreadInspectorTab = 'overview' | 'evidence' | 'changes' | 'checks' | 'activity' | 'environment' | 'access'
 
 export interface ThreadInspectorState {
   open: boolean
@@ -24,6 +24,7 @@ export const DEFAULT_THREAD_INSPECTOR_STATE: ThreadInspectorState = {
 
 const INSPECTOR_TABS = new Set<ThreadInspectorTab>([
   'overview',
+  'evidence',
   'changes',
   'checks',
   'activity',

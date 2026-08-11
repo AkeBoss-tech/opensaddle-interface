@@ -1,0 +1,40 @@
+{
+  "schema_version": "opensaddle.phase2-conformance.v1",
+  "journey": [
+    "authority-qualified-issue",
+    "pinned-context-brief",
+    "bounded-safe-evidence",
+    "human-plan-draft",
+    "non-executing-operation-proposal"
+  ],
+  "projection_limit": 256,
+  "projection_gap_code": "local-projection-bound",
+  "dry_run_blockers": [
+    "action_unavailable",
+    "approval_required",
+    "budget_exceeded"
+  ],
+  "typed_provider_failures": [
+    "provider_unavailable",
+    "invalid_evidence",
+    "stale_evidence",
+    "version_conflict"
+  ],
+  "forbidden_projection_tokens": [
+    "omitted_count",
+    "ranking_trace",
+    "\"content\"",
+    "\"locator\"",
+    "evidence/bounded-0256"
+  ],
+  "must_remain_empty_tables": [
+    "control_plane_runs",
+    "control_plane_approvals",
+    "control_plane_external_sessions",
+    "control_plane_workers",
+    "control_plane_worker_credentials",
+    "control_plane_worker_attestations",
+    "control_plane_runtime_terminations",
+    "control_plane_model_route_receipts"
+  ]
+}

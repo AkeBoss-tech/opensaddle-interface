@@ -48,7 +48,7 @@ These labels are part of the baseline. A redesign must not accidentally turn dur
 |---|---|---|---|
 | `/start` | Start here; palette and unknown-route fallback | Create project plus chat, create quick chat, create an agent for the active project, open Runs or Settings | Project/chat/agent creation is durable |
 | `/chat` | Palette/deep link; resolves to active chat or creates one | Redirect to a concrete chat | Durable chat selection |
-| `/chat/:chatId` | New chat, Recent, project/agent/site/dashboard/interface links | Create messages; auto/manual provider, model, harness, and runtime routing; server estimate; attach files; choose tool toggles; simulated or live run; permission prompt; activity inspector; fork, rename, delete, share visibility; accept/reject diff hunks; save reports; simulated PR creation | Core mixed surface. Messages, fork, rename, delete, visibility, attachments, and hunk status are durable. Runtime is runtime-backed with mock fallback. Tools selection is session-only. PR creation is simulated. Archive exists store-only. Active live subscription is page-local and is removed on unmount |
+| `/chat/:chatId` | New chat, Recent, project/agent/site/dashboard/interface links | Create messages; auto/manual provider, model, harness, and runtime routing; server estimate; attach files; choose tool toggles; simulated or live run; permission prompt; activity inspector; fork, rename, delete, share visibility; accept/reject diff hunks; save reports; simulated PR creation | Core mixed surface. Messages, fork, rename, delete, visibility, attachments, and hunk status are durable. The app-level RunRegistry owns active run attachment and reconciliation across navigation. Demo mode may simulate; connected runtime failures remain explicit and never fall back to simulated success. Tools selection is session-only. PR creation is simulated. Archive exists store-only |
 | `/project/:projectId` | Project tree/settings gear, palette project results | Project-scoped chat composer; chat and nested-project lists; workflow clues; create/open agents, quick APIs, dashboards, interfaces; site creation/generation; knowledge/services; routing defaults; access summary | Mostly durable. Share and attach controls are simulated. Generated-site model call may be runtime-backed, with workspace site/version creation durable |
 | `/runs` | Primary sidebar and palette | Inspect scheduled/background/monitor/cloud tasks; pause/resume seeded schedules; pause background item; simulated retry; inspect monitor timeline; cloud runtime summary; open create-task modal | Status changes are durable. Task creation, monitor pause/retry, and background retry are simulated |
 | `/wiki` | More workspace tools, project-tree wiki, palette | Select project/perspective/tabs; refresh summaries; toggle individual summaries; inspect cited sources; create team-agent chat | Wiki settings and refresh timestamps/content are durable; article opening is simulated; summary content is primarily read-only seeded state |
@@ -104,8 +104,8 @@ These labels are part of the baseline. A redesign must not accidentally turn dur
 - Providers exposed by chat include OpenSaddle, Codex App Server, Claude Code, Cursor, Gemini CLI, OpenCode, Antigravity CLI, and custom/auto concepts.
 - Runtime kinds include local, browser, sandbox, VM, GPU, and restricted.
 - Run output can contain plan steps, tool calls, streamed output, diff files, verification, artifacts, status, route explanation, and cost.
-- Current chat execution is not navigation-durable: the page owns one subscription and unsubscribes on unmount. The redesign acceptance criterion is stronger—active runs must survive route changes and reconnect where the backend supports it.
-- Harness execution and chat execution currently implement separate page-local lifecycle handling. The thread-first controller must preserve both event shapes while consolidating ownership.
+- Chat execution is navigation-durable at the renderer level: the app-level RunRegistry owns concurrent subscriptions, event de-duplication, terminal receipts, and durable runtime reconciliation. It reattaches after service reconnect/replay where the backend retains the run.
+- Harness execution still has separate page-local lifecycle handling. Chat operation ownership is consolidated in RunRegistry; any later harness consolidation must preserve its event shape.
 
 ### Permissions and approvals
 
@@ -153,7 +153,7 @@ These labels are part of the baseline. A redesign must not accidentally turn dur
 ### Browser and Electron equivalence
 
 - Shared workspace routes and data semantics must behave equivalently in web and Electron.
-- Browser mode can use OPFS, Worker sandbox, HTTP control plane, and mock fallback but cannot claim native repository, PTY, CLI, or embedded browser capabilities.
+- Browser mode can use OPFS, Worker sandbox, an HTTP control plane, and explicit Demo mode, but connected failures do not fall back to mock success and it cannot claim native repository, PTY, CLI, or embedded browser capabilities.
 - Electron exposes runtime info, repository picker, open path, and native browser operations through the preload bridge.
 - Closing/collapsing the browser pane must not navigate or destroy the workspace route.
 - BrowserRouter basename and Electron HashRouter behavior are both release gates.
@@ -170,7 +170,7 @@ Each journey should be automated where feasible and repeated manually before rem
 4. Open route details; exercise auto and an explicit provider/model/harness/runtime choice.
 5. Send a prompt that produces a plan, tool activity, verification, diff, and artifact.
 6. For a privileged prompt, deny once; rerun, allow with a narrow scope, and verify the decision is visible.
-7. Navigate away during an active run and return. Legacy baseline exposes the current failure; the new controller must retain/reconnect the run.
+7. Navigate away during an active run and return. The app-level controller must retain/reconnect the run without duplicate output.
 8. Accept one hunk, reject another, save a report, inspect checks and route/cost details, and request a revision in the same thread.
 9. Fork, rename, change visibility, reload, and verify both parent and fork histories persist.
 10. Delete the disposable fork and verify it disappears from Recent and project lists.

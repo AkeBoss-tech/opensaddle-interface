@@ -119,7 +119,10 @@ export function loadConfig(): ControlPlaneConfig {
   mkdirSync(workspaceDir, { recursive: true, mode: 0o700 })
 
   const defaultHost = mode === 'local' ? '127.0.0.1' : '0.0.0.0'
-  const corsOrigins = (process.env.OPENSADDLE_CORS_ORIGINS ?? 'http://127.0.0.1:5173,http://localhost:5173')
+  // `opensaddle://bundle` is the desktop renderer's origin: the packaged app
+  // serves its bundle over a custom scheme, so it presents a named origin here
+  // rather than the null origin a file:// page would send.
+  const corsOrigins = (process.env.OPENSADDLE_CORS_ORIGINS ?? 'http://127.0.0.1:5173,http://localhost:5173,opensaddle://bundle')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean)

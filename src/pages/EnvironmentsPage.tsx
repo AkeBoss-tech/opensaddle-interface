@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
-import { KrailClient } from '../services/krailClient'
+import { SessionBridgeClient } from '../services/sessionBridgeClient'
 import { can, detectRuntimeMode } from '../services/capabilities'
 
 export function EnvironmentsPage() {
@@ -13,30 +13,30 @@ export function EnvironmentsPage() {
   const [cpu, setCpu] = useState('8 vCPU · 32 GB')
   const [network, setNetwork] = useState('GitHub + npm only')
   const [idleTimeout, setIdleTimeout] = useState('60 min')
-  const [krailSessions, setKrailSessions] = useState<Array<{ id: string; runId: string; kind: string; status: string }>>([])
-  const [krailOk, setKrailOk] = useState(false)
+  const [bridgeSessions, setBridgeSessions] = useState<Array<{ id: string; runId: string; kind: string; status: string }>>([])
+  const [bridgeOk, setBridgeOk] = useState(false)
   const mode = detectRuntimeMode()
   const running = data.environments.filter((e) => e.status === 'Running')
   const vcpu = running.reduce((sum, e) => sum + (Number.parseInt(e.cpu, 10) || 0), 0)
 
   useEffect(() => {
-    const client = new KrailClient()
+    const client = new SessionBridgeClient()
     void (async () => {
       const ok = await client.healthy()
-      setKrailOk(ok)
-      if (ok) setKrailSessions(await client.listSessions())
+      setBridgeOk(ok)
+      if (ok) setBridgeSessions(await client.listSessions())
     })()
   }, [])
 
   const startBrowserSession = async () => {
-    const client = new KrailClient()
+    const client = new SessionBridgeClient()
     const session = await client.createSession({ kind: 'browser', url: 'https://example.com' })
     if (!session) {
-      toast('KRAIL offline', 'Start packages/krail or use desktop mode.')
+      toast('Session bridge offline', 'Start packages/session-bridge or use desktop mode.')
       return
     }
     toast('Browser session', session.sessionId)
-    setKrailSessions(await client.listSessions())
+    setBridgeSessions(await client.listSessions())
   }
 
   const startLocalEcho = async () => {
@@ -44,14 +44,14 @@ export function EnvironmentsPage() {
       toast('Local PTY', 'Available in desktop harness mode.')
       return
     }
-    const client = new KrailClient()
+    const client = new SessionBridgeClient()
     const session = await client.createSession({ kind: 'pty', command: 'echo', argv: ['opensaddle-local-runtime'] })
     if (!session) {
-      toast('KRAIL offline', 'Start the KRAIL sidecar first.')
+      toast('Session bridge offline', 'Start the session bridge sidecar first.')
       return
     }
     toast('Local session', session.sessionId)
-    setKrailSessions(await client.listSessions())
+    setBridgeSessions(await client.listSessions())
   }
 
   return (
@@ -60,7 +60,7 @@ export function EnvironmentsPage() {
         <div className="page-header-copy">
           <div className="eyebrow">{runtimeModeLabel}</div>
           <h1>Environments</h1>
-          <p>Local desktop, browser sandbox, WASM workers, and KRAIL sessions. Cloud VMs remain policy-gated.</p>
+          <p>Local desktop, browser sandbox, WASM workers, and bridged sessions. Cloud VMs remain policy-gated.</p>
         </div>
         <div className="page-header-actions">
           <button className="secondary-btn" onClick={() => void startBrowserSession()}><Icon name="globe" className="icon sm" />Browser session</button>
@@ -71,15 +71,15 @@ export function EnvironmentsPage() {
       <div className="task-summary">
         <div className="summary-card"><span className="label">Active runtimes</span><strong>{running.length}</strong></div>
         <div className="summary-card"><span className="label">vCPU in use</span><strong>{vcpu || '—'}</strong></div>
-        <div className="summary-card"><span className="label">KRAIL</span><strong>{krailOk ? 'up' : 'off'}</strong></div>
+        <div className="summary-card"><span className="label">Session bridge</span><strong>{bridgeOk ? 'up' : 'off'}</strong></div>
         <div className="summary-card"><span className="label">WASM sandbox</span><strong>{can('sandbox.wasm') ? 'ready' : 'n/a'}</strong></div>
       </div>
 
-      {krailSessions.length > 0 && (
+      {bridgeSessions.length > 0 && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <div className="card-header"><div><h3>Live KRAIL sessions</h3></div></div>
+          <div className="card-header"><div><h3>Live bridged sessions</h3></div></div>
           <div className="card-body row-list">
-            {krailSessions.map((s) => (
+            {bridgeSessions.map((s) => (
               <div className="row-item" key={s.id}>
                 <div className="row-icon"><Icon name={s.kind === 'browser' ? 'globe' : 'terminal'} className="icon sm" /></div>
                 <div className="row-copy"><div className="row-title">{s.id}</div><div className="row-sub">{s.kind} · {s.runId}</div></div>

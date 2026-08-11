@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('opensaddle', {
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:info'),
   pickRepository: () => ipcRenderer.invoke('runtime:pick-repo'),
   inspectProject: (target) => ipcRenderer.invoke('runtime:inspect-project', target),
+  scanWorkspaceFolder: (folderPath) => ipcRenderer.invoke('runtime:scan-workspace', folderPath),
   openPath: (target) => ipcRenderer.invoke('runtime:open-path', target),
   openBrowser: (url) => ipcRenderer.invoke('runtime:open-browser', url),
   setBrowserBounds: (bounds) => ipcRenderer.invoke('runtime:browser-bounds', bounds),
