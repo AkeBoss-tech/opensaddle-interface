@@ -36,9 +36,10 @@ function countLabel(count: number, noun: string) {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
-export function ScaffoldProposal({ proposal, onCreate, creating = false, memory }: {
+export function ScaffoldProposal({ proposal, onCreate, onBack, creating = false, memory }: {
   proposal: WorkspaceProposal
   onCreate: (selectedIds: Set<string>) => void
+  onBack?: () => void
   creating?: boolean
   memory?: {
     loading: boolean
@@ -152,7 +153,10 @@ export function ScaffoldProposal({ proposal, onCreate, creating = false, memory 
           memorySelected && 'Project Memory',
         ].filter(Boolean).join(', ')
         : 'Select at least one item to create.'}</p>
-      <button className="primary-btn" disabled={!total || hasInvalidSelectedCustom || memoryBlocked || creating} onClick={() => onCreate(new Set(selectedIds))}>{creating ? 'Creating…' : 'Create workspace'}</button>
+      <span className="scaffold-proposal__footer-actions">
+        {onBack && <button className="secondary-btn" disabled={creating} onClick={onBack}>Back</button>}
+        <button className="primary-btn" disabled={!total || hasInvalidSelectedCustom || memoryBlocked || creating} onClick={() => onCreate(new Set(selectedIds))}>{creating ? 'Creating…' : 'Create workspace'}</button>
+      </span>
     </footer>
   </section>
 }

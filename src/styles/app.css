@@ -1027,12 +1027,23 @@
     body[data-theme="light"] .palette { background:#fff; }
     .palette-input { display:flex; align-items:center; gap:10px; padding:13px 15px; border-bottom:1px solid var(--border); }
     .palette-input input { flex:1; background:transparent; border:0; outline:0; color:var(--text); font-size:14px; }
+    .palette-input kbd { padding:3px 6px; border:1px solid var(--border); border-radius:5px; color:var(--dim); background:var(--surface-2); font:8px/1.2 var(--os-font-mono); text-transform:uppercase; }
     .palette-results { max-height:52vh; overflow:auto; padding:6px; }
+    .palette-suggestion { display:flex; align-items:center; gap:6px; margin:2px 4px 4px; padding:7px 8px; border-radius:7px; color:var(--dim); background:color-mix(in srgb, var(--accent) 6%, transparent); font-size:9px; }
     .palette-group { padding:8px 9px 4px; font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
-    .palette-item { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; cursor:pointer; font-size:12px; color:#d9dad4; }
+    .palette-item { width:100%; min-height:46px; display:flex; align-items:center; gap:10px; padding:7px 10px; border:0; border-radius:8px; background:transparent; cursor:pointer; font:inherit; font-size:12px; color:var(--text); text-align:left; }
     .palette-item.active, .palette-item:hover { background:var(--surface-2); }
+    .palette-item:focus-visible { outline:none; box-shadow:var(--os-focus-ring); }
+    .palette-item.danger { color:var(--red); }
+    .palette-item-copy { min-width:0; flex:1; display:grid; gap:2px; }
+    .palette-item-copy strong { overflow:hidden; font-size:11px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+    .palette-item-copy small { overflow:hidden; color:var(--dim); font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
     .palette-item .pi-hint { margin-left:auto; font-size:9px; color:var(--dim); }
     .palette-item svg { color:var(--muted); flex:0 0 auto; }
+    .palette-empty { min-height:150px; display:grid; place-items:center; align-content:center; gap:5px; color:var(--dim); text-align:center; }
+    .palette-empty > svg { width:22px; height:22px; margin-bottom:4px; opacity:.7; }
+    .palette-empty strong { color:var(--muted); font-size:11px; }
+    .palette-empty span { font-size:9px; }
 
     /* ============ SIDE SHEET ============ */
     .sheet-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); backdrop-filter:blur(3px); display:none; z-index:130; }

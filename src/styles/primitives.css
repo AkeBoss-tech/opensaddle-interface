@@ -139,6 +139,23 @@
 .os-status--pulse .os-status__dot { animation: os-status-pulse 1.6s ease-out infinite; }
 @keyframes os-status-pulse { 50% { box-shadow: 0 0 0 4px transparent; opacity: .7; } }
 
+.os-step-progress { display: grid; gap: var(--os-space-2); }
+.os-step-progress__track { display: flex; align-items: center; justify-content: center; gap: .375rem; }
+.os-step-progress__segment {
+  width: .5rem;
+  height: .375rem;
+  border-radius: var(--os-radius-full);
+  background: color-mix(in srgb, var(--os-color-text-subtle) 28%, transparent);
+  transition: width var(--os-motion-normal) var(--os-ease-out), background-color var(--os-motion-fast) linear;
+}
+.os-step-progress__segment.is-complete { background: color-mix(in srgb, var(--os-color-accent) 42%, transparent); }
+.os-step-progress__segment.is-current { width: 2rem; background: var(--os-color-accent); }
+.os-step-progress__labels { display: flex; gap: var(--os-space-2); }
+.os-step-progress__labels > span { min-width: 0; flex: 1; display: grid; gap: 1px; color: var(--os-color-text-subtle); text-align: center; }
+.os-step-progress__labels > span.is-reached { color: var(--os-color-text); }
+.os-step-progress__labels strong { overflow: hidden; font-size: var(--os-font-size-xs); font-weight: var(--os-weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
+.os-step-progress__labels small { color: var(--os-color-text-subtle); font-size: .625rem; }
+
 .os-tabs__list {
   display: flex;
   align-items: end;

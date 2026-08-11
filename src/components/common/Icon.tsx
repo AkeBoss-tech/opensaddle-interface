@@ -1,4 +1,4 @@
-import { useId, useSyncExternalStore, type ComponentType } from 'react'
+import React, { useId, useSyncExternalStore, type ComponentType } from 'react'
 import {
   Activity, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Check, ChevronRight,
   Clock3, Code2, Database, FileText, Folder, Globe2, Info, LayoutDashboard, MessageSquare,
@@ -32,6 +32,9 @@ import {
 
 export type IconPackId = 'lucide' | 'phosphor' | 'tabler' | 'heroicons'
 type PackIcon = ComponentType<Record<string, unknown>>
+
+// Node-based component tests use the classic JSX transform.
+void React
 
 const ICON_PACK_KEY = 'opensaddle.icon-pack-candidate'
 const PACK_IDS: IconPackId[] = ['lucide', 'phosphor', 'tabler', 'heroicons']
