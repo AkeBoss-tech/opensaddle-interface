@@ -20,6 +20,7 @@ import {
   type AuthoritativeEditResult,
   type AuthoritativeLiveAuthority,
   type AuthoritativeProposalInput,
+  type AuthoritativeProposalContinuation,
   type AuthoritativeOpeningBinding,
   type EditAuthor,
   type EditSession,
@@ -214,6 +215,19 @@ function canonicalJson(value: unknown): string {
 
 function digestJson(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value)).digest('hex')
+}
+
+function resignContinuation(value: AuthoritativeProposalContinuation): AuthoritativeProposalContinuation {
+  const cloned = structuredClone(value) as unknown as Record<string, unknown>
+  delete cloned.integrity
+  return {
+    ...cloned,
+    integrity: {
+      algorithm: 'sha-256/canonical-json',
+      value: digestJson(cloned),
+      authoritative: false,
+    },
+  } as unknown as AuthoritativeProposalContinuation
 }
 
 async function failureCode(action: () => Promise<unknown>): Promise<string | undefined> {
@@ -541,19 +555,9 @@ test('proposal input is a result-bound N+1 continuation and never an atomic pre-
     proposal: { correlationIds: ['investigation:184'] },
   })), 'invalid_patch')
 
-  assert.equal(await failureCode(() => adaptPostPatchResultToProposal({
-    continuation: {
-      kind: 'post_patch_result_required',
-      request_digest: command.request_digest,
-      expected_post_patch_version: post.session.version,
-    },
-    authoritativeResult: post,
-    live: postPatchLive(input, post),
-    proposal: { correlationIds: ['investigation:184'] },
-  })), 'proposal_required')
-
+  const recovered = JSON.parse(JSON.stringify(command.proposal_continuation)) as AuthoritativeProposalContinuation
   const proposal = await adaptPostPatchResultToProposal({
-    continuation: command.proposal_continuation!,
+    continuation: recovered,
     authoritativeResult: post,
     live: postPatchLive(input, post),
     proposal: { correlationIds: ['investigation:184'] },
@@ -575,6 +579,86 @@ test('proposal input is a result-bound N+1 continuation and never an atomic pre-
   assert.equal(proposal.protected_input_digest, expectedPostDigest)
   assert.notEqual(proposal.protected_input_digest, forbiddenPreDigest)
   assert.deepEqual(proposal.delegation_chain, ['user-1', 'agent-1'])
+})
+
+test('proposal continuation survives JSON recovery and fails closed for every authority binding tamper', async () => {
+  const input = await setup('agent')
+  const command = await adaptPresentationCommandToAuthority(input)
+  assert.ok(command.proposal_continuation)
+  assert.equal(command.proposal_continuation.authority, 'non-authoritative')
+  assert.equal(command.proposal_continuation.integrity.authoritative, false)
+  const result = postPatchResult(input)
+  const live = postPatchLive(input, result)
+
+  const recovered = JSON.parse(JSON.stringify(command.proposal_continuation)) as AuthoritativeProposalContinuation
+  assert.ok(await adaptPostPatchResultToProposal({
+    continuation: recovered,
+    authoritativeResult: result,
+    live,
+    proposal: { correlationIds: ['investigation:184'] },
+  }))
+
+  const mutations: Array<[string, (continuation: any) => void]> = [
+    ['request digest', (c) => { c.request_digest = '1'.repeat(64) }],
+    ['envelope session', (c) => { c.envelope.session_id = `edit_${'2'.repeat(32)}` }],
+    ['envelope version', (c) => { c.envelope.expected_version += 1 }],
+    ['envelope resource', (c) => { c.envelope.expected_resource_ref.resource_id = 'plan-other' }],
+    ['envelope patch', (c) => { c.envelope.patch.operations[0].field = 'title' }],
+    ['pre-patch session', (c) => { c.pre_patch.session_id = `edit_${'2'.repeat(32)}` }],
+    ['pre-patch project', (c) => { c.pre_patch.project_id = 'project-other' }],
+    ['pre-patch capability id', (c) => { c.pre_patch.capability_id = 'resource.other' }],
+    ['pre-patch capability version', (c) => { c.pre_patch.capability_version += 1 }],
+    ['pre-patch capability digest', (c) => { c.pre_patch.capability_digest = '1'.repeat(64) }],
+    ['pre-patch resource', (c) => { c.pre_patch.resource_ref.resource_id = 'plan-other' }],
+    ['pre-patch author', (c) => { c.pre_patch.author.subject = 'agent-other' }],
+    ['pre-patch delegation', (c) => { c.pre_patch.author.delegation_id = 'delegation-other' }],
+    ['pre-patch delegator', (c) => { c.pre_patch.author.delegator = 'user-other' }],
+    ['pre-patch version', (c) => { c.pre_patch.version += 1 }],
+    ['pre-patch draft', (c) => { c.pre_patch.draft_digest = '1'.repeat(64) }],
+    ['pre-patch resource state', (c) => { c.pre_patch.resource_state = 'published' }],
+    ['pre-patch history', (c) => { c.pre_patch.history_length += 1 }],
+    ['capability binding id', (c) => { c.capability_binding.capability_id = 'resource.other' }],
+    ['capability binding version', (c) => { c.capability_binding.capability_version += 1 }],
+    ['capability binding digest', (c) => { c.capability_binding.capability_digest = '1'.repeat(64) }],
+    ['action id', (c) => { c.capability_binding.consequential_action.registered_action_id = 'act_Other1' }],
+    ['action version', (c) => { c.capability_binding.consequential_action.registered_action_version += 1 }],
+    ['action digest', (c) => { c.capability_binding.consequential_action.registered_action_digest = '1'.repeat(64) }],
+    ['action effect', (c) => { c.capability_binding.consequential_action.effect_class = 'destructive' }],
+    ['opening project', (c) => { c.opening_binding.projectId = 'project-other' }],
+    ['opening policy id', (c) => { c.opening_binding.policy.id = 'policy.other' }],
+    ['opening policy version', (c) => { c.opening_binding.policy.version = 'v13' }],
+    ['opening policy hash', (c) => { c.opening_binding.policy.hash = '1'.repeat(64) }],
+    ['opening policy revision', (c) => { c.opening_binding.policy.revision = 'policy:13' }],
+    ['opening policy outcome', (c) => { c.opening_binding.policy.outcome = 'deny' }],
+    ['opening availability', (c) => { c.opening_binding.availabilityVersion += 1 }],
+    ['changed fields', (c) => { c.changed_fields[0] = 'title' }],
+    ['coordinated cross-project binding', (c) => {
+      c.opening_binding.projectId = 'project-other'
+      c.pre_patch.project_id = 'project-other'
+    }],
+    ['unknown continuation field', (c) => { c.unexpected = true }],
+  ]
+
+  for (const [label, mutate] of mutations) {
+    const forged = structuredClone(recovered)
+    mutate(forged)
+    const resigned = resignContinuation(forged)
+    assert.ok(await failureCode(() => adaptPostPatchResultToProposal({
+      continuation: resigned,
+      authoritativeResult: result,
+      live,
+      proposal: { correlationIds: ['investigation:184'] },
+    })), `${label} must fail closed even with a recomputed public checksum`)
+  }
+
+  const corrupted = structuredClone(recovered)
+  corrupted.opening_binding.projectId = 'project-other'
+  assert.equal(await failureCode(() => adaptPostPatchResultToProposal({
+    continuation: corrupted,
+    authoritativeResult: result,
+    live,
+    proposal: { correlationIds: ['investigation:184'] },
+  })), 'proposal_required')
 })
 
 test('ambiguous resource, unsafe pointer, unsupported patch, digest encoding, and secret fields are rejected opaquely', async () => {

@@ -184,9 +184,38 @@ export interface ValidatedAuthoritativeEditCommand {
 }
 
 export interface AuthoritativeProposalContinuation {
+  readonly contract_version: typeof EDITING_CONTRACT_VERSION
   readonly kind: 'post_patch_result_required'
+  readonly authority: 'non-authoritative'
   readonly request_digest: string
-  readonly expected_post_patch_version: number
+  readonly envelope: AuthoritativeApplyPatchEnvelope
+  readonly pre_patch: {
+    readonly session_id: string
+    readonly project_id: string
+    readonly capability_id: string
+    readonly capability_version: number
+    readonly capability_digest: string
+    readonly resource_ref: AuthoritativeResourceRef
+    readonly author: AuthoritativeAuthor
+    readonly version: number
+    readonly draft_digest: string
+    readonly resource_state: AuthoritativeEditSession['resource_state']
+    readonly history_length: number
+  }
+  readonly capability_binding: {
+    readonly capability_id: string
+    readonly capability_version: number
+    readonly capability_digest: string
+    readonly consequential_action: AuthoritativeConsequentialAction
+  }
+  readonly opening_binding: AuthoritativeOpeningBinding
+  readonly changed_fields: readonly string[]
+  /** Public checksum for accidental corruption/tamper detection. It grants no authority. */
+  readonly integrity: {
+    readonly algorithm: 'sha-256/canonical-json'
+    readonly value: string
+    readonly authoritative: false
+  }
 }
 
 export interface AdaptPostPatchResultInput {
@@ -196,15 +225,8 @@ export interface AdaptPostPatchResultInput {
   proposal: AuthoritativeProposalOptions
 }
 
-interface ProposalContinuationState {
-  requestDigest: string
-  prePatchSession: AuthoritativeEditSession
-  capability: AuthoritativeEditCapability
-  opening: AuthoritativeOpeningBinding
-  changedFields: readonly string[]
-}
-
-const PROPOSAL_CONTINUATIONS = new WeakMap<object, ProposalContinuationState>()
+type ProposalContinuationUnsigned = Omit<AuthoritativeProposalContinuation, 'integrity'>
+type ProposalCapabilityBinding = AuthoritativeProposalContinuation['capability_binding']
 
 function identifier(value: unknown): value is string {
   return typeof value === 'string' && IDENTIFIER.test(value)
@@ -580,7 +602,7 @@ function assertSubmission(
 
 async function proposalInput(
   authoritativeSession: AuthoritativeEditSession,
-  capability: AuthoritativeEditCapability,
+  capability: ProposalCapabilityBinding,
   options: AuthoritativeProposalOptions | undefined,
 ): Promise<AuthoritativeProposalInput> {
   if (!options) fail('proposal_required')
@@ -617,47 +639,229 @@ async function proposalInput(
   return validateAuthoritativeProposalInput(value)
 }
 
-function issueProposalContinuation(
+function record(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) fail('proposal_required')
+  return value as Record<string, unknown>
+}
+
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): void {
+  const actual = Object.keys(value).sort()
+  const expected = [...keys].sort()
+  if (!equal(actual, expected)) fail('proposal_required')
+}
+
+function positiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1
+}
+
+function parseContinuationAuthor(value: unknown): AuthoritativeAuthor {
+  const source = record(value)
+  exactKeys(source, ['subject', 'kind', 'delegation_id', 'delegator'])
+  if (!identifier(source.subject) || (source.kind !== 'human' && source.kind !== 'agent')) fail('identity_conflict')
+  if (source.kind === 'human') {
+    if (source.delegation_id !== null || source.delegator !== null) fail('identity_conflict')
+  } else if (!identifier(source.delegation_id) || !identifier(source.delegator)) {
+    fail('delegation_denied')
+  }
+  return {
+    subject: source.subject,
+    kind: source.kind,
+    delegation_id: source.delegation_id as string | null,
+    delegator: source.delegator as string | null,
+  }
+}
+
+function parseContinuationAction(value: unknown): AuthoritativeConsequentialAction {
+  const source = record(value)
+  exactKeys(source, ['registered_action_id', 'registered_action_version', 'registered_action_digest', 'effect_class', 'requires_proposal'])
+  if (
+    typeof source.registered_action_id !== 'string'
+    || !/^act_[A-Za-z0-9]+$/.test(source.registered_action_id)
+    || !positiveInteger(source.registered_action_version)
+    || !digest(source.registered_action_digest)
+    || !['external_write', 'code_mutation', 'runtime_execution', 'destructive'].includes(source.effect_class as string)
+    || source.requires_proposal !== true
+  ) fail('action_changed')
+  return source as unknown as AuthoritativeConsequentialAction
+}
+
+function parseContinuationOpening(value: unknown): AuthoritativeOpeningBinding {
+  const source = record(value)
+  exactKeys(source, ['projectId', 'policy', 'availabilityVersion'])
+  const policy = record(source.policy)
+  exactKeys(policy, ['id', 'version', 'hash', 'revision', 'outcome'])
+  if (
+    !identifier(source.projectId)
+    || !positiveInteger(source.availabilityVersion)
+    || !identifier(policy.id)
+    || !identifier(policy.version)
+    || !digest(policy.hash)
+    || !identifier(policy.revision)
+    || !policyOutcome(policy.outcome)
+  ) fail('policy_changed')
+  return {
+    projectId: source.projectId,
+    availabilityVersion: source.availabilityVersion,
+    policy: policy as unknown as AuthoritativePolicySnapshot,
+  }
+}
+
+async function parseProposalContinuation(value: unknown): Promise<AuthoritativeProposalContinuation> {
+  const source = record(value)
+  exactKeys(source, [
+    'contract_version', 'kind', 'authority', 'request_digest', 'envelope', 'pre_patch',
+    'capability_binding', 'opening_binding', 'changed_fields', 'integrity',
+  ])
+  if (
+    source.contract_version !== EDITING_CONTRACT_VERSION
+    || source.kind !== 'post_patch_result_required'
+    || source.authority !== 'non-authoritative'
+    || !digest(source.request_digest)
+  ) fail('proposal_required')
+
+  const integrity = record(source.integrity)
+  exactKeys(integrity, ['algorithm', 'value', 'authoritative'])
+  if (integrity.algorithm !== 'sha-256/canonical-json' || !digest(integrity.value) || integrity.authoritative !== false) fail('proposal_required')
+  const { integrity: _integrity, ...unsigned } = source
+  if (await sha256(unsigned) !== integrity.value) fail('proposal_required')
+
+  const envelope = record(source.envelope)
+  exactKeys(envelope, ['operation', 'session_id', 'expected_version', 'expected_resource_ref', 'patch', 'allow_rebase'])
+  if (
+    envelope.operation !== 'apply_patch'
+    || !identifier(envelope.session_id)
+    || !positiveInteger(envelope.expected_version)
+    || envelope.allow_rebase !== false
+  ) fail('proposal_required')
+  const resourceRef = validateAuthoritativeResourceRef(envelope.expected_resource_ref)
+  const patch = validateAuthoritativeTypedPatch(envelope.patch)
+  const parsedEnvelope: AuthoritativeApplyPatchEnvelope = {
+    operation: 'apply_patch', session_id: envelope.session_id, expected_version: envelope.expected_version,
+    expected_resource_ref: resourceRef, patch, allow_rebase: false,
+  }
+  if (await sha256(parsedEnvelope) !== source.request_digest) fail('digest_mismatch')
+
+  const pre = record(source.pre_patch)
+  exactKeys(pre, [
+    'session_id', 'project_id', 'capability_id', 'capability_version', 'capability_digest',
+    'resource_ref', 'author', 'version', 'draft_digest', 'resource_state', 'history_length',
+  ])
+  if (
+    !identifier(pre.session_id) || !identifier(pre.project_id) || !identifier(pre.capability_id)
+    || !positiveInteger(pre.capability_version) || !digest(pre.capability_digest)
+    || !positiveInteger(pre.version) || !digest(pre.draft_digest)
+    || (pre.resource_state !== 'draft' && pre.resource_state !== 'published')
+    || !positiveInteger(pre.history_length)
+  ) fail('proposal_required')
+  const preResourceRef = validateAuthoritativeResourceRef(pre.resource_ref)
+  const preAuthor = parseContinuationAuthor(pre.author)
+
+  const capability = record(source.capability_binding)
+  exactKeys(capability, ['capability_id', 'capability_version', 'capability_digest', 'consequential_action'])
+  if (!identifier(capability.capability_id) || !positiveInteger(capability.capability_version) || !digest(capability.capability_digest)) fail('capability_changed')
+  const action = parseContinuationAction(capability.consequential_action)
+  const opening = parseContinuationOpening(source.opening_binding)
+  if (!Array.isArray(source.changed_fields) || source.changed_fields.length < 1 || source.changed_fields.some((field) => typeof field !== 'string' || !FIELD_POINTER.test(`/${field}`))) fail('invalid_patch')
+  const changedFields = [...source.changed_fields].sort()
+  if (new Set(changedFields).size !== changedFields.length) fail('ambiguous_mapping')
+
+  if (
+    envelope.session_id !== pre.session_id || envelope.expected_version !== pre.version
+    || !equal(resourceRef, preResourceRef)
+    || capability.capability_id !== pre.capability_id
+    || capability.capability_version !== pre.capability_version
+    || capability.capability_digest !== pre.capability_digest
+    || opening.projectId !== pre.project_id
+    || !equal([...patch.operations.map((operation) => operation.field)].sort(), changedFields)
+  ) fail('proposal_required')
+
+  return {
+    contract_version: EDITING_CONTRACT_VERSION,
+    kind: 'post_patch_result_required',
+    authority: 'non-authoritative',
+    request_digest: source.request_digest,
+    envelope: parsedEnvelope,
+    pre_patch: {
+      session_id: pre.session_id, project_id: pre.project_id, capability_id: pre.capability_id,
+      capability_version: pre.capability_version, capability_digest: pre.capability_digest,
+      resource_ref: preResourceRef, author: preAuthor, version: pre.version, draft_digest: pre.draft_digest,
+      resource_state: pre.resource_state, history_length: pre.history_length,
+    },
+    capability_binding: {
+      capability_id: capability.capability_id, capability_version: capability.capability_version,
+      capability_digest: capability.capability_digest, consequential_action: action,
+    },
+    opening_binding: opening,
+    changed_fields: changedFields,
+    integrity: { algorithm: 'sha-256/canonical-json', value: integrity.value, authoritative: false },
+  }
+}
+
+async function issueProposalContinuation(
   requestDigest: string,
   prePatchSession: AuthoritativeEditSession,
   capability: AuthoritativeEditCapability,
   opening: AuthoritativeOpeningBinding,
   patch: AuthoritativeTypedPatch,
-): AuthoritativeProposalContinuation {
-  const continuation = Object.freeze({
+): Promise<AuthoritativeProposalContinuation> {
+  const unsigned: ProposalContinuationUnsigned = {
+    contract_version: EDITING_CONTRACT_VERSION,
     kind: 'post_patch_result_required' as const,
+    authority: 'non-authoritative',
     request_digest: requestDigest,
-    expected_post_patch_version: prePatchSession.version + 1,
-  })
-  PROPOSAL_CONTINUATIONS.set(continuation, {
-    requestDigest,
-    prePatchSession,
-    capability,
-    opening: {
+    envelope: {
+      operation: 'apply_patch', session_id: prePatchSession.session_id, expected_version: prePatchSession.version,
+      expected_resource_ref: prePatchSession.resource_ref, patch, allow_rebase: false,
+    },
+    pre_patch: {
+      session_id: prePatchSession.session_id, project_id: prePatchSession.project_id,
+      capability_id: prePatchSession.capability_id, capability_version: prePatchSession.capability_version,
+      capability_digest: prePatchSession.capability_digest, resource_ref: prePatchSession.resource_ref,
+      author: prePatchSession.author, version: prePatchSession.version, draft_digest: prePatchSession.draft_digest,
+      resource_state: prePatchSession.resource_state, history_length: prePatchSession.history_length,
+    },
+    capability_binding: {
+      capability_id: capability.capability_id, capability_version: capability.capability_version,
+      capability_digest: capability.capability_digest, consequential_action: capability.consequential_action,
+    },
+    opening_binding: {
       projectId: opening.projectId,
       policy: { ...opening.policy },
       availabilityVersion: opening.availabilityVersion,
     },
-    changedFields: Object.freeze(patch.operations.map((operation) => operation.field).sort()),
+    changed_fields: patch.operations.map((operation) => operation.field).sort(),
+  }
+  return Object.freeze({
+    ...unsigned,
+    integrity: Object.freeze({ algorithm: 'sha-256/canonical-json', value: await sha256(unsigned), authoritative: false }),
   })
-  return continuation
 }
 
 function assertPostPatchResult(
-  state: ProposalContinuationState,
+  state: AuthoritativeProposalContinuation,
   result: AuthoritativeEditResult,
   live: AuthoritativeLiveAuthority,
 ): void {
-  const pre = state.prePatchSession
+  const pre = state.pre_patch
   const post = result.session
-  assertOpeningAuthority(state.opening, live)
+  assertOpeningAuthority(state.opening_binding, live)
   if (
-    state.opening.projectId !== pre.project_id
+    state.opening_binding.projectId !== pre.project_id
     || live.projectId !== pre.project_id
     || post.project_id !== pre.project_id
   ) fail('identity_conflict')
-  assertCapabilityAndAction(state.capability, post, live)
-  assertCapabilityAuthority(state.opening, live, state.capability, post.resource_ref)
+  if (
+    post.capability_id !== state.capability_binding.capability_id
+    || post.capability_version !== state.capability_binding.capability_version
+    || post.capability_digest !== state.capability_binding.capability_digest
+    || live.capabilityId !== state.capability_binding.capability_id
+    || live.capabilityVersion !== state.capability_binding.capability_version
+    || live.capabilityDigest !== state.capability_binding.capability_digest
+  ) fail('capability_changed')
+  if (!equal(live.registeredAction, state.capability_binding.consequential_action)) fail('action_changed')
+  if (!equal(validateAuthoritativeResourceRef(live.currentResourceRef), post.resource_ref)) fail('stale_resource')
+  const permission = `edit:${post.resource_ref.resource_type}`
+  if (!live.permissions.includes(permission) && !live.permissions.includes('edit:*')) fail('policy_denied')
   assertLiveAuthor(post.author, live)
   if (
     post.session_id !== pre.session_id
@@ -682,30 +886,24 @@ function assertPostPatchResult(
     || result.published !== false
     || result.diff.before_digest !== pre.draft_digest
     || result.diff.after_digest !== post.draft_digest
-    || !equal([...result.diff.changed_fields].sort(), state.changedFields)
+    || !equal([...result.diff.changed_fields].sort(), state.changed_fields)
     || result.diff.validation.some((finding) => finding.level === 'error')
   ) fail('invalid_patch')
 }
 
 /**
  * Produces proposal input only from the exact authoritative result of the issued
- * apply_patch command. A pre-patch session or caller-created continuation fails closed.
+ * apply_patch command. The serializable continuation is recovery metadata, not authority:
+ * its public checksum cannot authorize anything and every binding is rechecked against
+ * the authoritative result and current live authority.
  */
 export async function adaptPostPatchResultToProposal(
   input: AdaptPostPatchResultInput,
 ): Promise<AuthoritativeProposalInput> {
-  if (typeof input.continuation !== 'object' || input.continuation === null) fail('proposal_required')
-  const state = PROPOSAL_CONTINUATIONS.get(input.continuation)
-  if (
-    !state
-    || input.continuation.kind !== 'post_patch_result_required'
-    || input.continuation.request_digest !== state.requestDigest
-    || input.continuation.expected_post_patch_version !== state.prePatchSession.version + 1
-  ) fail('proposal_required')
+  const state = await parseProposalContinuation(input.continuation)
   const result = validateAuthoritativeEditResult(input.authoritativeResult)
-  await assertCapabilityDigest(state.capability)
   assertPostPatchResult(state, result, input.live)
-  return proposalInput(result.session, state.capability, input.proposal)
+  return proposalInput(result.session, state.capability_binding, input.proposal)
 }
 
 /**
@@ -754,7 +952,7 @@ export async function adaptPresentationCommandToAuthority(
   }
   const requestDigest = await sha256(envelope)
   const continuation = proposalRequired
-    ? issueProposalContinuation(requestDigest, authoritativeSession, capability, input.opening, patch)
+    ? await issueProposalContinuation(requestDigest, authoritativeSession, capability, input.opening, patch)
     : null
   return Object.freeze({
     envelope: Object.freeze(envelope),
