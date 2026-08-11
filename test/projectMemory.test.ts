@@ -131,4 +131,17 @@ test('memory panel has an honest unavailable state and session bridge keeps a na
   const panel = readFileSync('src/features/memory/ProjectMemoryPanel.tsx', 'utf8')
   assert.match(panel, /raw inbox/)
   assert.match(panel, /trusted knowledge/)
+  assert.match(panel, /Managed by OpenSaddle · KRAIL/)
+  assert.match(panel, /MemoryLoadingState/)
+  assert.match(panel, /role=\{operation.status === 'failed' \? 'alert' : 'status'\}/)
+})
+
+test('command palette uses semantic options and separates destructive actions', () => {
+  const palette = readFileSync('src/components/common/CommandPalette.tsx', 'utf8')
+  assert.match(palette, /role="combobox"/)
+  assert.match(palette, /role="listbox"/)
+  assert.match(palette, /role="option"/)
+  assert.match(palette, /aria-selected/)
+  assert.match(palette, /group: 'Danger zone'/)
+  assert.match(palette, /tone: 'danger'/)
 })

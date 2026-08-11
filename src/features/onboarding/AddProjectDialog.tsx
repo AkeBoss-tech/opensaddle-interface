@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Project, WorkspaceProposal } from '../../types'
-import { Dialog, Button } from '../../ui'
+import { Dialog, Button, StepProgress } from '../../ui'
+import { Icon } from '../../components/common/Icon'
 import { ScaffoldProposal } from './ScaffoldProposal'
 import { scanWorkspaceFolder } from '../../services/workspaceScaffold'
 import { creationAction, isProjectDetailsValid, type AddProjectKind } from './addProjectFlow'
@@ -48,8 +49,7 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
   const continueDetails = async () => {
     if (!kind || !isProjectDetailsValid(kind, name, folderPath)) return
     if (creationAction(kind, folderPath) === 'create') {
-      setCreating(true)
-      try { await onCreateCloud({ name: name.trim(), parentId, color }); onClose() } finally { setCreating(false) }
+      setStep('review')
       return
     }
     setScanning(true); setError(null)
@@ -60,11 +60,31 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
     setCreating(true)
     try { await onCreateLocal({ name: name.trim(), color, proposal: { ...proposal, label: name.trim() }, selectedIds }); onClose() } finally { setCreating(false) }
   }
+  const createCloud = async () => {
+    setCreating(true)
+    try { await onCreateCloud({ name: name.trim(), parentId, color }); onClose() } finally { setCreating(false) }
+  }
 
-  return <Dialog open={open} onClose={onClose} title={step === 'kind' ? 'Add a project' : step === 'review' ? 'Review local workspace' : `${kind === 'local' ? 'Local' : 'Cloud'} project details`} description={step === 'kind' ? 'Choose where this project lives.' : undefined} size={step === 'review' ? 'lg' : 'sm'} className="add-project-dialog">
+  const currentStep = step === 'kind' ? 0 : step === 'details' ? 1 : 2
+  const title = step === 'kind'
+    ? 'Add a project'
+    : step === 'review'
+      ? kind === 'local' ? 'Review local workspace' : 'Review cloud project'
+      : `${kind === 'local' ? 'Local' : 'Cloud'} project details`
+
+  return <Dialog open={open} onClose={onClose} title={title} description={step === 'kind' ? 'Choose where this project lives.' : undefined} size={step === 'review' && kind === 'local' ? 'lg' : 'sm'} className="add-project-dialog">
+    <StepProgress
+      className="add-project-progress"
+      current={currentStep}
+      steps={[
+        { label: 'Location', detail: 'Local or cloud' },
+        { label: 'Details', detail: 'Name and scope' },
+        { label: 'Review', detail: 'Confirm changes' },
+      ]}
+    />
     {step === 'kind' && <div className="add-project-kinds">
-      <button type="button" className="add-project-kind" onClick={() => { setKind('local'); setStep('details') }}><strong>Local project</strong><span>A folder on this machine. Agents run against real files.</span><small>Stays on this device.</small></button>
-      <button type="button" className="add-project-kind" onClick={() => { setKind('cloud'); setStep('details') }}><strong>Cloud project</strong><span>A workspace with no folder for marketing, research, or planning.</span></button>
+      <button type="button" className="add-project-kind" onClick={() => { setKind('local'); setStep('details') }}><span className="add-project-kind__icon"><Icon name="folder" /></span><strong>Local project</strong><span>A folder on this machine. Agents run against real files.</span><small><Icon name="shield" className="icon xs" /> Files stay on this device</small></button>
+      <button type="button" className="add-project-kind" onClick={() => { setKind('cloud'); setStep('details') }}><span className="add-project-kind__icon"><Icon name="cloud" /></span><strong>Cloud project</strong><span>A workspace with no folder for marketing, research, or planning.</span><small><Icon name="users" className="icon xs" /> Ready for shared work</small></button>
     </div>}
     {step === 'details' && kind && <div className="add-project-details">
       <label>Name<input autoFocus value={name} onChange={(event) => { setNameEdited(true); setName(event.target.value) }} placeholder={kind === 'local' ? 'Project name' : 'New project'} /></label>
@@ -72,8 +92,14 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
       {kind === 'cloud' && <label>Parent project <span className="add-project-optional">optional</span><select value={parentId ?? ''} onChange={(event) => setParentId(event.target.value || null)}><option value="">No parent</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>}
       <fieldset className="add-project-colors"><legend>Colour</legend><div>{COLORS.map((swatch) => <button key={swatch.value} type="button" className={`add-project-swatch${color === swatch.value ? ' is-selected' : ''}`} style={{ background: swatch.value }} onClick={() => setColor(swatch.value)} aria-label={`Select ${swatch.label}`} aria-pressed={color === swatch.value} />)}</div></fieldset>
       {error && <p className="add-project-error" role="alert">Could not scan folder: {error}</p>}
-      <div className="add-project-actions"><Button variant="ghost" onClick={() => setStep('kind')}>Back</Button><Button variant="primary" disabled={!isProjectDetailsValid(kind, name, folderPath)} loading={scanning || creating} onClick={() => void continueDetails()}>{kind === 'local' ? 'Review workspace' : 'Create project'}</Button></div>
+      <div className="add-project-actions"><Button variant="ghost" onClick={() => setStep('kind')}>Back</Button><Button variant="primary" disabled={!isProjectDetailsValid(kind, name, folderPath)} loading={scanning || creating} onClick={() => void continueDetails()}>Continue to review</Button></div>
     </div>}
-    {step === 'review' && proposal && <ScaffoldProposal proposal={{ ...proposal, label: name.trim() }} creating={creating} onCreate={(selectedIds) => void createLocal(selectedIds)} />}
+    {step === 'review' && kind === 'local' && proposal && <ScaffoldProposal proposal={{ ...proposal, label: name.trim() }} creating={creating} onBack={() => setStep('details')} onCreate={(selectedIds) => void createLocal(selectedIds)} />}
+    {step === 'review' && kind === 'cloud' && <section className="add-project-review" aria-label="Cloud project summary">
+      <div className="add-project-review__icon" style={{ color }}><Icon name="cloud" /></div>
+      <div><span className="add-project-review__eyebrow">Cloud workspace</span><h3>{name.trim()}</h3><p>{parentId ? `Nested under ${projects.find((project) => project.id === parentId)?.name ?? 'the selected project'}.` : 'Created as a top-level project.'}</p></div>
+      <dl><div><dt>Storage</dt><dd>OpenSaddle cloud workspace</dd></div><div><dt>Project memory</dt><dd>Available after creation</dd></div><div><dt>Local files</dt><dd>Not attached</dd></div></dl>
+      <div className="add-project-actions"><Button variant="ghost" onClick={() => setStep('details')}>Back</Button><Button variant="primary" loading={creating} onClick={() => void createCloud()}>Create project</Button></div>
+    </section>}
   </Dialog>
 }

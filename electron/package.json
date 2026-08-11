@@ -1,6 +1,6 @@
 {
   "name": "opensaddle-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenSaddle enterprise agent workspace desktop app",
   "author": "OpenSaddle",
   "private": true,
@@ -39,6 +39,13 @@
       {
         "from": "runtime-bundle/krail-runtime",
         "to": "krail-runtime",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "runtime-bundle/opensaddle-backend",
+        "to": "opensaddle-backend",
         "filter": [
           "**/*"
         ]

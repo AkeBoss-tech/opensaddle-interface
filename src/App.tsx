@@ -36,6 +36,7 @@ import './styles/app.css'
 import './styles/thread-first.css'
 import './styles/liquid-glass.css'
 import './styles/scaffold.css'
+import './features/memory/project-memory.css'
 import './features/evidence/evidence.css'
 import './features/investigation/components/investigation.css'
 
@@ -145,35 +146,37 @@ function Shell() {
   }
 
   const items: PaletteItem[] = useMemo(() => [
-    { id: 'new', group: 'Go to', label: 'New task', icon: 'plus', run: () => { const c = createChat(data.activeProjectId, 'New task'); nav(`/chat/${c.id}`) } },
-    { id: 'work', group: 'Go to', label: 'Work', icon: 'clock', run: () => nav('/work') },
-    { id: 'runs', group: 'Advanced', label: 'Legacy runs & automations', icon: 'clock', run: () => nav('/runs') },
-    { id: 'wiki', group: 'Go to', label: 'Team wiki', icon: 'review', run: () => nav('/wiki') },
-    { id: 'agents', group: 'Go to', label: 'Agents', icon: 'spark', run: () => nav('/agents') },
-    { id: 'workflows', group: 'Go to', label: 'Workflows', icon: 'clock', run: () => nav('/workflows') },
-    { id: 'sites', group: 'Go to', label: 'Sites', icon: 'globe', run: () => nav('/sites') },
-    { id: 'harness', group: 'Go to', label: 'Desktop harness', icon: 'vm', run: () => nav('/harness') },
-    { id: 'sessions', group: 'Go to', label: 'Continue a session', icon: 'clock', run: () => nav('/sessions') },
-    { id: 'local', group: 'Go to', label: 'Local projects', icon: 'folder', run: () => nav('/local') },
-    { id: 'browser-runtime', group: 'Go to', label: 'Browser agent runtime', icon: 'globe', run: () => nav('/browser-runtime') },
-    { id: 'files', group: 'Go to', label: 'Files', icon: 'file', run: () => nav('/files') },
-    { id: 'perms', group: 'Go to', label: 'Permissions', icon: 'shield', run: () => nav('/permissions') },
-    { id: 'env', group: 'Go to', label: 'Environments', icon: 'vm', run: () => nav('/environments') },
-    { id: 'plug', group: 'Go to', label: 'Plugin store', icon: 'plugin', run: () => nav('/plugins') },
-    { id: 'usage', group: 'Go to', label: 'Usage & budgets', icon: 'chart', run: () => nav('/usage') },
-    { id: 'set', group: 'Go to', label: 'Settings', icon: 'settings', run: () => nav('/settings') },
-    { id: 'admin', group: 'Go to', label: 'Organization admin', icon: 'users', run: () => nav('/admin') },
-    ...data.projects.slice(0, 8).map((p) => ({ id: p.id, group: 'Projects', label: p.name, icon: 'folder', run: () => { setActiveProject(p.id); nav(`/project/${p.id}`) } })),
+    { id: 'new', group: 'Create', label: 'New task', description: 'Start work in the current project', keywords: ['thread', 'chat'], icon: 'plus', run: () => { const c = createChat(data.activeProjectId, 'New task'); nav(`/chat/${c.id}`) } },
+    { id: 'cproj', group: 'Create', label: 'Create project', description: 'Add a local folder or cloud workspace', keywords: ['workspace', 'folder'], icon: 'folder', run: () => setProjectModal(true) },
+    { id: 'work', group: 'Navigate', label: 'Work', description: 'Approvals, active runs, and recent outcomes', icon: 'clock', run: () => nav('/work') },
+    { id: 'wiki', group: 'Navigate', label: 'Team wiki', description: 'Browse shared project knowledge', icon: 'review', run: () => nav('/wiki') },
+    { id: 'agents', group: 'Navigate', label: 'Agents', description: 'Inspect agents and availability', icon: 'spark', run: () => nav('/agents') },
+    { id: 'workflows', group: 'Navigate', label: 'Workflows', description: 'Manage recurring automations', icon: 'clock', run: () => nav('/workflows') },
+    { id: 'sites', group: 'Navigate', label: 'Sites', description: 'Open generated apps and sites', icon: 'globe', run: () => nav('/sites') },
+    { id: 'harness', group: 'Navigate', label: 'Desktop harness', description: 'Check native execution readiness', icon: 'vm', run: () => nav('/harness') },
+    { id: 'sessions', group: 'Navigate', label: 'Continue a session', description: 'Resume a local coding session', icon: 'clock', run: () => nav('/sessions') },
+    { id: 'local', group: 'Navigate', label: 'Local projects', description: 'Manage registered device folders', icon: 'folder', run: () => nav('/local') },
+    { id: 'browser-runtime', group: 'Navigate', label: 'Browser agent runtime', description: 'Inspect browser execution support', icon: 'globe', run: () => nav('/browser-runtime') },
+    { id: 'files', group: 'Navigate', label: 'Files', description: 'Browse project artifacts', icon: 'file', run: () => nav('/files') },
+    { id: 'perms', group: 'Navigate', label: 'Permissions', description: 'Review scoped project access', icon: 'shield', run: () => nav('/permissions') },
+    { id: 'env', group: 'Navigate', label: 'Environments', description: 'Inspect runtimes and execution readiness', keywords: ['runtime', 'harness'], icon: 'vm', run: () => nav('/environments') },
+    { id: 'plug', group: 'Navigate', label: 'Plugin store', description: 'Manage connected capabilities', icon: 'plugin', run: () => nav('/plugins') },
+    { id: 'usage', group: 'Navigate', label: 'Usage & budgets', description: 'Monitor spend and limits', icon: 'chart', run: () => nav('/usage') },
+    { id: 'set', group: 'Navigate', label: 'Settings', description: 'Configure OpenSaddle', icon: 'settings', run: () => nav('/settings') },
+    { id: 'admin', group: 'Navigate', label: 'Organization admin', description: 'Manage enterprise policy', icon: 'users', run: () => nav('/admin') },
+    { id: 'runs', group: 'Advanced', label: 'Legacy runs & automations', description: 'Open the compatibility run registry', icon: 'clock', run: () => nav('/runs') },
+    ...data.projects.slice(0, 8).map((p) => ({ id: p.id, group: 'Projects', label: p.name, description: p.workspaceKind === 'local' ? 'Local project' : 'Cloud project', keywords: ['workspace'], icon: 'folder', run: () => { setActiveProject(p.id); nav(`/project/${p.id}`) } })),
     ...data.chats.filter((chat) => !chat.archived).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10).map((chat) => ({
       id: `thread:${chat.id}`,
       group: 'Recent threads',
       label: chat.title,
+      description: 'Continue recent work',
+      keywords: ['chat', 'conversation'],
       icon: 'message',
       run: () => nav(`/chat/${chat.id}`),
     })),
-    { id: 'cproj', group: 'Actions', label: 'Create project', icon: 'plus', run: () => setProjectModal(true) },
-    { id: 'theme', group: 'Actions', label: 'Toggle theme', icon: 'sun', run: cycleTheme },
-    { id: 'reset', group: 'Actions', label: 'Reset demo data', icon: 'refresh', run: () => { if (confirm('Reset demo data?')) resetData() } },
+    { id: 'theme', group: 'Preferences', label: 'Toggle theme', description: 'Switch the current appearance', icon: 'sun', run: cycleTheme },
+    { id: 'reset', group: 'Danger zone', label: 'Reset demo data', description: 'Remove local demonstration state', keywords: ['clear'], icon: 'refresh', tone: 'danger', run: () => { if (confirm('Reset demo data?')) resetData() } },
   ], [createChat, data.activeProjectId, data.chats, data.projects, nav, setActiveProject, cycleTheme, resetData])
 
   if (loc.pathname.startsWith('/published/')) {
