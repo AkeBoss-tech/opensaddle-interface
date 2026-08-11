@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('opensaddle', {
     sessionBridgeUrl: string
     /** @deprecated Compatibility alias for sessionBridgeUrl. */
     krailUrl: string
+    krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }
     clis: string[]
   }>,
   pickRepository: () => ipcRenderer.invoke('runtime:pick-repo') as Promise<string | null>,

@@ -35,6 +35,13 @@
       {
         "from": "assets/opensaddle-icon.png",
         "to": "opensaddle-icon.png"
+      },
+      {
+        "from": "runtime-bundle/krail-runtime",
+        "to": "krail-runtime",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {

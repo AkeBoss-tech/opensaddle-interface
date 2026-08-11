@@ -273,6 +273,8 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   private readonly token?: string
   private readonly fetchImpl: Fetcher
   private readonly roots = new Map<string, string>()
+  private localActionCredential: { header: string; token: string } | null = null
+  private localActionCredentialRequest: Promise<{ header: string; token: string }> | null = null
 
   constructor(baseUrl: string, getUserId: () => string, token?: string, fetchImpl?: Fetcher) {
     this.baseUrl = baseUrl.replace(/\/$/, '')
@@ -307,6 +309,36 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
 
   private async memoryRequest<T>(path: string, init?: RequestInit): Promise<T> {
     return camelizeMemoryWire(await this.request<unknown>(path, init)) as T
+  }
+
+  private async getLocalActionCredential(): Promise<{ header: string; token: string }> {
+    if (this.localActionCredential) return this.localActionCredential
+    if (!this.localActionCredentialRequest) {
+      this.localActionCredentialRequest = this.request<{ token?: unknown; header?: unknown }>(
+        '/api/local-action-token',
+      ).then((value) => {
+        const token = typeof value.token === 'string' ? value.token : ''
+        const header = value.header === undefined
+          ? 'X-OpenSaddle-Local-Action'
+          : typeof value.header === 'string' ? value.header : ''
+        if (!token || header.toLowerCase() !== 'x-opensaddle-local-action') {
+          throw new Error('OpenSaddle returned an invalid local-action credential')
+        }
+        return (this.localActionCredential = {
+          header: 'X-OpenSaddle-Local-Action', token,
+        })
+      }).finally(() => {
+        this.localActionCredentialRequest = null
+      })
+    }
+    return this.localActionCredentialRequest
+  }
+
+  private async memoryMutationRequest<T>(path: string, init: RequestInit): Promise<T> {
+    const credential = await this.getLocalActionCredential()
+    const headers = new Headers(init.headers)
+    headers.set(credential.header, credential.token)
+    return this.memoryRequest<T>(path, { ...init, headers })
   }
 
   private async root(projectId: string): Promise<string> {
@@ -421,7 +453,7 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   }
 
   async memoryInitApply(projectId: string, planId: string): Promise<ProjectMemoryOperation> {
-    const receipt = await this.request<unknown>(this.projectPath(projectId, 'memory/init'), {
+    const receipt = await this.memoryMutationRequest<unknown>(this.projectPath(projectId, 'memory/init'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idempotency_key: memoryId('memory-init'), plan_id: planId }),
@@ -451,7 +483,7 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   }
 
   async memoryReindex(projectId: string): Promise<ProjectMemoryOperation> {
-    const receipt = await this.request<unknown>(this.projectPath(projectId, 'memory/reindex'), {
+    const receipt = await this.memoryMutationRequest<unknown>(this.projectPath(projectId, 'memory/reindex'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idempotency_key: memoryId('memory-reindex') }),
     })
@@ -477,7 +509,7 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   }
 
   reviewMemoryCandidate(projectId: string, review: ProjectMemoryCandidateReview): Promise<ProjectMemoryCandidate> {
-    return this.memoryRequest(this.projectPath(projectId, `memory/candidates/${encodeURIComponent(review.candidateId)}/${review.decision}`), {
+    return this.memoryMutationRequest(this.projectPath(projectId, `memory/candidates/${encodeURIComponent(review.candidateId)}/${review.decision}`), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: review.reason }),
     })
   }

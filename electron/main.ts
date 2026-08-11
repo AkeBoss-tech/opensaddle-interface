@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync } from 'node:fs'
 import { readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { resolveKrailRuntime } from './runtimeBundle.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -58,6 +59,12 @@ let quitAfterSidecars = false
 
 const OPENSADDLE_URL = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
 const SESSION_BRIDGE_URL = process.env.SESSION_BRIDGE_URL ?? process.env.KRAIL_URL ?? 'http://127.0.0.1:8787'
+
+function packagedKrailRuntime() {
+  return resolveKrailRuntime(
+    process.env.OPENSADDLE_KRAIL_RUNTIME_DIR ?? process.resourcesPath,
+  )
+}
 
 const CLI_CANDIDATES = ['codex', 'claude', 'cursor-agent', 'agent', 'gemini', 'opencode', 'antigravity', 'aider', 'copilot', 'amp', 'agy', 'openclaw', 'hermes', 'pi']
 const APP_ICON = isDev ? path.resolve(__dirname, '../assets/opensaddle-icon.png') : path.join(process.resourcesPath, 'opensaddle-icon.png')
@@ -569,10 +576,16 @@ async function launchOpenSaddle(): Promise<void> {
     return
   }
   opensaddleLaunchError = null
+  const krailRuntime = packagedKrailRuntime()
+  const launchEnv: NodeJS.ProcessEnv = { ...process.env, OPENSADDLE_DESKTOP: '1' }
+  if (krailRuntime) {
+    launchEnv.OPENSADDLE_KRAIL_ADMIN_COMMAND ??= krailRuntime.adminCommand
+    launchEnv.OPENSADDLE_KRAIL_MUTATION_COMMAND ??= krailRuntime.mutationCommand
+  }
   const child = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
     stdio: 'ignore',
-    env: { ...process.env, OPENSADDLE_DESKTOP: '1' },
+    env: launchEnv,
     detached: process.platform !== 'win32',
   })
   opensaddleProc = child
@@ -772,15 +785,27 @@ app.whenReady().then(async () => {
   await startSidecars()
   createWindow()
 
-  ipcMain.handle('runtime:info', async () => ({
+  ipcMain.handle('runtime:info', async () => {
+    const krailRuntime = packagedKrailRuntime()
+    const environmentConfigured = Boolean(
+      process.env.OPENSADDLE_KRAIL_ADMIN_COMMAND
+      || process.env.OPENSADDLE_KRAIL_MUTATION_COMMAND,
+    )
+    return ({
     mode: 'desktop',
     opensaddleUrl: OPENSADDLE_URL,
     opensaddleConnected: await opensaddleHealthy(),
     opensaddleError: opensaddleLaunchError,
     sessionBridgeUrl: SESSION_BRIDGE_URL,
     krailUrl: SESSION_BRIDGE_URL,
+    krailRuntime: {
+      bundled: Boolean(krailRuntime),
+      source: krailRuntime ? 'bundle' : environmentConfigured ? 'environment' : 'path',
+      version: krailRuntime?.manifest.wheel.name,
+    },
     clis: await discoverClis(),
-  }))
+    })
+  })
 
   ipcMain.handle('runtime:pick-repo', async () => {
     const result = await dialog.showOpenDialog({
