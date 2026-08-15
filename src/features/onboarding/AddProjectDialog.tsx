@@ -5,6 +5,7 @@ import { Icon } from '../../components/common/Icon'
 import { ScaffoldProposal } from './ScaffoldProposal'
 import { scanWorkspaceFolder } from '../../services/workspaceScaffold'
 import { creationAction, isProjectDetailsValid, type AddProjectKind } from './addProjectFlow'
+import type { KrailOnboardingRunner } from './krailOnboardingWorkflow'
 import '../../styles/scaffold.css'
 
 type Step = 'kind' | 'details' | 'review'
@@ -21,7 +22,7 @@ function folderName(path: string) { return path.trim().replace(/[\\/]+$/, '').sp
 export function AddProjectDialog({ open, projects, defaultParentId, onClose, onCreateCloud, onCreateLocal }: {
   open: boolean; projects: Project[]; defaultParentId: string | null; onClose: () => void
   onCreateCloud: (input: { name: string; parentId: string | null; color: string }) => Promise<void> | void
-  onCreateLocal: (input: { name: string; color: string; proposal: WorkspaceProposal; selectedIds: Set<string> }) => Promise<void> | void
+  onCreateLocal: (input: { name: string; color: string; proposal: WorkspaceProposal; selectedIds: Set<string>; krailRunner: KrailOnboardingRunner | null }) => Promise<void> | void
 }) {
   const [step, setStep] = useState<Step>('kind')
   const [kind, setKind] = useState<AddProjectKind | null>(null)
@@ -34,10 +35,11 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
   const [scanning, setScanning] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [krailRunner, setKrailRunner] = useState<KrailOnboardingRunner | null>('codex_cli')
 
   useEffect(() => {
     if (!open) return
-    setStep('kind'); setKind(null); setName(''); setNameEdited(false); setFolderPath(''); setParentId(defaultParentId); setColor(COLORS[0].value); setProposal(null); setError(null)
+    setStep('kind'); setKind(null); setName(''); setNameEdited(false); setFolderPath(''); setParentId(defaultParentId); setColor(COLORS[0].value); setProposal(null); setError(null); setKrailRunner('codex_cli')
   }, [defaultParentId, open])
 
   const chooseFolder = async () => {
@@ -58,7 +60,7 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
   const createLocal = async (selectedIds: Set<string>) => {
     if (!proposal) return
     setCreating(true)
-    try { await onCreateLocal({ name: name.trim(), color, proposal: { ...proposal, label: name.trim() }, selectedIds }); onClose() } finally { setCreating(false) }
+    try { await onCreateLocal({ name: name.trim(), color, proposal: { ...proposal, label: name.trim() }, selectedIds, krailRunner }); onClose() } finally { setCreating(false) }
   }
   const createCloud = async () => {
     setCreating(true)
@@ -94,7 +96,14 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
       {error && <p className="add-project-error" role="alert">Could not scan folder: {error}</p>}
       <div className="add-project-actions"><Button variant="ghost" onClick={() => setStep('kind')}>Back</Button><Button variant="primary" disabled={!isProjectDetailsValid(kind, name, folderPath)} loading={scanning || creating} onClick={() => void continueDetails()}>Continue to review</Button></div>
     </div>}
-    {step === 'review' && kind === 'local' && proposal && <ScaffoldProposal proposal={{ ...proposal, label: name.trim() }} creating={creating} onBack={() => setStep('details')} onCreate={(selectedIds) => void createLocal(selectedIds)} />}
+    {step === 'review' && kind === 'local' && proposal && <>
+      <section className="scaffold-group" aria-labelledby="krail-onboarding-heading">
+        <header className="scaffold-group__header"><div><h3 id="krail-onboarding-heading">KRAIL onboarding</h3><p className="scaffold-group__disclosure">Optional and proposal-first. The agent runs in an isolated worktree; promotion and commit require review.</p></div></header>
+        <label><input type="checkbox" checked={krailRunner !== null} onChange={(event) => setKrailRunner(event.target.checked ? 'codex_cli' : null)} /> Prepare project profile and automation recommendations</label>
+        {krailRunner && <label>Runner<select value={krailRunner} onChange={(event) => setKrailRunner(event.target.value as KrailOnboardingRunner)}><option value="codex_cli">Codex CLI</option><option value="claude_code">Claude Code</option></select></label>}
+      </section>
+      <ScaffoldProposal proposal={{ ...proposal, label: name.trim() }} creating={creating} onBack={() => setStep('details')} onCreate={(selectedIds) => void createLocal(selectedIds)} />
+    </>}
     {step === 'review' && kind === 'cloud' && <section className="add-project-review" aria-label="Cloud project summary">
       <div className="add-project-review__icon" style={{ color }}><Icon name="cloud" /></div>
       <div><span className="add-project-review__eyebrow">Cloud workspace</span><h3>{name.trim()}</h3><p>{parentId ? `Nested under ${projects.find((project) => project.id === parentId)?.name ?? 'the selected project'}.` : 'Created as a top-level project.'}</p></div>
