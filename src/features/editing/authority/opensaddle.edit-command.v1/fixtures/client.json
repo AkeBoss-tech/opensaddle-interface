@@ -1,0 +1,72 @@
+{
+  "capability": {
+    "schema_version": "opensaddle.edit-capability.v1",
+    "capability_id": "resource.edit",
+    "capability_version": 1,
+    "issuer": "https://opensaddle.example/edit",
+    "resource_schemas": [{
+      "resource_type": "investigation.plan-draft",
+      "fields": [
+        {"field":"title","kind":"string","required":true,"maximum_length":200},
+        {"field":"objective","kind":"string","required":true,"maximum_length":4096},
+        {"field":"steps","kind":"string_list","required":true,"maximum_length":128},
+        {"field":"assumptions","kind":"string_list","required":false,"maximum_length":128}
+      ],
+      "low_risk_draft_commit": false
+    }],
+    "consequential_action": {
+      "registered_action_id": "act_EditPublish1",
+      "registered_action_version": 1,
+      "registered_action_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+      "effect_class": "external_write",
+      "requires_proposal": true
+    },
+    "effects": {"draft_edit":true,"external_effects":false},
+    "capability_digest": "dbe0138291f824bb5fd6b74a2715c13501474cd5d88fd852f8ab4c5b2e813cc1"
+  },
+  "patch": {
+    "schema_version": "opensaddle.typed-patch.v1",
+    "operations": [
+      {"operation":"set","field":"objective","value":"Verify issue 184 against exact evidence."},
+      {"operation":"set","field":"steps","value":["Inspect pinned evidence","Run bounded checks"]}
+    ]
+  },
+  "operation_proposal_request": {
+    "project_id": "project-184",
+    "registered_action_id": "act_EditPublish1",
+    "registered_action_version": 1,
+    "delegation_chain": [],
+    "targets": [{
+      "resource_ref": {
+        "issuer": "https://knowledge.example.test/provider",
+        "resource_id": "resource/investigation-plan-184",
+        "resource_type": "investigation.plan-draft",
+        "version": "git:aaaaaaaa",
+        "digest": {"algorithm":"sha-256","value":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        "source": {
+          "source_id": "source/repository",
+          "origin": "git:https://example.test/acme/repository.git",
+          "version": "git:aaaaaaaa",
+          "digest": {"algorithm":"sha-256","value":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        }
+      },
+      "expected_version": "git:aaaaaaaa"
+    }],
+    "protected_input_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "validation_results": [
+      {"code":"edit.schema_validated","passed":true,"message":null},
+      {"code":"edit.draft_has_changes","passed":true,"message":null},
+      {"code":"edit.proposal_required","passed":true,"message":null},
+      {"code":"edit.effect.external_write","passed":true,"message":null}
+    ],
+    "cost_estimate": {"currency":"USD","estimated_microunits":0,"budget_microunits":null},
+    "correlation_ids": ["investigation:184"],
+    "expires_in_seconds": 3600
+  },
+  "typed_failures": [
+    "unauthorized", "policy_denied", "capability_unavailable", "delegation_revoked",
+    "invalid_patch", "stale_session", "stale_resource", "rebase_conflict",
+    "idempotency_conflict", "immutable_resource", "proposal_required"
+  ],
+  "immutable_correction_commands": ["annotate","correct","supersede"]
+}
