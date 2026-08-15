@@ -23,8 +23,8 @@ function fixture() {
   const dependencyDigest = '25d269e05e8aae00d55b18b16fcc01b92086b476f4de4a2cb9d3c0c1c29b9e8e'
   const manifest = {
     schemaVersion: 1, runtime: 'krail',
-    wheel: { name: 'krail-1.1.13-py3-none-any.whl', sha256: 'a'.repeat(64) },
-    opensaddle: { name: 'opensaddle-1.1.1-py3-none-any.whl', sha256: 'c'.repeat(64), command: '../opensaddle-backend/opensaddle' },
+    wheel: { version: '1.2.0rc1', name: 'krail-1.2.0rc1-py3-none-any.whl', sha256: 'a'.repeat(64) },
+    opensaddle: { version: '1.2.0rc1', name: 'opensaddle-1.2.0rc1-py3-none-any.whl', sha256: 'c'.repeat(64), command: '../opensaddle-backend/opensaddle' },
     python: { name: 'python.tar.gz', sha256: 'b'.repeat(64), command: 'python/bin/python3' },
     dependencies: { report: 'dependency-install-report.json', sha256: dependencyDigest },
     commands: { admin: 'bin/krail-admin', mutation: 'bin/krail-mutate' },
@@ -92,6 +92,8 @@ test('desktop packaging includes KRAIL runtime and injects only validated comman
   const builder = readFileSync('scripts/build-krail-runtime.mjs', 'utf8')
   assert.match(builder, /KRAIL_PYTHON_RUNTIME_SHA256/)
   assert.match(builder, /OPENSADDLE_WHEEL/)
+  assert.match(builder, /KRAIL_VERSION/)
+  assert.match(builder, /OPENSADDLE_VERSION/)
   assert.match(builder, /python\/bin\/python3/)
   assert.match(builder, /PATH=\/usr\/bin:\/bin/)
 })

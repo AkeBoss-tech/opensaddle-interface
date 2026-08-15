@@ -11,12 +11,19 @@ as bundled after its manifest and executable paths validate.
 Builds require all three inputs:
 
 ```bash
-KRAIL_WHEEL=/absolute/path/krail-1.1.13-py3-none-any.whl \
-OPENSADDLE_WHEEL=/absolute/path/opensaddle-1.1.1-py3-none-any.whl \
+KRAIL_VERSION=1.2.0rc1 \
+KRAIL_WHEEL=/absolute/path/krail-1.2.0rc1-py3-none-any.whl \
+OPENSADDLE_VERSION=1.2.0rc1 \
+OPENSADDLE_WHEEL=/absolute/path/opensaddle-1.2.0rc1-py3-none-any.whl \
 KRAIL_PYTHON_RUNTIME=/absolute/path/python-install-only-arm64.tar.gz \
 KRAIL_PYTHON_RUNTIME_SHA256=<64-lowercase-hex-characters> \
 npm run runtime:krail:bundle
 ```
+
+The declared versions are mandatory and must exactly match the wheel filenames.
+This prevents an old published backend from being relabeled as the current
+desktop release. Final `1.2.0` wheels can replace the release candidates without
+changing the bundler.
 
 The Python input must be an immutable, Apple-silicon-compatible `.tar.gz`
 whose extracted layout contains `python/bin/python3`. Record the archive's
