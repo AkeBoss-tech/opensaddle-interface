@@ -32,6 +32,7 @@ import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
 import { AddProjectDialog } from './features/onboarding/AddProjectDialog'
 import { scaffoldApply } from './features/onboarding/scaffoldApply'
+import { krailOnboardingTask } from './features/onboarding/krailOnboardingWorkflow'
 import './styles/app.css'
 import './styles/thread-first.css'
 import './styles/liquid-glass.css'
@@ -266,11 +267,21 @@ function Shell() {
           toast('Project created', name)
           nav(`/project/${id}`)
         }}
-        onCreateLocal={async ({ name, color, proposal, selectedIds }) => {
+        onCreateLocal={async ({ name, color, proposal, selectedIds, krailRunner }) => {
           const application = scaffoldApply(proposal, selectedIds, proposal.folderPath, name)
           const projectId = importLocalProject({ name: application.project.name, description: application.project.description, local: application.project.local })
           updateProject(projectId, { iconColor: color } as never)
           await services?.localProjects?.registerProject?.(projectId, application.project.local.rootPath)
+          if (krailRunner && services?.runtime) {
+            const started = await services.runtime.startRun({
+              projectId,
+              task: krailOnboardingTask(krailRunner),
+              agentId: krailRunner === 'codex_cli' ? 'codex' : 'claude_code',
+              repo: application.project.local.rootPath,
+              executionMode: 'project',
+            })
+            toast('KRAIL onboarding started', `Run ${started.runId} is preparing review-only proposals.`)
+          }
           application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
           application.members.forEach((member) => createMember(member))
           application.agents.forEach((agent) => createAgent({
