@@ -478,7 +478,7 @@ export function SiteExperiencePage() {
 /** Read-only public rendering of the published site snapshot. */
 export function PublishedSitePage() {
   const { slug } = useParams()
-  const { data } = useStore()
+  const { data, connection } = useStore()
   const localSite = data.sites.find((item) => item.slug === slug)
   const localVersion = localSite ? publishedVersion(localSite) : undefined
   const [remote, setRemote] = useState<{
@@ -488,7 +488,7 @@ export function PublishedSitePage() {
   const [pageIdx, setPageIdx] = useState(0)
   useEffect(() => {
     if (!slug) return
-    const baseUrl = import.meta.env.VITE_OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
+    const baseUrl = connection.baseUrl.replace(/\/$/, '')
     const controller = new AbortController()
     void fetch(`${baseUrl}/api/public/sites/${encodeURIComponent(slug)}`, { signal: controller.signal })
       .then(async (response) => {
@@ -498,7 +498,7 @@ export function PublishedSitePage() {
       })
       .catch(() => undefined)
     return () => controller.abort()
-  }, [slug])
+  }, [connection.baseUrl, slug])
 
   const site = remote?.site ?? localSite
   const version = remote?.version ?? localVersion

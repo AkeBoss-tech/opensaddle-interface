@@ -63,6 +63,9 @@ test('desktop release fails closed for signing and smoke-tests packaged launcher
   for (const launcher of ['krail-admin', 'krail-mutate', 'opensaddle']) {
     assert.ok((workflow.match(new RegExp(`${launcher.replace('-', '\\-')}.*--help`, 'g')) ?? []).length >= 2)
   }
+  assert.ok((workflow.match(/smoke-packaged-onboarding\.mjs/g) ?? []).length >= 2)
+  assert.match(workflow, /--resources electron\/runtime-bundle/)
+  assert.match(workflow, /smoke-packaged-onboarding\.mjs --app "\$APP_PATH"/)
   assert.match(workflow, /CHECKSUM_PATH="\$DMG_PATH\.sha256"/)
   assert.match(workflow, /provenance\.json/)
 })

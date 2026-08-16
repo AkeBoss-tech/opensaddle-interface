@@ -1,10 +1,17 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, WebContentsView } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { createServer } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync } from 'node:fs'
 import { readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { desktopCliPath, resolveDesktopCli } from './cliDiscovery.js'
 import { resolveKrailRuntime } from './runtimeBundle.js'
+import {
+  classifySidecarHealth,
+  incompatibleSidecarMessage,
+  type SidecarHealth,
+} from './sidecarCompatibility.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -57,7 +64,9 @@ let opensaddleOwnedPid: number | null = null
 let sidecarsStopPromise: Promise<void> | null = null
 let quitAfterSidecars = false
 
-const OPENSADDLE_URL = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
+const opensaddleUrlConfigured = Boolean(process.env.OPENSADDLE_URL)
+let opensaddleUrl = process.env.OPENSADDLE_URL ?? 'http://127.0.0.1:8765'
+let opensaddleCompatibilityNotice: string | null = null
 const SESSION_BRIDGE_URL = process.env.SESSION_BRIDGE_URL ?? process.env.KRAIL_URL ?? 'http://127.0.0.1:8787'
 
 function packagedKrailRuntime() {
@@ -341,41 +350,54 @@ function embeddedWebContents(): WebContentsView {
   return view
 }
 
-async function which(cmd: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const child = spawn(process.platform === 'win32' ? 'where' : 'which', [cmd])
-    child.on('close', (code) => resolve(code === 0))
-  })
+function cliResolutionOptions() {
+  return { env: process.env, home: app.getPath('home'), platform: process.platform }
 }
 
 async function commandPath(cmd: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const child = spawn(process.platform === 'win32' ? 'where' : 'which', [cmd])
-    let output = ''
-    child.stdout?.on('data', (chunk) => { output += String(chunk) })
-    child.on('close', (code) => resolve(code === 0 ? output.trim().split(/\r?\n/)[0] || null : null))
-  })
+  return resolveDesktopCli(cmd, cliResolutionOptions())
 }
 
 async function discoverClis(): Promise<string[]> {
   const found: string[] = []
   for (const cmd of CLI_CANDIDATES) {
-    if (await which(cmd)) found.push(cmd)
+    if (await commandPath(cmd)) found.push(cmd)
   }
   return found
 }
 
-async function opensaddleHealthy(): Promise<boolean> {
+async function probeOpenSaddle(url = opensaddleUrl): Promise<SidecarHealth> {
   try {
-    const response = await fetch(new URL('/api/health', OPENSADDLE_URL), {
+    const response = await fetch(new URL('/api/health', url), {
       signal: AbortSignal.timeout(800),
     })
-    if (!response.ok) return false
-    const payload = await response.json() as { service?: string; mode?: string }
-    return payload.service === 'opensaddle' && payload.mode === 'local'
+    if (!response.ok) return 'incompatible'
+    return classifySidecarHealth(await response.json())
   } catch {
-    return false
+    return 'absent'
   }
+}
+
+async function opensaddleHealthy(): Promise<boolean> {
+  return await probeOpenSaddle() === 'compatible'
+}
+
+async function unusedLoopbackUrl(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.unref()
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('could not reserve a loopback port')))
+        return
+      }
+      server.close((error) => error
+        ? reject(error)
+        : resolve(`http://127.0.0.1:${address.port}`))
+    })
+  })
 }
 
 async function waitForOpenSaddle(timeoutMs = 20_000): Promise<boolean> {
@@ -413,6 +435,18 @@ function opensaddleOwnershipPath(): string {
   return path.join(opensaddleStateDir(), 'desktop-sidecar.json')
 }
 
+function isLoopbackHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:'
+      && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
+      && Boolean(url.port)
+      && url.pathname === '/'
+  } catch {
+    return false
+  }
+}
+
 function processIsRunning(pid: number): boolean {
   if (!Number.isSafeInteger(pid) || pid <= 1) return false
   try {
@@ -444,7 +478,8 @@ async function readOpenSaddleOwnership(): Promise<OpenSaddleSidecarOwnership | n
       || !Number.isSafeInteger(value.pid)
       || Number(value.pid) <= 1
       || typeof value.ownerPid !== 'number'
-      || value.url !== OPENSADDLE_URL
+      || typeof value.url !== 'string'
+      || !isLoopbackHttpUrl(value.url)
       || value.stateDir !== opensaddleStateDir()
       || typeof value.command !== 'string'
       || typeof value.startedAt !== 'string'
@@ -467,7 +502,7 @@ async function persistOpenSaddleOwnership(
     version: 1,
     pid,
     ownerPid: process.pid,
-    url: OPENSADDLE_URL,
+    url: opensaddleUrl,
     stateDir,
     command,
     startedAt: new Date().toISOString(),
@@ -492,6 +527,11 @@ async function adoptOpenSaddleSidecar(): Promise<boolean> {
     await clearOpenSaddleOwnership(record.pid)
     return false
   }
+  const previousUrl = opensaddleUrl
+  if (record.url !== opensaddleUrl) {
+    if (opensaddleUrlConfigured) return false
+    opensaddleUrl = record.url
+  }
   if (process.platform !== 'win32') {
     const commandLine = await processCommandLine(record.pid)
     if (
@@ -499,6 +539,7 @@ async function adoptOpenSaddleSidecar(): Promise<boolean> {
       || !commandLine.includes('serve-api')
       || !commandLine.includes(record.stateDir)
     ) {
+      opensaddleUrl = previousUrl
       await clearOpenSaddleOwnership(record.pid)
       return false
     }
@@ -518,7 +559,7 @@ async function resolveOpenSaddleLaunch(): Promise<OpenSaddleLaunch | null> {
   const serverArgs = [
     'serve-api',
     '--host', '127.0.0.1',
-    '--port', new URL(OPENSADDLE_URL).port || '8765',
+    '--port', new URL(opensaddleUrl).port || '8765',
     '--state-dir', stateDir,
   ]
   const configured = process.env.OPENSADDLE_EXECUTABLE
@@ -577,14 +618,18 @@ async function launchOpenSaddle(): Promise<void> {
   }
   opensaddleLaunchError = null
   const krailRuntime = packagedKrailRuntime()
-  const launchEnv: NodeJS.ProcessEnv = { ...process.env, OPENSADDLE_DESKTOP: '1' }
+  const launchEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH: desktopCliPath(cliResolutionOptions()),
+    OPENSADDLE_DESKTOP: '1',
+  }
   if (krailRuntime) {
     launchEnv.OPENSADDLE_KRAIL_ADMIN_COMMAND ??= krailRuntime.adminCommand
     launchEnv.OPENSADDLE_KRAIL_MUTATION_COMMAND ??= krailRuntime.mutationCommand
   }
   const child = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
-    stdio: 'ignore',
+    stdio: process.env.OPENSADDLE_SIDECAR_STDIO === 'inherit' ? 'inherit' : 'ignore',
     env: launchEnv,
     detached: process.platform !== 'win32',
   })
@@ -625,16 +670,30 @@ async function ensureOpenSaddle(): Promise<boolean> {
   if (opensaddleEnsurePromise) return opensaddleEnsurePromise
   const pending = (async () => {
     const adopted = await adoptOpenSaddleSidecar()
-    if (await opensaddleHealthy()) return true
+    const health = await probeOpenSaddle()
+    if (health === 'compatible') return true
     if (adopted && opensaddleOwnedPid) {
       await terminateOwnedSidecar(opensaddleOwnedPid)
       opensaddleOwnedPid = null
       await clearOpenSaddleOwnership()
+    } else if (health === 'incompatible') {
+      const notice = incompatibleSidecarMessage(opensaddleUrl, opensaddleUrlConfigured)
+      if (opensaddleUrlConfigured) {
+        opensaddleLaunchError = notice
+        return false
+      }
+      opensaddleCompatibilityNotice = notice
+      try {
+        opensaddleUrl = await unusedLoopbackUrl()
+      } catch (error) {
+        opensaddleLaunchError = `Could not select a fallback loopback port: ${error instanceof Error ? error.message : String(error)}`
+        return false
+      }
     }
     await launchOpenSaddle()
     const healthy = await waitForOpenSaddle()
     if (!healthy && !opensaddleLaunchError) {
-      opensaddleLaunchError = `OpenSaddle backend did not become ready at ${OPENSADDLE_URL}.`
+      opensaddleLaunchError = `OpenSaddle backend did not become ready at ${opensaddleUrl}.`
     }
     return healthy
   })()
@@ -657,7 +716,11 @@ async function startSidecars(): Promise<void> {
     sessionBridgeProc = spawn('npx', ['tsx', sessionBridgeEntry], {
       cwd: path.resolve(__dirname, '../..'),
       stdio: 'ignore',
-      env: { ...process.env, SESSION_BRIDGE_PORT: '8787' },
+      env: {
+        ...process.env,
+        PATH: desktopCliPath(cliResolutionOptions()),
+        SESSION_BRIDGE_PORT: '8787',
+      },
     })
   }
 }
@@ -783,6 +846,9 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin') app.dock?.setIcon(APP_ICON)
   registerRendererProtocol()
   await startSidecars()
+  ipcMain.on('runtime:opensaddle-url', (event) => {
+    event.returnValue = opensaddleUrl
+  })
   createWindow()
 
   ipcMain.handle('runtime:info', async () => {
@@ -793,9 +859,10 @@ app.whenReady().then(async () => {
     )
     return ({
     mode: 'desktop',
-    opensaddleUrl: OPENSADDLE_URL,
+    opensaddleUrl,
     opensaddleConnected: await opensaddleHealthy(),
     opensaddleError: opensaddleLaunchError,
+    opensaddleNotice: opensaddleCompatibilityNotice,
     sessionBridgeUrl: SESSION_BRIDGE_URL,
     krailUrl: SESSION_BRIDGE_URL,
     krailRuntime: {

@@ -2,11 +2,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('opensaddleDesktop', true)
 contextBridge.exposeInMainWorld('opensaddle', {
+  opensaddleUrl: ipcRenderer.sendSync('runtime:opensaddle-url') as string,
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:info') as Promise<{
     mode: string
     opensaddleUrl: string
     opensaddleConnected: boolean
     opensaddleError: string | null
+    opensaddleNotice: string | null
     sessionBridgeUrl: string
     /** @deprecated Compatibility alias for sessionBridgeUrl. */
     krailUrl: string

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('opensaddleDesktop', true)
 contextBridge.exposeInMainWorld('opensaddle', {
+  opensaddleUrl: ipcRenderer.sendSync('runtime:opensaddle-url'),
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:info'),
   pickRepository: () => ipcRenderer.invoke('runtime:pick-repo'),
   inspectProject: (target) => ipcRenderer.invoke('runtime:inspect-project', target),

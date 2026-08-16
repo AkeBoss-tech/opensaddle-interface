@@ -57,7 +57,13 @@ Python digest before extracting anything.
 Packaging fails closed when a required secret is absent or when signing,
 notarization, stapling, Gatekeeper assessment, manifest validation, or any
 sanitized launcher smoke test fails. The mounted DMG is checked independently
-from the pre-package bundle.
+from the pre-package bundle. The clean-install gate launches the Electron app
+from the mounted image with a fresh home and state directory, waits for its
+managed `opensaddle serve-api` process, requires the `project_onboarding`
+capability at the exact `opensaddle.project-onboarding/v1` contract, registers
+a disposable dirty Git project, and runs profile-only KRAIL prepare without
+starting Codex or Claude. It verifies that prepare did not change the project
+and that both the app and sidecar stop during cleanup.
 
 ## Outputs and verification
 

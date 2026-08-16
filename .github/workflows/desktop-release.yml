@@ -204,6 +204,8 @@ jobs:
             electron/runtime-bundle/krail-runtime/bin/krail-mutate --help
           env -i PATH=/usr/bin:/bin HOME="$SMOKE_HOME" TMPDIR="$RUNNER_TEMP" \
             electron/runtime-bundle/opensaddle-backend/opensaddle --help
+          node scripts/smoke-packaged-onboarding.mjs \
+            --resources electron/runtime-bundle
 
       - name: Build renderer and Electron main process
         run: |
@@ -301,6 +303,7 @@ jobs:
           const report = fs.readFileSync(path.join(process.env.PACKAGED_RESOURCES, 'krail-runtime/dependency-install-report.json'));
           if (crypto.createHash('sha256').update(report).digest('hex') !== krail.dependencies?.sha256) throw new Error('Packaged dependency report SHA mismatch');
           NODE
+          node scripts/smoke-packaged-onboarding.mjs --app "$APP_PATH"
           cleanup_mount
           trap - EXIT
 
