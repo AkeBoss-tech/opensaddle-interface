@@ -1,5 +1,8 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import React, { type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cx } from './cx'
+
+// Node-rendered component tests use the classic JSX transform.
+void React
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ButtonSize = 'sm' | 'md' | 'lg'

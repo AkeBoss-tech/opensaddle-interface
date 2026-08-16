@@ -635,6 +635,198 @@ export interface ProjectMemoryCandidateReview {
   reason?: string
 }
 
+export type ProjectOnboardingRunner = 'codex_cli' | 'claude_code'
+export type ProjectOnboardingStatus =
+  | 'not_prepared'
+  | 'ready'
+  | 'running'
+  | 'approval_required'
+  | 'committed'
+  | 'applied'
+  | 'failed'
+  | 'interrupted'
+
+export interface ProjectOnboardingEvidence {
+  path: string
+  revision?: string | null
+  span?: { startLine: number; endLine: number }
+  digest?: string
+}
+
+export interface ProjectOnboardingVerification {
+  name: string
+  command: string
+  evidence: string[]
+  timeoutSeconds?: number
+}
+
+export interface ProjectOnboardingRecommendationOption {
+  recommendationId: string
+  kind: 'proposal_generation' | 'project_action'
+  title: string
+  summary: string
+  instruction: string
+  allowedPaths: string[]
+  verification: ProjectOnboardingVerification[]
+  commitMessage: string
+}
+
+export interface ProjectOnboardingClaim {
+  text: string
+  evidence: ProjectOnboardingEvidence[]
+}
+
+export interface ProjectOnboardingReviewedProposal {
+  contract: 'krail.project-profile/v1' | 'krail.automation-recommendations/v1'
+  summary?: string
+  claims: ProjectOnboardingClaim[]
+  review: {
+    status: 'proposed' | 'accepted' | 'rejected'
+    reviewedBy?: string
+  }
+}
+
+export interface ProjectOnboardingProfile extends ProjectOnboardingReviewedProposal {
+  contract: 'krail.project-profile/v1'
+}
+
+export interface ProjectOnboardingAutomationRecommendations extends ProjectOnboardingReviewedProposal {
+  contract: 'krail.automation-recommendations/v1'
+}
+
+export interface ProjectOnboardingDiscovery {
+  contract: 'krail.project-discovery/v1'
+  root: string
+  mode: 'onboard' | 'refresh'
+  fingerprint: string
+  languages: string[]
+  fileCount: number
+  repository?: {
+    kind?: 'git' | 'directory'
+    revision?: string | null
+    dirty?: boolean
+  }
+  commands: Array<{
+    command: string
+    kind: string
+    evidence: ProjectOnboardingEvidence[]
+  }>
+}
+
+export interface ProjectOnboardingState {
+  contract: 'opensaddle.project-onboarding/v1'
+  projectId: string
+  status: ProjectOnboardingStatus
+  runner?: ProjectOnboardingRunner | null
+  fingerprint?: string | null
+  discovery?: ProjectOnboardingDiscovery | null
+  profile?: ProjectOnboardingProfile | null
+  automationRecommendations?: ProjectOnboardingAutomationRecommendations | null
+  recommendationOptions: ProjectOnboardingRecommendationOption[]
+  activeRunId?: string | null
+  executionHead?: string | null
+  executionReady: boolean
+  executionBarriers: ProjectOnboardingReadinessCheck[]
+  refreshRequired: boolean
+  error?: string | null
+}
+
+export type ProjectOnboardingReadinessCheck =
+  | 'registered_project'
+  | 'root_exists'
+  | 'git_repository'
+  | 'git_head'
+  | 'git_clean'
+  | 'runner_executable'
+  | 'runner_authenticated'
+  | 'krail_discovery'
+  | 'state_root_external'
+  | 'source_has_no_opensaddle_state'
+  | 'state_root_writable'
+
+export interface ProjectOnboardingReadiness {
+  contract: 'opensaddle.onboarding-readiness/v1'
+  projectId: string
+  runner: ProjectOnboardingRunner
+  ready: boolean
+  discoveryReady: boolean
+  executionReady: boolean
+  discoveryBarriers: ProjectOnboardingReadinessCheck[]
+  executionBarriers: ProjectOnboardingReadinessCheck[]
+  informationalChecks: ProjectOnboardingReadinessCheck[]
+  checks: Record<ProjectOnboardingReadinessCheck, boolean>
+  root: string
+  head?: string | null
+  runnerPath?: string | null
+  harness: {
+    id: string
+    installed: boolean
+    readiness?: string | null
+    loginGuidance?: string | null
+  }
+  state: {
+    database: string
+    worktrees: string
+    receipts: string
+    episodes: string
+  }
+  error?: string | null
+  isolation: 'detached_git_worktree_only'
+  warning: string
+  warnings: string[]
+}
+
+export interface ProjectOnboardingActivity {
+  kind: string
+  label: string
+  detail?: string
+  timestamp?: string
+}
+
+export interface ProjectOnboardingChange {
+  contract:
+    | 'opensaddle.onboarding-change-proposal/v1'
+    | 'opensaddle.onboarding-change-receipt/v1'
+  projectId?: string
+  runId: string
+  recommendationId?: string
+  fingerprint?: string
+  status:
+    | 'running'
+    | 'approval_required'
+    | 'committed'
+    | 'verification_failed'
+    | 'rejected'
+    | 'applied'
+    | 'failed'
+    | 'interrupted'
+  diffDigest?: string | null
+  changedFiles: string[]
+  patch?: string | null
+  verification: ProjectOnboardingVerification[]
+  activity: ProjectOnboardingActivity[]
+  checks: Array<{ name: string; passed: boolean; exitCode?: number | null }>
+  profile?: ProjectOnboardingProfile | null
+  automationRecommendations?: ProjectOnboardingAutomationRecommendations | null
+  recommendationOptions: ProjectOnboardingRecommendationOption[]
+  commit?: string | null
+  ref?: string | null
+  baseCommit?: string | null
+  author?: { name: string; email: string } | null
+  recommendationKind?: ProjectOnboardingRecommendationOption['kind']
+  summary?: string | null
+  error?: string | null
+  recoverable?: boolean
+}
+
+export interface ProjectOnboardingDiff {
+  contract: 'opensaddle.onboarding-diff/v1'
+  runId: string
+  diffDigest: string
+  changedFiles: string[]
+  patch: string
+}
+
 export interface ProjectFileEntry {
   path: string
   name: string
@@ -690,6 +882,25 @@ export interface LocalProjectClient {
   memoryContextBrief?(projectId: string, input: { query: string; maxItems?: number; maxTotalBytes?: number }): Promise<ProjectMemoryContextBrief>
   memoryCandidates?(projectId: string): Promise<ProjectMemoryCandidate[]>
   reviewMemoryCandidate?(projectId: string, review: ProjectMemoryCandidateReview): Promise<ProjectMemoryCandidate>
+  onboardingState?(projectId: string): Promise<ProjectOnboardingState>
+  onboardingReadiness?(projectId: string, runner: ProjectOnboardingRunner): Promise<ProjectOnboardingReadiness>
+  prepareOnboarding?(projectId: string, input: { runner: ProjectOnboardingRunner }): Promise<ProjectOnboardingState>
+  startOnboardingRecommendation?(projectId: string, input: { recommendationId: string; model?: string }): Promise<ProjectOnboardingChange>
+  onboardingChange?(projectId: string, runId: string): Promise<ProjectOnboardingChange>
+  onboardingDiff?(projectId: string, runId: string): Promise<ProjectOnboardingDiff>
+  approveOnboardingChange?(projectId: string, runId: string, input: {
+    approvedBy: string
+    expectedDiffDigest: string
+  }): Promise<ProjectOnboardingChange>
+  rejectOnboardingChange?(projectId: string, runId: string, input: {
+    rejectedBy: string
+    reason?: string
+  }): Promise<ProjectOnboardingChange>
+  applyOnboardingCommit?(projectId: string, runId: string, input: {
+    appliedBy: string
+    expectedHead: string
+    expectedCommit: string
+  }): Promise<ProjectOnboardingChange>
   /** @deprecated Compatibility alias for the former read-only knowledge bridge. */
   knowledgeStatus?(projectId: string): Promise<KrailKnowledgeStatus>
   listFiles(projectId: string, input?: { path?: string; limit?: number }): Promise<{

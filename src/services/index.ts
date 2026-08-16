@@ -35,6 +35,7 @@ export interface ServiceBundle {
     modelProvider?: string
     models: string[]
     storage?: string
+    capabilities: string[]
   }
 }
 
@@ -181,6 +182,7 @@ export function initServices(opts: {
           modelProvider,
           models: configuredModels,
           storage,
+          capabilities: [...backendCapabilities].sort(),
         },
       }
     })()

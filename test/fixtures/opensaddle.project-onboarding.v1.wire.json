@@ -1,0 +1,407 @@
+{
+  "contract": "opensaddle.project-onboarding-wire-fixture/v1",
+  "health_capability": "project_onboarding",
+  "readiness": {
+    "contract": "opensaddle.onboarding-readiness/v1",
+    "project_id": "demo",
+    "runner": "codex_cli",
+    "ready": true,
+    "discovery_ready": true,
+    "execution_ready": true,
+    "discovery_barriers": [],
+    "execution_barriers": [],
+    "informational_checks": [
+      "source_has_no_opensaddle_state"
+    ],
+    "warnings": [],
+    "checks": {
+      "registered_project": true,
+      "root_exists": true,
+      "git_repository": true,
+      "git_head": true,
+      "git_clean": true,
+      "runner_executable": true,
+      "runner_authenticated": true,
+      "krail_discovery": true,
+      "state_root_external": true,
+      "source_has_no_opensaddle_state": true,
+      "state_root_writable": true
+    },
+    "root": "/work/demo",
+    "head": "cccccccccccccccccccccccccccccccccccccccc",
+    "runner_path": "/usr/local/bin/codex",
+    "harness": {
+      "id": "codex",
+      "installed": true,
+      "readiness": "ready",
+      "login_guidance": null
+    },
+    "state": {
+      "database": "/state/onboarding.sqlite3",
+      "worktrees": "/state/onboarding-worktrees",
+      "receipts": "/state/onboarding-receipts",
+      "episodes": "/state/onboarding-episodes"
+    },
+    "error": null,
+    "isolation": "detached_git_worktree_only",
+    "warning": "OpenSaddle does not provide OS, process, network, credential, or secret isolation. The selected coding-agent subprocess runs with the local user's host authority."
+  },
+  "state": {
+    "contract": "opensaddle.project-onboarding/v1",
+    "project_id": "demo",
+    "status": "ready",
+    "runner": "codex_cli",
+    "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "discovery": {
+      "contract": "krail.project-discovery/v1",
+      "root": "/work/demo",
+      "mode": "onboard",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "repository": {
+        "kind": "git",
+        "revision": "cccccccccccccccccccccccccccccccccccccccc",
+        "dirty": false
+      },
+      "languages": [
+        "python"
+      ],
+      "inventory": {
+        "manifests": [],
+        "ci": [],
+        "ownership": [],
+        "deployment": [],
+        "migrations": [],
+        "documentation": [
+          {
+            "path": "README.md",
+            "revision": "cccccccccccccccccccccccccccccccccccccccc",
+            "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "span": {
+              "start_line": 1,
+              "end_line": 1
+            }
+          }
+        ],
+        "entry_points": []
+      },
+      "commands": [
+        {
+          "command": "python -m pytest -q",
+          "kind": "test",
+          "evidence": [
+            {
+              "path": "README.md",
+              "revision": "cccccccccccccccccccccccccccccccccccccccc",
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "span": {
+                "start_line": 1,
+                "end_line": 1
+              }
+            }
+          ]
+        }
+      ],
+      "file_count": 2
+    },
+    "work_order": {
+      "contract": "krail.project-onboarding-work-order/v1",
+      "runner": "codex_cli",
+      "execution": "external",
+      "dry_run": false,
+      "root": "/work/demo",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "bounds": {
+        "read_root": ".",
+        "write_paths": [
+          "research_plan/state/project_profile.proposal.json",
+          "research_plan/state/automation_recommendations.proposal.json"
+        ],
+        "launch_subprocess": false
+      },
+      "requested_contracts": [
+        "krail.project-profile/v1",
+        "krail.automation-recommendations/v1"
+      ],
+      "review_required": true
+    },
+    "profile": null,
+    "automation_recommendations": {
+      "contract": "krail.automation-recommendations/v1",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "review": {
+        "status": "proposed"
+      },
+      "claims": [],
+      "recommendations": [
+        {
+          "recommendation_id": "project-orient",
+          "kind": "proposal_generation",
+          "title": "Orient KRAIL to this project",
+          "summary": "Create reviewable project profile and automation proposals.",
+          "instruction": "Inspect the project and write only the two bounded proposal files.",
+          "allowed_paths": [
+            "research_plan/state/project_profile.proposal.json",
+            "research_plan/state/automation_recommendations.proposal.json"
+          ],
+          "verification": [
+            {
+              "name": "validate-krail-onboarding-proposals",
+              "command": "python -m opensaddle.onboarding_verify research_plan/state/project_profile.proposal.json research_plan/state/automation_recommendations.proposal.json sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "evidence": [
+                "krail.project-discovery/v1:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ],
+              "timeout_seconds": 120
+            }
+          ],
+          "commit_message": "Add reviewed KRAIL onboarding proposals"
+        }
+      ]
+    },
+    "recommendation_options": [
+      {
+        "recommendation_id": "project-orient",
+        "kind": "proposal_generation",
+        "title": "Orient KRAIL to this project",
+        "summary": "Create reviewable project profile and automation proposals.",
+        "instruction": "Inspect the project and write only the two bounded proposal files.",
+        "allowed_paths": [
+          "research_plan/state/project_profile.proposal.json",
+          "research_plan/state/automation_recommendations.proposal.json"
+        ],
+        "verification": [
+          {
+            "name": "validate-krail-onboarding-proposals",
+            "command": "python -m opensaddle.onboarding_verify research_plan/state/project_profile.proposal.json research_plan/state/automation_recommendations.proposal.json sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "evidence": [
+              "krail.project-discovery/v1:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "timeout_seconds": 120
+          }
+        ],
+        "commit_message": "Add reviewed KRAIL onboarding proposals",
+        "executable": true
+      }
+    ],
+    "active_run_id": null,
+    "execution_head": "cccccccccccccccccccccccccccccccccccccccc",
+    "execution_ready": true,
+    "execution_barriers": [],
+    "refresh_required": false,
+    "error": null
+  },
+  "proposal": {
+    "contract": "opensaddle.onboarding-change-proposal/v1",
+    "project_id": "demo",
+    "run_id": "onb_demo",
+    "recommendation_id": "project-orient",
+    "recommendation_kind": "proposal_generation",
+    "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "approval_required",
+    "diff_digest": "sha256:bf4b799601bbf21515ddcecf851a6ec7a384955debae7b50e0b4bce9d182e961",
+    "changed_files": [
+      "research_plan/state/project_profile.proposal.json",
+      "research_plan/state/automation_recommendations.proposal.json"
+    ],
+    "patch": "diff --git a/research_plan/state/project_profile.proposal.json b/research_plan/state/project_profile.proposal.json\n+{\"contract\":\"krail.project-profile/v1\"}\ndiff --git a/research_plan/state/automation_recommendations.proposal.json b/research_plan/state/automation_recommendations.proposal.json\n+{\"contract\":\"krail.automation-recommendations/v1\"}\n",
+    "verification": [
+      {
+        "name": "validate-krail-onboarding-proposals",
+        "command": "python -m opensaddle.onboarding_verify research_plan/state/project_profile.proposal.json research_plan/state/automation_recommendations.proposal.json sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidence": [
+          "krail.project-discovery/v1:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "timeout_seconds": 120
+      }
+    ],
+    "activity": [
+      {
+        "type": "run.queued",
+        "kind": "run.queued",
+        "label": "Run Queued",
+        "detail": null,
+        "at": "2026-08-16T12:00:00+00:00",
+        "timestamp": "2026-08-16T12:00:00+00:00"
+      },
+      {
+        "type": "approval.required",
+        "kind": "approval.required",
+        "label": "Approval Required",
+        "detail": null,
+        "at": "2026-08-16T12:01:00+00:00",
+        "timestamp": "2026-08-16T12:01:00+00:00"
+      }
+    ],
+    "checks": [],
+    "commit": null,
+    "ref": null,
+    "error": null,
+    "recoverable": false,
+    "model": null,
+    "profile": {
+      "contract": "krail.project-profile/v1",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "summary": "A local Python service.",
+      "review": {
+        "status": "proposed"
+      },
+      "claims": [
+        {
+          "text": "The project documents its entry point.",
+          "evidence": [
+            {
+              "path": "README.md",
+              "revision": "cccccccccccccccccccccccccccccccccccccccc",
+              "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "span": {
+                "start_line": 1,
+                "end_line": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "automation_recommendations": {
+      "contract": "krail.automation-recommendations/v1",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "review": {
+        "status": "proposed"
+      },
+      "claims": [],
+      "recommendations": [
+        {
+          "recommendation_id": "add-project-skill",
+          "kind": "project_action",
+          "title": "Add a project skill",
+          "summary": "Create a bounded project-specific Codex skill.",
+          "instruction": "Create the reviewed project skill.",
+          "allowed_paths": [
+            ".codex/skills/demo/SKILL.md"
+          ],
+          "verification": [
+            {
+              "name": "skill-exists",
+              "command": "test -f .codex/skills/demo/SKILL.md",
+              "evidence": [
+                "README.md:1"
+              ],
+              "timeout_seconds": 30
+            }
+          ],
+          "commit_message": "Add project-specific Codex skill"
+        }
+      ]
+    },
+    "recommendation_options": [
+      {
+        "recommendation_id": "add-project-skill",
+        "kind": "project_action",
+        "title": "Add a project skill",
+        "summary": "Create a bounded project-specific Codex skill.",
+        "instruction": "Create the reviewed project skill.",
+        "allowed_paths": [
+          ".codex/skills/demo/SKILL.md"
+        ],
+        "verification": [
+          {
+            "name": "skill-exists",
+            "command": "test -f .codex/skills/demo/SKILL.md",
+            "evidence": [
+              "README.md:1"
+            ],
+            "timeout_seconds": 30
+          }
+        ],
+        "commit_message": "Add project-specific Codex skill",
+        "executable": true
+      }
+    ]
+  },
+  "diff": {
+    "contract": "opensaddle.onboarding-diff/v1",
+    "project_id": "demo",
+    "run_id": "onb_demo",
+    "diff_digest": "sha256:bf4b799601bbf21515ddcecf851a6ec7a384955debae7b50e0b4bce9d182e961",
+    "changed_files": [
+      "research_plan/state/project_profile.proposal.json",
+      "research_plan/state/automation_recommendations.proposal.json"
+    ],
+    "patch": "diff --git a/research_plan/state/project_profile.proposal.json b/research_plan/state/project_profile.proposal.json\n+{\"contract\":\"krail.project-profile/v1\"}\ndiff --git a/research_plan/state/automation_recommendations.proposal.json b/research_plan/state/automation_recommendations.proposal.json\n+{\"contract\":\"krail.automation-recommendations/v1\"}\n"
+  },
+  "committed": {
+    "contract": "opensaddle.onboarding-change-receipt/v1",
+    "project_id": "demo",
+    "run_id": "onb_demo",
+    "recommendation_id": "project-orient",
+    "recommendation_kind": "proposal_generation",
+    "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "committed",
+    "diff_digest": "sha256:bf4b799601bbf21515ddcecf851a6ec7a384955debae7b50e0b4bce9d182e961",
+    "changed_files": [
+      "research_plan/state/project_profile.proposal.json",
+      "research_plan/state/automation_recommendations.proposal.json"
+    ],
+    "patch": "diff --git a/research_plan/state/project_profile.proposal.json b/research_plan/state/project_profile.proposal.json\n+{\"contract\":\"krail.project-profile/v1\"}\ndiff --git a/research_plan/state/automation_recommendations.proposal.json b/research_plan/state/automation_recommendations.proposal.json\n+{\"contract\":\"krail.automation-recommendations/v1\"}\n",
+    "verification": [],
+    "activity": [],
+    "checks": [
+      {
+        "name": "validate-krail-onboarding-proposals",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false
+      }
+    ],
+    "base_commit": "cccccccccccccccccccccccccccccccccccccccc",
+    "commit": "dddddddddddddddddddddddddddddddddddddddd",
+    "tree": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "ref": "refs/opensaddle/onboarding/onb_demo",
+    "approved_by": "maintainer@example.test",
+    "author": {
+      "name": "OpenSaddle Local Demo",
+      "email": "local-demo@opensaddle.invalid"
+    },
+    "summary": "[detached HEAD ddddddd] Add reviewed KRAIL onboarding proposals",
+    "error": null,
+    "recoverable": false
+  },
+  "applied": {
+    "contract": "opensaddle.onboarding-change-receipt/v1",
+    "project_id": "demo",
+    "run_id": "onb_demo",
+    "recommendation_id": "project-orient",
+    "recommendation_kind": "proposal_generation",
+    "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "applied",
+    "diff_digest": "sha256:bf4b799601bbf21515ddcecf851a6ec7a384955debae7b50e0b4bce9d182e961",
+    "changed_files": [
+      "research_plan/state/project_profile.proposal.json",
+      "research_plan/state/automation_recommendations.proposal.json"
+    ],
+    "patch": "diff --git a/research_plan/state/project_profile.proposal.json b/research_plan/state/project_profile.proposal.json\n+{\"contract\":\"krail.project-profile/v1\"}\ndiff --git a/research_plan/state/automation_recommendations.proposal.json b/research_plan/state/automation_recommendations.proposal.json\n+{\"contract\":\"krail.automation-recommendations/v1\"}\n",
+    "verification": [],
+    "activity": [],
+    "checks": [
+      {
+        "name": "validate-krail-onboarding-proposals",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false
+      }
+    ],
+    "base_commit": "cccccccccccccccccccccccccccccccccccccccc",
+    "commit": "dddddddddddddddddddddddddddddddddddddddd",
+    "tree": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "ref": "refs/opensaddle/onboarding/onb_demo",
+    "approved_by": "maintainer@example.test",
+    "applied_by": "maintainer@example.test",
+    "applied_head": "dddddddddddddddddddddddddddddddddddddddd",
+    "author": {
+      "name": "OpenSaddle Local Demo",
+      "email": "local-demo@opensaddle.invalid"
+    },
+    "summary": "Fast-forward",
+    "error": null,
+    "recoverable": false
+  }
+}

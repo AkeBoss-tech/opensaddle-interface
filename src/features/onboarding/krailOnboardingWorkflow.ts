@@ -38,7 +38,7 @@ export function canAdvanceKrailOnboarding(input: {
 export function krailOnboardingTask(runner: KrailOnboardingRunner): string {
   return [
     'Prepare KRAIL project onboarding proposals for this registered project.',
-    'Run only in the isolated worktree created by OpenSaddle.',
+    'Run in the detached Git worktree created by OpenSaddle. This does not provide OS, process, network, or credential isolation.',
     `Use the ${runner} work order emitted by KRAIL.`,
     'Write only the bounded project-profile and automation-recommendation proposal files.',
     'Do not promote knowledge, execute a recommended automation, push, or commit.',

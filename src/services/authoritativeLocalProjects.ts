@@ -14,8 +14,19 @@ import type {
   ProjectMemoryInitPlan,
   ProjectMemoryOperation,
   ProjectMemoryStatus,
+  ProjectOnboardingChange,
+  ProjectOnboardingDiff,
+  ProjectOnboardingReadiness,
+  ProjectOnboardingRunner,
+  ProjectOnboardingState,
   RegisteredLocalProject,
 } from './contracts'
+import {
+  projectOnboardingChangeFromWire,
+  projectOnboardingDiffFromWire,
+  projectOnboardingReadinessFromWire,
+  projectOnboardingStateFromWire,
+} from './projectOnboardingWire'
 
 type Fetcher = typeof fetch
 
@@ -151,7 +162,6 @@ function memoryStatusFromDomain(value: unknown): ProjectMemoryStatus {
     lastOperation: wire.lastOperation,
   }
 }
-
 const HARNESS_ID_ALIASES: Record<string, string> = {
   'claude-code': 'claude',
 }
@@ -335,10 +345,19 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   }
 
   private async memoryMutationRequest<T>(path: string, init: RequestInit): Promise<T> {
+    const mutate = (credential: { header: string; token: string }) => {
+      const headers = new Headers(init.headers)
+      headers.set(credential.header, credential.token)
+      return this.memoryRequest<T>(path, { ...init, headers })
+    }
     const credential = await this.getLocalActionCredential()
-    const headers = new Headers(init.headers)
-    headers.set(credential.header, credential.token)
-    return this.memoryRequest<T>(path, { ...init, headers })
+    try {
+      return await mutate(credential)
+    } catch (error) {
+      if (!(error instanceof AuthoritativeProjectHttpError) || error.status !== 403) throw error
+      if (this.localActionCredential?.token === credential.token) this.localActionCredential = null
+      return mutate(await this.getLocalActionCredential())
+    }
   }
 
   private async root(projectId: string): Promise<string> {
@@ -512,6 +531,126 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
     return this.memoryMutationRequest(this.projectPath(projectId, `memory/candidates/${encodeURIComponent(review.candidateId)}/${review.decision}`), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: review.reason }),
     })
+  }
+
+  async onboardingState(projectId: string): Promise<ProjectOnboardingState> {
+    return projectOnboardingStateFromWire(
+      await this.request<unknown>(this.projectPath(projectId, 'onboarding')),
+      projectId,
+    )
+  }
+
+  async onboardingReadiness(
+    projectId: string,
+    runner: ProjectOnboardingRunner,
+  ): Promise<ProjectOnboardingReadiness> {
+    const query = new URLSearchParams({ runner })
+    return projectOnboardingReadinessFromWire(
+      await this.request<unknown>(this.projectPath(projectId, `onboarding/readiness?${query}`)),
+      projectId,
+      runner,
+    )
+  }
+
+  async prepareOnboarding(
+    projectId: string,
+    input: { runner: ProjectOnboardingRunner },
+  ): Promise<ProjectOnboardingState> {
+    const value = await this.memoryMutationRequest<unknown>(this.projectPath(projectId, 'onboarding/prepare'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ runner: input.runner }),
+    })
+    return projectOnboardingStateFromWire(value, projectId)
+  }
+
+  async startOnboardingRecommendation(
+    projectId: string,
+    input: { recommendationId: string; model?: string },
+  ): Promise<ProjectOnboardingChange> {
+    const value = await this.memoryMutationRequest<unknown>(this.projectPath(projectId, 'onboarding/proposals'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recommendation_id: input.recommendationId,
+        ...(input.model ? { model: input.model } : {}),
+      }),
+    })
+    return projectOnboardingChangeFromWire(value, projectId)
+  }
+
+  async onboardingChange(projectId: string, runId: string): Promise<ProjectOnboardingChange> {
+    const value = await this.request<unknown>(
+      this.projectPath(projectId, `onboarding/proposals/${encodeURIComponent(runId)}`),
+    )
+    return projectOnboardingChangeFromWire(value, projectId)
+  }
+
+  async onboardingDiff(projectId: string, runId: string): Promise<ProjectOnboardingDiff> {
+    return projectOnboardingDiffFromWire(
+      await this.request<unknown>(
+        this.projectPath(projectId, `onboarding/proposals/${encodeURIComponent(runId)}/diff`),
+      ),
+      runId,
+    )
+  }
+
+  async approveOnboardingChange(
+    projectId: string,
+    runId: string,
+    input: { approvedBy: string; expectedDiffDigest: string },
+  ): Promise<ProjectOnboardingChange> {
+    const value = await this.memoryMutationRequest<unknown>(
+      this.projectPath(projectId, `onboarding/proposals/${encodeURIComponent(runId)}/approve`),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          approved_by: input.approvedBy,
+          expected_diff_digest: input.expectedDiffDigest,
+        }),
+      },
+    )
+    return projectOnboardingChangeFromWire(value, projectId)
+  }
+
+  async rejectOnboardingChange(
+    projectId: string,
+    runId: string,
+    input: { rejectedBy: string; reason?: string },
+  ): Promise<ProjectOnboardingChange> {
+    const value = await this.memoryMutationRequest<unknown>(
+      this.projectPath(projectId, `onboarding/proposals/${encodeURIComponent(runId)}/reject`),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rejected_by: input.rejectedBy,
+          ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+        }),
+      },
+    )
+    return projectOnboardingChangeFromWire(value, projectId)
+  }
+
+  async applyOnboardingCommit(
+    projectId: string,
+    runId: string,
+    input: { appliedBy: string; expectedHead: string; expectedCommit: string },
+  ): Promise<ProjectOnboardingChange> {
+    const value = await this.memoryMutationRequest<unknown>(
+      this.projectPath(projectId, `onboarding/proposals/${encodeURIComponent(runId)}/apply`),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          applied_by: input.appliedBy,
+          expected_head: input.expectedHead,
+          expected_commit: input.expectedCommit,
+        }),
+      },
+    )
+    return projectOnboardingChangeFromWire(value, projectId)
   }
 
   async listFiles(projectId: string, input: { path?: string; limit?: number } = {}) {
