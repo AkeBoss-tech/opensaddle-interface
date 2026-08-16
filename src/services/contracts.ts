@@ -739,10 +739,21 @@ export type ProjectOnboardingReadinessCheck =
   | 'git_clean'
   | 'runner_executable'
   | 'runner_authenticated'
+  | 'runner_compatible'
   | 'krail_discovery'
   | 'state_root_external'
   | 'source_has_no_opensaddle_state'
   | 'state_root_writable'
+
+export interface ProjectOnboardingRunnerCompatibility {
+  status: 'compatible' | 'incompatible' | 'unknown' | 'unavailable'
+  command: string[]
+  requiredOptions: string[]
+  missingOptions: string[]
+  probeStatus: 'ok' | 'failed' | 'timeout' | 'not_run'
+  reason?: string | null
+  upgradeGuidance?: string | null
+}
 
 export interface ProjectOnboardingReadiness {
   contract: 'opensaddle.onboarding-readiness/v1'
@@ -764,6 +775,7 @@ export interface ProjectOnboardingReadiness {
     readiness?: string | null
     loginGuidance?: string | null
   }
+  runnerCompatibility: ProjectOnboardingRunnerCompatibility
   state: {
     database: string
     worktrees: string
@@ -883,7 +895,7 @@ export interface LocalProjectClient {
   memoryCandidates?(projectId: string): Promise<ProjectMemoryCandidate[]>
   reviewMemoryCandidate?(projectId: string, review: ProjectMemoryCandidateReview): Promise<ProjectMemoryCandidate>
   onboardingState?(projectId: string): Promise<ProjectOnboardingState>
-  onboardingReadiness?(projectId: string, runner: ProjectOnboardingRunner): Promise<ProjectOnboardingReadiness>
+  onboardingReadiness?(projectId: string, runner: ProjectOnboardingRunner, model?: string): Promise<ProjectOnboardingReadiness>
   prepareOnboarding?(projectId: string, input: { runner: ProjectOnboardingRunner }): Promise<ProjectOnboardingState>
   startOnboardingRecommendation?(projectId: string, input: { recommendationId: string; model?: string }): Promise<ProjectOnboardingChange>
   onboardingChange?(projectId: string, runId: string): Promise<ProjectOnboardingChange>

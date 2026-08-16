@@ -22,6 +22,7 @@ const READINESS_CHECKS: ProjectOnboardingReadinessCheck[] = [
   'git_clean',
   'runner_executable',
   'runner_authenticated',
+  'runner_compatible',
   'krail_discovery',
   'state_root_external',
   'source_has_no_opensaddle_state',
@@ -69,6 +70,17 @@ function barrierList(value: unknown, label: string): ProjectOnboardingReadinessC
     throw new Error(`OpenSaddle returned duplicate onboarding ${label}.`)
   }
   return [...barriers]
+}
+
+function nonEmptyStringList(value: unknown, label: string): string[] {
+  if (
+    !Array.isArray(value)
+    || value.some((item) => typeof item !== 'string' || !item.trim())
+    || new Set(value).size !== value.length
+  ) {
+    throw new Error(`OpenSaddle returned invalid onboarding ${label}.`)
+  }
+  return [...value]
 }
 
 function projectRelativePath(value: unknown, label: string): string {
@@ -342,9 +354,34 @@ export function projectOnboardingReadinessFromWire(
     throw new Error('OpenSaddle returned inconsistent onboarding readiness barriers.')
   }
   const harness = object(readiness.harness, 'onboarding harness readiness')
+  const runnerCompatibility = object(readiness.runnerCompatibility, 'runner compatibility')
   const state = object(readiness.state, 'onboarding state storage')
   if (typeof harness.installed !== 'boolean') {
     throw new Error('OpenSaddle returned invalid onboarding harness installation state.')
+  }
+  const compatibilityStatuses = ['compatible', 'incompatible', 'unknown', 'unavailable'] as const
+  const probeStatuses = ['ok', 'failed', 'timeout', 'not_run'] as const
+  if (!compatibilityStatuses.includes(runnerCompatibility.status)) {
+    throw new Error('OpenSaddle returned an invalid onboarding runner compatibility status.')
+  }
+  if (!probeStatuses.includes(runnerCompatibility.probeStatus)) {
+    throw new Error('OpenSaddle returned an invalid onboarding runner compatibility probe status.')
+  }
+  const compatibilityCommand = nonEmptyStringList(runnerCompatibility.command, 'runner compatibility command')
+  const requiredOptions = nonEmptyStringList(runnerCompatibility.requiredOptions, 'runner compatibility requirements')
+  const missingOptions = nonEmptyStringList(runnerCompatibility.missingOptions, 'runner compatibility missing options')
+  if (
+    compatibilityCommand.length === 0
+    || requiredOptions.length === 0
+    || missingOptions.some((option) => !requiredOptions.includes(option))
+    || (runnerCompatibility.status === 'compatible') !== checks.runner_compatible
+    || (runnerCompatibility.status === 'compatible' && (missingOptions.length > 0 || runnerCompatibility.probeStatus !== 'ok'))
+    || (runnerCompatibility.status === 'incompatible' && (missingOptions.length === 0 || runnerCompatibility.probeStatus !== 'ok'))
+    || (runnerCompatibility.status !== 'compatible' && (typeof runnerCompatibility.reason !== 'string' || !runnerCompatibility.reason.trim()))
+    || (runnerCompatibility.reason !== null && runnerCompatibility.reason !== undefined && typeof runnerCompatibility.reason !== 'string')
+    || (runnerCompatibility.upgradeGuidance !== null && runnerCompatibility.upgradeGuidance !== undefined && (typeof runnerCompatibility.upgradeGuidance !== 'string' || !runnerCompatibility.upgradeGuidance.trim()))
+  ) {
+    throw new Error('OpenSaddle returned inconsistent onboarding runner compatibility evidence.')
   }
   const head = readiness.head === null || readiness.head === undefined
     ? readiness.head
@@ -374,6 +411,15 @@ export function projectOnboardingReadinessFromWire(
       installed: harness.installed,
       readiness: harness.readiness === null || typeof harness.readiness === 'string' ? harness.readiness : undefined,
       loginGuidance: harness.loginGuidance === null || typeof harness.loginGuidance === 'string' ? harness.loginGuidance : undefined,
+    },
+    runnerCompatibility: {
+      status: runnerCompatibility.status,
+      command: compatibilityCommand,
+      requiredOptions,
+      missingOptions,
+      probeStatus: runnerCompatibility.probeStatus,
+      reason: runnerCompatibility.reason === null || typeof runnerCompatibility.reason === 'string' ? runnerCompatibility.reason : undefined,
+      upgradeGuidance: runnerCompatibility.upgradeGuidance === null || typeof runnerCompatibility.upgradeGuidance === 'string' ? runnerCompatibility.upgradeGuidance : undefined,
     },
     state: {
       database: string(state.database, 'state database'),

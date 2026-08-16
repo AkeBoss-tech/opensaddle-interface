@@ -16,6 +16,7 @@ import { OnboardingRecommendationReview } from './OnboardingRecommendationReview
 import { onboardingApplyInput } from './onboardingApply'
 import { supportsGovernedProjectOnboarding } from './onboardingAvailability'
 import { onboardingRefreshBarrier } from './onboardingRefresh'
+import { runnerCompatibilityBarrier } from './runnerCompatibility'
 import './project-onboarding.css'
 
 const RUNNERS: Array<{ id: ProjectOnboardingRunner; label: string; capabilityId: string; detail: string }> = [
@@ -73,6 +74,7 @@ function checkLabel(check: ProjectOnboardingReadinessCheck) {
     git_clean: 'clean working tree',
     runner_executable: 'runner executable',
     runner_authenticated: 'runner authentication',
+    runner_compatible: 'runner CLI compatibility',
     krail_discovery: 'KRAIL discovery runtime',
     state_root_external: 'external OpenSaddle state root',
     source_has_no_opensaddle_state: 'no OpenSaddle state inside source',
@@ -98,6 +100,7 @@ export function ProjectOnboardingPage() {
   const [readiness, setReadiness] = useState<ProjectOnboardingReadiness | null>(null)
   const [change, setChange] = useState<ProjectOnboardingChange | null>(null)
   const [runner, setRunner] = useState<ProjectOnboardingRunner>(() => requestedRunner(searchParams.get('runner')))
+  const [model, setModel] = useState(() => searchParams.get('model') ?? '')
   const [selectedRecommendationId, setSelectedRecommendationId] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -124,12 +127,12 @@ export function ProjectOnboardingPage() {
     return next
   }, [client, projectId])
 
-  const refreshReadiness = useCallback(async (selectedRunner = runner) => {
+  const refreshReadiness = useCallback(async (selectedRunner = runner, selectedModel = model) => {
     if (!client?.onboardingReadiness || !projectId) return null
-    const next = await client.onboardingReadiness(projectId, selectedRunner)
+    const next = await client.onboardingReadiness(projectId, selectedRunner, selectedModel || undefined)
     setReadiness(next)
     return next
-  }, [client, projectId, runner])
+  }, [client, model, projectId, runner])
 
   useEffect(() => {
     if (!supported) return
@@ -213,12 +216,14 @@ export function ProjectOnboardingPage() {
           const updated = new URLSearchParams(current)
           updated.delete('start')
           updated.set('runner', runner)
+          if (model) updated.set('model', model)
+          else updated.delete('model')
           return updated
         }, { replace: true })
       })
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => setBusy(null))
-  }, [client, projectId, refreshReadiness, runner, searchParams, setSearchParams, state, supported])
+  }, [client, model, projectId, refreshReadiness, runner, searchParams, setSearchParams, state, supported])
 
   const visibleOptions = useMemo(() => (
     change?.recommendationOptions.length
@@ -234,6 +239,15 @@ export function ProjectOnboardingPage() {
   const selectedOption = visibleOptions.find((option) => option.recommendationId === selectedRecommendationId)
   const runnerInfo = RUNNERS.find((candidate) => candidate.id === runner)!
   const runnerCapability = harnessCapabilities.find((capability) => capability.id === runnerInfo.capabilityId)
+  const availableModels = useMemo(
+    () => runnerCapability?.models.filter((candidate) => candidate.configured) ?? [],
+    [runnerCapability],
+  )
+  useEffect(() => {
+    if (model && runnerCapability && !availableModels.some((candidate) => candidate.id === model)) {
+      setModel('')
+    }
+  }, [availableModels, model, runnerCapability])
   const runnerReady = readiness?.runner === runner && readiness.executionReady
   const repositoryBarrier = !state?.discovery
     ? null
@@ -245,6 +259,7 @@ export function ProjectOnboardingPage() {
           ? 'KRAIL can profile the current files, but the working tree must be clean before detached-worktree agent execution.'
           : null
   const failedReadinessChecks = readiness?.executionBarriers.map(checkLabel) ?? []
+  const compatibilityBarrier = runnerCompatibilityBarrier(readiness)
   const requiredRefreshBarrier = state?.refreshRequired
     ? 'Refresh KRAIL discovery before another action. The applied project change invalidated the previous fingerprint.'
     : null
@@ -269,7 +284,7 @@ export function ProjectOnboardingPage() {
       }
       setState(await client.prepareOnboarding(projectId, { runner }))
       setChange(null)
-      setSearchParams({ runner }, { replace: true })
+      setSearchParams({ runner, ...(model ? { model } : {}) }, { replace: true })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
@@ -281,23 +296,24 @@ export function ProjectOnboardingPage() {
     if (!client?.startOnboardingRecommendation || !selectedOption) return
     if (busy) return
     if (!executionReady) {
-      setError(repositoryBarrier ?? `${runnerInfo.label} is not ready. Complete the local runner setup before starting agent work.`)
+      setError(repositoryBarrier ?? compatibilityBarrier ?? `${runnerInfo.label} is not ready. Complete the local runner setup before starting agent work.`)
       return
     }
     setBusy('run'); setError(null)
     try {
-      const currentReadiness = await refreshReadiness(runner)
+      const currentReadiness = await refreshReadiness(runner, model)
       if (!currentReadiness?.executionReady) {
         const failed = currentReadiness
           ? currentReadiness.executionBarriers.map(checkLabel)
           : ['backend readiness check']
-        throw new Error(`OpenSaddle readiness changed: ${failed.join(', ')}.`)
+        throw new Error(runnerCompatibilityBarrier(currentReadiness) ?? `OpenSaddle readiness changed: ${failed.join(', ')}.`)
       }
       const next = await client.startOnboardingRecommendation(projectId, {
         recommendationId: selectedOption.recommendationId,
+        ...(model ? { model } : {}),
       })
       setChange(next)
-      setSearchParams({ runner, run: next.runId }, { replace: true })
+      setSearchParams({ runner, run: next.runId, ...(model ? { model } : {}) }, { replace: true })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
@@ -392,6 +408,7 @@ export function ProjectOnboardingPage() {
       {readiness && <div className={`onboarding-readiness ${readiness.executionReady ? 'ready' : 'blocked'}`} role="status">
         <div><Icon name={readiness.executionReady ? 'check' : 'shield'} /><span><strong>{readiness.executionReady ? 'OpenSaddle is ready for governed agent execution' : readiness.discoveryReady ? 'Project discovery is available; agent execution is blocked' : 'Project discovery is blocked'}</strong><small>{readiness.executionReady ? `${runnerInfo.label} · clean Git HEAD ${readiness.head?.slice(0, 12)}` : readiness.discoveryReady ? `Execution needs: ${failedReadinessChecks.join(', ') || readiness.error || 'unknown readiness check'}` : `Discovery needs: ${readiness.discoveryBarriers.map(checkLabel).join(', ') || readiness.error || 'unknown readiness check'}`}</small></span></div>
         <p><Icon name="alert" />{readiness.warning}</p>
+        {compatibilityBarrier && <p><Icon name="terminal" />{compatibilityBarrier}</p>}
         {readiness.warnings.map((warning) => <p key={warning}><Icon name="info" />{warning}</p>)}
       </div>}
 
@@ -434,6 +451,7 @@ export function ProjectOnboardingPage() {
               <div><span className="onboarding-card-icon"><Icon name="spark" /></span><div><h2 id="onboarding-recommendation-title">2. Choose a recommendation</h2><p>Options are projected by OpenSaddle from KRAIL’s canonical, evidence-backed proposal.</p></div></div>
               <span className={`onboarding-runner-readiness ${runnerReady ? 'ready' : 'blocked'}`}>{runnerInfo.label} · {runnerReady ? 'ready' : runnerCapability?.readiness?.replaceAll('_', ' ') ?? 'not detected'}</span>
             </div>
+            {availableModels.length > 0 && <label className="onboarding-model-select"><span>Runner model</span><select value={model} onChange={(event) => setModel(event.target.value)} disabled={Boolean(busy)}><option value="">Runner default</option>{availableModels.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.displayName ?? candidate.id}{candidate.isDefault ? ' (default)' : ''}</option>)}</select><small>Selecting a model preflights the runner’s <code>--model</code> support before execution.</small></label>}
             {profile && <div className="onboarding-proposal-preview"><div><span>Project profile</span><strong>{profile.summary ?? `${profile.claims.length} source-backed claims`}</strong></div><ul>{profile.claims.slice(0, 5).map((claim, index) => <li key={`${claim.text}:${index}`}><Icon name="check" /><span>{claim.text}<small>{claim.evidence.map((evidence) => evidence.path).join(', ')}</small></span></li>)}</ul></div>}
             {automationRecommendations && <div className="onboarding-proposal-preview"><div><span>Canonical automation proposal</span><strong>{automationRecommendations.summary ?? `${automationRecommendations.claims.length} recommendations`}</strong></div><ul>{automationRecommendations.claims.slice(0, 5).map((claim, index) => <li key={`${claim.text}:${index}`}><Icon name="activity" /><span>{claim.text}<small>{claim.evidence.map((evidence) => evidence.path).join(', ')}</small></span></li>)}</ul></div>}
             <div className="onboarding-options" role="radiogroup" aria-label="KRAIL recommendations">
@@ -445,7 +463,7 @@ export function ProjectOnboardingPage() {
             </div>
             {selectedOption && <OnboardingRecommendationReview option={selectedOption} runnerLabel={runnerInfo.label} />}
             <div className="onboarding-actions"><Button variant="secondary" disabled={Boolean(activeRunRefreshBarrier) || Boolean(busy)} onClick={() => void prepare()} loading={busy === 'prepare'}>{state.refreshRequired ? 'Refresh KRAIL discovery' : 'Refresh discovery'}</Button><Button disabled={Boolean(busy) || !selectedOption || !executionReady || Boolean(change && !['rejected', 'applied'].includes(change.status))} loading={busy === 'run'} onClick={() => void startRecommendation()}><Icon name="play" className="icon xs" />{selectedOption?.kind === 'proposal_generation' ? 'Analyze and propose setup' : 'Apply project action in worktree'}</Button></div>
-            {(activeRunRefreshBarrier || !runnerReady || repositoryBarrier || requiredRefreshBarrier) && <p className="onboarding-inline-barrier"><Icon name="shield" />{activeRunRefreshBarrier ?? requiredRefreshBarrier ?? repositoryBarrier ?? (readiness ? `OpenSaddle readiness failed: ${failedReadinessChecks.join(', ') || readiness.error || 'unknown check'}.` : runnerCapability?.unavailableReason ?? runnerCapability?.auth.message ?? `Checking ${runnerInfo.label} and project readiness with OpenSaddle.`)}</p>}
+            {(activeRunRefreshBarrier || !runnerReady || repositoryBarrier || requiredRefreshBarrier) && <p className="onboarding-inline-barrier"><Icon name="shield" />{activeRunRefreshBarrier ?? requiredRefreshBarrier ?? repositoryBarrier ?? compatibilityBarrier ?? (readiness ? `OpenSaddle readiness failed: ${failedReadinessChecks.join(', ') || readiness.error || 'unknown check'}.` : runnerCapability?.unavailableReason ?? runnerCapability?.auth.message ?? `Checking ${runnerInfo.label} and project readiness with OpenSaddle.`)}</p>}
           </section>}
 
           {change && <section className="onboarding-card" aria-labelledby="onboarding-run-title">

@@ -543,8 +543,9 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   async onboardingReadiness(
     projectId: string,
     runner: ProjectOnboardingRunner,
+    model?: string,
   ): Promise<ProjectOnboardingReadiness> {
-    const query = new URLSearchParams({ runner })
+    const query = new URLSearchParams({ runner, ...(model ? { model } : {}) })
     return projectOnboardingReadinessFromWire(
       await this.request<unknown>(this.projectPath(projectId, `onboarding/readiness?${query}`)),
       projectId,

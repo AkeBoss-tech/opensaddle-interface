@@ -9,6 +9,7 @@ import { onboardingApplyInput } from '../src/features/onboarding/onboardingApply
 import { onboardingRefreshBarrier } from '../src/features/onboarding/onboardingRefresh.ts'
 import { registerLocalWorkspace } from '../src/features/onboarding/registerLocalWorkspace.ts'
 import { supportsGovernedProjectOnboarding } from '../src/features/onboarding/onboardingAvailability.ts'
+import { runnerCompatibilityBarrier } from '../src/features/onboarding/runnerCompatibility.ts'
 import { AuthoritativeLocalProjectClient } from '../src/services/authoritativeLocalProjects.ts'
 import type { ProjectOnboardingChange, ProjectOnboardingState } from '../src/services/contracts.ts'
 import {
@@ -105,6 +106,7 @@ function readiness() {
       git_clean: true,
       runner_executable: true,
       runner_authenticated: true,
+      runner_compatible: true,
       krail_discovery: true,
       state_root_external: true,
       source_has_no_opensaddle_state: true,
@@ -114,6 +116,15 @@ function readiness() {
     head: HEAD,
     runner_path: '/usr/local/bin/codex',
     harness: { id: 'codex', installed: true, readiness: 'ready', login_guidance: null },
+    runner_compatibility: {
+      status: 'compatible',
+      command: ['codex', 'exec', '--help'],
+      required_options: ['--json', '--color=never', '--sandbox=workspace-write'],
+      missing_options: [],
+      probe_status: 'ok',
+      reason: null,
+      upgrade_guidance: 'Upgrade Codex with the installation method that installed it.',
+    },
     state: {
       database: '/state/onboarding.sqlite3',
       worktrees: '/state/onboarding-worktrees',
@@ -141,6 +152,10 @@ test('parses every authoritative vendored onboarding wire fixture transition', (
   assert.equal(ready.discoveryReady, true)
   assert.equal(ready.executionReady, true)
   assert.deepEqual(ready.informationalChecks, ['source_has_no_opensaddle_state'])
+  assert.equal(ready.runnerCompatibility.status, 'compatible')
+  assert.deepEqual(ready.runnerCompatibility.requiredOptions, [
+    '--json', '--color=never', '--sandbox=workspace-write',
+  ])
 
   const prepared = projectOnboardingStateFromWire(fixture.state, 'demo')
   assert.equal(prepared.executionHead, HEAD)
@@ -452,6 +467,71 @@ test('treats source .opensaddle state as an explicit warning, not a readiness ba
   assert.match(result.warnings[0] ?? '', /KRAIL discovery ignores it/)
 })
 
+test('blocks an incompatible runner with exact probe evidence and upgrade guidance', () => {
+  const incompatible: any = readiness()
+  incompatible.ready = false
+  incompatible.execution_ready = false
+  incompatible.checks.runner_compatible = false
+  incompatible.execution_barriers = ['runner_compatible']
+  incompatible.runner_compatibility = {
+    status: 'incompatible',
+    command: ['codex', 'exec', '--help'],
+    required_options: ['--json', '--color=never', '--sandbox=workspace-write'],
+    missing_options: ['--sandbox=workspace-write'],
+    probe_status: 'ok',
+    reason: 'The installed Codex CLI does not advertise the governed-onboarding sandbox option.',
+    upgrade_guidance: 'Upgrade Codex with the installation method that installed it.',
+  }
+
+  const result = projectOnboardingReadinessFromWire(incompatible, 'demo', 'codex_cli')
+  assert.equal(result.discoveryReady, true)
+  assert.equal(result.executionReady, false)
+  assert.deepEqual(result.executionBarriers, ['runner_compatible'])
+  assert.equal(result.runnerCompatibility.status, 'incompatible')
+  assert.match(runnerCompatibilityBarrier(result) ?? '', /does not advertise/)
+  assert.match(runnerCompatibilityBarrier(result) ?? '', /--sandbox=workspace-write/)
+  assert.match(runnerCompatibilityBarrier(result) ?? '', /Upgrade Codex/)
+
+  incompatible.checks.runner_compatible = true
+  assert.throws(
+    () => projectOnboardingReadinessFromWire(incompatible, 'demo', 'codex_cli'),
+    /inconsistent onboarding readiness barriers|inconsistent onboarding runner compatibility evidence/,
+  )
+
+  const unverified: any = readiness()
+  unverified.ready = false
+  unverified.execution_ready = false
+  unverified.checks.runner_compatible = false
+  unverified.execution_barriers = ['runner_compatible']
+  unverified.runner_compatibility = {
+    status: 'unknown',
+    command: ['codex', 'exec', '--help'],
+    required_options: ['--json', '--color=never', '--sandbox=workspace-write'],
+    missing_options: ['--json', '--color=never', '--sandbox=workspace-write'],
+    probe_status: 'timeout',
+    reason: 'OpenSaddle could not verify Codex governed-onboarding options from its help command.',
+    upgrade_guidance: 'Upgrade Codex and retry readiness.',
+  }
+  const unknown = projectOnboardingReadinessFromWire(unverified, 'demo', 'codex_cli')
+  assert.match(runnerCompatibilityBarrier(unknown) ?? '', /could not verify/)
+  assert.match(runnerCompatibilityBarrier(unknown) ?? '', /Upgrade Codex and retry readiness/)
+})
+
+test('preflights an explicitly selected model through onboarding readiness', async () => {
+  let requestedPath = ''
+  const client = new AuthoritativeLocalProjectClient('http://daemon.test', () => 'local-admin', undefined, async (input) => {
+    requestedPath = input.toString().replace('http://daemon.test', '')
+    return json(readiness())
+  })
+  const result = await client.onboardingReadiness('demo', 'codex_cli', 'gpt-5.6-codex')
+  assert.equal(result.executionReady, true)
+  assert.equal(requestedPath, '/api/projects/demo/onboarding/readiness?runner=codex_cli&model=gpt-5.6-codex')
+  const page = readFileSync('src/features/onboarding/ProjectOnboardingPage.tsx', 'utf8')
+  assert.match(page, /refreshReadiness\(runner, model\)/)
+  assert.match(page, /Selecting a model preflights the runner/)
+  assert.match(page, /\.\.\.\(model \? \{ model \} : \{\}\)/)
+})
+
 test('rejects unknown recommendation kinds and path traversal before presentation', async () => {
   const unknownKind = state()
   unknownKind.recommendation_options = [{ ...option(), kind: 'silent_install' }]
@@ -690,4 +770,35 @@ test('an old projects-only daemon is unavailable before registration or navigati
     localProjects: { registerProject: async () => ({ projectId: 'demo', root: '/work/demo' }) },
   }
   assert.equal(supportsGovernedProjectOnboarding(incompleteNewDaemon as never), false)
+
+  const governedClient = {
+    registerProject: async () => ({ projectId: 'demo', root: '/work/demo' }),
+    onboardingState: async () => undefined,
+    onboardingReadiness: async () => undefined,
+    prepareOnboarding: async () => undefined,
+    startOnboardingRecommendation: async () => undefined,
+    onboardingChange: async () => undefined,
+    onboardingDiff: async () => undefined,
+    approveOnboardingChange: async () => undefined,
+    rejectOnboardingChange: async () => undefined,
+    applyOnboardingCommit: async () => undefined,
+  }
+  const advertised = {
+    controlPlane: {
+      connected: true,
+      mode: 'local' as const,
+      models: [],
+      capabilities: ['projects', 'project_onboarding'],
+      contracts: { project_onboarding: 'opensaddle.project-onboarding/v0' },
+    },
+    localProjects: governedClient,
+  }
+  assert.equal(supportsGovernedProjectOnboarding(advertised as never), false)
+  assert.equal(supportsGovernedProjectOnboarding({
+    ...advertised,
+    controlPlane: {
+      ...advertised.controlPlane,
+      contracts: { project_onboarding: 'opensaddle.project-onboarding/v1' },
+    },
+  } as never), true)
 })

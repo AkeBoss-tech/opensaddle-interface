@@ -1,5 +1,7 @@
 import type { ServiceBundle } from '../../services'
 
+export const GOVERNED_PROJECT_ONBOARDING_CONTRACT = 'opensaddle.project-onboarding/v1'
+
 export function supportsGovernedProjectOnboarding(
   services: Pick<ServiceBundle, 'controlPlane' | 'localProjects'> | null | undefined,
 ): boolean {
@@ -8,6 +10,7 @@ export function supportsGovernedProjectOnboarding(
     services?.controlPlane.connected
     && services.controlPlane.mode === 'local'
     && services.controlPlane.capabilities.includes('project_onboarding')
+    && services.controlPlane.contracts?.project_onboarding === GOVERNED_PROJECT_ONBOARDING_CONTRACT
     && client?.registerProject
     && client.onboardingState
     && client.onboardingReadiness

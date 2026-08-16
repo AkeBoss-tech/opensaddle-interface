@@ -25,6 +25,7 @@
       "git_clean": true,
       "runner_executable": true,
       "runner_authenticated": true,
+      "runner_compatible": true,
       "krail_discovery": true,
       "state_root_external": true,
       "source_has_no_opensaddle_state": true,
@@ -38,6 +39,23 @@
       "installed": true,
       "readiness": "ready",
       "login_guidance": null
+    },
+    "runner_compatibility": {
+      "status": "compatible",
+      "command": [
+        "codex",
+        "exec",
+        "--help"
+      ],
+      "required_options": [
+        "--json",
+        "--color=never",
+        "--sandbox=workspace-write"
+      ],
+      "missing_options": [],
+      "probe_status": "ok",
+      "reason": null,
+      "upgrade_guidance": "Use the installation method that installed Codex to upgrade it."
     },
     "state": {
       "database": "/state/onboarding.sqlite3",
