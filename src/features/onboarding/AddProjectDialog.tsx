@@ -92,7 +92,7 @@ export function AddProjectDialog({ open, projects, defaultParentId, governedOnbo
       ]}
     />
     {step === 'kind' && <div className="add-project-kinds">
-      <button type="button" className="add-project-kind" onClick={() => { setKind('local'); setStep('details') }}><span className="add-project-kind__icon"><Icon name="folder" /></span><strong>Local project</strong><span>A folder on this machine. Agents run against real files.</span><small><Icon name="shield" className="icon xs" /> Files stay on this device</small></button>
+      <button type="button" className="add-project-kind" onClick={() => { setKind('local'); setStep('details') }}><span className="add-project-kind__icon"><Icon name="folder" /></span><strong>Local project</strong><span>A folder on this machine. Agents run against real files.</span><small><Icon name="shield" className="icon xs" /> Folder stays locally attached; agent and provider data handling still applies</small></button>
       <button type="button" className="add-project-kind" onClick={() => { setKind('cloud'); setStep('details') }}><span className="add-project-kind__icon"><Icon name="cloud" /></span><strong>Cloud project</strong><span>A workspace with no folder for marketing, research, or planning.</span><small><Icon name="users" className="icon xs" /> Ready for shared work</small></button>
     </div>}
     {step === 'details' && kind && <div className="add-project-details">

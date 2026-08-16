@@ -133,6 +133,9 @@ test('parses every authoritative vendored onboarding wire fixture transition', (
   )) as Record<string, any>
   assert.equal(fixture.contract, 'opensaddle.project-onboarding-wire-fixture/v1')
   assert.equal(fixture.health_capability, 'project_onboarding')
+  assert.deepEqual(fixture.health_contracts, {
+    project_onboarding: 'opensaddle.project-onboarding/v1',
+  })
 
   const ready = projectOnboardingReadinessFromWire(fixture.readiness, 'demo', 'codex_cli')
   assert.equal(ready.discoveryReady, true)
@@ -530,6 +533,34 @@ test('disables both approval decisions while either transition is in flight', ()
   assert.ok((html.match(/disabled=""/g) ?? []).length >= 3)
   assert.match(html, /Reject &amp; clean worktree/)
   assert.match(html, /Approve exact diff &amp; verify/)
+})
+
+test('explains that failed verification can only retry the immutable review', () => {
+  const change: ProjectOnboardingChange = {
+    contract: 'opensaddle.onboarding-change-receipt/v1',
+    projectId: 'demo',
+    runId: 'onboard-1',
+    status: 'verification_failed',
+    diffDigest: DIFF_DIGEST,
+    changedFiles: ['research_plan/state/project_profile.proposal.json'],
+    patch: 'diff --git a/profile.json b/profile.json\n+profile\n',
+    verification: [],
+    activity: [],
+    checks: [{ name: 'proposal-contracts', passed: false, exitCode: 1 }],
+    recommendationOptions: [],
+  }
+  const html = renderToStaticMarkup(React.createElement(OnboardingApprovalReview, {
+    change,
+    busy: null,
+    rejectReason: '',
+    onRejectReasonChange: () => undefined,
+    onApprove: () => undefined,
+    onReject: () => undefined,
+  }))
+  assert.match(html, /Verification failed on this immutable reviewed change/)
+  assert.match(html, /Retry only if the failure was transient/)
+  assert.match(html, /reject and clean this worktree/)
+  assert.match(html, /Retry same verification/)
 })
 
 test('shows the exact runner instruction and verification commands before start', () => {

@@ -1,6 +1,9 @@
 {
   "contract": "opensaddle.project-onboarding-wire-fixture/v1",
   "health_capability": "project_onboarding",
+  "health_contracts": {
+    "project_onboarding": "opensaddle.project-onboarding/v1"
+  },
   "readiness": {
     "contract": "opensaddle.onboarding-readiness/v1",
     "project_id": "demo",
