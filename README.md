@@ -44,8 +44,8 @@ npm install --prefix electron
 npm run desktop
 ```
 
-Packaged desktop builds can carry the exact KRAIL 1.1.13 wheel used by the
-OpenSaddle backend. See [Desktop KRAIL runtime](docs/desktop-krail-runtime.md)
+Packaged desktop builds carry exact, PyPI-verified KRAIL and OpenSaddle wheels
+selected for the release train. See [Desktop KRAIL runtime](docs/desktop-krail-runtime.md)
 for the bundle manifest, clean-machine check, fallbacks, and rollback path.
 
 Set `VITE_RUNTIME=mock|browser|desktop` to force capability mode.

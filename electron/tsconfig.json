@@ -10,5 +10,5 @@
     "types": ["node"],
     "esModuleInterop": true
   },
-  "include": ["main.ts", "preload.ts", "runtimeBundle.ts"]
+  "include": ["main.ts", "preload.ts", "runtimeBundle.ts", "cliDiscovery.ts", "sidecarCompatibility.ts"]
 }

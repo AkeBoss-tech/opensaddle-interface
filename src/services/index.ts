@@ -50,7 +50,12 @@ export interface ConnectionProfile {
 }
 
 export function defaultConnectionProfile(): ConnectionProfile {
-  const baseUrl = (import.meta.env.VITE_OPENSADDLE_URL as string | undefined) ?? 'http://127.0.0.1:8765'
+  const desktopUrl = typeof window !== 'undefined'
+    ? window.opensaddle?.opensaddleUrl
+    : undefined
+  const baseUrl = (import.meta.env.VITE_OPENSADDLE_URL as string | undefined)
+    ?? desktopUrl
+    ?? 'http://127.0.0.1:8765'
   return {
     id: 'configured-server',
     name: import.meta.env.VITE_OPENSADDLE_URL ? 'Configured OpenSaddle server' : 'Local OpenSaddle server',

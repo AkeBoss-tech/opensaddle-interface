@@ -140,6 +140,10 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
   const [serverUrl, setServerUrl] = useState(connection.mode === 'remote' ? connection.baseUrl : '')
   const [serverToken, setServerToken] = useState(connection.token ?? '')
   const [connecting, setConnecting] = useState(false)
+  const [desktopRuntimeMessage, setDesktopRuntimeMessage] = useState<{
+    kind: 'error' | 'notice'
+    message: string
+  } | null>(null)
   const activeCopy = SETTINGS_COPY[active]
   const activeProject = data.projects.find((project) => project.id === data.activeProjectId) ?? data.projects[0]
   useEffect(() => {
@@ -147,6 +151,24 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
     setServerUrl(connection.mode === 'remote' ? connection.baseUrl : '')
     setServerToken(connection.token ?? '')
   }, [connection])
+  useEffect(() => {
+    if (!window.opensaddle?.getRuntimeInfo) return
+    let cancelled = false
+    void window.opensaddle.getRuntimeInfo().then((info) => {
+      if (cancelled) return
+      if (info.opensaddleError) {
+        setDesktopRuntimeMessage({ kind: 'error', message: info.opensaddleError })
+      } else if (info.opensaddleNotice) {
+        setDesktopRuntimeMessage({
+          kind: 'notice',
+          message: `${info.opensaddleNotice} Using ${info.opensaddleUrl}.`,
+        })
+      } else {
+        setDesktopRuntimeMessage(null)
+      }
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [connection.baseUrl])
 
   const download = () => {
     const blob = new Blob([exportData()], { type: 'application/json' })
@@ -216,6 +238,12 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
       <section className="card connection-card" id="settings-connection" hidden={active !== 'settings-connection'}>
         <div className="card-header"><div><h3>OpenSaddle connection</h3><p>{connection.mode === 'remote' ? `${connection.name} · ${connection.baseUrl}` : 'Demo mode uses seeded data and simulated runs.'}</p></div><span className={`sync-badge ${controlPlane?.connected ? 'synced' : recovering || connection.mode === 'demo' ? 'local' : 'error'}`}>{connection.mode === 'remote' ? (controlPlane?.connected ? 'Connected' : connectionState.label) : 'Demo'}</span></div>
         <div className="card-body">
+          {desktopRuntimeMessage && (
+            <p className="provider-note" role={desktopRuntimeMessage.kind === 'error' ? 'alert' : 'status'}>
+              <Icon name="info" className="icon sm" />
+              {desktopRuntimeMessage.message}
+            </p>
+          )}
           <div className="form-row"><label>Connection name</label><input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="My OpenSaddle server" /></div>
           <div className="form-row"><label>Server URL</label><input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://opensaddle.example.com" /></div>
           <div className="form-row"><label>Bearer token <span className="muted">(kept in this session only)</span></label><input type="password" value={serverToken} onChange={(e) => setServerToken(e.target.value)} placeholder="Optional for local servers" /></div>

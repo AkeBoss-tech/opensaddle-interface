@@ -14,7 +14,7 @@ const PRESETS = [
 ]
 
 export function HarnessPage() {
-  const { data, toast, services, runtimeModeLabel } = useStore()
+  const { data, toast, services, runtimeModeLabel, connection } = useStore()
   const [repo, setRepo] = useState('')
   const [task, setTask] = useState('Add a short note documenting this harness run')
   const [agentId, setAgentId] = useState('safe_local')
@@ -109,7 +109,7 @@ export function HarnessPage() {
 
       // Pull final artifacts from OpenSaddle HTTP when a real mode was used
       if (started.mode && started.mode !== 'mock' && started.mode !== 'mock_with_repo') {
-        const base = (import.meta.env.VITE_OPENSADDLE_URL as string | undefined) ?? 'http://127.0.0.1:8765'
+        const base = connection.baseUrl.replace(/\/$/, '')
         const poll = window.setInterval(async () => {
           try {
             const st = await fetch(`${base}/api/runs/${started.runId}`).then((r) => r.json()) as { status: string }

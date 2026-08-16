@@ -35,7 +35,8 @@ interface Navigator {
 interface Window {
   opensaddleDesktop?: boolean
   opensaddle?: {
-    getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; sessionBridgeUrl: string; /** @deprecated */ krailUrl: string; krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }; clis: string[] }>
+    opensaddleUrl: string
+    getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; opensaddleConnected: boolean; opensaddleError: string | null; opensaddleNotice: string | null; sessionBridgeUrl: string; /** @deprecated */ krailUrl: string; krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }; clis: string[] }>
     pickRepository: () => Promise<string | null>
     inspectProject: (path: string) => Promise<{
       rootPath: string

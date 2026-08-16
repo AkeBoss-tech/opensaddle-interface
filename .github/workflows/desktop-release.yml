@@ -6,7 +6,17 @@ on:
       tag:
         description: Existing desktop-vX.Y.Z tag to release
         required: true
-        default: desktop-v0.1.1
+        default: desktop-v0.2.0
+        type: string
+      krail_version:
+        description: Published KRAIL version to bundle
+        required: true
+        default: 1.2.0rc1
+        type: string
+      opensaddle_version:
+        description: Published OpenSaddle version to bundle
+        required: true
+        default: 1.2.0rc1
         type: string
       python_archive_url:
         description: Immutable URL for the arm64 install-only Python .tar.gz
@@ -30,10 +40,8 @@ jobs:
     runs-on: macos-15
     environment: desktop-release
     env:
-      KRAIL_VERSION: 1.1.13
-      KRAIL_WHEEL_URL: https://files.pythonhosted.org/packages/bf/c8/2d916c513febf9a3d9b17ce6af91f05c68e307c6bb725394bed7f9086c3d/krail-1.1.13-py3-none-any.whl
-      KRAIL_WHEEL_SHA256: f4f153e3c5499d98af44a67258f9c540cc6df554e8d9becada7b9eccd6dcec1c
-      OPENSADDLE_VERSION: 1.1.1
+      KRAIL_VERSION: ${{ inputs.krail_version }}
+      OPENSADDLE_VERSION: ${{ inputs.opensaddle_version }}
       MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
@@ -76,6 +84,12 @@ jobs:
             echo "Python archive SHA-256 must be 64 lowercase hexadecimal characters" >&2
             exit 1
           }
+          for candidate in "$KRAIL_VERSION" "$OPENSADDLE_VERSION"; do
+            [[ "$candidate" =~ ^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?$ ]] || {
+              echo "Runtime versions must be final or PEP 440 alpha, beta, or release candidates" >&2
+              exit 1
+            }
+          done
           for required in MACOS_CERTIFICATE_BASE64 MACOS_CERTIFICATE_PASSWORD MACOS_SIGNING_IDENTITY MACOS_KEYCHAIN_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID GH_TOKEN; do
             [[ -n "${!required:-}" ]] || {
               echo "Required release secret $required is missing" >&2
@@ -106,33 +120,41 @@ jobs:
           PYTHON_ARCHIVE_SHA256: ${{ inputs.python_archive_sha256 }}
         run: |
           set -euo pipefail
+          KRAIL_METADATA="$RUNNER_TEMP/krail-pypi.json"
           KRAIL_WHEEL="$RUNNER_TEMP/krail-${KRAIL_VERSION}-py3-none-any.whl"
           OPENSADDLE_METADATA="$RUNNER_TEMP/opensaddle-pypi.json"
           OPENSADDLE_WHEEL="$RUNNER_TEMP/opensaddle-${OPENSADDLE_VERSION}-py3-none-any.whl"
           PYTHON_ARCHIVE="$RUNNER_TEMP/opensaddle-python-runtime.tar.gz"
 
+          resolve_official_wheel() {
+            PACKAGE_NAME="$1" PACKAGE_VERSION="$2" PACKAGE_METADATA="$3" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const metadata = JSON.parse(fs.readFileSync(process.env.PACKAGE_METADATA, 'utf8'));
+          const filename = `${process.env.PACKAGE_NAME}-${process.env.PACKAGE_VERSION}-py3-none-any.whl`;
+          const matches = metadata.urls.filter((item) => item.filename === filename && item.packagetype === 'bdist_wheel');
+          if (matches.length !== 1 || !/^https:\/\/files\.pythonhosted\.org\//.test(matches[0].url)) {
+            throw new Error(`Expected one official PyPI wheel named ${filename}`);
+          }
+          if (!/^[0-9a-f]{64}$/.test(matches[0].digests?.sha256 ?? '')) {
+            throw new Error(`${filename} has no valid PyPI SHA-256`);
+          }
+          process.stdout.write(`${matches[0].url}\t${matches[0].digests.sha256}`);
+          NODE
+          }
+
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            "https://pypi.org/pypi/krail/${KRAIL_VERSION}/json" \
+            --output "$KRAIL_METADATA"
+          IFS=$'\t' read -r KRAIL_WHEEL_URL KRAIL_WHEEL_SHA256 \
+            <<< "$(resolve_official_wheel krail "$KRAIL_VERSION" "$KRAIL_METADATA")"
           curl --fail --location --proto '=https' --tlsv1.2 "$KRAIL_WHEEL_URL" --output "$KRAIL_WHEEL"
           echo "$KRAIL_WHEEL_SHA256  $KRAIL_WHEEL" | shasum -a 256 -c -
 
           curl --fail --location --proto '=https' --tlsv1.2 \
             "https://pypi.org/pypi/opensaddle/${OPENSADDLE_VERSION}/json" \
             --output "$OPENSADDLE_METADATA"
-          export OPENSADDLE_METADATA OPENSADDLE_WHEEL
-          OPENSADDLE_WHEEL_URL="$(node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const metadata = JSON.parse(fs.readFileSync(process.env.OPENSADDLE_METADATA, 'utf8'));
-          const filename = `opensaddle-${process.env.OPENSADDLE_VERSION}-py3-none-any.whl`;
-          const matches = metadata.urls.filter((item) => item.filename === filename && item.packagetype === 'bdist_wheel');
-          if (matches.length !== 1 || !/^https:\/\/files\.pythonhosted\.org\//.test(matches[0].url)) {
-            throw new Error(`Expected one official PyPI wheel named ${filename}`);
-          }
-          if (!/^[0-9a-f]{64}$/.test(matches[0].digests?.sha256 ?? '')) {
-            throw new Error('OpenSaddle PyPI metadata has no valid SHA-256');
-          }
-          process.stdout.write(matches[0].url);
-          NODE
-          )"
-          OPENSADDLE_WHEEL_SHA256="$(node -p "JSON.parse(require('fs').readFileSync(process.env.OPENSADDLE_METADATA, 'utf8')).urls.find(item => item.filename === 'opensaddle-' + process.env.OPENSADDLE_VERSION + '-py3-none-any.whl' && item.packagetype === 'bdist_wheel').digests.sha256")"
+          IFS=$'\t' read -r OPENSADDLE_WHEEL_URL OPENSADDLE_WHEEL_SHA256 \
+            <<< "$(resolve_official_wheel opensaddle "$OPENSADDLE_VERSION" "$OPENSADDLE_METADATA")"
           curl --fail --location --proto '=https' --tlsv1.2 "$OPENSADDLE_WHEEL_URL" --output "$OPENSADDLE_WHEEL"
           echo "$OPENSADDLE_WHEEL_SHA256  $OPENSADDLE_WHEEL" | shasum -a 256 -c -
 
@@ -141,6 +163,8 @@ jobs:
 
           {
             echo "KRAIL_WHEEL=$KRAIL_WHEEL"
+            echo "KRAIL_WHEEL_URL=$KRAIL_WHEEL_URL"
+            echo "KRAIL_WHEEL_SHA256=$KRAIL_WHEEL_SHA256"
             echo "OPENSADDLE_WHEEL=$OPENSADDLE_WHEEL"
             echo "OPENSADDLE_WHEEL_URL=$OPENSADDLE_WHEEL_URL"
             echo "OPENSADDLE_WHEEL_SHA256=$OPENSADDLE_WHEEL_SHA256"
@@ -180,6 +204,8 @@ jobs:
             electron/runtime-bundle/krail-runtime/bin/krail-mutate --help
           env -i PATH=/usr/bin:/bin HOME="$SMOKE_HOME" TMPDIR="$RUNNER_TEMP" \
             electron/runtime-bundle/opensaddle-backend/opensaddle --help
+          node scripts/smoke-packaged-onboarding.mjs \
+            --resources electron/runtime-bundle
 
       - name: Build renderer and Electron main process
         run: |
@@ -277,6 +303,7 @@ jobs:
           const report = fs.readFileSync(path.join(process.env.PACKAGED_RESOURCES, 'krail-runtime/dependency-install-report.json'));
           if (crypto.createHash('sha256').update(report).digest('hex') !== krail.dependencies?.sha256) throw new Error('Packaged dependency report SHA mismatch');
           NODE
+          node scripts/smoke-packaged-onboarding.mjs --app "$APP_PATH"
           cleanup_mount
           trap - EXIT
 

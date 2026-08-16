@@ -23,10 +23,12 @@ test('desktop release is manual, tag-bound, and immutable', () => {
 
 test('desktop release verifies official wheels and the pinned Python archive', () => {
   assert.match(workflow, /runs-on: macos-15/)
-  assert.match(workflow, /krail-1\.1\.13-py3-none-any\.whl/)
-  assert.match(workflow, /f4f153e3c5499d98af44a67258f9c540cc6df554e8d9becada7b9eccd6dcec1c/)
+  assert.match(workflow, /default: 1\.2\.0rc1/)
+  assert.doesNotMatch(workflow, /KRAIL_VERSION: 1\.1\.13/)
+  assert.doesNotMatch(workflow, /OPENSADDLE_VERSION: 1\.1\.1/)
+  assert.match(workflow, /https:\/\/pypi\.org\/pypi\/krail\/\$\{KRAIL_VERSION\}\/json/)
   assert.match(workflow, /https:\/\/pypi\.org\/pypi\/opensaddle\/\$\{OPENSADDLE_VERSION\}\/json/)
-  assert.match(workflow, /opensaddle-\$\{process\.env\.OPENSADDLE_VERSION\}-py3-none-any\.whl/)
+  assert.match(workflow, /resolve_official_wheel/)
   assert.match(workflow, /https:\\?\/\\?\/files\\?\.pythonhosted\\?\.org/)
   assert.ok((workflow.match(/shasum -a 256 -c/g) ?? []).length >= 3)
   assert.match(workflow, /KRAIL_PYTHON_RUNTIME="\$PYTHON_ARCHIVE"/)
@@ -34,6 +36,8 @@ test('desktop release verifies official wheels and the pinned Python archive', (
   assert.match(workflow, /OPENSADDLE_WHEEL="\$OPENSADDLE_WHEEL"/)
   assert.match(runtimeBuilder, /python\/bin\/python3/)
   assert.match(runtimeBuilder, /OPENSADDLE_WHEEL/)
+  assert.match(runtimeBuilder, /KRAIL_VERSION/)
+  assert.match(runtimeBuilder, /OPENSADDLE_VERSION/)
 })
 
 test('desktop release fails closed for signing and smoke-tests packaged launchers', () => {
@@ -59,12 +63,15 @@ test('desktop release fails closed for signing and smoke-tests packaged launcher
   for (const launcher of ['krail-admin', 'krail-mutate', 'opensaddle']) {
     assert.ok((workflow.match(new RegExp(`${launcher.replace('-', '\\-')}.*--help`, 'g')) ?? []).length >= 2)
   }
+  assert.ok((workflow.match(/smoke-packaged-onboarding\.mjs/g) ?? []).length >= 2)
+  assert.match(workflow, /--resources electron\/runtime-bundle/)
+  assert.match(workflow, /smoke-packaged-onboarding\.mjs --app "\$APP_PATH"/)
   assert.match(workflow, /CHECKSUM_PATH="\$DMG_PATH\.sha256"/)
   assert.match(workflow, /provenance\.json/)
 })
 
 test('release documentation defines provenance and non-destructive rollback', () => {
-  assert.match(releaseGuide, /OpenSaddle 1\.1\.1, then Desktop v0\.1\.1/)
+  assert.match(releaseGuide, /OpenSaddle 1\.2, then Desktop v0\.2\.0/)
   assert.match(releaseGuide, /immutable release/i)
   assert.match(releaseGuide, /publish a higher `desktop-vX\.Y\.Z`/)
   assert.match(releaseGuide, /Never move the old tag or replace its DMG/)
