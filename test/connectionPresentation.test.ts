@@ -29,6 +29,7 @@ test('presents a disconnected remote bundle as recoverable', () => {
     controlPlane: {
       connected: false,
       models: [],
+      capabilities: [],
     },
     desktop: false,
   }), {
@@ -44,6 +45,7 @@ test('presents a recovered local control plane with its durable storage', () => 
     mode: 'local',
     models: [],
     storage: 'sqlite',
+    capabilities: ['projects'],
   }
   assert.deepEqual(connectionPresentation({
     connection: localConnection,

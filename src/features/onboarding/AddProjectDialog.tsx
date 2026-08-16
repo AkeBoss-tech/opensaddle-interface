@@ -19,8 +19,8 @@ const COLORS = [
 
 function folderName(path: string) { return path.trim().replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).at(-1) ?? '' }
 
-export function AddProjectDialog({ open, projects, defaultParentId, onClose, onCreateCloud, onCreateLocal }: {
-  open: boolean; projects: Project[]; defaultParentId: string | null; onClose: () => void
+export function AddProjectDialog({ open, projects, defaultParentId, governedOnboardingAvailable, onClose, onCreateCloud, onCreateLocal }: {
+  open: boolean; projects: Project[]; defaultParentId: string | null; governedOnboardingAvailable: boolean; onClose: () => void
   onCreateCloud: (input: { name: string; parentId: string | null; color: string }) => Promise<void> | void
   onCreateLocal: (input: { name: string; color: string; proposal: WorkspaceProposal; selectedIds: Set<string>; krailRunner: KrailOnboardingRunner | null }) => Promise<void> | void
 }) {
@@ -35,12 +35,12 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
   const [scanning, setScanning] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [krailRunner, setKrailRunner] = useState<KrailOnboardingRunner | null>('codex_cli')
+  const [krailRunner, setKrailRunner] = useState<KrailOnboardingRunner | null>(governedOnboardingAvailable ? 'codex_cli' : null)
 
   useEffect(() => {
     if (!open) return
-    setStep('kind'); setKind(null); setName(''); setNameEdited(false); setFolderPath(''); setParentId(defaultParentId); setColor(COLORS[0].value); setProposal(null); setError(null); setKrailRunner('codex_cli')
-  }, [defaultParentId, open])
+    setStep('kind'); setKind(null); setName(''); setNameEdited(false); setFolderPath(''); setParentId(defaultParentId); setColor(COLORS[0].value); setProposal(null); setError(null); setKrailRunner(governedOnboardingAvailable ? 'codex_cli' : null)
+  }, [defaultParentId, governedOnboardingAvailable, open])
 
   const chooseFolder = async () => {
     const path = await window.opensaddle?.pickRepository?.()
@@ -59,8 +59,15 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
   }
   const createLocal = async (selectedIds: Set<string>) => {
     if (!proposal) return
-    setCreating(true)
-    try { await onCreateLocal({ name: name.trim(), color, proposal: { ...proposal, label: name.trim() }, selectedIds, krailRunner }); onClose() } finally { setCreating(false) }
+    setCreating(true); setError(null)
+    try {
+      await onCreateLocal({ name: name.trim(), color, proposal: { ...proposal, label: name.trim() }, selectedIds, krailRunner })
+      onClose()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setCreating(false)
+    }
   }
   const createCloud = async () => {
     setCreating(true)
@@ -85,7 +92,7 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
       ]}
     />
     {step === 'kind' && <div className="add-project-kinds">
-      <button type="button" className="add-project-kind" onClick={() => { setKind('local'); setStep('details') }}><span className="add-project-kind__icon"><Icon name="folder" /></span><strong>Local project</strong><span>A folder on this machine. Agents run against real files.</span><small><Icon name="shield" className="icon xs" /> Files stay on this device</small></button>
+      <button type="button" className="add-project-kind" onClick={() => { setKind('local'); setStep('details') }}><span className="add-project-kind__icon"><Icon name="folder" /></span><strong>Local project</strong><span>A folder on this machine. Agents run against real files.</span><small><Icon name="shield" className="icon xs" /> Folder stays locally attached; agent and provider data handling still applies</small></button>
       <button type="button" className="add-project-kind" onClick={() => { setKind('cloud'); setStep('details') }}><span className="add-project-kind__icon"><Icon name="cloud" /></span><strong>Cloud project</strong><span>A workspace with no folder for marketing, research, or planning.</span><small><Icon name="users" className="icon xs" /> Ready for shared work</small></button>
     </div>}
     {step === 'details' && kind && <div className="add-project-details">
@@ -98,10 +105,13 @@ export function AddProjectDialog({ open, projects, defaultParentId, onClose, onC
     </div>}
     {step === 'review' && kind === 'local' && proposal && <>
       <section className="scaffold-group" aria-labelledby="krail-onboarding-heading">
-        <header className="scaffold-group__header"><div><h3 id="krail-onboarding-heading">KRAIL onboarding</h3><p className="scaffold-group__disclosure">Optional and proposal-first. The agent runs in an isolated worktree; promotion and commit require review.</p></div></header>
-        <label><input type="checkbox" checked={krailRunner !== null} onChange={(event) => setKrailRunner(event.target.checked ? 'codex_cli' : null)} /> Prepare project profile and automation recommendations</label>
+        <header className="scaffold-group__header"><div><h3 id="krail-onboarding-heading">KRAIL onboarding</h3><p className="scaffold-group__disclosure">Optional and proposal-first. OpenSaddle reviews and promotes only the detached-worktree diff; this is not OS, process, network, or credential isolation.</p></div></header>
+        <label><input type="checkbox" checked={krailRunner !== null} disabled={!governedOnboardingAvailable} onChange={(event) => setKrailRunner(event.target.checked ? 'codex_cli' : null)} /> Prepare project profile and automation recommendations</label>
+        {!governedOnboardingAvailable && <p className="scaffold-group__disclosure">This OpenSaddle server does not advertise governed project onboarding. The folder can still be attached without starting a simulated workflow.</p>}
         {krailRunner && <label>Runner<select value={krailRunner} onChange={(event) => setKrailRunner(event.target.value as KrailOnboardingRunner)}><option value="codex_cli">Codex CLI</option><option value="claude_code">Claude Code</option></select></label>}
+        {krailRunner && <p className="scaffold-group__disclosure">The folder is attached first. KRAIL discovery is deterministic and starts no agent; you will review readiness before the selected runner begins detached-worktree analysis with the local user's host authority.</p>}
       </section>
+      {error && <p className="add-project-error" role="alert">Could not create governed workspace: {error}</p>}
       <ScaffoldProposal proposal={{ ...proposal, label: name.trim() }} creating={creating} onBack={() => setStep('details')} onCreate={(selectedIds) => void createLocal(selectedIds)} />
     </>}
     {step === 'review' && kind === 'cloud' && <section className="add-project-review" aria-label="Cloud project summary">
