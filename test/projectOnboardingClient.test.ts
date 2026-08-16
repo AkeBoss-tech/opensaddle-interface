@@ -505,6 +505,33 @@ test('renders the backend-shaped exact diff and verification as one inline appro
   assert.match(html, /Reject &amp; clean worktree/)
 })
 
+test('disables both approval decisions while either transition is in flight', () => {
+  const change: ProjectOnboardingChange = {
+    contract: 'opensaddle.onboarding-change-proposal/v1',
+    projectId: 'demo',
+    runId: 'onboard-1',
+    status: 'approval_required',
+    diffDigest: DIFF_DIGEST,
+    changedFiles: ['research_plan/state/project_profile.proposal.json'],
+    patch: 'diff --git a/profile.json b/profile.json\n+profile\n',
+    verification: [],
+    activity: [],
+    checks: [],
+    recommendationOptions: [],
+  }
+  const html = renderToStaticMarkup(React.createElement(OnboardingApprovalReview, {
+    change,
+    busy: 'approve',
+    rejectReason: '',
+    onRejectReasonChange: () => undefined,
+    onApprove: () => undefined,
+    onReject: () => undefined,
+  }))
+  assert.ok((html.match(/disabled=""/g) ?? []).length >= 3)
+  assert.match(html, /Reject &amp; clean worktree/)
+  assert.match(html, /Approve exact diff &amp; verify/)
+})
+
 test('shows the exact runner instruction and verification commands before start', () => {
   const recommendation = projectOnboardingStateFromWire(state(), 'demo').recommendationOptions[0]
   assert.ok(recommendation)

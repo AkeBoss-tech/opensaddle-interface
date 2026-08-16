@@ -38,8 +38,8 @@ export function OnboardingApprovalReview({
     {change.checks.length > 0 && <div className="onboarding-checks"><h3>Verification receipt</h3>{change.checks.map((check) => <div key={check.name} className={check.passed ? 'passed' : 'failed'}><Icon name={check.passed ? 'check' : 'x'} /><span><strong>{check.name}</strong><small>{check.passed ? 'Passed' : `Failed${check.exitCode === undefined ? '' : ` · exit ${check.exitCode}`}`}</small></span></div>)}</div>}
     {actionable && <div className="onboarding-approval">
       <div><Icon name="shield" /><span><strong>{change.status === 'verification_failed' ? 'Fix the project or verification command, then retry' : 'Approve this exact digest'}</strong><small>Approval runs the displayed commands, re-hashes the diff, and creates a commit only if every check passes without changing it.</small></span></div>
-      <label>Optional rejection reason<textarea value={rejectReason} onChange={(event) => onRejectReasonChange(event.target.value)} placeholder="Explain what should change before another run" rows={2} /></label>
-      <div className="onboarding-actions"><Button variant="danger" loading={busy === 'reject'} onClick={onReject}>Reject & clean worktree</Button><Button loading={busy === 'approve'} onClick={onApprove}>{change.status === 'verification_failed' ? 'Retry verification' : 'Approve exact diff & verify'}</Button></div>
+      <label>Optional rejection reason<textarea value={rejectReason} disabled={Boolean(busy)} onChange={(event) => onRejectReasonChange(event.target.value)} placeholder="Explain what should change before another run" rows={2} /></label>
+      <div className="onboarding-actions"><Button variant="danger" disabled={Boolean(busy)} loading={busy === 'reject'} onClick={onReject}>Reject & clean worktree</Button><Button disabled={Boolean(busy)} loading={busy === 'approve'} onClick={onApprove}>{change.status === 'verification_failed' ? 'Retry verification' : 'Approve exact diff & verify'}</Button></div>
     </div>}
   </>
 }
