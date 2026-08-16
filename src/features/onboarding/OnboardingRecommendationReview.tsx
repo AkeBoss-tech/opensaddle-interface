@@ -16,8 +16,8 @@ export function OnboardingRecommendationReview({
     <div className="onboarding-preflight-head">
       <Icon name="shield" />
       <span>
-        <strong>Review exactly what {runnerLabel} will receive and run</strong>
-        <small>The runner keeps your local OS, process, network, and credential authority. OpenSaddle bounds and reviews the resulting detached-worktree diff, not other host side effects.</small>
+        <strong>Review the agent instruction and post-approval verification</strong>
+        <small>{runnerLabel} receives the instruction below and keeps your local OS, process, network, and credential authority. OpenSaddle runs the listed verification only after exact-diff approval; it bounds and reviews the resulting detached-worktree diff, not other host side effects.</small>
       </span>
     </div>
     <div className="onboarding-preflight-section">
@@ -25,7 +25,7 @@ export function OnboardingRecommendationReview({
       <pre>{option.instruction}</pre>
     </div>
     <div className="onboarding-preflight-section">
-      <h3>Verification commands</h3>
+      <h3>Commands run by OpenSaddle after exact-diff approval</h3>
       {option.verification.map((verification) => <div className="onboarding-preflight-command" key={verification.name}>
         <strong>{verification.name}</strong>
         <code>{verification.command}</code>

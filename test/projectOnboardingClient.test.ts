@@ -512,7 +512,9 @@ test('shows the exact runner instruction and verification commands before start'
     option: recommendation,
     runnerLabel: 'Codex CLI',
   }))
-  assert.match(html, /Review exactly what Codex CLI will receive and run/)
+  assert.match(html, /Review the agent instruction and post-approval verification/)
+  assert.match(html, /Codex CLI receives the instruction below/)
+  assert.match(html, /only after exact-diff approval/)
   assert.match(html, /Inspect the discovery record and write only the requested proposal files/)
   assert.match(html, /python -m pytest -q/)
   assert.match(html, /pyproject\.toml:tool\.pytest/)
