@@ -14,6 +14,7 @@ import { Button, StepProgress } from '../../ui'
 import { OnboardingApprovalReview } from './OnboardingApprovalReview'
 import { onboardingApplyInput } from './onboardingApply'
 import { supportsGovernedProjectOnboarding } from './onboardingAvailability'
+import { onboardingRefreshBarrier } from './onboardingRefresh'
 import './project-onboarding.css'
 
 const RUNNERS: Array<{ id: ProjectOnboardingRunner; label: string; capabilityId: string; detail: string }> = [
@@ -243,16 +244,22 @@ export function ProjectOnboardingPage() {
           ? 'KRAIL can profile the current files, but the working tree must be clean before detached-worktree agent execution.'
           : null
   const failedReadinessChecks = readiness?.executionBarriers.map(checkLabel) ?? []
-  const refreshBarrier = state?.refreshRequired
+  const requiredRefreshBarrier = state?.refreshRequired
     ? 'Refresh KRAIL discovery before another action. The applied project change invalidated the previous fingerprint.'
     : null
-  const executionReady = Boolean(runnerReady) && !repositoryBarrier && !refreshBarrier
+  const activeRunRefreshBarrier = onboardingRefreshBarrier(state, change)
+  const executionReady = Boolean(runnerReady) && !repositoryBarrier && !requiredRefreshBarrier
   const profile = change?.profile ?? state?.profile
   const automationRecommendations = change?.automationRecommendations ?? state?.automationRecommendations
   const currentStep = onboardingStep(state, change)
 
   const prepare = async () => {
     if (!client?.prepareOnboarding) return
+    if (busy) return
+    if (activeRunRefreshBarrier) {
+      setError(activeRunRefreshBarrier)
+      return
+    }
     setBusy('prepare'); setError(null)
     try {
       const currentReadiness = await refreshReadiness(runner)
@@ -271,6 +278,7 @@ export function ProjectOnboardingPage() {
 
   const startRecommendation = async () => {
     if (!client?.startOnboardingRecommendation || !selectedOption) return
+    if (busy) return
     if (!executionReady) {
       setError(repositoryBarrier ?? `${runnerInfo.label} is not ready. Complete the local runner setup before starting agent work.`)
       return
@@ -434,8 +442,8 @@ export function ProjectOnboardingPage() {
               </label>)}
               {!visibleOptions.length && <div className="onboarding-empty-inline"><Icon name="info" /><span>No executable recommendation was returned for this fingerprint.</span></div>}
             </div>
-            <div className="onboarding-actions"><Button variant="secondary" onClick={() => void prepare()} loading={busy === 'prepare'}>{state.refreshRequired ? 'Refresh KRAIL discovery' : 'Refresh discovery'}</Button><Button disabled={!selectedOption || !executionReady || Boolean(change && !['rejected', 'applied'].includes(change.status))} loading={busy === 'run'} onClick={() => void startRecommendation()}><Icon name="play" className="icon xs" />{selectedOption?.kind === 'proposal_generation' ? 'Analyze and propose setup' : 'Apply project action in worktree'}</Button></div>
-            {(!runnerReady || repositoryBarrier || refreshBarrier) && <p className="onboarding-inline-barrier"><Icon name="shield" />{refreshBarrier ?? repositoryBarrier ?? (readiness ? `OpenSaddle readiness failed: ${failedReadinessChecks.join(', ') || readiness.error || 'unknown check'}.` : runnerCapability?.unavailableReason ?? runnerCapability?.auth.message ?? `Checking ${runnerInfo.label} and project readiness with OpenSaddle.`)}</p>}
+            <div className="onboarding-actions"><Button variant="secondary" disabled={Boolean(activeRunRefreshBarrier) || Boolean(busy)} onClick={() => void prepare()} loading={busy === 'prepare'}>{state.refreshRequired ? 'Refresh KRAIL discovery' : 'Refresh discovery'}</Button><Button disabled={Boolean(busy) || !selectedOption || !executionReady || Boolean(change && !['rejected', 'applied'].includes(change.status))} loading={busy === 'run'} onClick={() => void startRecommendation()}><Icon name="play" className="icon xs" />{selectedOption?.kind === 'proposal_generation' ? 'Analyze and propose setup' : 'Apply project action in worktree'}</Button></div>
+            {(activeRunRefreshBarrier || !runnerReady || repositoryBarrier || requiredRefreshBarrier) && <p className="onboarding-inline-barrier"><Icon name="shield" />{activeRunRefreshBarrier ?? requiredRefreshBarrier ?? repositoryBarrier ?? (readiness ? `OpenSaddle readiness failed: ${failedReadinessChecks.join(', ') || readiness.error || 'unknown check'}.` : runnerCapability?.unavailableReason ?? runnerCapability?.auth.message ?? `Checking ${runnerInfo.label} and project readiness with OpenSaddle.`)}</p>}
           </section>}
 
           {change && <section className="onboarding-card" aria-labelledby="onboarding-run-title">
@@ -450,10 +458,10 @@ export function ProjectOnboardingPage() {
 
           {change?.commit && (change.status === 'committed' || change.status === 'applied') && <section className="onboarding-card onboarding-commit" aria-labelledby="onboarding-commit-title">
             <div className="onboarding-card-head"><div><span className="onboarding-card-icon"><Icon name="git" /></span><div><h2 id="onboarding-commit-title">4. Durable commit and explicit replay</h2><p>The verified commit is retained under an OpenSaddle ref. Nothing is pushed or merged automatically.</p></div></div>{change.status === 'applied' && <span className="onboarding-complete"><Icon name="check" /> Applied</span>}</div>
-            <dl><div><dt>Commit</dt><dd><code>{change.commit}</code></dd></div>{change.ref && <div><dt>Durable ref</dt><dd><code>{change.ref}</code></dd></div>}<div><dt>Registered project</dt><dd>{change.status === 'applied' ? 'Fast-forwarded to the verified commit' : 'Still unchanged'}</dd></div></dl>
+            <dl><div><dt>Commit</dt><dd><code>{change.commit}</code></dd></div>{change.ref && <div><dt>Durable ref</dt><dd><code>{change.ref}</code></dd></div>}<div><dt>Registered project</dt><dd>{change.status === 'applied' ? 'Fast-forwarded to the verified commit' : 'OpenSaddle has not applied this commit'}</dd></div></dl>
             {change.summary && <pre>{change.summary}</pre>}
             {change.status === 'committed' && <div className="onboarding-actions"><Button variant="secondary" onClick={() => navigator.clipboard?.writeText(`git show ${change.ref ?? change.commit}`)}>Copy inspect command</Button><Button loading={busy === 'apply'} disabled={!services.runtime.gitStatus} onClick={() => void applyCommit()}>Apply verified commit</Button></div>}
-            {change.status === 'applied' && <div className="onboarding-actions"><Button variant="secondary" onClick={() => navigate(`/project/${project.id}`)}>Open project</Button>{state?.refreshRequired ? <Button onClick={() => void prepare()} loading={busy === 'prepare'}>Refresh KRAIL discovery</Button> : visibleOptions.some((option) => option.recommendationId !== change.recommendationId) && <Button onClick={() => document.getElementById('onboarding-recommendations')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Choose next recommendation</Button>}</div>}
+            {change.status === 'applied' && <div className="onboarding-actions"><Button variant="secondary" onClick={() => navigate(`/project/${project.id}`)}>Open project</Button>{state?.refreshRequired ? <Button disabled={Boolean(activeRunRefreshBarrier) || Boolean(busy)} onClick={() => void prepare()} loading={busy === 'prepare'}>Refresh KRAIL discovery</Button> : visibleOptions.some((option) => option.recommendationId !== change.recommendationId) && <Button onClick={() => document.getElementById('onboarding-recommendations')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Choose next recommendation</Button>}</div>}
           </section>}
         </main>
 

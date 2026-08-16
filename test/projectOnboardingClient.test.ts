@@ -5,10 +5,11 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { OnboardingApprovalReview } from '../src/features/onboarding/OnboardingApprovalReview.tsx'
 import { onboardingApplyInput } from '../src/features/onboarding/onboardingApply.ts'
+import { onboardingRefreshBarrier } from '../src/features/onboarding/onboardingRefresh.ts'
 import { registerLocalWorkspace } from '../src/features/onboarding/registerLocalWorkspace.ts'
 import { supportsGovernedProjectOnboarding } from '../src/features/onboarding/onboardingAvailability.ts'
 import { AuthoritativeLocalProjectClient } from '../src/services/authoritativeLocalProjects.ts'
-import type { ProjectOnboardingChange } from '../src/services/contracts.ts'
+import type { ProjectOnboardingChange, ProjectOnboardingState } from '../src/services/contracts.ts'
 import {
   projectOnboardingChangeFromWire,
   projectOnboardingDiffFromWire,
@@ -535,6 +536,42 @@ test('retries a lost apply response against the approved base after Git already 
     state: null,
     git: { clean: true, head: 'e'.repeat(40) },
   }), /HEAD changed/)
+})
+
+test('blocks discovery refresh for every active review or unapplied commit state', () => {
+  const prepared = projectOnboardingStateFromWire(state(), 'demo')
+  const activeState = (status: ProjectOnboardingState['status']) => ({
+    ...prepared,
+    status,
+    activeRunId: 'onboard-1',
+  })
+  const activeChange = (status: ProjectOnboardingChange['status']): ProjectOnboardingChange => ({
+    contract: 'opensaddle.onboarding-change-proposal/v1',
+    projectId: 'demo',
+    runId: 'onboard-1',
+    status,
+    changedFiles: [],
+    verification: [],
+    activity: [],
+    checks: [],
+    recommendationOptions: [],
+  })
+
+  assert.match(onboardingRefreshBarrier(activeState('running'), activeChange('running')) ?? '', /Finish or reject/)
+  assert.match(onboardingRefreshBarrier(activeState('approval_required'), activeChange('approval_required')) ?? '', /approval required/)
+  assert.match(onboardingRefreshBarrier(activeState('approval_required'), activeChange('verification_failed')) ?? '', /verification failed/)
+  assert.match(onboardingRefreshBarrier(activeState('committed'), activeChange('committed')) ?? '', /apply any committed change/)
+  assert.equal(onboardingRefreshBarrier(activeState('failed'), activeChange('failed')), null)
+  assert.equal(onboardingRefreshBarrier(activeState('interrupted'), activeChange('interrupted')), null)
+  assert.equal(onboardingRefreshBarrier(activeState('applied'), activeChange('applied')), null)
+  assert.equal(onboardingRefreshBarrier({ ...prepared, status: 'ready', activeRunId: null }, null), null)
+  assert.match(onboardingRefreshBarrier(activeState('ready'), null) ?? '', /Run onboard-1 is ready/)
+  assert.match(onboardingRefreshBarrier(activeState('failed'), { ...activeChange('failed'), runId: 'stale-run' }) ?? '', /Run onboard-1/)
+  assert.match(onboardingRefreshBarrier({ ...prepared, status: 'ready', activeRunId: null }, activeChange('running')) ?? '', /Run onboard-1 is running/)
+
+  const page = readFileSync('src/features/onboarding/ProjectOnboardingPage.tsx', 'utf8')
+  assert.match(page, /disabled=\{Boolean\(activeRunRefreshBarrier\) \|\| Boolean\(busy\)\}/)
+  assert.match(page, /if \(activeRunRefreshBarrier\)/)
 })
 
 test('project creation hands off to governed onboarding and never starts a generic natural-language run', () => {
