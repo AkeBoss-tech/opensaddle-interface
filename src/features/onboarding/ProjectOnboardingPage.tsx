@@ -12,6 +12,7 @@ import type {
 } from '../../services/contracts'
 import { Button, StepProgress } from '../../ui'
 import { OnboardingApprovalReview } from './OnboardingApprovalReview'
+import { OnboardingRecommendationReview } from './OnboardingRecommendationReview'
 import { onboardingApplyInput } from './onboardingApply'
 import { supportsGovernedProjectOnboarding } from './onboardingAvailability'
 import { onboardingRefreshBarrier } from './onboardingRefresh'
@@ -442,6 +443,7 @@ export function ProjectOnboardingPage() {
               </label>)}
               {!visibleOptions.length && <div className="onboarding-empty-inline"><Icon name="info" /><span>No executable recommendation was returned for this fingerprint.</span></div>}
             </div>
+            {selectedOption && <OnboardingRecommendationReview option={selectedOption} runnerLabel={runnerInfo.label} />}
             <div className="onboarding-actions"><Button variant="secondary" disabled={Boolean(activeRunRefreshBarrier) || Boolean(busy)} onClick={() => void prepare()} loading={busy === 'prepare'}>{state.refreshRequired ? 'Refresh KRAIL discovery' : 'Refresh discovery'}</Button><Button disabled={Boolean(busy) || !selectedOption || !executionReady || Boolean(change && !['rejected', 'applied'].includes(change.status))} loading={busy === 'run'} onClick={() => void startRecommendation()}><Icon name="play" className="icon xs" />{selectedOption?.kind === 'proposal_generation' ? 'Analyze and propose setup' : 'Apply project action in worktree'}</Button></div>
             {(activeRunRefreshBarrier || !runnerReady || repositoryBarrier || requiredRefreshBarrier) && <p className="onboarding-inline-barrier"><Icon name="shield" />{activeRunRefreshBarrier ?? requiredRefreshBarrier ?? repositoryBarrier ?? (readiness ? `OpenSaddle readiness failed: ${failedReadinessChecks.join(', ') || readiness.error || 'unknown check'}.` : runnerCapability?.unavailableReason ?? runnerCapability?.auth.message ?? `Checking ${runnerInfo.label} and project readiness with OpenSaddle.`)}</p>}
           </section>}

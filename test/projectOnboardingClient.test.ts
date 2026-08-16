@@ -4,6 +4,7 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { OnboardingApprovalReview } from '../src/features/onboarding/OnboardingApprovalReview.tsx'
+import { OnboardingRecommendationReview } from '../src/features/onboarding/OnboardingRecommendationReview.tsx'
 import { onboardingApplyInput } from '../src/features/onboarding/onboardingApply.ts'
 import { onboardingRefreshBarrier } from '../src/features/onboarding/onboardingRefresh.ts'
 import { registerLocalWorkspace } from '../src/features/onboarding/registerLocalWorkspace.ts'
@@ -502,6 +503,20 @@ test('renders the backend-shaped exact diff and verification as one inline appro
   assert.match(html, /python -m pytest -q/)
   assert.match(html, /Approve exact diff &amp; verify/)
   assert.match(html, /Reject &amp; clean worktree/)
+})
+
+test('shows the exact runner instruction and verification commands before start', () => {
+  const recommendation = projectOnboardingStateFromWire(state(), 'demo').recommendationOptions[0]
+  assert.ok(recommendation)
+  const html = renderToStaticMarkup(React.createElement(OnboardingRecommendationReview, {
+    option: recommendation,
+    runnerLabel: 'Codex CLI',
+  }))
+  assert.match(html, /Review exactly what Codex CLI will receive and run/)
+  assert.match(html, /Inspect the discovery record and write only the requested proposal files/)
+  assert.match(html, /python -m pytest -q/)
+  assert.match(html, /pyproject\.toml:tool\.pytest/)
+  assert.match(html, /OS, process, network, and credential authority/)
 })
 
 test('retries a lost apply response against the approved base after Git already fast-forwarded', () => {
