@@ -35,6 +35,8 @@ export interface ServiceBundle {
     modelProvider?: string
     models: string[]
     storage?: string
+    capabilities: string[]
+    contracts?: Record<string, string>
   }
 }
 
@@ -78,6 +80,7 @@ export function initServices(opts: {
       let configuredModels: string[] = []
       let storage: string | undefined
       let backendCapabilities = new Set<string>()
+      let backendContracts: Record<string, string> = {}
       if (connection.mode === 'remote' && mode !== 'mock') {
         try {
           const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/health`, {
@@ -92,12 +95,17 @@ export function initServices(opts: {
               configured_models?: string[]
               storage?: { engine?: string }
               capabilities?: string[]
+              contracts?: Record<string, unknown>
             }
             backendMode = health.mode
             modelProvider = health.model_provider
             configuredModels = health.configured_models ?? []
             storage = health.storage?.engine
             backendCapabilities = new Set(health.capabilities ?? [])
+            backendContracts = Object.fromEntries(
+              Object.entries(health.contracts ?? {})
+                .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+            )
           }
         } catch {
           backendAvailable = false
@@ -181,6 +189,8 @@ export function initServices(opts: {
           modelProvider,
           models: configuredModels,
           storage,
+          capabilities: [...backendCapabilities].sort(),
+          contracts: backendContracts,
         },
       }
     })()

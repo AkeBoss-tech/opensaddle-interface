@@ -305,7 +305,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           signal: AbortSignal.timeout(1_200),
         })
         const connected = response.ok
-        if (!cancelled && connected !== services.controlPlane.connected) {
+        const health = connected
+          ? await response.json() as { contracts?: { project_onboarding?: unknown } }
+          : null
+        const projectOnboardingContract = typeof health?.contracts?.project_onboarding === 'string'
+          ? health.contracts.project_onboarding
+          : undefined
+        if (!cancelled && (
+          connected !== services.controlPlane.connected
+          || projectOnboardingContract !== services.controlPlane.contracts?.project_onboarding
+        )) {
           reinitialize()
         }
       } catch {

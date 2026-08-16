@@ -128,6 +128,9 @@ export function ProjectWorkspacePage() {
   }
 
   const resourceLinks: ResourceLink[] = [
+    ...(project.workspaceKind === 'local' && project.local
+      ? [{ label: 'KRAIL onboarding', detail: 'Profile, recommendations, and governed commits', icon: 'spark', href: `/project/${project.id}/onboarding` }]
+      : []),
     { label: 'Project sessions', detail: 'Resume or fork Codex and Claude Code', icon: 'clock', href: `/project/${project.id}/sessions` },
     { label: 'Agents', detail: `${teamAgents.length} configured`, icon: 'spark', href: `/agents/${project.id}` },
     { label: 'Knowledge', detail: `${knowledge.length + sources.length} sources`, icon: 'db', href: '/wiki' },

@@ -24,6 +24,7 @@ test('review, exact diff approval, and unchanged verified diff are hard gates', 
 
 test('proposal run instruction cannot silently promote or commit', () => {
   const task = krailOnboardingTask('claude_code')
-  assert.match(task, /isolated worktree/i)
+  assert.match(task, /detached Git worktree/i)
+  assert.match(task, /does not provide OS, process, network, or credential isolation/i)
   assert.match(task, /Do not promote knowledge, execute a recommended automation, push, or commit/)
 })

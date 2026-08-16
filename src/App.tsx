@@ -31,8 +31,10 @@ import { WorkPage } from './features/work/WorkPage'
 import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
 import { AddProjectDialog } from './features/onboarding/AddProjectDialog'
+import { ProjectOnboardingPage } from './features/onboarding/ProjectOnboardingPage'
+import { supportsGovernedProjectOnboarding } from './features/onboarding/onboardingAvailability'
+import { registerLocalWorkspace } from './features/onboarding/registerLocalWorkspace'
 import { scaffoldApply } from './features/onboarding/scaffoldApply'
-import { krailOnboardingTask } from './features/onboarding/krailOnboardingWorkflow'
 import './styles/app.css'
 import './styles/thread-first.css'
 import './styles/liquid-glass.css'
@@ -99,8 +101,8 @@ function Shell() {
       local: 'Local projects',
     }
     const project = parts[0] === 'project' ? data.projects.find((item) => item.id === parts[1]) : undefined
-    if (project && (parts[2] === 'agents' || parts[2] === 'skills')) {
-      return <><span>OpenSaddle</span><span>/</span><span>{project.name}</span><span>/</span><strong>{parts[2] === 'agents' ? 'Agents' : 'Skills'}</strong></>
+    if (project && (parts[2] === 'agents' || parts[2] === 'skills' || parts[2] === 'onboarding')) {
+      return <><span>OpenSaddle</span><span>/</span><span>{project.name}</span><span>/</span><strong>{parts[2] === 'agents' ? 'Agents' : parts[2] === 'skills' ? 'Skills' : 'KRAIL onboarding'}</strong></>
     }
     const label = parts[0] === 'chat' ? (data.chats.find((c) => c.id === parts[1])?.title ?? 'Thread')
       : parts[0] === 'project' ? (project?.name ?? 'Project')
@@ -213,6 +215,7 @@ function Shell() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:chatId" element={<ChatPage />} />
             <Route path="/project/:projectId" element={<ProjectWorkspacePage />} />
+            <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
             <Route path="/project/:projectId/manage" element={<ProjectPage />} />
             <Route path="/project/:projectId/agents" element={<LocalProjectsPage focusedTab="agents" />} />
             <Route path="/project/:projectId/skills" element={<LocalProjectsPage focusedTab="skills" />} />
@@ -260,6 +263,7 @@ function Shell() {
         open={projectModal}
         projects={data.projects}
         defaultParentId={data.activeProjectId}
+        governedOnboardingAvailable={supportsGovernedProjectOnboarding(services)}
         onClose={() => setProjectModal(false)}
         onCreateCloud={({ name, parentId, color }) => {
           const id = createProject(name, parentId, 'Cloud workspace')
@@ -268,33 +272,38 @@ function Shell() {
           nav(`/project/${id}`)
         }}
         onCreateLocal={async ({ name, color, proposal, selectedIds, krailRunner }) => {
-          const application = scaffoldApply(proposal, selectedIds, proposal.folderPath, name)
-          const projectId = importLocalProject({ name: application.project.name, description: application.project.description, local: application.project.local })
-          updateProject(projectId, { iconColor: color } as never)
-          await services?.localProjects?.registerProject?.(projectId, application.project.local.rootPath)
-          if (krailRunner && services?.runtime) {
-            const started = await services.runtime.startRun({
-              projectId,
-              task: krailOnboardingTask(krailRunner),
-              agentId: krailRunner === 'codex_cli' ? 'codex' : 'claude_code',
-              repo: application.project.local.rootPath,
-              executionMode: 'project',
-            })
-            toast('KRAIL onboarding started', `Run ${started.runId} is preparing review-only proposals.`)
+          const localProjects = services?.localProjects
+          if (krailRunner && !supportsGovernedProjectOnboarding(services)) {
+            throw new Error('Connect a local OpenSaddle server before starting governed KRAIL onboarding. Connected mode never falls back to a simulated run.')
           }
-          application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
-          application.members.forEach((member) => createMember(member))
-          application.agents.forEach((agent) => createAgent({
-            projectId, name: agent.name, description: agent.description, systemPrompt: agent.description, modelPolicy: 'auto', harness: 'coding', harnessId: agent.harnessId, runtime: 'local',
-            permissionPolicy: { sandbox: 'workspace-write', approvals: 'on-request', network: false, allowedTools: [], deniedTools: [] }, skillIds: [], tools: ['Files', 'Shell', 'Git'], knowledgeSourceIds: [], visibility: 'private',
-          }))
-          addServiceConnections(projectId, application.connectors)
-          addPermissionGrants(application.permissionGrants.map((permission) => ({
-            principalKind: 'user', principalId: data.currentUserId, resourceKind: 'project', resourceId: projectId, action: permission.action, effect: 'allow', inheritance: 'direct', approvalRequired: permission.approvalRequired,
-          })))
+          const application = scaffoldApply(proposal, selectedIds, proposal.folderPath, name)
+          const projectId = `local_${globalThis.crypto.randomUUID()}`
+          await registerLocalWorkspace({
+            projectId,
+            root: application.project.local.rootPath,
+            registerProject: localProjects?.registerProject
+              ? localProjects.registerProject.bind(localProjects)
+              : undefined,
+            commitRendererState: () => {
+              importLocalProject({ id: projectId, name: application.project.name, description: application.project.description, local: application.project.local })
+              updateProject(projectId, { iconColor: color } as never)
+              application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
+              application.members.forEach((member) => createMember(member))
+              application.agents.forEach((agent) => createAgent({
+                projectId, name: agent.name, description: agent.description, systemPrompt: agent.description, modelPolicy: 'auto', harness: 'coding', harnessId: agent.harnessId, runtime: 'local',
+                permissionPolicy: { sandbox: 'workspace-write', approvals: 'on-request', network: false, allowedTools: [], deniedTools: [] }, skillIds: [], tools: ['Files', 'Shell', 'Git'], knowledgeSourceIds: [], visibility: 'private',
+              }))
+              addServiceConnections(projectId, application.connectors)
+              addPermissionGrants(application.permissionGrants.map((permission) => ({
+                principalKind: 'user', principalId: data.currentUserId, resourceKind: 'project', resourceId: projectId, action: permission.action, effect: 'allow', inheritance: 'direct', approvalRequired: permission.approvalRequired,
+              })))
+            },
+          })
           setActiveProject(projectId)
           toast('Local workspace created', name)
-          nav(`/project/${projectId}`)
+          nav(krailRunner
+            ? `/project/${projectId}/onboarding?${new URLSearchParams({ start: '1', runner: krailRunner })}`
+            : `/project/${projectId}`)
         }}
       />
     </div>
