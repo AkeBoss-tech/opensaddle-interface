@@ -146,6 +146,7 @@ test('parses every authoritative vendored onboarding wire fixture transition', (
   assert.equal(fixture.health_capability, 'project_onboarding')
   assert.deepEqual(fixture.health_contracts, {
     project_onboarding: 'opensaddle.project-onboarding/v1',
+    onboarding_run_list: 'opensaddle.onboarding-run-list/v1',
   })
 
   const ready = projectOnboardingReadinessFromWire(fixture.readiness, 'demo', 'codex_cli')
