@@ -56,6 +56,7 @@ function discovery() {
     mode: 'onboard',
     fingerprint: DIGEST,
     languages: ['python'],
+    ecosystems: ['python'],
     file_count: 12,
     repository: { kind: 'git', revision: HEAD, dirty: false },
     commands: [{

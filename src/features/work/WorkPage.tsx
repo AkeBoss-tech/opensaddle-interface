@@ -12,6 +12,7 @@ import type {
   WorkflowDefinition,
   WorkflowExecution,
   WorkflowTimelineEvent,
+  OnboardingRunSummary,
 } from '../../services/contracts'
 import { selectAttentionItems, type AttentionItem } from '../thread/domain'
 
@@ -93,8 +94,10 @@ function descendantProjectIds(projects: Array<{ id: string; parentId: string | n
 export function WorkPage() {
   const { data, createChat, setActiveChat, setChatArchived, services, toast } = useStore()
   const navigate = useNavigate()
+  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
   const [filter, setFilter] = useState<WorkFilter | 'all'>('all')
   const [durableRuns, setDurableRuns] = useState<RuntimeRunSummary[]>([])
+  const [onboardingRuns, setOnboardingRuns] = useState<OnboardingRunSummary[]>([])
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([])
   const [executions, setExecutions] = useState<WorkflowExecution[]>([])
   const [timeline, setTimeline] = useState<WorkflowTimelineEvent[]>([])
@@ -104,6 +107,12 @@ export function WorkPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null)
 
   const refreshDurableWork = useCallback(async () => {
+    if (services?.controlPlane.connected && services.controlPlane.mode === 'local') {
+      const runs = await services.localProjects?.listOnboardingRuns?.(200) ?? []
+      setOnboardingRuns(runs)
+      setDurableRuns([]); setWorkflows([]); setExecutions([])
+      return
+    }
     const [runs, definitions, workflowExecutions] = await Promise.all([
       services?.runtime.listRuns?.() ?? Promise.resolve([]),
       services?.workflows?.list() ?? Promise.resolve([]),
@@ -137,6 +146,32 @@ export function WorkPage() {
   }, [refreshDurableWork, toast])
 
   const rows = useMemo(() => {
+    if (services?.controlPlane.connected && services.controlPlane.mode === 'local') {
+      const localRows = onboardingRuns.map<WorkRow>((run) => {
+        const project = data.projects.find((candidate) => candidate.id === run.projectId)
+        const status = run.status === 'approval_required' ? 'Needs approval'
+          : run.status === 'verification_failed' ? 'Failed'
+            : run.status[0]!.toUpperCase() + run.status.slice(1).replaceAll('_', ' ')
+        return {
+          id: `onboarding-${run.runId}`,
+          title: run.recommendationId ?? 'Governed onboarding run',
+          subtitle: `${run.changedFileCount} changed file${run.changedFileCount === 1 ? '' : 's'} · ${run.materializationValidation?.artifactKind?.replaceAll('_', ' ') ?? run.recommendationKind ?? 'project change'}`,
+          projectId: run.projectId,
+          owner: project?.name ?? run.projectId,
+          status,
+          timeSignal: relativeTime(run.updatedAt),
+          href: `/project/${encodeURIComponent(run.projectId)}/onboarding?run=${encodeURIComponent(run.runId)}`,
+          kind: run.status === 'approval_required' ? 'approval' : 'run',
+        }
+      })
+      return {
+        attention: localRows.filter((row) => ['Needs approval', 'Failed', 'Interrupted'].includes(row.status)),
+        running: localRows.filter((row) => row.status === 'Running'),
+        scheduled: [],
+        completed: localRows.filter((row) => ['Committed', 'Applied', 'Rejected'].includes(row.status)),
+        archived: [],
+      }
+    }
     const localMode = services?.mode === 'desktop' || services?.controlPlane.mode === 'local'
     const localProjectIds = new Set(
       data.projects
@@ -290,7 +325,7 @@ export function WorkPage() {
       completed: completed.filter(inSelectedTeam),
       archived: archived.filter(inSelectedTeam),
     }
-  }, [data, durableRuns, executions, services?.controlPlane.mode, services?.mode, workflows])
+  }, [data, durableRuns, executions, onboardingRuns, services?.controlPlane.connected, services?.controlPlane.mode, services?.mode, workflows])
 
   const selectedWorkflow = workflows.find((workflow) => workflow.workflowId === selectedWorkflowId)
   const selectedExecution = executions.find((execution) => execution.executionId === selectedExecutionId)
@@ -461,6 +496,18 @@ export function WorkPage() {
     </div>
   ) : null
 
+  if (connectedLocal) {
+    const localSections = [
+      { title: 'Needs attention', description: 'Exact-diff approvals, verification failures, and interrupted runs', rows: rows.attention },
+      { title: 'Running', description: 'Active detached-worktree executions', rows: rows.running },
+      { title: 'Completed', description: 'Committed, applied, and rejected governed outcomes', rows: rows.completed },
+    ]
+    return <div className="content-page connected-local-page">
+      <header className="page-header"><div><span className="eyebrow">Authoritative run registry</span><h1>Work</h1><p>Sanitized, newest-first governed onboarding summaries from the local OpenSaddle server.</p></div><Button onClick={() => window.dispatchEvent(new Event('opensaddle:add-project'))}>Add local project</Button></header>
+      {localSections.map((section) => <section className="settings-card" key={section.title}><div className="section-heading"><div><h2>{section.title}</h2><p>{section.description}</p></div><span>{section.rows.length}</span></div>{section.rows.length ? <div className="list-stack">{section.rows.map((row) => <button className="list-row" type="button" key={row.id} onClick={() => navigate(row.href ?? `/project/${row.projectId}`)}><span><strong>{row.title}</strong><small>{row.subtitle}</small></span><span><strong>{row.status}</strong><small>{row.owner} · {row.timeSignal}</small></span></button>)}</div> : <div className="empty-state">Nothing here.</div>}</section>)}
+    </div>
+  }
+
   return (
     <>
       <SurfaceHost
@@ -472,6 +519,10 @@ export function WorkPage() {
           filter,
           sections,
           onCreateTask: () => {
+            if (services?.controlPlane.connected && services.controlPlane.mode === 'local') {
+              window.dispatchEvent(new Event('opensaddle:add-project'))
+              return
+            }
             const chat = createChat(data.activeProjectId, 'New task')
             setActiveChat(chat.id)
             navigate(`/chat/${chat.id}`)

@@ -121,12 +121,6 @@ export function initServices(opts: {
         const remote = new RemotePermissionClient(baseUrl, getUserId, token)
         try {
           let serverGrants = await remote.list()
-          // A fresh loopback daemon can be initialized from the local demo's
-          // grants. Company mode never trusts browser state as bootstrap policy.
-          if (backendMode === 'local' && serverGrants.length <= 1 && opts.getGrants().length > 0) {
-            for (const grant of opts.getGrants()) await remote.upsert(grant)
-            serverGrants = await remote.list()
-          }
           opts.setGrants(serverGrants)
           permissions = remote
         } catch {
@@ -144,10 +138,10 @@ export function initServices(opts: {
             allowFallback: false,
           })
           : new MockRuntimeClient()
-      const workspace = backendAvailable && (backendCapabilities.size === 0 || backendCapabilities.has('workspace'))
+      const workspace = backendAvailable && backendMode !== 'local' && (backendCapabilities.size === 0 || backendCapabilities.has('workspace'))
         ? new RemoteWorkspaceClient(baseUrl, getUserId, token)
         : undefined
-      const threads = backendAvailable
+      const threads = backendAvailable && backendMode !== 'local'
         ? backendCapabilities.has('threads')
           ? new AuthoritativeThreadClient(baseUrl, getUserId, token)
           : backendCapabilities.size === 0
@@ -162,7 +156,7 @@ export function initServices(opts: {
             ? new RemoteLocalProjectClient(baseUrl, getUserId, token)
             : undefined
         : undefined
-      const workflows = backendAvailable && backendCapabilities.has('workflows')
+      const workflows = backendAvailable && backendMode !== 'local' && backendCapabilities.has('workflows')
         ? new RemoteWorkflowClient(baseUrl, getUserId, token)
         : undefined
       const tools = connection.mode === 'remote' && mode !== 'mock'

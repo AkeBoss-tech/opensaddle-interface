@@ -24,6 +24,7 @@ export function OnboardingRecommendationReview({
       <h3>Agent instruction</h3>
       <pre>{option.instruction}</pre>
     </div>
+    {option.materialization && <div className="onboarding-preflight-section"><h3>Exact provider-native target</h3><code>{option.materialization.targetPath}</code><small>{option.materialization.artifactKind.replaceAll('_', ' ')} · {option.materialization.targetContract} · bound to {option.materialization.discoveryFingerprint}</small></div>}
     <div className="onboarding-preflight-section">
       <h3>Commands run by OpenSaddle after exact-diff approval</h3>
       {option.verification.map((verification) => <div className="onboarding-preflight-command" key={verification.name}>

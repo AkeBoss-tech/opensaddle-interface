@@ -7,6 +7,8 @@ import type {
   ProjectOnboardingProfile,
   ProjectOnboardingReadiness,
   ProjectOnboardingReadinessCheck,
+  ProjectOnboardingMaterialization,
+  ProjectOnboardingMaterializationValidation,
   ProjectOnboardingRecommendationOption,
   ProjectOnboardingState,
   ProjectOnboardingVerification,
@@ -140,6 +142,63 @@ function verification(value: unknown): ProjectOnboardingVerification {
   }
 }
 
+function materialization(value: unknown): ProjectOnboardingMaterialization {
+  const item = object(value, 'materialization descriptor')
+  const artifactKinds = ['codex_skill', 'claude_skill', 'krail_workflow'] as const
+  const targetContracts = ['codex.project-skill/v1', 'claude.project-skill/v1', 'krail.workflow/v1'] as const
+  const expectedContracts = {
+    codex_skill: 'codex.project-skill/v1',
+    claude_skill: 'claude.project-skill/v1',
+    krail_workflow: 'krail.workflow/v1',
+  } as const
+  if (
+    !artifactKinds.includes(item.artifactKind)
+    || !targetContracts.includes(item.targetContract)
+    || expectedContracts[item.artifactKind as keyof typeof expectedContracts] !== item.targetContract
+  ) {
+    throw new Error('OpenSaddle returned an unsupported onboarding materialization target.')
+  }
+  return {
+    recommendationId: string(item.recommendationId, 'materialization recommendation id'),
+    discoveryFingerprint: digest(item.discoveryFingerprint, 'materialization discovery fingerprint'),
+    artifactKind: item.artifactKind,
+    targetPath: projectRelativePath(item.targetPath, 'materialization target path'),
+    targetContract: item.targetContract,
+  }
+}
+
+function materializationValidation(value: unknown): ProjectOnboardingMaterializationValidation {
+  const item = object(value, 'materialization validation')
+  const descriptor = materialization({
+    recommendationId: item.recommendationId,
+    discoveryFingerprint: item.contentDigest,
+    artifactKind: item.artifactKind,
+    targetPath: item.targetPath,
+    targetContract: item.targetContract,
+  })
+  const byteCount = Number(item.byteCount)
+  if (
+    item.contract !== 'opensaddle.materialization-validation/v1'
+    || item.status !== 'valid'
+    || item.activationBoundary !== 'project'
+    || !Number.isSafeInteger(byteCount)
+    || byteCount < 1
+  ) throw new Error('OpenSaddle returned an invalid materialization validation receipt.')
+  return {
+    contract: item.contract,
+    status: item.status,
+    recommendationId: descriptor.recommendationId,
+    artifactKind: descriptor.artifactKind,
+    targetPath: descriptor.targetPath,
+    targetContract: descriptor.targetContract,
+    semanticName: string(item.semanticName, 'materialization semantic name'),
+    descriptionDigest: digest(item.descriptionDigest, 'materialization description digest'),
+    contentDigest: digest(item.contentDigest, 'materialization content digest'),
+    byteCount,
+    activationBoundary: item.activationBoundary,
+  }
+}
+
 function option(value: unknown): ProjectOnboardingRecommendationOption {
   const item = object(value, 'automation recommendation')
   if (item.contract !== undefined) throw new Error('OpenSaddle returned an untrusted recommendation option contract.')
@@ -179,6 +238,9 @@ function option(value: unknown): ProjectOnboardingRecommendationOption {
     allowedPaths,
     verification: item.verification.map(verification),
     commitMessage: string(item.commitMessage, 'commit message'),
+    materialization: item.materialization === null || item.materialization === undefined
+      ? item.materialization
+      : materialization(item.materialization),
   }
 }
 
@@ -224,6 +286,9 @@ function discovery(value: unknown): ProjectOnboardingDiscovery {
   if (!Array.isArray(item.languages) || item.languages.some((language: unknown) => typeof language !== 'string')) {
     throw new Error('OpenSaddle returned invalid project discovery languages.')
   }
+  if (item.ecosystems !== undefined && (!Array.isArray(item.ecosystems) || item.ecosystems.some((ecosystem: unknown) => typeof ecosystem !== 'string'))) {
+    throw new Error('OpenSaddle returned invalid project discovery ecosystems.')
+  }
   const repository = item.repository === undefined ? undefined : object(item.repository, 'repository discovery')
   if (repository && repository.kind !== 'git' && repository.kind !== 'directory') {
     throw new Error('OpenSaddle returned an unsupported repository discovery kind.')
@@ -239,6 +304,7 @@ function discovery(value: unknown): ProjectOnboardingDiscovery {
     mode: item.mode,
     fingerprint: item.fingerprint,
     languages: [...item.languages],
+    ecosystems: Array.isArray(item.ecosystems) ? [...item.ecosystems] : [],
     fileCount,
     repository: repository ? {
       kind: repository.kind,
@@ -537,6 +603,9 @@ export function projectOnboardingChangeFromWire(value: unknown, expectedProjectI
     summary: change.summary === null || typeof change.summary === 'string' ? change.summary : undefined,
     error: change.error === null || typeof change.error === 'string' ? change.error : undefined,
     recoverable: typeof change.recoverable === 'boolean' ? change.recoverable : undefined,
+    materializationValidation: change.materializationValidation === null || change.materializationValidation === undefined
+      ? change.materializationValidation
+      : materializationValidation(change.materializationValidation),
   }
 }
 

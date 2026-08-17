@@ -29,6 +29,7 @@ export function OnboardingApprovalReview({
     && Boolean(change.patch?.trim())
     && Boolean(change.diffDigest)
   return <>
+    {change.materializationValidation && <div className="onboarding-verification"><h3>Materialization validation</h3><div><Icon name="check" /><span><strong>{change.materializationValidation.semanticName} · {change.materializationValidation.artifactKind.replaceAll('_', ' ')}</strong><code>{change.materializationValidation.targetPath}</code><small>{change.materializationValidation.targetContract} · {change.materializationValidation.byteCount} bytes · project activation only · {change.materializationValidation.contentDigest}</small></span></div></div>}
     {change.patch && change.diffDigest && <div className="onboarding-diff">
       <div className="onboarding-diff-head"><div><span>Exact approval boundary</span><strong>{change.changedFiles.length} changed file{change.changedFiles.length === 1 ? '' : 's'}</strong></div><code title={change.diffDigest}>{shortDigest(change.diffDigest)}</code></div>
       <div className="onboarding-files">{change.changedFiles.map((path) => <span key={path}><Icon name="file" />{path}</span>)}</div>

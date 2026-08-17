@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 import '../styles/start-hub.css'
+import { ConnectedLocalStartPage } from '../features/projects/ConnectedLocalStartPage'
 
 const QUICK_PROMPTS = [
   'What needs my attention?',
@@ -21,7 +22,7 @@ function relativeTime(timestamp: number) {
 
 export function StartPage() {
   const navigate = useNavigate()
-  const { data, createChat } = useStore()
+  const { data, createChat, services } = useStore()
   const [prompt, setPrompt] = useState('')
   const [scopeProjectId, setScopeProjectId] = useState<string | null>(null)
   const [scopeOpen, setScopeOpen] = useState(false)
@@ -41,6 +42,7 @@ export function StartPage() {
   const activeWorkflows = data.workflows.filter((workflow) => workflow.status === 'active')
   const indexedItems = data.knowledge.reduce((total, source) => total + source.items, 0)
   const firstName = data.settings.displayName.trim().split(/\s+/)[0] || 'there'
+  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
 
   const ask = (value = prompt) => {
     const nextPrompt = value.trim()
@@ -66,6 +68,8 @@ export function StartPage() {
       ask()
     }
   }
+
+  if (connectedLocal) return <ConnectedLocalStartPage />
 
   return (
     <div className="osh-start">

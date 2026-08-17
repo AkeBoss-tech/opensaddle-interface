@@ -669,6 +669,29 @@ export interface ProjectOnboardingRecommendationOption {
   allowedPaths: string[]
   verification: ProjectOnboardingVerification[]
   commitMessage: string
+  materialization?: ProjectOnboardingMaterialization | null
+}
+
+export interface ProjectOnboardingMaterialization {
+  recommendationId: string
+  discoveryFingerprint: string
+  artifactKind: 'codex_skill' | 'claude_skill' | 'krail_workflow'
+  targetPath: string
+  targetContract: 'codex.project-skill/v1' | 'claude.project-skill/v1' | 'krail.workflow/v1'
+}
+
+export interface ProjectOnboardingMaterializationValidation {
+  contract: 'opensaddle.materialization-validation/v1'
+  status: 'valid'
+  recommendationId: string
+  artifactKind: ProjectOnboardingMaterialization['artifactKind']
+  targetPath: string
+  targetContract: ProjectOnboardingMaterialization['targetContract']
+  semanticName: string
+  descriptionDigest: string
+  contentDigest: string
+  byteCount: number
+  activationBoundary: 'project'
 }
 
 export interface ProjectOnboardingClaim {
@@ -700,6 +723,7 @@ export interface ProjectOnboardingDiscovery {
   mode: 'onboard' | 'refresh'
   fingerprint: string
   languages: string[]
+  ecosystems: string[]
   fileCount: number
   repository?: {
     kind?: 'git' | 'directory'
@@ -829,6 +853,36 @@ export interface ProjectOnboardingChange {
   summary?: string | null
   error?: string | null
   recoverable?: boolean
+  materializationValidation?: ProjectOnboardingMaterializationValidation | null
+}
+
+export interface OnboardingRunSummary {
+  runId: string
+  projectId: string
+  recommendationId?: string | null
+  recommendationKind?: ProjectOnboardingRecommendationOption['kind'] | null
+  status: ProjectOnboardingChange['status']
+  fingerprint?: string | null
+  diffDigest?: string | null
+  changedFileCount: number
+  checks: Array<{ name: string; passed: boolean; exitCode?: number | null }>
+  commit?: string | null
+  ref?: string | null
+  recoverable: boolean
+  materializationValidation?: {
+    contract: 'opensaddle.materialization-validation/v1'
+    status: 'valid'
+    artifactKind: ProjectOnboardingMaterialization['artifactKind']
+    targetContract: ProjectOnboardingMaterialization['targetContract']
+    semanticName: string
+    descriptionDigest: string
+    contentDigest: string
+    byteCount: number
+    activationBoundary: 'project'
+  } | null
+  lastActivity?: { kind?: string; type?: string; label?: string; at?: string; timestamp?: string } | null
+  createdAt: number
+  updatedAt: number
 }
 
 export interface ProjectOnboardingDiff {
@@ -881,6 +935,7 @@ export interface LocalProjectClient {
   readonly supportsManagedArchives?: boolean
   registerProject?(projectId: string, root: string): Promise<{ projectId: string; root: string }>
   listProjects?(): Promise<RegisteredLocalProject[]>
+  listOnboardingRuns?(limit?: number): Promise<OnboardingRunSummary[]>
   harnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
   refreshHarnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }>
   localSessions(provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]>

@@ -374,7 +374,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [localProjectKey, services])
 
   useEffect(() => {
-    if (!services?.localProjects?.listProjects || !harnessCapabilities.length) return
+    if (!services?.localProjects?.listProjects) return
     let cancelled = false
     const preferredHarness = ['codex', 'claude', 'cursor', 'gemini', 'opencode', 'antigravity']
       .find((id) => harnessCapabilities.some((capability) =>
@@ -392,27 +392,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const next = structuredClone(current)
           for (const registration of missing) {
             next.projects.push(projectFromRegisteredLocalProject(registration, preferredHarness))
-            for (const action of ['read', 'write', 'execute', 'administer']) {
-              if (next.permissionGrants.some((grant) =>
-                grant.principalKind === 'user'
-                && grant.principalId === next.currentUserId
-                && grant.resourceKind === 'project'
-                && grant.resourceId === registration.projectId
-                && grant.action === action
-                && grant.effect === 'allow')) continue
-              next.permissionGrants.push({
-                id: uid('grant'),
-                principalKind: 'user',
-                principalId: next.currentUserId,
-                resourceKind: 'project',
-                resourceId: registration.projectId,
-                action,
-                effect: 'allow',
-                inheritance: 'direct',
-                createdAt: Date.now(),
-                createdBy: next.currentUserId,
-              })
-            }
           }
           return next
         })
