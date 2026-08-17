@@ -6,7 +6,7 @@ notarized, stapled, smoke-tested, checksummed, and uploaded to a new immutable
 GitHub release. The workflow never creates a tag and never overwrites a release
 or asset.
 
-Release order is KRAIL 1.2.0rc2, OpenSaddle 1.2.0rc3, then Desktop v0.2.1. Both selected wheels must
+Release order is KRAIL 1.2.0rc2, OpenSaddle 1.2.0rc4, then Desktop v0.2.1. Both selected wheels must
 be published through trusted publishing and visible through the official PyPI
 JSON API before the desktop workflow begins. The workflow resolves their
 `files.pythonhosted.org` URLs and SHA-256 digests from that API; it never accepts
@@ -44,7 +44,7 @@ is necessary because an ordinary Actions token may not read that setting.
    `python/bin/python3`. Retain its immutable URL, SHA-256, upstream release
    page, and license record.
 5. Dispatch **Desktop release** with tag `desktop-v0.2.1`, KRAIL `1.2.0rc2`,
-   OpenSaddle `1.2.0rc3`, the pinned Python archive URL, and its 64-character
+   OpenSaddle `1.2.0rc4`, the pinned Python archive URL, and its 64-character
    lowercase SHA-256.
 
 The workflow checks out the tag itself and requires its version to match the
