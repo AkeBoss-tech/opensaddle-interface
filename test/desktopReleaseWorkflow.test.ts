@@ -24,7 +24,7 @@ test('desktop release is manual, tag-bound, and immutable', () => {
 test('desktop release verifies official wheels and the pinned Python archive', () => {
   assert.match(workflow, /runs-on: macos-15/)
   assert.match(workflow, /default: 1\.2\.0rc2/)
-  assert.match(workflow, /default: 1\.2\.0rc3/)
+  assert.match(workflow, /default: 1\.2\.0rc4/)
   assert.doesNotMatch(workflow, /KRAIL_VERSION: 1\.1\.13/)
   assert.doesNotMatch(workflow, /OPENSADDLE_VERSION: 1\.1\.1/)
   assert.match(workflow, /https:\/\/pypi\.org\/pypi\/krail\/\$\{KRAIL_VERSION\}\/json/)
@@ -76,7 +76,7 @@ test('desktop release fails closed for signing and smoke-tests packaged launcher
 })
 
 test('release documentation defines provenance and non-destructive rollback', () => {
-  assert.match(releaseGuide, /OpenSaddle 1\.2\.0rc3, then Desktop v0\.2\.1/)
+  assert.match(releaseGuide, /OpenSaddle 1\.2\.0rc4, then Desktop v0\.2\.1/)
   assert.match(releaseGuide, /immutable release/i)
   assert.match(releaseGuide, /publish a higher `desktop-vX\.Y\.Z`/)
   assert.match(releaseGuide, /Never move the old tag or replace its DMG/)

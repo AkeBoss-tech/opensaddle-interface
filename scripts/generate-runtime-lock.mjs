@@ -42,7 +42,7 @@ const lock = {
   schemaVersion: 1,
   target: { platform: 'macos', architecture: 'arm64', python: '3.13' },
   python,
-  topLevel: { krail: '1.2.0rc2', opensaddle: '1.2.0rc3' },
+  topLevel: { krail: '1.2.0rc2', opensaddle: '1.2.0rc4' },
   requirementsSha256: sha256(Buffer.from(requirements)),
   wheelSetSha256: wheelSetDigest,
   wheels,

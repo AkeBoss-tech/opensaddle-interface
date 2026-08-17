@@ -13,10 +13,10 @@
   },
   "topLevel": {
     "krail": "1.2.0rc2",
-    "opensaddle": "1.2.0rc3"
+    "opensaddle": "1.2.0rc4"
   },
-  "requirementsSha256": "c689ae3f65a81aa1a667da9d591c43b89633595d6e7a1a28d1812a3b716bfafe",
-  "wheelSetSha256": "ec2aae81ecb45956288c97ce7e3d740b6b8a601361d0d1b533425435506fb4cb",
+  "requirementsSha256": "d6f0ae92bf12fa0aada2a7cb2a6fc3975750dc7d7137f83a3087cda57d86be26",
+  "wheelSetSha256": "fc9193db4a4a862af6937472dda2f50637fc1857201860494f08bfbf6079e81b",
   "wheels": [
     {
       "distribution": "annotated-doc",
@@ -164,11 +164,11 @@
     },
     {
       "distribution": "opensaddle",
-      "version": "1.2.0rc3",
-      "filename": "opensaddle-1.2.0rc3-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/4d/3b/417792266c931a4e0a3e7a5a0ee9352a8110d5c12cf2c7001125f9df1786/opensaddle-1.2.0rc3-py3-none-any.whl",
-      "size": 466108,
-      "sha256": "328d6450abf7f41bc62253c782495c2bd710c767f40539dc3088d341c0480c0d"
+      "version": "1.2.0rc4",
+      "filename": "opensaddle-1.2.0rc4-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/f5/7c/e53e049c2f5c642ba95861eefa4f8bff075ce9199cc033fa6bd35a8771f2/opensaddle-1.2.0rc4-py3-none-any.whl",
+      "size": 466349,
+      "sha256": "b7c37f86bb4d13665a0bc432a24d7e8ab920379f2e4f44685473764bea042fcb"
     },
     {
       "distribution": "pycparser",
