@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -15,6 +15,9 @@ const expectedOpenSaddleVersion = process.env.OPENSADDLE_VERSION?.trim()
 const runtimeFlag = process.argv.indexOf('--python-runtime')
 const runtimeInput = runtimeFlag >= 0 ? process.argv[runtimeFlag + 1] : process.env.KRAIL_PYTHON_RUNTIME
 const runtimeDigest = process.env.KRAIL_PYTHON_RUNTIME_SHA256?.toLowerCase()
+const runtimeLockInput = process.env.KRAIL_RUNTIME_LOCK
+const requirementsInput = process.env.KRAIL_REQUIREMENTS_LOCK
+const wheelhouseInput = process.env.KRAIL_WHEELHOUSE
 
 function sha256(file) {
   return createHash('sha256').update(readFileSync(file)).digest('hex')
@@ -74,6 +77,66 @@ if (sha256(runtimeArchive) !== runtimeDigest) {
   console.error('KRAIL Python runtime digest does not match KRAIL_PYTHON_RUNTIME_SHA256')
   process.exit(1)
 }
+if (!runtimeLockInput || !requirementsInput || !wheelhouseInput) {
+  console.error('KRAIL_RUNTIME_LOCK, KRAIL_REQUIREMENTS_LOCK, and KRAIL_WHEELHOUSE are required')
+  process.exit(1)
+}
+const runtimeLockPath = path.resolve(runtimeLockInput)
+const requirementsPath = path.resolve(requirementsInput)
+const wheelhouse = path.resolve(wheelhouseInput)
+const runtimeLock = JSON.parse(readFileSync(runtimeLockPath, 'utf8'))
+const requirementsBytes = readFileSync(requirementsPath)
+const wheelSet = Array.isArray(runtimeLock.wheels) ? runtimeLock.wheels : []
+const wheelSetDigest = createHash('sha256').update(JSON.stringify(wheelSet)).digest('hex')
+if (
+  runtimeLock.schemaVersion !== 1
+  || runtimeLock.target?.platform !== 'macos'
+  || runtimeLock.target?.architecture !== 'arm64'
+  || runtimeLock.target?.python !== '3.13'
+  || runtimeLock.python?.sha256 !== runtimeDigest
+  || runtimeLock.python?.size !== statSync(runtimeArchive).size
+  || runtimeLock.topLevel?.krail !== expectedKrailVersion
+  || runtimeLock.topLevel?.opensaddle !== expectedOpenSaddleVersion
+  || runtimeLock.requirementsSha256 !== createHash('sha256').update(requirementsBytes).digest('hex')
+  || runtimeLock.wheelSetSha256 !== wheelSetDigest
+  || wheelSet.length === 0
+) {
+  console.error('runtime lock does not match the requested macOS arm64 Python 3.13 release inputs')
+  process.exit(1)
+}
+const lockedNames = new Set()
+for (const locked of wheelSet) {
+  const candidate = path.join(wheelhouse, locked.filename ?? '')
+  if (
+    !/^[A-Za-z0-9_.+-]+\.whl$/.test(locked.filename ?? '')
+    || !/^https:\/\/files\.pythonhosted\.org\//.test(locked.url ?? '')
+    || !/^[a-f0-9]{64}$/.test(locked.sha256 ?? '')
+    || !existsSync(candidate)
+    || statSync(candidate).size !== locked.size
+    || sha256(candidate) !== locked.sha256
+  ) {
+    console.error(`wheelhouse does not match runtime lock: ${locked.filename ?? '<invalid>'}`)
+    process.exit(1)
+  }
+  lockedNames.add(locked.filename)
+}
+const lockedKrail = wheelSet.find((locked) => locked.filename === path.basename(wheel))
+const lockedOpenSaddle = wheelSet.find((locked) => locked.filename === path.basename(opensaddleWheel))
+if (
+  !lockedKrail
+  || !lockedOpenSaddle
+  || sha256(wheel) !== lockedKrail.sha256
+  || statSync(wheel).size !== lockedKrail.size
+  || sha256(opensaddleWheel) !== lockedOpenSaddle.sha256
+  || statSync(opensaddleWheel).size !== lockedOpenSaddle.size
+) {
+  console.error('top-level KRAIL and OpenSaddle wheels must exactly match the runtime lock')
+  process.exit(1)
+}
+if (readdirSync(wheelhouse).filter((name) => name.endsWith('.whl')).some((name) => !lockedNames.has(name))) {
+  console.error('wheelhouse contains an unexpected wheel')
+  process.exit(1)
+}
 
 try {
   const listing = spawnSync('tar', ['-tzf', runtimeArchive], { encoding: 'utf8' })
@@ -90,7 +153,7 @@ try {
   const dependencyReport = path.join(staging, 'dependency-install-report.json')
   run(
     python,
-    ['-m', 'pip', 'install', '--disable-pip-version-check', '--only-binary=:all:', '--report', dependencyReport, '--target', sitePackages, wheel, opensaddleWheel],
+    ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-index', '--require-hashes', '--only-binary=:all:', '--find-links', wheelhouse, '--report', dependencyReport, '--target', sitePackages, '-r', requirementsPath],
     'pip failed to stage the KRAIL runtime',
   )
 
@@ -140,9 +203,14 @@ try {
       report: 'dependency-install-report.json',
       sha256: sha256(dependencyReport),
     },
+    runtimeLock: { name: 'runtime-lock.json', sha256: sha256(runtimeLockPath) },
+    requirements: { name: 'requirements.txt', sha256: sha256(requirementsPath) },
+    wheelSet: { count: wheelSet.length, sha256: wheelSetDigest },
     commands: { admin: 'bin/krail-admin', mutation: 'bin/krail-mutate' },
     builtAt: new Date().toISOString(),
   }
+  copyFileSync(runtimeLockPath, path.join(staging, manifest.runtimeLock.name))
+  copyFileSync(requirementsPath, path.join(staging, manifest.requirements.name))
   writeFileSync(path.join(staging, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   console.log(`Bundled ${manifest.wheel.name}`)
 } catch (error) {

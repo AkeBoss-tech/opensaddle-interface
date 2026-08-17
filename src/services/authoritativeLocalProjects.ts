@@ -19,6 +19,7 @@ import type {
   ProjectOnboardingReadiness,
   ProjectOnboardingRunner,
   ProjectOnboardingState,
+  OnboardingRunSummary,
   RegisteredLocalProject,
 } from './contracts'
 import {
@@ -392,6 +393,42 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
         root: project.root,
         createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
       }
+    })
+  }
+
+  async listOnboardingRuns(limit = 200): Promise<OnboardingRunSummary[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error('Onboarding run limit must be between 1 and 1000.')
+    }
+    const response = await this.request<{ contract?: unknown; runs?: unknown[] }>(
+      `/api/onboarding/runs?${new URLSearchParams({ limit: String(limit) })}`,
+    )
+    if (response.contract !== 'opensaddle.onboarding-run-list/v1' || !Array.isArray(response.runs)) {
+      throw new Error('OpenSaddle returned an unsupported onboarding run list.')
+    }
+    const statuses = new Set(['running', 'approval_required', 'committed', 'verification_failed', 'rejected', 'applied', 'failed', 'interrupted'])
+    return response.runs.map((value) => {
+      const item = camelizeMemoryWire(value) as Record<string, any>
+      const createdAt = Date.parse(item.createdAt)
+      const updatedAt = Date.parse(item.updatedAt)
+      if (
+        typeof item.runId !== 'string' || !item.runId
+        || typeof item.projectId !== 'string' || !item.projectId
+        || !statuses.has(item.status)
+        || !Number.isSafeInteger(item.changedFileCount) || item.changedFileCount < 0
+        || !Array.isArray(item.checks)
+        || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt)
+      ) throw new Error('OpenSaddle returned an invalid onboarding run summary.')
+      return {
+        ...item,
+        checks: item.checks.map((check: Record<string, unknown>) => ({
+          name: String(check.name ?? ''),
+          passed: check.passed === true,
+          exitCode: check.exitCode === null || check.exitCode === undefined ? check.exitCode : Number(check.exitCode),
+        })),
+        createdAt,
+        updatedAt,
+      } as OnboardingRunSummary
     })
   }
 

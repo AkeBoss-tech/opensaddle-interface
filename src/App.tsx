@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { StoreProvider, useStore } from './data/store'
 import { Topbar } from './components/layout/Topbar'
 import { ToastStack } from './components/common/ToastStack'
@@ -32,6 +32,10 @@ import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
 import { AddProjectDialog } from './features/onboarding/AddProjectDialog'
 import { ProjectOnboardingPage } from './features/onboarding/ProjectOnboardingPage'
+import { ConnectedLocalProjectPage } from './features/projects/ConnectedLocalProjectPage'
+import { ConnectedLocalStartPage } from './features/projects/ConnectedLocalStartPage'
+import { ConnectedLocalSettingsPage } from './features/projects/ConnectedLocalSettingsPage'
+import { ConnectedLocalProjectDialog } from './features/onboarding/ConnectedLocalProjectDialog'
 import { supportsGovernedProjectOnboarding } from './features/onboarding/onboardingAvailability'
 import { registerLocalWorkspace } from './features/onboarding/registerLocalWorkspace'
 import { scaffoldApply } from './features/onboarding/scaffoldApply'
@@ -62,6 +66,7 @@ function Shell() {
   const loc = useLocation()
   const settingsFocused = loc.pathname === '/settings'
   const globalStart = loc.pathname === '/start'
+  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
 
   useEffect(() => {
     const open = () => setPalette(true)
@@ -71,7 +76,7 @@ function Shell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+      if (!connectedLocal && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         const c = createChat(data.activeProjectId)
         nav(`/chat/${c.id}`)
@@ -79,7 +84,13 @@ function Shell() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [createChat, data.activeProjectId, nav])
+  }, [connectedLocal, createChat, data.activeProjectId, nav])
+
+  useEffect(() => {
+    const open = () => setProjectModal(true)
+    window.addEventListener('opensaddle:add-project', open)
+    return () => window.removeEventListener('opensaddle:add-project', open)
+  }, [])
 
   const crumbs = useMemo(() => {
     const parts = loc.pathname.split('/').filter(Boolean)
@@ -148,7 +159,13 @@ function Shell() {
     window.addEventListener('pointerup', stop, { once: true })
   }
 
-  const items: PaletteItem[] = useMemo(() => [
+  const items: PaletteItem[] = useMemo(() => connectedLocal ? [
+    { id: 'cproj', group: 'Create', label: 'Add local project', description: 'Register a local Git project', icon: 'folder', run: () => setProjectModal(true) },
+    { id: 'start', group: 'Navigate', label: 'Start', description: 'Open registered projects', icon: 'spark', run: () => nav('/start') },
+    { id: 'work', group: 'Navigate', label: 'Work', description: 'Governed onboarding runs', icon: 'clock', run: () => nav('/work') },
+    { id: 'set', group: 'Navigate', label: 'Settings', description: 'Connection status', icon: 'settings', run: () => nav('/settings') },
+    ...data.projects.filter((project) => project.workspaceKind === 'local').map((project) => ({ id: project.id, group: 'Projects', label: project.name, description: project.local?.rootPath ?? 'Local project', icon: 'folder', run: () => nav(`/project/${project.id}`) })),
+  ] : [
     { id: 'new', group: 'Create', label: 'New task', description: 'Start work in the current project', keywords: ['thread', 'chat'], icon: 'plus', run: () => { const c = createChat(data.activeProjectId, 'New task'); nav(`/chat/${c.id}`) } },
     { id: 'cproj', group: 'Create', label: 'Create project', description: 'Add a local folder or cloud workspace', keywords: ['workspace', 'folder'], icon: 'folder', run: () => setProjectModal(true) },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Approvals, active runs, and recent outcomes', icon: 'clock', run: () => nav('/work') },
@@ -180,7 +197,7 @@ function Shell() {
     })),
     { id: 'theme', group: 'Preferences', label: 'Toggle theme', description: 'Switch the current appearance', icon: 'sun', run: cycleTheme },
     { id: 'reset', group: 'Danger zone', label: 'Reset demo data', description: 'Remove local demonstration state', keywords: ['clear'], icon: 'refresh', tone: 'danger', run: () => { if (confirm('Reset demo data?')) resetData() } },
-  ], [createChat, data.activeProjectId, data.chats, data.projects, nav, setActiveProject, cycleTheme, resetData])
+  ], [connectedLocal, createChat, data.activeProjectId, data.chats, data.projects, nav, setActiveProject, cycleTheme, resetData])
 
   if (loc.pathname.startsWith('/published/')) {
     return <Routes><Route path="/published/:slug" element={<PublishedSitePage />} /></Routes>
@@ -189,9 +206,9 @@ function Shell() {
   return (
     <div
       className={`app ${settingsFocused ? 'settings-focus' : ''} ${globalStart ? 'global-start' : ''}`}
-      style={{ '--sidebar-w': `${globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
+      style={{ '--sidebar-w': `${connectedLocal ? 220 : globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
     >
-      {!settingsFocused && (
+      {!settingsFocused && !connectedLocal && (
         <ThreadFirstSidebar
           collapsed={sidebarCollapsed}
           globalMode={globalStart}
@@ -204,11 +221,21 @@ function Shell() {
           }}
         />
       )}
+      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Local workflow"><Link to="/start">Start</Link><Link to="/work">Work</Link><Link to="/local">Local projects</Link><button type="button" onClick={() => setProjectModal(true)}>Add project</button>{data.projects.filter((project) => project.workspaceKind === 'local').map((project) => <Link key={project.id} to={`/project/${project.id}`}>{project.name}</Link>)}<Link to="/settings">Settings</Link></nav></aside>}
       <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
-        {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={() => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
+        {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         <div ref={workspaceRef} className="workspace-split">
         <div className="page-wrap">
-          <Routes>
+          {connectedLocal ? <Routes>
+            <Route path="/" element={<Navigate to="/start" replace />} />
+            <Route path="/start" element={<StartPage />} />
+            <Route path="/work" element={<WorkPage />} />
+            <Route path="/local" element={<ConnectedLocalStartPage />} />
+            <Route path="/project/:projectId" element={<ConnectedLocalProjectPage />} />
+            <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
+            <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
+            <Route path="*" element={<Navigate to="/start" replace />} />
+          </Routes> : <Routes>
             <Route path="/" element={<Navigate to="/work" replace />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
@@ -246,7 +273,7 @@ function Shell() {
             <Route path="/dashboard/:dashboardId" element={<DashboardPage />} />
             <Route path="/interface/:interfaceId" element={<InterfacePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          </Routes>}
         </div>
         {browserOpen && window.opensaddleDesktop && <>
           {!browserCollapsed && <div className="native-browser-resizer" role="separator" aria-label="Resize browser pane" onPointerDown={beginBrowserResize} />}
@@ -254,12 +281,21 @@ function Shell() {
           {browserCollapsed && <button className="native-browser-restore" type="button" title="Restore browser" onClick={() => setBrowserCollapsed(false)}>‹</button>}
         </>}
         </div>
-        {!settingsFocused && <WorkspaceStatusBar />}
+        {!settingsFocused && !connectedLocal && <WorkspaceStatusBar />}
       </main>
       <ToastStack />
       <CommandPalette open={palette} onClose={() => setPalette(false)} items={items} />
 
-      <AddProjectDialog
+      {connectedLocal ? <ConnectedLocalProjectDialog open={projectModal} onClose={() => setProjectModal(false)} onRegister={async ({ root, runner }) => {
+        if (!services?.localProjects?.registerProject) throw new Error('The connected local server does not advertise project registration.')
+        const proposedId = `local_${globalThis.crypto.randomUUID()}`
+        const registered = await services.localProjects.registerProject(proposedId, root)
+        const name = registered.root.split(/[\\/]/).filter(Boolean).at(-1) ?? registered.projectId
+        importLocalProject({ id: registered.projectId, name, description: `Local code project at ${registered.root}`, local: { rootPath: registered.root, importedFrom: 'folder', importedAt: Date.now(), defaultHarnessId: runner === 'codex_cli' ? 'codex' : 'claude', permissionPreset: 'workspace-write', adminAccess: true, detectedConfigs: [], harnesses: [], skills: [], documents: [] } })
+        setActiveProject(registered.projectId)
+        toast('Local project registered', name)
+        nav(`/project/${registered.projectId}/onboarding?${new URLSearchParams({ start: '1', runner })}`)
+      }} /> : <AddProjectDialog
         open={projectModal}
         projects={data.projects}
         defaultParentId={data.activeProjectId}
@@ -305,7 +341,7 @@ function Shell() {
             ? `/project/${projectId}/onboarding?${new URLSearchParams({ start: '1', runner: krailRunner })}`
             : `/project/${projectId}`)
         }}
-      />
+      />}
     </div>
   )
 }

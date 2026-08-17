@@ -11,12 +11,15 @@ as bundled after its manifest and executable paths validate.
 Builds require all three inputs:
 
 ```bash
-KRAIL_VERSION=1.2.0rc1 \
-KRAIL_WHEEL=/absolute/path/krail-1.2.0rc1-py3-none-any.whl \
-OPENSADDLE_VERSION=1.2.0rc1 \
-OPENSADDLE_WHEEL=/absolute/path/opensaddle-1.2.0rc1-py3-none-any.whl \
+KRAIL_VERSION=1.2.0rc2 \
+KRAIL_WHEEL=/absolute/path/krail-1.2.0rc2-py3-none-any.whl \
+OPENSADDLE_VERSION=1.2.0rc3 \
+OPENSADDLE_WHEEL=/absolute/path/opensaddle-1.2.0rc3-py3-none-any.whl \
 KRAIL_PYTHON_RUNTIME=/absolute/path/python-install-only-arm64.tar.gz \
 KRAIL_PYTHON_RUNTIME_SHA256=<64-lowercase-hex-characters> \
+KRAIL_RUNTIME_LOCK=electron/runtime-lock/runtime-lock-macos-arm64-python3.13.json \
+KRAIL_REQUIREMENTS_LOCK=electron/runtime-lock/requirements-macos-arm64-python3.13.txt \
+KRAIL_WHEELHOUSE=/absolute/path/to/validated-wheelhouse \
 npm run runtime:krail:bundle
 ```
 
@@ -30,10 +33,16 @@ whose extracted layout contains `python/bin/python3`. Record the archive's
 permanent URL and SHA-256; do not use a mutable `latest` URL. A pinned
 `python-build-standalone` install-only archive is one suitable source.
 
-The staging command extracts Python, installs both wheels and their dependencies
-with that interpreter, writes relocatable launchers, performs sanitized smoke
+Desktop 0.2.1 pins CPython 3.13.15 from the immutable 20260814
+`python-build-standalone` release. The committed runtime lock records all 35
+official PyPI wheels by immutable URL, byte size, and SHA-256. The matching
+requirements file is installed strictly with `--no-index --require-hashes`.
+
+The staging command validates the complete wheelhouse before extracting Python,
+installs the locked wheels offline with that interpreter, writes relocatable launchers, performs sanitized smoke
 tests, and writes the runtime manifest last. That manifest records the KRAIL
-wheel, OpenSaddle wheel, and Python archive digests. A digest mismatch, missing
+wheel, OpenSaddle wheel, Python archive, requirements, runtime-lock, wheel-set,
+and dependency-report digests. A digest mismatch, unexpected wheel, missing
 launcher, failed install, or failed smoke test aborts the build without claiming
 the runtime is bundled.
 

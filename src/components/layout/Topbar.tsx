@@ -4,7 +4,7 @@ import { useStore } from '../../data/store'
 import { connectionPresentation } from '../../lib/connectionPresentation'
 import { Icon } from '../common/Icon'
 
-export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onForward, onPalette, onBrowser }: { crumbs: React.ReactNode; sidebarCollapsed: boolean; onToggleSidebar: () => void; onBack: () => void; onForward: () => void; onPalette: () => void; onBrowser: () => void }) {
+export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onForward, onPalette, onBrowser }: { crumbs: React.ReactNode; sidebarCollapsed: boolean; onToggleSidebar: () => void; onBack: () => void; onForward: () => void; onPalette: () => void; onBrowser?: () => void }) {
   const { connection, data, setTheme, markNotificationsRead, toast, services, persistenceStatus } = useStore()
   const [notifOpen, setNotifOpen] = useState(false)
   const nav = useNavigate()
@@ -56,6 +56,7 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
     controlPlane: services?.controlPlane ?? null,
     desktop: Boolean(window.opensaddleDesktop),
   })
+  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -91,12 +92,12 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
           {connectionState.label}
           {persistenceStatus === 'error' && <span className="system-pill-sync">Save error</span>}
         </Link>
-        {window.opensaddleDesktop && <button className="icon-btn" title="Open split browser" onClick={onBrowser}><Icon name="globe" /></button>}
+        {window.opensaddleDesktop && onBrowser && <button className="icon-btn" title="Open split browser" onClick={onBrowser}><Icon name="globe" /></button>}
         <button className="icon-btn" title={`Theme: ${data.settings.theme === 'liquid' ? 'Liquid Glass' : data.settings.theme}. Click to change.`} onClick={cycleTheme}><Icon name="sun" /></button>
-        <button className="icon-btn" title="Notifications" onClick={() => { setNotifOpen((v) => !v); if (!notifOpen) markNotificationsRead() }} style={{ position: 'relative' }}>
+        {!connectedLocal && <button className="icon-btn" title="Notifications" onClick={() => { setNotifOpen((v) => !v); if (!notifOpen) markNotificationsRead() }} style={{ position: 'relative' }}>
           <Icon name="bell" />
           {unread > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--orange)' }} />}
-        </button>
+        </button>}
       </div>
       {notifOpen && (
         <div className="notif-panel">

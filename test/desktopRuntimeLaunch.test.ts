@@ -12,6 +12,7 @@ import {
   classifySidecarHealth,
   incompatibleSidecarMessage,
   REQUIRED_OPENSADDLE_CAPABILITY,
+  REQUIRED_ONBOARDING_RUN_LIST_CONTRACT,
   REQUIRED_PROJECT_ONBOARDING_CONTRACT,
 } from '../electron/sidecarCompatibility.ts'
 
@@ -72,11 +73,12 @@ test('sidecar compatibility requires the exact onboarding capability contract', 
     service: 'opensaddle',
     mode: 'local',
     capabilities: ['projects', REQUIRED_OPENSADDLE_CAPABILITY],
-    contracts: { project_onboarding: REQUIRED_PROJECT_ONBOARDING_CONTRACT },
+    contracts: { project_onboarding: REQUIRED_PROJECT_ONBOARDING_CONTRACT, onboarding_run_list: REQUIRED_ONBOARDING_RUN_LIST_CONTRACT },
   }
   assert.equal(classifySidecarHealth(compatible), 'compatible')
   assert.equal(classifySidecarHealth({ ...compatible, capabilities: ['projects'] }), 'incompatible')
   assert.equal(classifySidecarHealth({ ...compatible, contracts: {} }), 'incompatible')
+  assert.equal(classifySidecarHealth({ ...compatible, contracts: { project_onboarding: REQUIRED_PROJECT_ONBOARDING_CONTRACT } }), 'incompatible')
   assert.equal(classifySidecarHealth({ service: 'other', mode: 'local', capabilities: [REQUIRED_OPENSADDLE_CAPABILITY] }), 'incompatible')
   assert.match(incompatibleSidecarMessage('http://127.0.0.1:8765', false), /separate loopback port/)
   assert.match(incompatibleSidecarMessage('http://127.0.0.1:8765', true), /set OPENSADDLE_URL to a free loopback port/)

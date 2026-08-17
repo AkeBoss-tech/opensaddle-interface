@@ -6,17 +6,17 @@ on:
       tag:
         description: Existing desktop-vX.Y.Z tag to release
         required: true
-        default: desktop-v0.2.0
+        default: desktop-v0.2.1
         type: string
       krail_version:
         description: Published KRAIL version to bundle
         required: true
-        default: 1.2.0rc1
+        default: 1.2.0rc2
         type: string
       opensaddle_version:
         description: Published OpenSaddle version to bundle
         required: true
-        default: 1.2.0rc1
+        default: 1.2.0rc3
         type: string
       python_archive_url:
         description: Immutable URL for the arm64 install-only Python .tar.gz
@@ -125,6 +125,14 @@ jobs:
           OPENSADDLE_METADATA="$RUNNER_TEMP/opensaddle-pypi.json"
           OPENSADDLE_WHEEL="$RUNNER_TEMP/opensaddle-${OPENSADDLE_VERSION}-py3-none-any.whl"
           PYTHON_ARCHIVE="$RUNNER_TEMP/opensaddle-python-runtime.tar.gz"
+          RUNTIME_LOCK="$GITHUB_WORKSPACE/electron/runtime-lock/runtime-lock-macos-arm64-python3.13.json"
+          REQUIREMENTS_LOCK="$GITHUB_WORKSPACE/electron/runtime-lock/requirements-macos-arm64-python3.13.txt"
+          WHEELHOUSE="$RUNNER_TEMP/runtime-wheelhouse"
+          mkdir -p "$WHEELHOUSE"
+          [[ "$(jq -r '.python.url' "$RUNTIME_LOCK")" == "$PYTHON_ARCHIVE_URL" ]]
+          [[ "$(jq -r '.python.sha256' "$RUNTIME_LOCK")" == "$PYTHON_ARCHIVE_SHA256" ]]
+          [[ "$(jq -r '.topLevel.krail' "$RUNTIME_LOCK")" == "$KRAIL_VERSION" ]]
+          [[ "$(jq -r '.topLevel.opensaddle' "$RUNTIME_LOCK")" == "$OPENSADDLE_VERSION" ]]
 
           resolve_official_wheel() {
             PACKAGE_NAME="$1" PACKAGE_VERSION="$2" PACKAGE_METADATA="$3" node --input-type=module <<'NODE'
@@ -158,8 +166,36 @@ jobs:
           curl --fail --location --proto '=https' --tlsv1.2 "$OPENSADDLE_WHEEL_URL" --output "$OPENSADDLE_WHEEL"
           echo "$OPENSADDLE_WHEEL_SHA256  $OPENSADDLE_WHEEL" | shasum -a 256 -c -
 
-          curl --fail --location --proto '=https' --tlsv1.2 "$PYTHON_ARCHIVE_URL" --output "$PYTHON_ARCHIVE"
+          PYTHON_FINAL_URL="$(curl --fail --location --max-redirs 3 --proto '=https' --proto-redir '=https' --tlsv1.2 "$PYTHON_ARCHIVE_URL" --output "$PYTHON_ARCHIVE" --write-out '%{url_effective}')"
+          [[ "$PYTHON_FINAL_URL" =~ ^https://(github\.com|release-assets\.githubusercontent\.com)/ ]] || {
+            echo "Python archive redirected to an unexpected host" >&2
+            exit 1
+          }
           echo "$PYTHON_ARCHIVE_SHA256  $PYTHON_ARCHIVE" | shasum -a 256 -c -
+
+          export RUNTIME_LOCK REQUIREMENTS_LOCK WHEELHOUSE
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const lock = JSON.parse(fs.readFileSync(process.env.RUNTIME_LOCK, 'utf8'));
+          const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+          if (hash(fs.readFileSync(process.env.REQUIREMENTS_LOCK)) !== lock.requirementsSha256) throw new Error('Requirements lock digest mismatch');
+          if (hash(Buffer.from(JSON.stringify(lock.wheels))) !== lock.wheelSetSha256) throw new Error('Wheel-set digest mismatch');
+          for (const wheel of lock.wheels) {
+            if (!/^https:\/\/files\.pythonhosted\.org\//.test(wheel.url)) throw new Error(`Unexpected wheel host: ${wheel.filename}`);
+            const response = await fetch(wheel.url, { redirect: 'error' });
+            if (!response.ok) throw new Error(`Could not download ${wheel.filename}`);
+            const bytes = Buffer.from(await response.arrayBuffer());
+            if (bytes.length !== wheel.size || hash(bytes) !== wheel.sha256) throw new Error(`Wheel mismatch: ${wheel.filename}`);
+            fs.writeFileSync(path.join(process.env.WHEELHOUSE, wheel.filename), bytes);
+          }
+          NODE
+          RUNTIME_LOCK_SHA256="$(shasum -a 256 "$RUNTIME_LOCK" | awk '{print $1}')"
+          REQUIREMENTS_SHA256="$(shasum -a 256 "$REQUIREMENTS_LOCK" | awk '{print $1}')"
+          WHEEL_SET_SHA256="$(jq -r '.wheelSetSha256' "$RUNTIME_LOCK")"
+          cp "$WHEELHOUSE/krail-${KRAIL_VERSION}-py3-none-any.whl" "$KRAIL_WHEEL"
+          cp "$WHEELHOUSE/opensaddle-${OPENSADDLE_VERSION}-py3-none-any.whl" "$OPENSADDLE_WHEEL"
 
           {
             echo "KRAIL_WHEEL=$KRAIL_WHEEL"
@@ -171,6 +207,12 @@ jobs:
             echo "PYTHON_ARCHIVE=$PYTHON_ARCHIVE"
             echo "PYTHON_ARCHIVE_URL=$PYTHON_ARCHIVE_URL"
             echo "PYTHON_ARCHIVE_SHA256=$PYTHON_ARCHIVE_SHA256"
+            echo "RUNTIME_LOCK=$RUNTIME_LOCK"
+            echo "REQUIREMENTS_LOCK=$REQUIREMENTS_LOCK"
+            echo "WHEELHOUSE=$WHEELHOUSE"
+            echo "RUNTIME_LOCK_SHA256=$RUNTIME_LOCK_SHA256"
+            echo "REQUIREMENTS_SHA256=$REQUIREMENTS_SHA256"
+            echo "WHEEL_SET_SHA256=$WHEEL_SET_SHA256"
           } >> "$GITHUB_ENV"
 
       - name: Build and smoke-test bundled runtimes
@@ -180,6 +222,9 @@ jobs:
           OPENSADDLE_WHEEL="$OPENSADDLE_WHEEL" \
           KRAIL_PYTHON_RUNTIME="$PYTHON_ARCHIVE" \
           KRAIL_PYTHON_RUNTIME_SHA256="$PYTHON_ARCHIVE_SHA256" \
+          KRAIL_RUNTIME_LOCK="$RUNTIME_LOCK" \
+          KRAIL_REQUIREMENTS_LOCK="$REQUIREMENTS_LOCK" \
+          KRAIL_WHEELHOUSE="$WHEELHOUSE" \
             node scripts/build-krail-runtime.mjs
 
           export EXPECTED_KRAIL_SHA="$KRAIL_WHEEL_SHA256"
@@ -194,6 +239,8 @@ jobs:
           if (krail.python?.sha256 !== process.env.EXPECTED_PYTHON_SHA) throw new Error('Python manifest SHA mismatch');
           const report = fs.readFileSync('electron/runtime-bundle/krail-runtime/dependency-install-report.json');
           if (crypto.createHash('sha256').update(report).digest('hex') !== krail.dependencies?.sha256) throw new Error('Dependency report SHA mismatch');
+          if (krail.runtimeLock?.sha256 !== crypto.createHash('sha256').update(fs.readFileSync(process.env.RUNTIME_LOCK)).digest('hex')) throw new Error('Runtime lock SHA mismatch');
+          if (krail.requirements?.sha256 !== crypto.createHash('sha256').update(fs.readFileSync(process.env.REQUIREMENTS_LOCK)).digest('hex')) throw new Error('Requirements SHA mismatch');
           NODE
 
           SMOKE_HOME="$RUNNER_TEMP/prepackage-home"
@@ -302,6 +349,7 @@ jobs:
           if (krail.python?.sha256 !== process.env.EXPECTED_PYTHON_SHA) throw new Error('Packaged Python SHA mismatch');
           const report = fs.readFileSync(path.join(process.env.PACKAGED_RESOURCES, 'krail-runtime/dependency-install-report.json'));
           if (crypto.createHash('sha256').update(report).digest('hex') !== krail.dependencies?.sha256) throw new Error('Packaged dependency report SHA mismatch');
+          if (!krail.runtimeLock?.sha256 || !krail.requirements?.sha256 || krail.wheelSet?.count < 1) throw new Error('Packaged runtime lock metadata missing');
           NODE
           node scripts/smoke-packaged-onboarding.mjs --app "$APP_PATH"
           cleanup_mount
@@ -329,6 +377,9 @@ jobs:
             krail: {version: process.env.KRAIL_VERSION, url: process.env.KRAIL_WHEEL_URL, sha256: process.env.KRAIL_WHEEL_SHA256},
             opensaddle: {version: process.env.OPENSADDLE_VERSION, url: process.env.OPENSADDLE_WHEEL_URL, sha256: process.env.OPENSADDLE_WHEEL_SHA256},
             python: {url: process.env.PYTHON_ARCHIVE_URL, sha256: process.env.PYTHON_ARCHIVE_SHA256},
+            runtimeLock: {sha256: process.env.RUNTIME_LOCK_SHA256},
+            requirements: {sha256: process.env.REQUIREMENTS_SHA256},
+            wheelSet: {sha256: process.env.WHEEL_SET_SHA256},
             dependencyReport: {path: 'krail-runtime/dependency-install-report.json', verifiedByManifest: true},
             dmg: {filename: process.env.DMG_FILENAME, sha256: process.env.DMG_SHA256},
             signing: {notarized: true, stapled: true},
