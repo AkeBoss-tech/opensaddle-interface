@@ -1,11 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 
 const REQUIRED_CAPABILITY = 'project_onboarding'
 const REQUIRED_CONTRACT = 'opensaddle.project-onboarding/v1'
+const REQUIRED_RUN_LIST_CONTRACT = 'opensaddle.onboarding-run-list/v1'
 const MAX_LOG_CHARS = 64_000
 
 function requireValue(args, flag) {
@@ -127,6 +128,7 @@ async function waitForCompatibleHealth(baseUrl, childState, timeoutMs = 30_000) 
         && Array.isArray(health.capabilities)
         && health.capabilities.includes(REQUIRED_CAPABILITY)
         && health.contracts?.project_onboarding === REQUIRED_CONTRACT
+        && health.contracts?.onboarding_run_list === REQUIRED_RUN_LIST_CONTRACT
       ) return health
       lastError = `incompatible health payload: ${JSON.stringify(health)}`
     } catch (error) {
@@ -260,7 +262,7 @@ async function runSmoke(config, context) {
     method: 'POST',
     body: JSON.stringify({ project_id: projectId, root: project }),
   })
-  if (registered?.project_id !== projectId || path.resolve(registered?.root ?? '') !== path.resolve(project)) {
+  if (registered?.project_id !== projectId || realpathSync(registered?.root ?? '') !== realpathSync(project)) {
     throw new Error(`project registration mismatch: ${JSON.stringify(registered)}`)
   }
   const prepared = await requestJson(baseUrl, `/api/projects/${projectId}/onboarding/prepare`, {

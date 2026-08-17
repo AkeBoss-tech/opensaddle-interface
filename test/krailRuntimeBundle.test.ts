@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { resolveKrailRuntime } from '../electron/runtimeBundle.ts'
+
+const runtimeBuilder = readFileSync('scripts/build-krail-runtime.mjs', 'utf8')
 
 function fixture() {
   const resourceRoot = mkdtempSync(path.join(os.tmpdir(), 'opensaddle-krail-runtime-'))
@@ -21,12 +24,18 @@ function fixture() {
   const dependencyReport = path.join(runtime, 'dependency-install-report.json')
   writeFileSync(dependencyReport, '{"version":"1"}\n')
   const dependencyDigest = '25d269e05e8aae00d55b18b16fcc01b92086b476f4de4a2cb9d3c0c1c29b9e8e'
+  writeFileSync(path.join(runtime, 'runtime-lock.json'), '{"schemaVersion":1}\n')
+  writeFileSync(path.join(runtime, 'requirements.txt'), 'krail==1.2.0rc1 --hash=sha256:test\n')
+  const fileDigest = (name: string) => createHash('sha256').update(readFileSync(path.join(runtime, name))).digest('hex')
   const manifest = {
     schemaVersion: 1, runtime: 'krail',
     wheel: { version: '1.2.0rc1', name: 'krail-1.2.0rc1-py3-none-any.whl', sha256: 'a'.repeat(64) },
     opensaddle: { version: '1.2.0rc1', name: 'opensaddle-1.2.0rc1-py3-none-any.whl', sha256: 'c'.repeat(64), command: '../opensaddle-backend/opensaddle' },
     python: { name: 'python.tar.gz', sha256: 'b'.repeat(64), command: 'python/bin/python3' },
     dependencies: { report: 'dependency-install-report.json', sha256: dependencyDigest },
+    runtimeLock: { name: 'runtime-lock.json', sha256: fileDigest('runtime-lock.json') },
+    requirements: { name: 'requirements.txt', sha256: fileDigest('requirements.txt') },
+    wheelSet: { count: 35, sha256: 'f'.repeat(64) },
     commands: { admin: 'bin/krail-admin', mutation: 'bin/krail-mutate' },
     builtAt: '2026-08-11T00:00:00Z',
   }
@@ -45,6 +54,12 @@ test('packaged KRAIL runtime resolves only a complete validated manifest', () =>
   } finally {
     rmSync(value.resourceRoot, { recursive: true, force: true })
   }
+})
+
+test('runtime build binds both top-level wheels to the official lock', () => {
+  assert.match(runtimeBuilder, /top-level KRAIL and OpenSaddle wheels must exactly match the runtime lock/)
+  assert.match(runtimeBuilder, /sha256\(wheel\) !== lockedKrail\.sha256/)
+  assert.match(runtimeBuilder, /sha256\(opensaddleWheel\) !== lockedOpenSaddle\.sha256/)
 })
 
 test('packaged KRAIL runtime rejects traversal and missing manifests', () => {

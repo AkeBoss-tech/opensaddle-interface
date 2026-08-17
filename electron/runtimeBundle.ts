@@ -9,6 +9,9 @@ export interface KrailRuntimeManifest {
   opensaddle: { name: string; sha256: string; command: string }
   python: { name: string; sha256: string; command: string }
   dependencies: { report: string; sha256: string }
+  runtimeLock: { name: string; sha256: string }
+  requirements: { name: string; sha256: string }
+  wheelSet: { count: number; sha256: string }
   commands: { admin: string; mutation: string }
   builtAt: string
 }
@@ -52,6 +55,9 @@ export function resolveKrailRuntime(resourceRoot: string): ResolvedKrailRuntime 
     if (!manifest.opensaddle || typeof manifest.opensaddle.name !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.opensaddle.sha256) || manifest.opensaddle.command !== '../opensaddle-backend/opensaddle') return null
     if (!manifest.python || typeof manifest.python.name !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.python.sha256)) return null
     if (!manifest.dependencies || !bundledDigest(root, manifest.dependencies.report, manifest.dependencies.sha256)) return null
+    if (!manifest.runtimeLock || !bundledDigest(root, manifest.runtimeLock.name, manifest.runtimeLock.sha256)) return null
+    if (!manifest.requirements || !bundledDigest(root, manifest.requirements.name, manifest.requirements.sha256)) return null
+    if (!manifest.wheelSet || !Number.isSafeInteger(manifest.wheelSet.count) || manifest.wheelSet.count < 1 || !/^[a-f0-9]{64}$/.test(manifest.wheelSet.sha256)) return null
     const pythonCommand = bundledCommand(root, manifest.python.command)
     const adminCommand = bundledCommand(root, manifest.commands?.admin)
     const mutationCommand = bundledCommand(root, manifest.commands?.mutation)
