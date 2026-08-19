@@ -1,3 +1,5 @@
+import { AgentAvatar, type AgentExecutionState } from './AgentAvatar'
+
 export type PrincipalKind = 'human' | 'agent'
 export type PresenceState = 'online' | 'away' | 'offline'
 
@@ -15,6 +17,7 @@ export interface PrincipalAvatarProps {
   imageUrl?: string
   presence?: PresenceState
   size?: 'sm' | 'md'
+  executionState?: AgentExecutionState
 }
 
 function initialsFor(name: string): string {
@@ -27,10 +30,14 @@ export function PrincipalAvatar({
   imageUrl,
   presence,
   size = 'md',
+  executionState = 'ready',
 }: PrincipalAvatarProps) {
+  if (kind === 'agent' && !imageUrl) {
+    return <AgentAvatar name={name} state={executionState} size={size === 'sm' ? 'xs' : 'sm'} />
+  }
   return (
     <span className={`os-principal-avatar os-principal-avatar--${size} os-principal-avatar--${kind}`} aria-label={name}>
-      {imageUrl ? <img src={imageUrl} alt="" /> : kind === 'agent' ? <span aria-hidden="true">✦</span> : initialsFor(name)}
+      {imageUrl ? <img src={imageUrl} alt="" /> : initialsFor(name)}
       {presence && <PresenceDot state={presence} />}
     </span>
   )

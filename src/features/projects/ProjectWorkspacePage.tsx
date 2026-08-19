@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from
 import { useNavigate, useParams } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
-import { Button, Status } from '../../ui'
+import { AgentAvatar, Button, Status } from '../../ui'
 import { selectThreadSummaries, type ThreadStatus } from '../thread/domain'
 import '../../styles/team-workspace.css'
 
@@ -207,7 +207,7 @@ export function ProjectWorkspacePage() {
                             key={agent.id}
                             onClick={() => { setSelectedAgentId(agent.id); setAgentPickerOpen(false) }}
                           >
-                            <span className="tw-agent-menu-icon"><Icon name="spark" className="icon sm" /></span>
+                            <span className="tw-agent-menu-icon"><AgentAvatar name={`${agent.name} ${agent.description}`} size="sm" /></span>
                             <span><strong>{agent.name}</strong><small>{agent.description}</small></span>
                             {selectedAgentId === agent.id && <Icon name="check" className="icon xs" />}
                           </button>
@@ -259,7 +259,7 @@ export function ProjectWorkspacePage() {
                   </div>
                 </div>
                 <div className="tw-message tw-agent-message">
-                  <span className="tw-agent-avatar"><Icon name="spark" className="icon sm" /></span>
+                  <AgentAvatar name={`${featuredAgent?.name ?? 'Builder'} ${featuredAgent?.description ?? 'Coding agent'}`} state="ready" size="sm" className="tw-agent-avatar" />
                   <div>
                     <p><strong>{featuredAgent?.name ?? 'OpenSaddle Agent'}</strong><span className="tw-bot-label">AI</span><time>9:44 AM</time></p>
                     <p>{featuredThread?.latestTurnPreview ?? 'I reviewed the team context and recent work. The latest implementation is ready for review, with verification complete and no blocking issues.'}</p>
@@ -407,7 +407,7 @@ export function ProjectWorkspacePage() {
             <div><span>Default model</span><strong>{project.routingDefaults?.modelKey ?? 'Auto'}</strong></div>
             <div><span>Default runtime</span><strong>{project.routingDefaults?.runtimeKey ?? 'Auto'}</strong></div>
             {project.local && <div><span>Local folder</span><strong>{project.local.rootPath}</strong></div>}
-            {project.local && <div><span>Agent permissions</span><button onClick={() => navigate('/local')}>Open local admin</button></div>}
+            {project.local && <div><span>Governed onboarding</span><button onClick={() => navigate(`/project/${project.id}/onboarding`)}>Review setup</button></div>}
             <div><span>Knowledge sources</span><strong>{knowledge.length + sources.length}</strong></div>
             <div><span>Access policy</span><button onClick={() => navigate(`/permissions/${project.id}`)}>Review access</button></div>
           </div>

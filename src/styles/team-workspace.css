@@ -299,8 +299,8 @@ body[data-theme="liquid"] .tw-agent-menu { background: rgba(250,253,255,.98); }
 .tw-channel-head span { color: var(--dim); font-size: 8.5px; }
 .tw-channel-head button { border: 0; background: transparent; color: var(--accent); font-size: 9px; cursor: pointer; }
 .tw-message { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; padding: 17px 17px 7px; }
-.tw-message .avatar, .tw-agent-avatar { width: 30px; height: 30px; display: grid; place-items: center; flex: none; border-radius: 8px; font-size: 8px; }
-.tw-agent-avatar { background: color-mix(in srgb, var(--accent) 16%, var(--card)); color: var(--accent); }
+.tw-message .avatar { width: 30px; height: 30px; display: grid; place-items: center; flex: none; border-radius: 50%; font-size: 8px; }
+.tw-agent-avatar { width: 30px; height: 30px; background: transparent; color: inherit; }
 .tw-message p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
 .tw-message p:first-child { margin-bottom: 4px; color: var(--text); }
 .tw-message p strong { font-size: 9.5px; }

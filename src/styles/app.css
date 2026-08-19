@@ -1593,7 +1593,7 @@ a.nav-item { text-decoration: none; color: inherit; }
 .agent-card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .agent-library-card { min-width:0; display:flex; flex-direction:column; gap:15px; padding:17px; border:1px solid var(--border); border-radius:14px; background:var(--card); }
 .agent-library-card:hover { border-color:var(--border-strong); background:var(--card-hover); }
-.agent-library-card > header { display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:10px; }
+.agent-library-card > header { display:grid; grid-template-columns:48px minmax(0,1fr) auto; align-items:center; gap:12px; }
 .agent-library-avatar { width:42px; height:42px; display:grid; place-items:center; border-radius:12px; background:linear-gradient(145deg,color-mix(in srgb,var(--agent-color) 70%,white),var(--agent-color)); color:#fff; }
 .agent-library-avatar .icon { width:19px; height:19px; }
 .agent-library-card h2 { margin:0; font-size:14px; }

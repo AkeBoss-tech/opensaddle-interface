@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../data/store'
 import { Icon } from '../components/common/Icon'
 import { evaluatePermissions } from '../services/permissions'
+import { AgentAvatar, type AgentExecutionState } from '../ui'
 
 function relativeTime(ts: number) {
   const diff = Date.now() - ts
@@ -45,6 +46,17 @@ export function AgentDetailPage() {
     action,
   })
   const exec = evalFor('execute')
+  const avatarState: AgentExecutionState = running
+    ? 'running'
+    : sessions.some((session) => session.status === 'waiting')
+      ? 'waiting'
+      : sessions.some((session) => session.status === 'paused')
+        ? 'paused'
+        : !exec.allowed
+          ? 'failed'
+          : exec.approvalRequired
+            ? 'needs-approval'
+            : 'ready'
 
   const openChat = () => {
     const c = createChat(agent.projectId, `Chat with ${agent.name}`, agent.id)
@@ -78,7 +90,7 @@ export function AgentDetailPage() {
   return (
     <div className="content-page" style={{ maxWidth: 1080 }}>
       <div className="agent-hero">
-        <div className="agent-avatar-lg"><Icon name="spark" className="icon lg" /></div>
+        <AgentAvatar name={`${agent.name} ${agent.description}`} state={avatarState} size="lg" />
         <div className="agent-hero-copy">
           <div className="eyebrow">{project.lineage.join(' / ')}</div>
           <h1>{agent.name}</h1>

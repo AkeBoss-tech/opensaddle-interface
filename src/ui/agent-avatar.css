@@ -1,0 +1,81 @@
+.os-agent-avatar {
+  --agent-avatar-size: 42px;
+  position: relative;
+  width: var(--agent-avatar-size);
+  height: var(--agent-avatar-size);
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: visible;
+  vertical-align: middle;
+  isolation: isolate;
+}
+
+.os-agent-avatar--xs { --agent-avatar-size: 24px; }
+.os-agent-avatar--sm { --agent-avatar-size: 30px; }
+.os-agent-avatar--md { --agent-avatar-size: 48px; }
+.os-agent-avatar--lg { --agent-avatar-size: 58px; }
+.os-agent-avatar--xl { --agent-avatar-size: 86px; }
+.os-agent-avatar svg { width: 116%; height: 116%; overflow: visible; }
+.os-agent-avatar__shine { fill: rgb(255 255 255 / .06); transform: translate(-2px, -2px); }
+.os-agent-avatar__eyes { fill: #fff; filter: drop-shadow(0 1px 1px rgb(0 0 0 / .1)); }
+.os-agent-avatar__mark { fill: none; stroke: rgb(35 22 74 / .65); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.os-agent-avatar__shield { fill: rgb(116 31 42 / .54); stroke: rgb(116 31 42 / .22); stroke-width: 2; }
+
+.os-agent-avatar__orbit {
+  position: absolute;
+  z-index: -1;
+  inset: -5%;
+  border: 1.5px solid transparent;
+  border-top-color: color-mix(in srgb, var(--accent) 82%, white);
+  border-right-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 50%;
+  animation: os-agent-orbit 2.4s linear infinite;
+}
+
+.os-agent-avatar__orbit i {
+  position: absolute;
+  right: 3%;
+  bottom: 12%;
+  width: 13%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 68%, transparent);
+}
+
+.os-agent-avatar__badge {
+  position: absolute;
+  right: -3%;
+  bottom: 1%;
+  width: 31%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--bg, var(--os-color-surface));
+  border-radius: 50%;
+  color: #15150f;
+  font-size: max(8px, calc(var(--agent-avatar-size) * .22));
+  font-weight: 850;
+  line-height: 1;
+}
+
+.os-agent-avatar__badge--approval { background: var(--os-color-warning); }
+.os-agent-avatar__badge--failed { background: var(--os-color-danger); color: white; }
+.os-agent-avatar--waiting .os-agent-avatar__body { transform-origin: 50% 82%; animation: os-agent-wait 3.2s ease-in-out infinite; }
+.os-agent-avatar--paused .os-agent-avatar__body { filter: saturate(.62); opacity: .82; }
+.os-agent-avatar--needs-approval .os-agent-avatar__body { transform: translateY(1%); }
+.os-agent-avatar--failed .os-agent-avatar__body { transform-origin: 50% 86%; animation: os-agent-droop 3s ease-in-out infinite; filter: saturate(.72); }
+.os-agent-avatar--ready .os-agent-avatar__body { transform-origin: 50% 80%; animation: os-agent-breathe 4.8s ease-in-out infinite; }
+.os-agent-avatar--running .os-agent-avatar__body { transform-origin: 50% 82%; animation: os-agent-work 1.9s ease-in-out infinite; }
+
+@keyframes os-agent-orbit { to { transform: rotate(1turn); } }
+@keyframes os-agent-breathe { 50% { transform: scale(1.025) translateY(-.7%); } }
+@keyframes os-agent-wait { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(3deg) translateY(-1%); } }
+@keyframes os-agent-droop { 0%, 100% { transform: rotate(2deg) scaleY(.96); } 50% { transform: rotate(-2deg) scaleY(.92) translateY(3%); } }
+@keyframes os-agent-work { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.05, .94) translateY(2%); } 68% { transform: scale(.96, 1.08) translateY(-3%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .os-agent-avatar__body,
+  .os-agent-avatar__orbit { animation: none !important; }
+}

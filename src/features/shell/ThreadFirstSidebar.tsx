@@ -3,19 +3,16 @@ import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
-import type { DirectMessagePrincipalKind, Project } from '../../types'
+import type { Project } from '../../types'
 import { selectThreadSummaries } from '../thread/domain'
-import { PrincipalAvatar } from '../../ui/PrincipalAvatar'
 import { useModalFocus } from '../../ui/modalFocus'
 import '../../styles/team-shell.css'
 
 const TEAM_COLORS_KEY = 'opensaddle.team-colors'
 const PINNED_THREADS_KEY = 'opensaddle.pinned-threads'
-const PINNED_SHORTCUTS_KEY = 'opensaddle.pinned-shortcuts'
 const SEEN_THREADS_KEY = 'opensaddle.seen-threads'
 const HIDDEN_TEAMS_KEY = 'opensaddle.hidden-teams'
 const PROJECT_ACCESS_KEY = 'opensaddle.project-access'
-const DIRECT_MESSAGE_THREADS_KEY = 'opensaddle.direct-message-threads'
 
 function readLocalRecord(key: string): Record<string, string> {
   try {
@@ -32,12 +29,6 @@ function readLocalList(key: string): string[] {
   } catch {
     return []
   }
-}
-
-type DirectMessageThreadMap = Record<string, string>
-
-function directMessageKey(kind: DirectMessagePrincipalKind, id: string) {
-  return `${kind}:${id}`
 }
 
 function relativeTime(timestamp: number) {
@@ -111,11 +102,9 @@ export function ThreadFirstSidebar({
     removeLocalProject,
     toast,
     updateProject,
-    updateWikiSettings,
   } = useStore()
   const navigate = useNavigate()
   const location = useLocation()
-  const [projectsOpen, setProjectsOpen] = useState(true)
   const [teamSettingsOpen, setTeamSettingsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [agentChooserOpen, setAgentChooserOpen] = useState(false)
@@ -124,14 +113,11 @@ export function ThreadFirstSidebar({
   const [teamColor, setTeamColor] = useState('#73a8dd')
   const [teamColors, setTeamColors] = useState<Record<string, string>>(() => readLocalRecord(TEAM_COLORS_KEY))
   const [pinnedThreadIds, setPinnedThreadIds] = useState<string[]>(() => readLocalList(PINNED_THREADS_KEY))
-  const [pinnedShortcutIds, setPinnedShortcutIds] = useState<string[]>(() => readLocalList(PINNED_SHORTCUTS_KEY))
   const [seenThreads, setSeenThreads] = useState<Record<string, string>>(() => readLocalRecord(SEEN_THREADS_KEY))
   const [threadMenu, setThreadMenu] = useState<{ chatId: string; projectId: string; x: number; y: number } | null>(null)
   const [teamMenu, setTeamMenu] = useState<{ team: Project; x: number; y: number } | null>(null)
   const [hiddenTeamIds, setHiddenTeamIds] = useState<string[]>(() => readLocalList(HIDDEN_TEAMS_KEY))
   const [projectAccess, setProjectAccess] = useState<Record<string, string>>(() => readLocalRecord(PROJECT_ACCESS_KEY))
-  const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
-  const [directMessageThreads, setDirectMessageThreads] = useState<DirectMessageThreadMap>(() => readLocalRecord(DIRECT_MESSAGE_THREADS_KEY))
   const agentChooserRef = useRef<HTMLElement>(null)
   const configureTeamRef = useRef<HTMLElement>(null)
   useModalFocus(agentChooserOpen, agentChooserRef, () => setAgentChooserOpen(false))
@@ -160,12 +146,6 @@ export function ThreadFirstSidebar({
     () => projectScope(data.projects, activeTeam?.id ?? data.activeProjectId),
     [activeTeam?.id, data.activeProjectId, data.projects],
   )
-  const scopedProjects = useMemo(
-    () => data.projects
-      .filter((project) => scopedProjectIds.has(project.id))
-      .sort((a, b) => Number(projectAccess[b.id] ?? 0) - Number(projectAccess[a.id] ?? 0)),
-    [data.projects, projectAccess, scopedProjectIds],
-  )
   const recent = useMemo(
     () => selectThreadSummaries(data).filter((thread) => scopedProjectIds.has(thread.projectId)).slice(0, 5),
     [data, scopedProjectIds],
@@ -178,22 +158,6 @@ export function ThreadFirstSidebar({
     () => data.agents.filter((agent) => scopedProjectIds.has(agent.projectId)),
     [data.agents, scopedProjectIds],
   )
-  const directMessages = useMemo(() => {
-    const chatsByPrincipal = new Map(
-      data.chats
-        .filter((chat) => chat.directMessageWith && scopedProjectIds.has(chat.projectId))
-        .map((chat) => [directMessageKey(chat.directMessageWith!.kind, chat.directMessageWith!.id), chat]),
-    )
-    const contacts = [
-      ...data.members
-        .filter((member) => member.id !== data.currentUserId)
-        .map((member) => ({ id: member.id, kind: 'human' as const, name: member.name, presence: member.presence, projectId: activeTeam.id })),
-      ...scopedAgents.map((agent) => ({ id: agent.id, kind: 'agent' as const, name: agent.name, presence: agent.presence, projectId: agent.projectId })),
-    ]
-    return contacts
-      .map((contact) => ({ ...contact, chat: chatsByPrincipal.get(directMessageKey(contact.kind, contact.id)) ?? data.chats.find((chat) => chat.id === directMessageThreads[directMessageKey(contact.kind, contact.id)]) }))
-      .sort((left, right) => (right.chat?.updatedAt ?? 0) - (left.chat?.updatedAt ?? 0) || left.name.localeCompare(right.name))
-  }, [activeTeam.id, data.chats, data.currentUserId, data.members, directMessageThreads, scopedAgents, scopedProjectIds])
   const me = data.members.find((member) => member.id === data.currentUserId)
   const isAdmin = me?.role === 'Admin'
   const closeMobileNavigation = () => document.getElementById('sidebar')?.classList.remove('mobile-open')
@@ -202,43 +166,7 @@ export function ThreadFirstSidebar({
     navigate(href)
     closeMobileNavigation()
   }
-  const shortcuts = [
-    {
-      id: `${activeTeam.id}:wiki`,
-      label: 'Wiki',
-      icon: 'book',
-      href: '/wiki',
-      active: location.pathname === '/wiki',
-      open: () => {
-        updateWikiSettings({ selectedProjectId: activeTeam.id })
-        openTeamRoute('/wiki')
-      },
-    },
-    {
-      id: `${activeTeam.id}:agents`,
-      label: 'Agents',
-      icon: 'spark',
-      href: `/agents/${activeTeam.id}`,
-      active: location.pathname.startsWith('/agents'),
-      open: () => openTeamRoute(`/agents/${activeTeam.id}`),
-    },
-    {
-      id: `${activeTeam.id}:automations`,
-      label: 'Automations',
-      icon: 'activity',
-      href: `/workflows/${activeTeam.id}`,
-      active: location.pathname.startsWith('/workflows'),
-      open: () => openTeamRoute(`/workflows/${activeTeam.id}`),
-    },
-    {
-      id: `${activeTeam.id}:sites`,
-      label: 'Apps & sites',
-      icon: 'globe',
-      href: '/sites',
-      active: location.pathname === '/sites' || location.pathname.startsWith('/site/'),
-      open: () => openTeamRoute('/sites'),
-    },
-    ...(isAdmin ? [
+  const adminShortcuts = isAdmin ? [
       {
         id: `${activeTeam.id}:knowledge`,
         label: 'Knowledge',
@@ -263,30 +191,7 @@ export function ThreadFirstSidebar({
         active: location.pathname.startsWith('/permissions'),
         open: () => openTeamRoute(`/permissions/${activeTeam.id}`),
       },
-    ] : []),
-  ]
-  const toggleShortcutPinned = (id: string) => {
-    const next = pinnedShortcutIds.includes(id)
-      ? pinnedShortcutIds.filter((item) => item !== id)
-      : [id, ...pinnedShortcutIds]
-    setPinnedShortcutIds(next)
-    localStorage.setItem(PINNED_SHORTCUTS_KEY, JSON.stringify(next))
-  }
-  const renderShortcut = (shortcut: typeof shortcuts[number]) => (
-    <div className="tf-nav-pinnable" key={shortcut.id}>
-      <button className={shortcut.active ? 'active' : ''} onClick={shortcut.open}>
-        <Icon name={shortcut.icon} className="icon sm" /><span>{shortcut.label}</span>
-      </button>
-      <button
-        className={`tf-nav-pin ${pinnedShortcutIds.includes(shortcut.id) ? 'pinned' : ''}`}
-        onClick={() => toggleShortcutPinned(shortcut.id)}
-        aria-label={`${pinnedShortcutIds.includes(shortcut.id) ? 'Unpin' : 'Pin'} ${shortcut.label}`}
-        title={`${pinnedShortcutIds.includes(shortcut.id) ? 'Unpin' : 'Pin'} ${shortcut.label}`}
-      >
-        <Icon name="pin" className="icon xs" />
-      </button>
-    </div>
-  )
+    ] : []
 
   useEffect(() => {
     const closeMenus = () => {
@@ -341,7 +246,7 @@ export function ThreadFirstSidebar({
     const nextAccess = { ...projectAccess, [project.id]: String(Date.now()) }
     setProjectAccess(nextAccess)
     localStorage.setItem(PROJECT_ACCESS_KEY, JSON.stringify(nextAccess))
-    navigate(project.workspaceKind === 'local' ? `/local?project=${project.id}` : `/project/${project.id}`)
+    navigate(`/project/${project.id}`)
     closeMobileNavigation()
   }
 
@@ -363,22 +268,6 @@ export function ThreadFirstSidebar({
     setActiveProject(projectId)
     setActiveChat(chatId)
     navigate(`/chat/${chatId}`)
-    closeMobileNavigation()
-  }
-
-  const openDirectMessage = (contact: (typeof directMessages)[number]) => {
-    const key = directMessageKey(contact.kind, contact.id)
-    const existing = contact.chat
-    if (existing) {
-      openThread(existing.id, existing.projectId)
-      return
-    }
-    const chat = createChat(contact.projectId, contact.name, contact.kind === 'agent' ? contact.id : undefined)
-    const next = { ...directMessageThreads, [key]: chat.id }
-    setDirectMessageThreads(next)
-    localStorage.setItem(DIRECT_MESSAGE_THREADS_KEY, JSON.stringify(next))
-    setActiveChat(chat.id)
-    navigate(`/chat/${chat.id}`)
     closeMobileNavigation()
   }
 
@@ -432,23 +321,6 @@ export function ThreadFirstSidebar({
     setTeamMenu(null)
     navigate('/start')
     toast('Local project removed', 'The folder remains unchanged on your computer.')
-  }
-
-  const projectThreads = (projectId: string) => selectThreadSummaries(data)
-    .filter((thread) => thread.projectId === projectId)
-    .slice(0, 4)
-
-  const toggleProjectExpanded = (project: Project) => {
-    const expanded = expandedProjectIds.includes(project.id)
-    if (expanded) {
-      openProject(project)
-      return
-    }
-    setExpandedProjectIds((current) => [...current, project.id])
-    setActiveProject(project.id)
-    const nextAccess = { ...projectAccess, [project.id]: String(Date.now()) }
-    setProjectAccess(nextAccess)
-    localStorage.setItem(PROJECT_ACCESS_KEY, JSON.stringify(nextAccess))
   }
 
   const isUnseen = (chatId: string, updatedAt: number) =>
@@ -575,9 +447,6 @@ export function ThreadFirstSidebar({
             </div>
 
             <nav className="tf-team-nav" aria-label={`${activeTeam.name} navigation`}>
-              <button className={location.pathname === `/project/${activeTeam.id}` ? 'active' : ''} onClick={() => openProject(activeTeam)}>
-                <Icon name="layout" className="icon sm" /><span>Team overview</span>
-              </button>
               <NavLink
                 to="/work"
                 className={({ isActive }) => isActive ? 'active' : ''}
@@ -589,95 +458,22 @@ export function ThreadFirstSidebar({
                 <Icon name="clock" className="icon sm" /><span>Work</span>
                 {services?.mode !== 'desktop' && data.notifications.some((item) => !item.read) && <i className="tf-attention-dot" />}
               </NavLink>
-              {shortcuts.slice(0, 4).map(renderShortcut)}
+              <button className={location.pathname === `/project/${activeTeam.id}` ? 'active' : ''} onClick={() => openProject(activeTeam)}>
+                <Icon name="layout" className="icon sm" /><span>Team overview</span>
+              </button>
             </nav>
 
-            {(pinnedThreads.length > 0 || shortcuts.some((shortcut) => pinnedShortcutIds.includes(shortcut.id))) && (
+            {pinnedThreads.length > 0 && (
               <div className="tf-team-section tf-team-pinned">
                 <div className="tf-team-section-label static"><span>Pinned</span></div>
                 <div className="tf-team-section-list">
-                  {shortcuts.filter((shortcut) => pinnedShortcutIds.includes(shortcut.id)).map((shortcut) => (
-                    <div className="tf-thread-row" key={`pinned:${shortcut.id}`}>
-                      <button className="tf-thread-open tf-shortcut-open" onClick={shortcut.open}>
-                        <Icon name={shortcut.icon} className="icon xs" />
-                        <span>{shortcut.label}</span>
-                      </button>
-                      <button className="tf-thread-pin pinned" onClick={() => toggleShortcutPinned(shortcut.id)} aria-label={`Unpin ${shortcut.label}`}>
-                        <Icon name="pin" className="icon xs" />
-                      </button>
-                    </div>
-                  ))}
                   {pinnedThreads.map((thread) => renderThreadRow(thread, true))}
                 </div>
               </div>
             )}
 
-            <div className="tf-team-section">
-              <button className="tf-team-section-label" onClick={() => setProjectsOpen((value) => !value)} aria-expanded={projectsOpen}>
-                <span>Work streams</span>
-                <Icon name="chevron" className={`icon xs tf-chevron ${projectsOpen ? 'open' : ''}`} />
-              </button>
-              {projectsOpen && (
-                <div className="tf-team-section-list tf-project-tree">
-                  {scopedProjects.slice(0, 8).map((project) => {
-                    const relatedThreads = projectThreads(project.id)
-                    const expanded = expandedProjectIds.includes(project.id)
-                    return (
-                      <div className="tf-project-tree-node" key={project.id}>
-                        <button
-                          className={data.activeProjectId === project.id ? 'active' : ''}
-                          onClick={() => toggleProjectExpanded(project)}
-                          aria-expanded={expanded}
-                        >
-                          <Icon name="folder" className="icon sm" />
-                          <span>{project.name}</span>
-                          {(relatedThreads.length > 0 || data.projects.some((child) => child.parentId === project.id)) && (
-                            <Icon name="chevron" className={`icon xs tf-chevron ${expanded ? 'open' : ''}`} />
-                          )}
-                        </button>
-                        {expanded && (
-                          <div className="tf-project-tree-children">
-                            {relatedThreads.length > 0 && <span className="tf-project-tree-child-label">Channels & agent threads</span>}
-                            {relatedThreads.map((thread) => (
-                              <button key={thread.id} onClick={() => openThread(thread.chatId, thread.projectId)}>
-                                {thread.visibility !== 'private'
-                                  ? <span className="tf-project-channel-mark" aria-label="Channel">#</span>
-                                  : <Icon name={thread.status === 'running' ? 'activity' : 'message'} className="icon xs" />}
-                                <span>{thread.title}</span>
-                              </button>
-                            ))}
-                            <button className="tf-project-open-page" onClick={() => openProject(project)}>
-                              <Icon name="forward" className="icon xs" /><span>Open work stream overview</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="tf-team-section tf-direct-messages">
-              <div className="tf-team-section-label static"><span>Direct messages</span></div>
-              <div className="tf-team-section-list">
-                {directMessages.map((contact) => (
-                  <button
-                    className={`tf-direct-message-row ${contact.chat?.id === data.activeChatId ? 'active' : ''}`}
-                    key={directMessageKey(contact.kind, contact.id)}
-                    onClick={() => openDirectMessage(contact)}
-                    aria-label={`Direct message ${contact.name}`}
-                  >
-                    <PrincipalAvatar name={contact.name} kind={contact.kind} presence={contact.presence ?? 'offline'} size="sm" />
-                    <span>{contact.name}</span>
-                    {(contact.chat?.unreadCount ?? 0) > 0 && <small>{contact.chat!.unreadCount}</small>}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="tf-team-section tf-team-recent">
-              <div className="tf-team-section-label static"><span>Recent work</span></div>
+              <div className="tf-team-section-label static"><span>Recent</span></div>
               <div className="tf-team-section-list">
                 {recent.map((thread) => renderThreadRow(thread, pinnedThreadIds.includes(thread.chatId)))}
               </div>
@@ -696,7 +492,7 @@ export function ThreadFirstSidebar({
                   <Icon name="trash" className="icon sm" />Remove demo data
                 </button>
               )}
-              {isAdmin && shortcuts.slice(4).map((shortcut) => (
+              {adminShortcuts.map((shortcut) => (
                 <button key={shortcut.id} role="menuitem" onClick={() => { shortcut.open(); setTeamSettingsOpen(false) }}>
                   <Icon name={shortcut.icon} className="icon sm" /><span>{shortcut.label}</span>
                 </button>

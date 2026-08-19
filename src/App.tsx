@@ -23,7 +23,6 @@ import { HarnessPage } from './pages/HarnessPage'
 import { BrowserRuntimePage } from './pages/BrowserRuntimePage'
 import { StartPage } from './pages/StartPage'
 import { SessionBridgePage } from './pages/SessionBridgePage'
-import { LocalProjectsPage } from './pages/LocalProjectsPage'
 import { NativeBrowserPane } from './components/layout/NativeBrowserPane'
 import { ThreadFirstSidebar } from './features/shell/ThreadFirstSidebar'
 import { WorkspaceStatusBar } from './features/shell/WorkspaceStatusBar'
@@ -33,7 +32,6 @@ import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
 import { AddProjectDialog } from './features/onboarding/AddProjectDialog'
 import { ProjectOnboardingPage } from './features/onboarding/ProjectOnboardingPage'
 import { ConnectedLocalProjectPage } from './features/projects/ConnectedLocalProjectPage'
-import { ConnectedLocalStartPage } from './features/projects/ConnectedLocalStartPage'
 import { ConnectedLocalSettingsPage } from './features/projects/ConnectedLocalSettingsPage'
 import { ConnectedLocalProjectDialog } from './features/onboarding/ConnectedLocalProjectDialog'
 import { supportsGovernedProjectOnboarding } from './features/onboarding/onboardingAvailability'
@@ -110,7 +108,6 @@ function Shell() {
       settings: 'Settings',
       admin: 'Admin',
       sites: 'Sites',
-      local: 'Local projects',
     }
     const project = parts[0] === 'project' ? data.projects.find((item) => item.id === parts[1]) : undefined
     if (project && (parts[2] === 'agents' || parts[2] === 'skills' || parts[2] === 'onboarding')) {
@@ -176,7 +173,6 @@ function Shell() {
     { id: 'sites', group: 'Navigate', label: 'Sites', description: 'Open generated apps and sites', icon: 'globe', run: () => nav('/sites') },
     { id: 'harness', group: 'Navigate', label: 'Desktop harness', description: 'Check native execution readiness', icon: 'vm', run: () => nav('/harness') },
     { id: 'sessions', group: 'Navigate', label: 'Continue a session', description: 'Resume a local coding session', icon: 'clock', run: () => nav('/sessions') },
-    { id: 'local', group: 'Navigate', label: 'Local projects', description: 'Manage registered device folders', icon: 'folder', run: () => nav('/local') },
     { id: 'browser-runtime', group: 'Navigate', label: 'Browser agent runtime', description: 'Inspect browser execution support', icon: 'globe', run: () => nav('/browser-runtime') },
     { id: 'files', group: 'Navigate', label: 'Files', description: 'Browse project artifacts', icon: 'file', run: () => nav('/files') },
     { id: 'perms', group: 'Navigate', label: 'Permissions', description: 'Review scoped project access', icon: 'shield', run: () => nav('/permissions') },
@@ -222,7 +218,7 @@ function Shell() {
           }}
         />
       )}
-      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Local workflow"><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to="/local">Local projects</NavLink><button type="button" onClick={() => setProjectModal(true)}>Add project</button>{data.projects.filter((project) => project.workspaceKind === 'local').map((project) => <NavLink key={project.id} to={`/project/${project.id}`}>{project.name}</NavLink>)}<NavLink to="/settings">Settings</NavLink></nav></aside>}
+      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Local workflow"><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><button type="button" onClick={() => setProjectModal(true)}>Add project</button><NavLink to="/settings">Settings</NavLink></nav></aside>}
       <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         {!settingsFocused && <DemoBanner />}
@@ -233,7 +229,7 @@ function Shell() {
             <Route path="/" element={<Navigate to="/start" replace />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
-            <Route path="/local" element={<ConnectedLocalStartPage />} />
+            <Route path="/local" element={<Navigate to="/start" replace />} />
             <Route path="/project/:projectId" element={<ConnectedLocalProjectPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
@@ -247,8 +243,6 @@ function Shell() {
             <Route path="/project/:projectId" element={<ProjectWorkspacePage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
             <Route path="/project/:projectId/manage" element={<ProjectPage />} />
-            <Route path="/project/:projectId/agents" element={<LocalProjectsPage focusedTab="agents" />} />
-            <Route path="/project/:projectId/skills" element={<LocalProjectsPage focusedTab="skills" />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/wiki" element={<WikiPage />} />
             <Route path="/agents" element={<AgentsPage />} />
@@ -258,7 +252,7 @@ function Shell() {
             <Route path="/harness" element={<HarnessPage />} />
             <Route path="/sessions" element={<SessionBridgePage />} />
             <Route path="/project/:projectId/sessions" element={<SessionBridgePage />} />
-            <Route path="/local" element={<LocalProjectsPage />} />
+            <Route path="/local" element={<Navigate to="/start" replace />} />
             <Route path="/browser-runtime" element={<BrowserRuntimePage />} />
             <Route path="/files" element={<FilesPage />} />
             <Route path="/permissions" element={<PermissionsPage />} />

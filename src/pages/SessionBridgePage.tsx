@@ -231,7 +231,7 @@ export function SessionBridgePage() {
               <option value="">Choose a local project</option>
               {localProjects.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} · {candidate.local?.rootPath}</option>)}
             </select></div>
-            {needsProject && <div className="session-project-warning"><Icon name="folder" className="icon sm" /><span><strong>Add this working folder first</strong><small>The native session must resume from its original cwd.</small></span><button onClick={() => navigate(`/local?import=${encodeURIComponent(selected.cwd!)}`)}>Add folder</button></div>}
+            {needsProject && <div className="session-project-warning"><Icon name="folder" className="icon sm" /><span><strong>Add this working folder first</strong><small>The native session must resume from its original cwd.</small></span><button onClick={() => window.dispatchEvent(new Event('opensaddle:add-project'))}>Add folder</button></div>}
 
             <h4 className="session-authority-title">Authority for future work</h4>
             <div className="session-authority-list">

@@ -20,7 +20,7 @@ import { selectPublishFlowStep } from '../features/git/publishFlow'
 import { EvidenceInspector } from '../features/evidence/EvidenceInspector'
 import { adaptRunEvidencePacket, applyEvidencePolicy, EVIDENCE_SCHEMA_VERSION, selectEvidenceRun, type EvidencePresentation } from '../features/evidence'
 import { GroundedInvestigationThread, useGroundedInvestigation } from '../features/investigation'
-import { ArtifactCard, EntityPicker, MessageText, ReactionBar, type Reaction } from '../ui'
+import { AgentAvatar, ArtifactCard, EntityPicker, MessageText, ReactionBar, type AgentExecutionState, type Reaction } from '../ui'
 import {
   DEFAULT_THREAD_INSPECTOR_STATE,
   THREAD_INSPECTOR_STORAGE_KEY,
@@ -592,7 +592,7 @@ export function ChatPage() {
           ? ready
             ? `${policyControlLabel(capability)} · ${activeCustomHarness.protocol === 'acp' ? 'ACP' : 'CLI'} · ${capability?.version ?? activeCustomHarness.command}`
             : `${policyControlLabel(capability)} · ${capability?.unavailableReason ?? 'Executable unavailable'}`
-          : 'Register in Local projects',
+          : 'Add a project harness',
         reason: activeCustomHarness
           ? capability?.auth.message ?? capability?.unavailableReason ?? 'Project-local harness'
           : 'No project-local harness is selected.',
@@ -1661,6 +1661,18 @@ export function ChatPage() {
     const agent = message.role === 'assistant'
       ? data.agents.find((item) => item.id === (message.authorId ?? chat.agentId)) ?? channelAgents[0]
       : undefined
+    const agentSession = agent
+      ? data.agentSessions.find((session) => session.agentId === agent.id && session.status !== 'idle')
+      : undefined
+    const agentState: AgentExecutionState = message.run && !message.run.done
+      ? 'running'
+      : agentSession?.status === 'running'
+        ? 'running'
+        : agentSession?.status === 'waiting'
+          ? 'waiting'
+          : agentSession?.status === 'paused'
+            ? 'paused'
+            : 'ready'
     return {
       id: message.id,
       role: message.role,
@@ -1672,6 +1684,8 @@ export function ChatPage() {
       lightHtml: message.lightHtml,
       run: message.run,
       artifactRefs: message.artifactRefs ?? [],
+      agentIdentity: agent ? `${agent.name} ${agent.description}` : undefined,
+      agentState,
     }
   })
   // The unread marker is derived from the chat's own unread count rather than
@@ -1696,7 +1710,7 @@ export function ChatPage() {
                 <button key={member.id} title={member.name} onClick={() => setChannelPanel('members')}>{member.initials}</button>
               ))}
               {channelAgents.slice(0, 2).map((agent) => (
-                <button key={agent.id} title={agent.name} onClick={() => setChannelPanel('members')}><Icon name="spark" className="icon xs" /></button>
+                <button key={agent.id} title={agent.name} onClick={() => setChannelPanel('members')}><AgentAvatar name={`${agent.name} ${agent.description}`} size="xs" /></button>
               ))}
             </div>
             <button className={channelSearchOpen ? 'active' : ''} aria-label="Search channel" onClick={() => setChannelSearchOpen((value) => !value)}><Icon name="search" className="icon sm" /></button>
@@ -1746,9 +1760,9 @@ export function ChatPage() {
                 return <Fragment key={message.id}>
                   {unreadBoundary !== null && index === unreadBoundary && <div className="slack-new-divider"><span>New messages</span></div>}
                   <article className={`slack-message ${message.role === 'assistant' ? 'agent' : ''} ${isGrouped ? 'is-grouped' : ''}`}>
-                  <span
-                    className="slack-message-avatar"
-                  >{message.role === 'assistant' ? <Icon name="spark" className="icon sm" /> : message.initials}</span>
+                  {message.role === 'assistant'
+                    ? <AgentAvatar name={message.agentIdentity ?? message.name} state={message.agentState} size="sm" className="slack-message-avatar" />
+                    : <span className="slack-message-avatar">{message.initials}</span>}
                   {isGrouped && <time className="slack-message-gutter-time">{timestamp}</time>}
                   <div className="slack-message-content">
                     {!isGrouped && <header><strong>{message.name}</strong>{message.role === 'assistant' && <span>APP</span>}<time>{timestamp}</time></header>}
@@ -1839,7 +1853,7 @@ export function ChatPage() {
             ) : channelPanel === 'members' ? (
               <div className="slack-member-list">
                 {data.members.slice(0, 5).map((member) => <button key={member.id}><span>{member.initials}</span><div><strong>{member.name}</strong><small>Team member</small></div></button>)}
-                {channelAgents.map((agent) => <button key={agent.id}><span className="agent"><Icon name="spark" className="icon xs" /></span><div><strong>{agent.name}</strong><small>AI agent · available</small></div></button>)}
+                {channelAgents.map((agent) => <button key={agent.id}><AgentAvatar name={`${agent.name} ${agent.description}`} size="sm" /><div><strong>{agent.name}</strong><small>AI agent · ready</small></div></button>)}
               </div>
             ) : (
               <div className="slack-detail-list">
@@ -1916,7 +1930,7 @@ export function ChatPage() {
               </div>
               <div className="team-channel-participants" aria-label="Channel participants">
                 {data.members.slice(0, 3).map((member) => <span key={member.id} className="avatar" title={member.name}>{member.initials}</span>)}
-                {channelAgents.slice(0, 2).map((agent) => <span key={agent.id} className="team-channel-agent-avatar" title={agent.name}><Icon name="spark" className="icon xs" /></span>)}
+                {channelAgents.slice(0, 2).map((agent) => <AgentAvatar key={agent.id} name={`${agent.name} ${agent.description}`} size="xs" className="team-channel-agent-avatar" />)}
               </div>
               <button type="button" onClick={() => setMentionOpen((value) => !value)}>
                 <Icon name="spark" className="icon sm" /> Mention agent

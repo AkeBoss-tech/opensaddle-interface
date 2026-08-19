@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 import { evaluatePermissions } from '../services/permissions'
+import { AgentAvatar, type AgentExecutionState } from '../ui'
 
 type AgentView = 'agents' | 'runs'
 type RunSort = 'started' | 'duration' | 'agent' | 'status'
@@ -169,17 +170,28 @@ export function AgentsPage() {
 
       {view === 'agents' && (
         <div id="agent-library-panel-agents" className="agent-card-grid" role="tabpanel" aria-labelledby="agent-library-tab-agents" tabIndex={0}>
-          {agents.map((agent, index) => {
+          {agents.map((agent) => {
             const project = data.projects.find((item) => item.id === agent.projectId)
             const sessions = data.agentSessions.filter((session) => session.agentId === agent.id)
             const workflows = data.workflows.filter((workflow) => workflow.agentIds.includes(agent.id))
             const exec = evaluatePermissions(data.permissionGrants, {
               userId: data.currentUserId, agentId: agent.id, resourceKind: 'project', resourceId: agent.projectId, action: 'execute',
             })
+            const avatarState: AgentExecutionState = sessions.some((session) => session.status === 'running')
+              ? 'running'
+              : sessions.some((session) => session.status === 'waiting')
+                ? 'waiting'
+                : sessions.some((session) => session.status === 'paused')
+                  ? 'paused'
+                  : !exec.allowed
+                    ? 'failed'
+                    : exec.approvalRequired
+                      ? 'needs-approval'
+                      : 'ready'
             return (
               <article id={`agent-${agent.id}`} className={`agent-library-card ${selectedAgentId === agent.id ? 'tf-target-card' : ''}`} key={agent.id}>
                 <header>
-                  <span className="agent-library-avatar" style={{ '--agent-color': ['#5875e8', '#9c62cb', '#2f9b83', '#d27a45'][index % 4] } as React.CSSProperties}><Icon name="spark" /></span>
+                  <AgentAvatar name={`${agent.name} ${agent.description}`} state={avatarState} size="md" />
                   <div><h2>{agent.name}</h2><p>{project?.name} · {agent.visibility}</p></div>
                   <span className={`status-pill ${exec.allowed ? 'green' : 'red'}`}>{exec.allowed ? 'Available' : 'Blocked'}</span>
                 </header>

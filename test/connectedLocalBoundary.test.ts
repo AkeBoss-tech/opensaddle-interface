@@ -38,7 +38,8 @@ const required: Array<[string, string, string]> = [
   ['Start labels the trusted-local boundary', start, 'Trusted local workflow'],
   ['Start exposes server connection state', start, 'services?.controlPlane.connected'],
   ['Start does not fabricate runner readiness while capabilities are absent', start, 'No Codex or Claude runner reported by the control plane'],
-  ['Start shows authoritative registered roots', start, 'project.local?.rootPath'],
+  ['Start offers one governed project entry action', start, 'Start governed work'],
+  ['Start continues into the latest authoritative project', start, 'navigate(`/project/${latestProject.id}`)'],
   ['project overview loads authoritative onboarding state', project, 'localProjects?.onboardingState?.(projectId)'],
   ['project overview renders discovery fingerprint', project, 'state.fingerprint'],
   ['project overview renders ecosystems', project, 'state.discovery?.ecosystems'],
@@ -60,4 +61,16 @@ test('local registry hydration does not synthesize permission grants', () => {
 test('local routes do not mount generic chat or workflow pages', () => {
   const localRoutes = app.slice(app.indexOf('{connectedLocal ? <Routes>'), app.indexOf('</Routes> : <Routes>'))
   assert.doesNotMatch(localRoutes, /ChatPage|WorkflowsPage|PermissionsPage|BrowserRuntimePage|LocalProjectsPage/)
+})
+
+test('the removed Local Projects destination redirects to Start in both shells', () => {
+  const redirects = app.match(/<Route path="\/local" element=\{<Navigate to="\/start" replace \/>\} \/>/g) ?? []
+  assert.equal(redirects.length, 2)
+  assert.doesNotMatch(app, /label: 'Local projects'|<NavLink to="\/local">/)
+})
+
+test('connected Start is an action-oriented entry rather than a project registry view', () => {
+  assert.doesNotMatch(start, /Registered projects|project\.local\?\.rootPath/)
+  assert.match(start, /Add project/)
+  assert.match(start, /Continue/)
 })
