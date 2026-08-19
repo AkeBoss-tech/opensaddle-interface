@@ -16,7 +16,7 @@ on:
       opensaddle_version:
         description: Published OpenSaddle version to bundle
         required: true
-        default: 1.2.0rc4
+        default: 1.2.0rc5
         type: string
       python_archive_url:
         description: Immutable URL for the arm64 install-only Python .tar.gz
