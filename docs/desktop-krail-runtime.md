@@ -13,8 +13,8 @@ Builds require all three inputs:
 ```bash
 KRAIL_VERSION=1.2.0rc2 \
 KRAIL_WHEEL=/absolute/path/krail-1.2.0rc2-py3-none-any.whl \
-OPENSADDLE_VERSION=1.2.0rc4 \
-OPENSADDLE_WHEEL=/absolute/path/opensaddle-1.2.0rc4-py3-none-any.whl \
+OPENSADDLE_VERSION=1.2.0rc5 \
+OPENSADDLE_WHEEL=/absolute/path/opensaddle-1.2.0rc5-py3-none-any.whl \
 KRAIL_PYTHON_RUNTIME=/absolute/path/python-install-only-arm64.tar.gz \
 KRAIL_PYTHON_RUNTIME_SHA256=<64-lowercase-hex-characters> \
 KRAIL_RUNTIME_LOCK=electron/runtime-lock/runtime-lock-macos-arm64-python3.13.json \
