@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter, HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, HashRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { StoreProvider, useStore } from './data/store'
-import { Topbar } from './components/layout/Topbar'
+import { DemoBanner, Topbar } from './components/layout/Topbar'
 import { ToastStack } from './components/common/ToastStack'
 import { CommandPalette, type PaletteItem } from './components/common/CommandPalette'
 import { ChatPage } from './pages/ChatPage'
@@ -39,6 +39,7 @@ import { ConnectedLocalProjectDialog } from './features/onboarding/ConnectedLoca
 import { supportsGovernedProjectOnboarding } from './features/onboarding/onboardingAvailability'
 import { registerLocalWorkspace } from './features/onboarding/registerLocalWorkspace'
 import { scaffoldApply } from './features/onboarding/scaffoldApply'
+import { SurfaceErrorBoundary } from './ui/SurfaceHost'
 import './styles/app.css'
 import './styles/thread-first.css'
 import './styles/liquid-glass.css'
@@ -221,11 +222,13 @@ function Shell() {
           }}
         />
       )}
-      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Local workflow"><Link to="/start">Start</Link><Link to="/work">Work</Link><Link to="/local">Local projects</Link><button type="button" onClick={() => setProjectModal(true)}>Add project</button>{data.projects.filter((project) => project.workspaceKind === 'local').map((project) => <Link key={project.id} to={`/project/${project.id}`}>{project.name}</Link>)}<Link to="/settings">Settings</Link></nav></aside>}
+      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Local workflow"><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to="/local">Local projects</NavLink><button type="button" onClick={() => setProjectModal(true)}>Add project</button>{data.projects.filter((project) => project.workspaceKind === 'local').map((project) => <NavLink key={project.id} to={`/project/${project.id}`}>{project.name}</NavLink>)}<NavLink to="/settings">Settings</NavLink></nav></aside>}
       <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
+        {!settingsFocused && <DemoBanner />}
         <div ref={workspaceRef} className="workspace-split">
         <div className="page-wrap">
+          <SurfaceErrorBoundary key={loc.pathname} onRetry={() => nav(0)}>
           {connectedLocal ? <Routes>
             <Route path="/" element={<Navigate to="/start" replace />} />
             <Route path="/start" element={<StartPage />} />
@@ -236,7 +239,7 @@ function Shell() {
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
             <Route path="*" element={<Navigate to="/start" replace />} />
           </Routes> : <Routes>
-            <Route path="/" element={<Navigate to="/work" replace />} />
+            <Route path="/" element={<Navigate to="/start" replace />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/chat" element={<ChatPage />} />
@@ -274,6 +277,7 @@ function Shell() {
             <Route path="/interface/:interfaceId" element={<InterfacePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>}
+          </SurfaceErrorBoundary>
         </div>
         {browserOpen && window.opensaddleDesktop && <>
           {!browserCollapsed && <div className="native-browser-resizer" role="separator" aria-label="Resize browser pane" onPointerDown={beginBrowserResize} />}

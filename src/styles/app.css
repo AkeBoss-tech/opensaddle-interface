@@ -1157,9 +1157,11 @@
 .api-console { font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: #0f100e; border: 1px solid var(--border); border-radius: 10px; padding: 12px; color: #b7c7d6; white-space: pre-wrap; }
 .demo-banner { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: rgba(128,169,255,.08); border-bottom: 1px solid rgba(128,169,255,.2); font-size: 11px; color: #bcd0ff; }
 .demo-banner button { margin-left: auto; }
+.run-demo-badge { display:inline-flex; margin-left:7px; padding:2px 6px; border:1px solid color-mix(in srgb, var(--blue) 45%, transparent); border-radius:999px; background:color-mix(in srgb, var(--blue) 12%, transparent); color:var(--blue); font-size:8px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; vertical-align:1px; }
 .system-pill { text-decoration:none; transition:border-color .15s ease, background .15s ease; }
 .system-pill:hover { border-color:var(--border-strong); background:#20211e; }
-.system-pill .pulse.offline { background:var(--dim); box-shadow:none; animation:none; }
+.system-pill .pulse.demo { background:var(--blue); box-shadow:none; animation:none; }
+.system-pill .pulse.connecting, .system-pill .pulse.reconnecting { background:var(--dim); box-shadow:none; animation:none; }
 .system-pill-sync { color:var(--dim); padding-left:5px; border-left:1px solid var(--border); }
 
 .settings-overview {

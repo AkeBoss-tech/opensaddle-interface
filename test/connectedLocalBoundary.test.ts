@@ -14,6 +14,7 @@ const dialog = source('src/features/onboarding/ConnectedLocalProjectDialog.tsx')
 const required: Array<[string, string, string]> = [
   ['local routes are selected by authoritative connection mode', app, "controlPlane.connected && services.controlPlane.mode === 'local'"],
   ['local root redirects to Start', app, '<Route path="/" element={<Navigate to="/start" replace />} />'],
+  ['demo root redirects to Start', app, ': <Routes>\n            <Route path="/" element={<Navigate to="/start" replace />} />'],
   ['local Start is mounted', app, '<Route path="/start" element={<StartPage />} />'],
   ['local Work is mounted', app, '<Route path="/work" element={<WorkPage />} />'],
   ['local project overview is source-backed', app, '<ConnectedLocalProjectPage />'],

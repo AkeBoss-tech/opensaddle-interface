@@ -25,7 +25,7 @@ export function WorkspaceStatusBar() {
   return (
     <footer className="tf-statusbar" aria-label="Workspace status">
       <button onClick={() => navigate('/settings')} title={connectionState.title}>
-        <span className={`tf-connection-dot ${connectionState.connected ? '' : 'offline'}`} />
+        <span className={`tf-connection-dot ${connectionState.kind}`} />
         {connectionState.label}
       </button>
       <button onClick={() => project && navigate(`/project/${project.id}`)}>{project?.name ?? 'No project'}</button>
@@ -33,7 +33,9 @@ export function WorkspaceStatusBar() {
       {latestRun?.cost && <span>{latestRun.cost}</span>}
       <span className="tf-statusbar-spacer" />
       <button onClick={() => navigate('/settings')}>
-        {!connectionState.connected
+        {connectionState.kind === 'demo'
+          ? 'Simulated workspace'
+          : !connectionState.connected
           ? 'Waiting for server'
           : persistenceStatus === 'syncing'
             ? 'Saving…'

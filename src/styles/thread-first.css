@@ -144,10 +144,11 @@
 .tf-eyebrow { display: block; margin-bottom: 7px; color: var(--dim); font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .tf-work-header h1 { margin: 0; font-size: 27px; font-weight: 620; letter-spacing: -.04em; }
 .tf-work-header p { margin: 8px 0 0; max-width: 570px; color: var(--muted); font-size: 12px; line-height: 1.55; }
-.tf-work-filters { display: flex; gap: 4px; padding-bottom: 18px; border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent); overflow: auto; }
-.tf-work-filters button { display: flex; align-items: center; gap: 7px; height: 31px; padding: 0 11px; border: 0; border-radius: 7px; background: transparent; color: var(--dim); font-size: 10.5px; cursor: pointer; white-space: nowrap; }
-.tf-work-filters button:hover, .tf-work-filters button.active { color: var(--text); background: var(--card-hover); }
-.tf-work-filters button span { min-width: 17px; padding: 2px 5px; border-radius: 999px; background: var(--bg-elevated); color: var(--dim); font-size: 8px; }
+.tf-work-tabs .os-tabs__list { display: flex; gap: 4px; padding-bottom: 18px; border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent); overflow: auto; }
+.tf-work-tabs .os-tabs__tab { display: flex; align-items: center; gap: 7px; height: 31px; padding: 0 11px; border: 0; border-radius: 7px; background: transparent; color: var(--dim); font-size: 10.5px; cursor: pointer; white-space: nowrap; }
+.tf-work-tabs .os-tabs__tab:hover, .tf-work-tabs .os-tabs__tab[aria-selected="true"] { color: var(--text); background: var(--card-hover); }
+.tf-work-tabs .os-tabs__tab span { min-width: 17px; padding: 2px 5px; border-radius: 999px; background: var(--bg-elevated); color: var(--dim); font-size: 8px; }
+.tf-work-tabs .os-tabs__panel { outline: none; }
 .tf-work-sections { display: grid; gap: 42px; padding-top: 30px; }
 .tf-work-section-head { display: flex; align-items: start; justify-content: space-between; margin-bottom: 13px; }
 .tf-work-section-head h2 { margin: 0; font-size: 14px; font-weight: 620; letter-spacing: -.01em; }
@@ -219,7 +220,8 @@
 .tf-statusbar button:hover { color: var(--text); background: var(--card-hover); }
 .tf-statusbar-spacer { flex: 1; }
 .tf-connection-dot { width: 5px !important; height: 5px !important; padding: 0 !important; border-radius: 50% !important; background: var(--green) !important; }
-.tf-connection-dot.offline { background: var(--dim) !important; }
+.tf-connection-dot.demo { background: var(--blue) !important; }
+.tf-connection-dot.connecting, .tf-connection-dot.reconnecting { background: var(--dim) !important; }
 
 .tf-thread-toolbar {
   position: absolute;

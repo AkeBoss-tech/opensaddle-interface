@@ -49,20 +49,43 @@ export interface ConnectionProfile {
   allowMockFallback: boolean
 }
 
+export function connectionProfileForRuntime(input: {
+  runtimeMode: RuntimeMode
+  configuredUrl?: string
+  desktopUrl?: string
+  allowMockFallback?: boolean
+}): ConnectionProfile {
+  const explicitUrl = input.configuredUrl ?? input.desktopUrl
+  if (input.runtimeMode === 'mock' && !explicitUrl) {
+    return {
+      id: 'demo',
+      name: 'Demo workspace',
+      mode: 'demo',
+      baseUrl: 'http://127.0.0.1:8765',
+      allowMockFallback: true,
+    }
+  }
+  const baseUrl = explicitUrl ?? 'http://127.0.0.1:8765'
+  return {
+    id: 'configured-server',
+    name: input.configuredUrl ? 'Configured OpenSaddle server' : 'Local OpenSaddle server',
+    mode: 'remote',
+    baseUrl,
+    allowMockFallback: input.allowMockFallback ?? false,
+  }
+}
+
 export function defaultConnectionProfile(): ConnectionProfile {
   const desktopUrl = typeof window !== 'undefined'
     ? window.opensaddle?.opensaddleUrl
     : undefined
-  const baseUrl = (import.meta.env.VITE_OPENSADDLE_URL as string | undefined)
-    ?? desktopUrl
-    ?? 'http://127.0.0.1:8765'
-  return {
-    id: 'configured-server',
-    name: import.meta.env.VITE_OPENSADDLE_URL ? 'Configured OpenSaddle server' : 'Local OpenSaddle server',
-    mode: 'remote',
-    baseUrl,
-    allowMockFallback: import.meta.env.VITE_ALLOW_MOCK_FALLBACK === 'true',
-  }
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {}
+  return connectionProfileForRuntime({
+    runtimeMode: detectRuntimeMode(),
+    configuredUrl: env.VITE_OPENSADDLE_URL,
+    desktopUrl,
+    allowMockFallback: env.VITE_ALLOW_MOCK_FALLBACK === 'true',
+  })
 }
 
 export function initServices(opts: {

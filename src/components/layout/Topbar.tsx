@@ -88,7 +88,7 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
           className="crumb-pill system-pill"
           title={connectionState.title}
         >
-          <span className={`pulse ${connectionState.connected ? '' : 'offline'}`} />
+          <span className={`pulse ${connectionState.kind}`} />
           {connectionState.label}
           {persistenceStatus === 'error' && <span className="system-pill-sync">Save error</span>}
         </Link>
@@ -118,15 +118,17 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
 }
 
 export function DemoBanner() {
-  const { data, updateSettings, toast, runtimeModeLabel, services } = useStore()
+  const { connection, data, updateSettings, toast, services } = useStore()
   if (!data.settings.demoMode) return null
   return (
     <div className="demo-banner">
       <Icon name="saddle" className="icon sm" />
       <span>
-        {services?.controlPlane.connected
-          ? `Codex connected · ${services.controlPlane.mode === 'company' ? 'company' : 'local'} control plane · ${services.controlPlane.modelProvider === 'unconfigured' ? 'configure a model in Settings' : services.controlPlane.modelProvider} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
-          : `${runtimeModeLabel} · Codex offline cache · start the control plane for durable chats`}
+        {connection.mode === 'demo'
+          ? 'Demo workspace · seeded sample data · simulated runs · no control-plane enforcement'
+          : services?.controlPlane.connected
+          ? `Connected · ${services.controlPlane.mode === 'company' ? 'company' : 'local'} control plane · ${services.controlPlane.modelProvider && services.controlPlane.modelProvider !== 'unconfigured' ? services.controlPlane.modelProvider : 'native harnesses'} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
+          : `Control plane unavailable · reconnect to ${connection.baseUrl} for durable chats and enforced permissions`}
       </span>
       <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>
     </div>

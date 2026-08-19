@@ -286,9 +286,15 @@ function discovery(value: unknown): ProjectOnboardingDiscovery {
   if (!Array.isArray(item.languages) || item.languages.some((language: unknown) => typeof language !== 'string')) {
     throw new Error('OpenSaddle returned invalid project discovery languages.')
   }
-  if (item.ecosystems !== undefined && (!Array.isArray(item.ecosystems) || item.ecosystems.some((ecosystem: unknown) => typeof ecosystem !== 'string'))) {
+  if (item.ecosystems !== undefined && !Array.isArray(item.ecosystems)) {
     throw new Error('OpenSaddle returned invalid project discovery ecosystems.')
   }
+  const ecosystems = Array.isArray(item.ecosystems) ? item.ecosystems.map((value: unknown) => {
+    if (typeof value === 'string') return value
+    const ecosystem = object(value, 'project discovery ecosystem')
+    const name = ecosystem.ecosystem ?? ecosystem.name
+    return string(name, 'project discovery ecosystem name')
+  }) : []
   const repository = item.repository === undefined ? undefined : object(item.repository, 'repository discovery')
   if (repository && repository.kind !== 'git' && repository.kind !== 'directory') {
     throw new Error('OpenSaddle returned an unsupported repository discovery kind.')
@@ -304,7 +310,7 @@ function discovery(value: unknown): ProjectOnboardingDiscovery {
     mode: item.mode,
     fingerprint: item.fingerprint,
     languages: [...item.languages],
-    ecosystems: Array.isArray(item.ecosystems) ? [...item.ecosystems] : [],
+    ecosystems,
     fileCount,
     repository: repository ? {
       kind: repository.kind,

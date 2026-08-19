@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
@@ -6,6 +6,7 @@ import { useStore } from '../../data/store'
 import type { DirectMessagePrincipalKind, Project } from '../../types'
 import { selectThreadSummaries } from '../thread/domain'
 import { PrincipalAvatar } from '../../ui/PrincipalAvatar'
+import { useModalFocus } from '../../ui/modalFocus'
 import '../../styles/team-shell.css'
 
 const TEAM_COLORS_KEY = 'opensaddle.team-colors'
@@ -131,6 +132,10 @@ export function ThreadFirstSidebar({
   const [projectAccess, setProjectAccess] = useState<Record<string, string>>(() => readLocalRecord(PROJECT_ACCESS_KEY))
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
   const [directMessageThreads, setDirectMessageThreads] = useState<DirectMessageThreadMap>(() => readLocalRecord(DIRECT_MESSAGE_THREADS_KEY))
+  const agentChooserRef = useRef<HTMLElement>(null)
+  const configureTeamRef = useRef<HTMLElement>(null)
+  useModalFocus(agentChooserOpen, agentChooserRef, () => setAgentChooserOpen(false))
+  useModalFocus(Boolean(configureTeam), configureTeamRef, () => setConfigureTeam(null))
 
   const organizationRoots = useMemo(
     () => data.projects.filter((project) => project.parentId === null && project.workspaceKind !== 'local'),
@@ -744,7 +749,7 @@ export function ThreadFirstSidebar({
 
       {agentChooserOpen && (
         <div className="tf-shell-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAgentChooserOpen(false) }}>
-          <section className="tf-shell-dialog" role="dialog" aria-modal="true" aria-labelledby="tf-agent-chooser-title">
+          <section ref={agentChooserRef} className="tf-shell-dialog" role="dialog" aria-modal="true" aria-labelledby="tf-agent-chooser-title" tabIndex={-1}>
             <header>
               <div><span>New task</span><h2 id="tf-agent-chooser-title">Choose how to start</h2></div>
               <button className="tf-icon-button" onClick={() => setAgentChooserOpen(false)} aria-label="Close agent chooser"><Icon name="x" className="icon sm" /></button>
@@ -768,7 +773,7 @@ export function ThreadFirstSidebar({
 
       {configureTeam && (
         <div className="tf-shell-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfigureTeam(null) }}>
-          <section className="tf-shell-dialog tf-configure-team" role="dialog" aria-modal="true" aria-labelledby="tf-configure-team-title">
+          <section ref={configureTeamRef} className="tf-shell-dialog tf-configure-team" role="dialog" aria-modal="true" aria-labelledby="tf-configure-team-title" tabIndex={-1}>
             <header>
               <div><span>Team settings</span><h2 id="tf-configure-team-title">Name &amp; appearance</h2></div>
               <button className="tf-icon-button" onClick={() => setConfigureTeam(null)} aria-label="Close team settings"><Icon name="x" className="icon sm" /></button>

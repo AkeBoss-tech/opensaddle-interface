@@ -43,11 +43,12 @@ export function StartPage() {
   const indexedItems = data.knowledge.reduce((total, source) => total + source.items, 0)
   const firstName = data.settings.displayName.trim().split(/\s+/)[0] || 'there'
   const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
+  const runtimeReady = Boolean(services?.runtime)
 
   const ask = (value = prompt) => {
     const nextPrompt = value.trim()
     const destinationProject = scopedProject ?? activeProject
-    if (!nextPrompt || !destinationProject) return
+    if (!nextPrompt || !destinationProject || !runtimeReady) return
     const title = nextPrompt.length > 52 ? `${nextPrompt.slice(0, 49).trimEnd()}…` : nextPrompt
     const chat = createChat(destinationProject.id, title)
     sessionStorage.setItem('opensaddle-pending-prompt', JSON.stringify({
@@ -137,8 +138,8 @@ export function StartPage() {
                   </div>
                 )}
               </div>
-              <span className="osh-enter-hint">Enter to ask</span>
-              <button className="osh-send" type="submit" disabled={!prompt.trim()} aria-label="Ask OpenSaddle">
+              <span className="osh-enter-hint" role="status">{runtimeReady ? 'Enter to ask' : 'Preparing workspace…'}</span>
+              <button className="osh-send" type="submit" disabled={!prompt.trim() || !runtimeReady} aria-label="Ask OpenSaddle">
                 <Icon name="arrow" className="icon sm" />
               </button>
             </div>
@@ -146,7 +147,7 @@ export function StartPage() {
 
           <div className="osh-quick-prompts" aria-label="Suggested questions">
             {QUICK_PROMPTS.map((item) => (
-              <button type="button" key={item} onClick={() => ask(item)}>{item}</button>
+              <button type="button" key={item} disabled={!runtimeReady} onClick={() => ask(item)}>{item}</button>
             ))}
           </div>
         </div>

@@ -144,9 +144,15 @@ export function AgentsPage() {
         </div>
       </div>
 
-      <div className="agent-library-tabs" role="tablist" aria-label="Agent library views">
-        <button role="tab" aria-selected={view === 'agents'} className={view === 'agents' ? 'active' : ''} onClick={() => setView('agents')}><Icon name="spark" className="icon sm" />Agents <span>{scopedAgents.length}</span></button>
-        <button role="tab" aria-selected={view === 'runs'} className={view === 'runs' ? 'active' : ''} onClick={() => setView('runs')}><Icon name="activity" className="icon sm" />Recent runs <span>{runRows.length}</span></button>
+      <div className="agent-library-tabs" role="tablist" aria-label="Agent library views" onKeyDown={(event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        const next: AgentView = event.key === 'ArrowLeft' || event.key === 'Home' ? 'agents' : 'runs'
+        setView(next)
+        window.setTimeout(() => document.getElementById(`agent-library-tab-${next}`)?.focus(), 0)
+      }}>
+        <button id="agent-library-tab-agents" role="tab" aria-selected={view === 'agents'} aria-controls="agent-library-panel-agents" tabIndex={view === 'agents' ? 0 : -1} className={view === 'agents' ? 'active' : ''} onClick={() => setView('agents')}><Icon name="spark" className="icon sm" />Agents <span>{scopedAgents.length}</span></button>
+        <button id="agent-library-tab-runs" role="tab" aria-selected={view === 'runs'} aria-controls="agent-library-panel-runs" tabIndex={view === 'runs' ? 0 : -1} className={view === 'runs' ? 'active' : ''} onClick={() => setView('runs')}><Icon name="activity" className="icon sm" />Recent runs <span>{runRows.length}</span></button>
       </div>
 
       <div className="agent-library-controls">
@@ -162,7 +168,7 @@ export function AgentsPage() {
       </div>
 
       {view === 'agents' && (
-        <div className="agent-card-grid">
+        <div id="agent-library-panel-agents" className="agent-card-grid" role="tabpanel" aria-labelledby="agent-library-tab-agents" tabIndex={0}>
           {agents.map((agent, index) => {
             const project = data.projects.find((item) => item.id === agent.projectId)
             const sessions = data.agentSessions.filter((session) => session.agentId === agent.id)
@@ -211,7 +217,7 @@ export function AgentsPage() {
       )}
 
       {view === 'runs' && (
-        <div className="agent-runs-table-wrap">
+        <div id="agent-library-panel-runs" className="agent-runs-table-wrap" role="tabpanel" aria-labelledby="agent-library-tab-runs" tabIndex={0}>
           <div className="agent-runs-summary"><div><strong>{runRows.length}</strong><span>Matching runs</span></div><div><strong>{runRows.filter((run) => ['completed', 'succeeded'].includes(run.status)).length}</strong><span>Succeeded</span></div><div><strong>{runRows.filter((run) => run.status === 'running').length}</strong><span>Running now</span></div></div>
           <table className="agent-runs-table">
             <thead><tr><th><button onClick={() => changeSort('agent')}>Agent <Icon name="chevron" className="icon xs" /></button></th><th>Run</th><th><button onClick={() => changeSort('status')}>Status <Icon name="chevron" className="icon xs" /></button></th><th><button onClick={() => changeSort('started')}>Started <Icon name="chevron" className="icon xs" /></button></th><th><button onClick={() => changeSort('duration')}>Duration <Icon name="chevron" className="icon xs" /></button></th><th>Team tags</th><th /></tr></thead>

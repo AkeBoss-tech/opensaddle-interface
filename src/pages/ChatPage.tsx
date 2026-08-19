@@ -2398,7 +2398,11 @@ export function ChatPage() {
                 </div>
               )}
             </div>
-            <div className="composer-footnote">OpenSaddle can make mistakes. Tool calls remain subject to project permissions and audit policy.</div>
+            <div className="composer-footnote">
+              {store.connection.mode === 'demo'
+                ? 'Demo runs are simulated and do not exercise control-plane permissions or audit enforcement.'
+                : 'OpenSaddle can make mistakes. Tool calls remain subject to project permissions and audit policy.'}
+            </div>
           </div>
         </div>
 
@@ -3005,6 +3009,7 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch, onPr
   onPreparePullRequest?: (artifactPaths: string[]) => void
 }) {
   const runRegistry = useRunRegistry()
+  const { connection } = useStore()
   const [planEditing, setPlanEditing] = useState(false)
   const [planDraft, setPlanDraft] = useState('')
   const [planSubmitting, setPlanSubmitting] = useState(false)
@@ -3063,7 +3068,7 @@ function MessageView({ m, onHunk, toast, files, density, onRetry, onBranch, onPr
           <div className="agent-run">
             <div className="run-top">
               <div className="run-avatar" title={PROVIDER_NAME[providerFromLabel(run.model)]}><ProviderLogo label={run.model} className="provider-logo sm" /></div>
-              <div><div className="run-title">{run.title}</div><div className="run-sub">{run.model} · {run.harness} · {run.runtime}</div></div>
+              <div><div className="run-title">{run.title}{connection.mode === 'demo' && <span className="run-demo-badge">Simulated</span>}</div><div className="run-sub">{run.model} · {run.harness} · {run.runtime}</div></div>
               <div className={`run-live ${run.done ? interrupted ? 'interrupted' : 'done' : paused ? 'paused' : ''}`}>
                 {run.done
                   ? interrupted ? run.statusText.split(' · ')[0] : 'Done'

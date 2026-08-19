@@ -161,14 +161,23 @@ export function SessionBridgePage() {
       }}><Icon name="refresh" className={`icon sm ${loading ? 'spin' : ''}`} />Refresh</button>
     </div>
 
-    <div className="session-provider-tabs" role="tablist" aria-label="Session provider">
-      {(['codex', 'claude'] as const).map((item) => <button key={item} role="tab" aria-selected={provider === item} className={provider === item ? 'active' : ''} onClick={() => {
+    <div className="session-provider-tabs" role="tablist" aria-label="Session provider" onKeyDown={(event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+      event.preventDefault()
+      const next = event.key === 'ArrowLeft' || event.key === 'Home' ? 'codex' : 'claude'
+      setProvider(next)
+      setSelectedId('')
+      setQuery('')
+      window.setTimeout(() => document.getElementById(`session-provider-tab-${next}`)?.focus(), 0)
+    }}>
+      {(['codex', 'claude'] as const).map((item) => <button id={`session-provider-tab-${item}`} key={item} role="tab" aria-selected={provider === item} aria-controls={`session-provider-panel-${item}`} tabIndex={provider === item ? 0 : -1} className={provider === item ? 'active' : ''} onClick={() => {
         setProvider(item)
         setSelectedId('')
         setQuery('')
       }}><Icon name="terminal" className="icon sm" />{providerLabel(item)}<i className={`session-readiness-dot ${harnessCapabilities.find((capability) => capability.id === item)?.readiness === 'ready' ? 'ready' : ''}`} /><span>{sessions.filter((session) => session.provider === item).length}</span></button>)}
     </div>
 
+    <div id={`session-provider-panel-${provider}`} role="tabpanel" aria-labelledby={`session-provider-tab-${provider}`} tabIndex={0}>
     {error && <div className="scope-box session-error"><strong>Session discovery unavailable</strong><p>{error}</p></div>}
 
     <div className="session-bridge-layout">
@@ -234,6 +243,7 @@ export function SessionBridgePage() {
           </> : <div className="session-empty">Select a session to inspect its handoff metadata.</div>}
         </div>
       </section>
+    </div>
     </div>
   </div>
 }

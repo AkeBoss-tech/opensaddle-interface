@@ -1,5 +1,6 @@
 import { Icon } from '../components/common/Icon'
 import { Button } from '../ui/Button'
+import { Tabs } from '../ui/Tabs'
 import { registerSurface } from './registry'
 
 export type WorkFilter = 'attention' | 'running' | 'scheduled' | 'completed' | 'archived'
@@ -49,12 +50,28 @@ function Section({ title, description, rows, onOpen }: { title: string; descript
 }
 
 export function WorkSurface({ activeProjectName, filter, sections, onCreateTask, onFilterChange, onOpen }: WorkSurfaceInputs) {
+  const filters = ['all', 'attention', 'running', 'scheduled', 'completed', 'archived'] as const
+  const workSections = (activeFilter: typeof filter) => (
+    <div className="tf-work-sections">
+      {sections
+        .filter((section) => activeFilter === 'all' || section.key === activeFilter)
+        .map(({ key, title, description, rows }) => <Section key={key} title={title} description={description} rows={rows} onOpen={onOpen} />)}
+    </div>
+  )
   return <div className="tf-work-page">
     <header className="tf-work-header"><div><span className="tf-eyebrow">Team workspace · {activeProjectName}</span><h1>Work</h1><p>Active work for this team, ordered by what needs you next.</p></div><Button variant="primary" size="sm" leadingIcon={<Icon name="plus" className="icon sm" />} onClick={onCreateTask}>New task</Button></header>
-    <div className="tf-work-filters" role="tablist" aria-label="Work filters">
-      {(['all', 'attention', 'running', 'scheduled', 'completed', 'archived'] as const).map((item) => <button key={item} role="tab" aria-selected={filter === item} className={filter === item ? 'active' : ''} onClick={() => onFilterChange(item)}>{item === 'all' ? 'All work' : item === 'attention' ? 'Needs attention' : item[0]!.toUpperCase() + item.slice(1)}{item !== 'all' && <span>{sections.find((section) => section.key === item)?.rows.length ?? 0}</span>}</button>)}
-    </div>
-    <div className="tf-work-sections">{sections.filter((section) => filter === 'all' || section.key === filter).map(({ key, title, description, rows }) => <Section key={key} title={title} description={description} rows={rows} onOpen={onOpen} />)}</div>
+    <Tabs
+      className="tf-work-tabs"
+      label="Work filters"
+      value={filter}
+      onValueChange={(value) => onFilterChange(value as typeof filter)}
+      items={filters.map((item) => ({
+        id: item,
+        label: item === 'all' ? 'All work' : item === 'attention' ? 'Needs attention' : item[0]!.toUpperCase() + item.slice(1),
+        badge: item === 'all' ? undefined : <span>{sections.find((section) => section.key === item)?.rows.length ?? 0}</span>,
+        panel: workSections(item),
+      }))}
+    />
   </div>
 }
 

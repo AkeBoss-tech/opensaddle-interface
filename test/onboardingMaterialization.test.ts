@@ -32,6 +32,15 @@ const projections: Array<[string, () => unknown, unknown]> = [
 ]
 for (const [name, actual, expected] of projections) test(name, () => assert.deepEqual(actual(), expected))
 
+test('projects discovery projects authoritative ecosystem objects to their names', () => {
+  const authoritative = structuredClone(state)
+  authoritative.discovery.ecosystems = [
+    { ecosystem: 'python', manifests: ['pyproject.toml'], evidence: [] },
+    { name: 'node', manifests: [], evidence: [] },
+  ] as unknown as string[]
+  assert.deepEqual(projectOnboardingStateFromWire(authoritative, 'demo').discovery?.ecosystems, ['python', 'node'])
+})
+
 const invalidDescriptors: Array<[string, Record<string, unknown>]> = [
   ['rejects absolute materialization paths', { target_path: '/tmp/SKILL.md' }],
   ['rejects parent materialization traversal', { target_path: '../SKILL.md' }],
