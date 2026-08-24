@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opensaddle.dev/contracts/opensaddle.governed-delivery.v1/schema.json",
+  "title": "OpenSaddle governed delivery client projection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "execution_admission", "execution",
+    "publication_proposal", "effect_request", "approval", "credential_lease",
+    "effect_receipt", "typed_failures", "redaction", "provenance"
+  ],
+  "properties": {
+    "schema_version": {"const": "opensaddle.governed-delivery.v1"},
+    "operation": {"$ref": "#/$defs/operation"},
+    "execution_admission": {"$ref": "#/$defs/admission"},
+    "execution": {"$ref": "#/$defs/execution"},
+    "publication_proposal": {"$ref": "#/$defs/publication"},
+    "effect_request": {"$ref": "#/$defs/effect_request"},
+    "approval": {"$ref": "#/$defs/approval"},
+    "credential_lease": {"$ref": "#/$defs/credential_lease"},
+    "effect_receipt": {"$ref": "#/$defs/receipt"},
+    "typed_failures": {
+      "type": "array", "minItems": 1, "maxItems": 32,
+      "items": {"$ref": "#/$defs/failure"}
+    },
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "secret_material", "provider_request_selectors", "raw_provider_bodies", "error_details"],
+      "properties": {
+        "mode": {"const": "allowlist"}, "secret_material": {"const": "omitted"},
+        "provider_request_selectors": {"const": "omitted"}, "raw_provider_bodies": {"const": "omitted"},
+        "error_details": {"const": "typed_constant_disclosures_only"}
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contract_version", "authoritative_base_commit", "execution_schema_version", "publication_schema_version", "effect_receipt_schema_version"],
+      "properties": {
+        "contract_version": {"const": "opensaddle.governed-delivery.v1"},
+        "authoritative_base_commit": {"$ref": "#/$defs/git_sha"},
+        "execution_schema_version": {"const": "opensaddle.execution-admission.v1"},
+        "publication_schema_version": {"const": "opensaddle.publication-proposal.v1"},
+        "effect_receipt_schema_version": {"const": "opensaddle.effect-receipt.v1"}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^(sha256:)?[a-f0-9]{64}$"},
+    "git_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "git_revision": {"type": "string", "pattern": "^(git:)?[a-f0-9]{40,64}$"},
+    "bounded_string": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_id", "origin", "version", "digest"],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/bounded_string"}, "origin": {"type": "string", "format": "uri", "maxLength": 2048},
+        "version": {"$ref": "#/$defs/bounded_string"},
+        "digest": {"$ref": "#/$defs/phase1_digest"}
+      }
+    },
+    "phase1_digest": {
+      "type": "object", "additionalProperties": false, "required": ["algorithm", "value"],
+      "properties": {"algorithm": {"const": "sha-256"}, "value": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+    },
+    "resource_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issuer", "resource_type", "resource_id", "version", "digest", "source"],
+      "properties": {
+        "issuer": {"type": "string", "format": "uri", "maxLength": 512},
+        "resource_type": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
+        "resource_id": {"$ref": "#/$defs/bounded_string"}, "version": {"$ref": "#/$defs/bounded_string"},
+        "digest": {"$ref": "#/$defs/phase1_digest"}, "source": {"$ref": "#/$defs/source"}
+      }
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "ref", "media_type", "byte_length", "bounded_summary"],
+      "properties": {
+        "role": {"enum": ["diff", "patch", "log", "report"]}, "ref": {"$ref": "#/$defs/compact_ref"},
+        "media_type": {"$ref": "#/$defs/bounded_string"}, "byte_length": {"type": "integer", "minimum": 0},
+        "bounded_summary": {"type": "string", "minLength": 1, "maxLength": 4096}
+      }
+    },
+    "compact_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authority", "resource_type", "resource_id", "version", "digest"],
+      "properties": {
+        "authority": {"type": "string", "format": "uri", "maxLength": 512},
+        "resource_type": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
+        "resource_id": {"$ref": "#/$defs/bounded_string"}, "version": {"$ref": "#/$defs/bounded_string"},
+        "digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "lifecycle_event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sequence", "event_type", "state", "fence_epoch", "occurred_at", "request_digest", "receipt_id", "omission"],
+      "properties": {
+        "sequence": {"type": "integer", "minimum": 1}, "event_type": {"$ref": "#/$defs/bounded_string"},
+        "state": {"enum": ["admitted", "executing", "verifying", "proposed", "approved", "dispatching", "cancelled", "terminal"]},
+        "fence_epoch": {"type": "integer", "minimum": 1}, "occurred_at": {"type": "string", "format": "date-time"},
+        "request_digest": {"anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "receipt_id": {"type": ["string", "null"], "maxLength": 200}, "omission": {"type": ["string", "null"], "maxLength": 200}
+      }
+    },
+    "operation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation_id", "admission_id", "state", "fence_epoch", "lifecycle", "replay", "reconnect", "cancel"],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/bounded_string"}, "admission_id": {"$ref": "#/$defs/bounded_string"},
+        "state": {"enum": ["publishing", "dispatching", "cancelled", "terminal"]}, "fence_epoch": {"type": "integer", "minimum": 1},
+        "lifecycle": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/$defs/lifecycle_event"}},
+        "replay": {"type": "object", "additionalProperties": false, "required": ["request_digest", "result"], "properties": {"request_digest": {"$ref": "#/$defs/digest"}, "result": {"enum": ["committed", "replayed"]}}},
+        "reconnect": {"type": "object", "additionalProperties": false, "required": ["supported", "requires_same_fence"], "properties": {"supported": {"const": true}, "requires_same_fence": {"const": true}}},
+        "cancel": {"type": "object", "additionalProperties": false, "required": ["revokes_active_credential_leases", "prevents_new_dispatch"], "properties": {"revokes_active_credential_leases": {"const": true}, "prevents_new_dispatch": {"const": true}}}
+      }
+    },
+    "admission": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "admission_id", "admission_digest", "proposal_id", "proposal_digest", "proposal_request_digest", "registered_action_id", "registered_action_version", "registered_action_digest", "actor", "delegation_chain", "project_id", "policy_hash", "approval_ids", "approval_request_digest", "source_revisions", "context_brief_digest", "evidence_packet_refs", "expected_resource_versions", "runtime", "budget", "correlation_ids", "expires_at"],
+      "properties": {
+        "schema_version": {"const": "opensaddle.execution-admission.v1"}, "admission_id": {"$ref": "#/$defs/bounded_string"},
+        "admission_digest": {"$ref": "#/$defs/digest"}, "proposal_id": {"$ref": "#/$defs/bounded_string"},
+        "proposal_digest": {"$ref": "#/$defs/digest"}, "proposal_request_digest": {"$ref": "#/$defs/digest"},
+        "registered_action_id": {"$ref": "#/$defs/bounded_string"}, "registered_action_version": {"type": "integer", "minimum": 1}, "registered_action_digest": {"$ref": "#/$defs/digest"},
+        "actor": {"$ref": "#/$defs/bounded_string"}, "delegation_chain": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/bounded_string"}},
+        "project_id": {"$ref": "#/$defs/bounded_string"}, "policy_hash": {"$ref": "#/$defs/bounded_string"},
+        "approval_ids": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/bounded_string"}}, "approval_request_digest": {"anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "source_revisions": {"type": "array", "minItems": 2, "maxItems": 32, "items": {"$ref": "#/$defs/resource_ref"}},
+        "context_brief_digest": {"$ref": "#/$defs/digest"}, "evidence_packet_refs": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/bounded_string"}},
+        "expected_resource_versions": {"type": "object", "minProperties": 2, "maxProperties": 32, "additionalProperties": {"$ref": "#/$defs/bounded_string"}},
+        "runtime": {"type": "object", "additionalProperties": false, "required": ["isolation", "network"], "properties": {"isolation": {"$ref": "#/$defs/bounded_string"}, "network": {"$ref": "#/$defs/bounded_string"}}},
+        "budget": {"type": "object", "additionalProperties": false, "required": ["currency", "max_microunits"], "properties": {"currency": {"$ref": "#/$defs/bounded_string"}, "max_microunits": {"type": "integer", "minimum": 0}}},
+        "correlation_ids": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/bounded_string"}}, "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["admission_id", "admission_digest", "fence_epoch", "evidence", "verification_receipt"],
+      "properties": {
+        "admission_id": {"$ref": "#/$defs/bounded_string"}, "admission_digest": {"$ref": "#/$defs/digest"},
+        "fence_epoch": {"type": "integer", "minimum": 1},
+        "evidence": {"type": "object", "additionalProperties": false, "required": ["base_revision", "head_revision", "diff", "patch", "changed_files", "commits", "checks", "tool_versions", "environment_versions", "verification_state"], "properties": {"base_revision": {"$ref": "#/$defs/git_revision"}, "head_revision": {"$ref": "#/$defs/git_revision"}, "diff": {"$ref": "#/$defs/artifact"}, "patch": {"$ref": "#/$defs/artifact"}, "changed_files": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/resource_ref"}}, "commits": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/$defs/resource_ref"}}, "checks": {"type": "array", "maxItems": 256}, "tool_versions": {"type": "array", "maxItems": 128}, "environment_versions": {"type": "array", "maxItems": 128}, "verification_state": {"enum": ["passed", "failed", "partial", "unavailable"]}}},
+        "verification_receipt": {"type": "object", "additionalProperties": false, "required": ["capability_id", "descriptor_digest", "evidence_packet_id", "evidence_digest", "operation_id", "correlation_id", "causation_id", "omissions"], "properties": {"capability_id": {"$ref": "#/$defs/bounded_string"}, "descriptor_digest": {"$ref": "#/$defs/digest"}, "evidence_packet_id": {"$ref": "#/$defs/bounded_string"}, "evidence_digest": {"$ref": "#/$defs/digest"}, "operation_id": {"$ref": "#/$defs/bounded_string"}, "correlation_id": {"$ref": "#/$defs/bounded_string"}, "causation_id": {"$ref": "#/$defs/bounded_string"}, "omissions": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/bounded_string"}}}}
+      }
+    },
+    "publication": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "state", "target_kind", "title", "body", "base_revision", "head_revision", "diff_ref", "patch_ref", "changed_files", "verification_state", "verification_evidence_digest", "verification_evidence_packet_id", "editable_fields"],
+      "properties": {
+        "schema_version": {"const": "opensaddle.publication-proposal.v1"}, "state": {"const": "draft"}, "target_kind": {"const": "code-review"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 300}, "body": {"type": "string", "maxLength": 65536},
+        "base_revision": {"$ref": "#/$defs/git_revision"}, "head_revision": {"$ref": "#/$defs/git_revision"},
+        "diff_ref": {"$ref": "#/$defs/resource_ref"}, "patch_ref": {"$ref": "#/$defs/resource_ref"},
+        "changed_files": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/resource_ref"}},
+        "verification_state": {"enum": ["passed", "failed", "partial", "unavailable"]}, "verification_evidence_digest": {"$ref": "#/$defs/digest"},
+        "verification_evidence_packet_id": {"$ref": "#/$defs/bounded_string"}, "editable_fields": {"const": ["title", "body"]}
+      }
+    },
+    "effect_request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation_id", "fence_epoch", "admission_id", "admission_digest", "requester", "delegation_chain", "registered_action_id", "registered_action_version", "registered_action_digest", "action_availability_version", "adapter_capability_id", "adapter_capability_version", "adapter_capability_digest", "repository_ref", "base_ref_digest", "head_ref_digest", "base_revision", "head_revision", "publication_digest", "consequence_digest", "request_digest", "idempotency_key_digest"],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/bounded_string"}, "fence_epoch": {"type": "integer", "minimum": 1},
+        "admission_id": {"$ref": "#/$defs/bounded_string"}, "admission_digest": {"$ref": "#/$defs/digest"}, "requester": {"$ref": "#/$defs/bounded_string"},
+        "delegation_chain": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/bounded_string"}},
+        "registered_action_id": {"$ref": "#/$defs/bounded_string"}, "registered_action_version": {"type": "integer", "minimum": 1},
+        "registered_action_digest": {"$ref": "#/$defs/digest"}, "action_availability_version": {"type": "integer", "minimum": 1},
+        "adapter_capability_id": {"const": "github.create_pull_request"}, "adapter_capability_version": {"const": "1.0.0"}, "adapter_capability_digest": {"const": "59c96ec46fde8771986a0120205de7cacde94506818a074e3077f896f261ab8d"},
+        "repository_ref": {"$ref": "#/$defs/resource_ref"}, "base_ref_digest": {"$ref": "#/$defs/digest"}, "head_ref_digest": {"$ref": "#/$defs/digest"}, "base_revision": {"$ref": "#/$defs/git_revision"}, "head_revision": {"$ref": "#/$defs/git_revision"},
+        "publication_digest": {"$ref": "#/$defs/digest"}, "consequence_digest": {"$ref": "#/$defs/digest"}, "request_digest": {"$ref": "#/$defs/digest"}, "idempotency_key_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["approval_id", "approval_digest", "expires_at", "single_use", "consumed", "run_id", "principal", "consequence_digest", "request_digest", "policy_hash", "admission_digest"],
+      "properties": {"approval_id": {"$ref": "#/$defs/bounded_string"}, "approval_digest": {"$ref": "#/$defs/digest"}, "expires_at": {"type": "string", "format": "date-time"}, "single_use": {"const": true}, "consumed": {"const": true}, "run_id": {"$ref": "#/$defs/bounded_string"}, "principal": {"$ref": "#/$defs/bounded_string"}, "consequence_digest": {"$ref": "#/$defs/digest"}, "request_digest": {"$ref": "#/$defs/digest"}, "policy_hash": {"$ref": "#/$defs/bounded_string"}, "admission_digest": {"$ref": "#/$defs/digest"}}
+    },
+    "credential_lease": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lease_id", "run_id", "policy_hash", "connector", "action", "expires_at", "secret_material_omitted"],
+      "properties": {"lease_id": {"$ref": "#/$defs/bounded_string"}, "run_id": {"$ref": "#/$defs/bounded_string"}, "policy_hash": {"$ref": "#/$defs/bounded_string"}, "connector": {"const": "github"}, "action": {"const": "create_pull_request"}, "expires_at": {"type": "string", "format": "date-time"}, "secret_material_omitted": {"const": true}}
+    },
+    "receipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "receipt_id", "receipt_digest", "operation_id", "admission_id", "admission_digest", "fence_epoch", "outcome", "actual_effects", "proposal_digest", "proposal_request_digest", "publication_digest", "consequence_digest", "request_digest", "registered_action_id", "registered_action_version", "registered_action_digest", "adapter_capability_id", "adapter_capability_version", "adapter_capability_digest", "policy_hash", "approval_ids", "credential_lease_id", "repository_ref", "base_revision", "head_revision", "pull_request", "diff_ref", "patch_ref", "verification_evidence_ref", "verification_evidence_digest", "ci", "verified_completion", "costs", "omissions", "idempotency_result", "compensating_action", "completed_at"],
+      "properties": {"schema_version": {"const": "opensaddle.effect-receipt.v1"}, "receipt_id": {"$ref": "#/$defs/bounded_string"}, "receipt_digest": {"$ref": "#/$defs/digest"}, "operation_id": {"$ref": "#/$defs/bounded_string"}, "admission_id": {"$ref": "#/$defs/bounded_string"}, "admission_digest": {"$ref": "#/$defs/digest"}, "fence_epoch": {"type": "integer", "minimum": 1}, "outcome": {"enum": ["effect_applied_verified", "effect_applied_not_verified"]}, "actual_effects": {"const": ["github.pull_request.created"]}, "proposal_digest": {"$ref": "#/$defs/digest"}, "proposal_request_digest": {"$ref": "#/$defs/digest"}, "publication_digest": {"$ref": "#/$defs/digest"}, "consequence_digest": {"$ref": "#/$defs/digest"}, "request_digest": {"$ref": "#/$defs/digest"}, "registered_action_id": {"$ref": "#/$defs/bounded_string"}, "registered_action_version": {"type": "integer", "minimum": 1}, "registered_action_digest": {"$ref": "#/$defs/digest"}, "adapter_capability_id": {"const": "github.create_pull_request"}, "adapter_capability_version": {"const": "1.0.0"}, "adapter_capability_digest": {"const": "59c96ec46fde8771986a0120205de7cacde94506818a074e3077f896f261ab8d"}, "policy_hash": {"$ref": "#/$defs/bounded_string"}, "approval_ids": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/bounded_string"}}, "credential_lease_id": {"$ref": "#/$defs/bounded_string"}, "repository_ref": {"$ref": "#/$defs/resource_ref"}, "base_revision": {"$ref": "#/$defs/git_revision"}, "head_revision": {"$ref": "#/$defs/git_revision"}, "pull_request": {"$ref": "#/$defs/pull_request"}, "diff_ref": {"$ref": "#/$defs/resource_ref"}, "patch_ref": {"$ref": "#/$defs/resource_ref"}, "verification_evidence_ref": {"$ref": "#/$defs/bounded_string"}, "verification_evidence_digest": {"$ref": "#/$defs/digest"}, "ci": {"$ref": "#/$defs/ci"}, "verified_completion": {"type": "boolean"}, "costs": {"type": "object"}, "omissions": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/bounded_string"}}, "idempotency_result": {"enum": ["committed", "replayed"]}, "compensating_action": {"$ref": "#/$defs/compensating_action"}, "completed_at": {"type": "string", "format": "date-time"}}
+    },
+    "canonical_https_url": {
+      "type": "string", "format": "uri", "pattern": "^https://[^/?#@]+(?:/[^?#]*)?$", "maxLength": 2048
+    },
+    "pull_request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "number", "url", "base_revision", "head_revision"],
+      "properties": {"provider": {"const": "github"}, "number": {"type": "integer", "minimum": 1}, "url": {"$ref": "#/$defs/canonical_https_url"}, "base_revision": {"$ref": "#/$defs/git_revision"}, "head_revision": {"$ref": "#/$defs/git_revision"}}
+    },
+    "ci": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "head_revision", "state", "checks_ref", "observed_at"],
+      "properties": {"provider": {"const": "github"}, "head_revision": {"$ref": "#/$defs/git_revision"}, "state": {"enum": ["passed", "failed", "pending", "unavailable"]}, "checks_ref": {"anyOf": [{"$ref": "#/$defs/canonical_https_url"}, {"type": "null"}]}, "observed_at": {"type": "string", "format": "date-time"}}
+    },
+    "compensating_action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["available", "capability_id", "requires_new_approval", "target_url", "target_head_revision"],
+      "properties": {"available": {"const": true}, "capability_id": {"const": "github.close_pull_request"}, "requires_new_approval": {"const": true}, "target_url": {"$ref": "#/$defs/canonical_https_url"}, "target_head_revision": {"$ref": "#/$defs/git_revision"}}
+    },
+    "failure": {
+      "type": "object", "additionalProperties": false, "required": ["code", "phase", "retryable", "disclosure"],
+      "properties": {"code": {"$ref": "#/$defs/bounded_string"}, "phase": {"enum": ["admission", "approval", "dispatch", "lifecycle", "observation"]}, "retryable": {"type": "boolean"}, "disclosure": {"const": "constant"}}
+    }
+  }
+}

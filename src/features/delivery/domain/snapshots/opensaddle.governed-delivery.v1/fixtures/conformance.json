@@ -1,0 +1,33 @@
+{
+  "contract_version": "opensaddle.governed-delivery.v1",
+  "scenarios": [
+    {"id": "exact_replay", "expected": "same_receipt", "binding": "request_digest"},
+    {"id": "conflicting_replay", "expected": "idempotency_conflict", "binding": "idempotency_key"},
+    {"id": "stale_fence", "expected": "operation_fenced", "provider_calls": 0},
+    {"id": "cancel_before_dispatch", "expected": "cancelled", "provider_calls": 0},
+    {"id": "cancel_during_dispatch", "expected": "effect_applied_not_verified", "omissions": ["cancelled_after_effect_dispatch", "ci_observation_unavailable"]},
+    {"id": "membership_revoked", "expected": "membership_denied", "credential_lease_issued": false},
+    {"id": "policy_drift", "expected": "policy_drift", "credential_lease_issued": false},
+    {"id": "action_disabled", "expected": "provider_unavailable", "credential_lease_issued": false},
+    {"id": "source_drift", "expected": "resource_version_drift", "credential_lease_issued": false},
+    {"id": "adapter_unavailable", "expected": "provider_unavailable", "credential_lease_issued": false},
+    {"id": "adapter_descriptor_drift", "expected": "provider_unavailable", "credential_lease_issued": false},
+    {"id": "adapter_replaced_after_preflight", "expected": "authorized_adapter_only", "replacement_provider_calls": 0},
+    {"id": "adapter_descriptor_mutated_during_call", "expected": "authorized_snapshot_only", "verified_completion": false},
+    {"id": "admission_substitution", "expected": "proposal_digest_stale", "provider_calls": 0},
+    {"id": "publication_edit", "expected": "proposal_digest_stale", "provider_calls": 0},
+    {"id": "approval_expired", "expected": "approval_expired_or_consumed", "provider_calls": 0},
+    {"id": "credential_revoked", "expected": "credential_lease_invalid", "provider_calls": 0},
+    {"id": "authority_expired_before_receipt", "expected": "contract_invalid", "receipt_accepted": false},
+    {"id": "unsafe_pr_url", "expected": "provider_effect_unconfirmed", "receipt_written": false},
+    {"id": "unbound_provider_repository_identity", "expected": "omitted", "forbidden": ["repository_id", "provider_version"]},
+    {"id": "unsafe_ci_ref", "expected": "ci_observation_invalid", "receipt_written": false},
+    {"id": "authority_revoked_during_ci", "expected": "effect_applied_not_verified", "omissions": ["authority_revoked_after_ci_observation", "ci_observation_unavailable"]},
+    {"id": "ci_pending", "expected": "effect_applied_not_verified", "verified_completion": false},
+    {"id": "ci_unavailable", "expected": "effect_applied_not_verified", "omissions": ["ci_observation_unavailable"]},
+    {"id": "receipt_or_lifecycle_substitution", "expected": "contract_invalid", "recompute_digests": true},
+    {"id": "compensating_target_substitution", "expected": "contract_invalid", "recompute_digests": true},
+    {"id": "secret_redaction", "expected": "allowlist_only", "forbidden": ["secret_material", "raw_provider_body", "provider_selector"]},
+    {"id": "immutable_correction", "expected": "new_proposal_and_approval", "mutates_prior_receipt": false}
+  ]
+}
