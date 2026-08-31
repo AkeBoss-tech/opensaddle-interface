@@ -69,6 +69,23 @@ function messageFromDurable(message: DurableThreadMessage): Message {
   } as Message
 }
 
+function chatFromDurable(thread: DurableThread): Chat {
+  return {
+    id: thread.id,
+    projectId: thread.projectId,
+    title: thread.title,
+    visibility: thread.visibility,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+    branchedFromId: thread.branchedFromId,
+    sharedWith: thread.sharedWith,
+    archived: Boolean(thread.archivedAt),
+    agentId: thread.agentId,
+    runConfig: thread.runConfig as Chat['runConfig'],
+    continuation: thread.continuation,
+  }
+}
+
 function mergeRuntimeProjection(remote: Message, existing: Message | undefined): Message {
   if (
     !existing?.run
@@ -89,6 +106,7 @@ interface StoreApi {
   updateSettings: (patch: Partial<SettingsState>) => void
   setActiveProject: (id: string) => void
   setActiveChat: (id: string | null) => void
+  hydrateThread: (id: string) => Promise<Chat>
   createChat: (projectId: string, title?: string, agentId?: string, continuation?: Chat['continuation'], activate?: boolean) => Chat
   adoptChatContinuation: (id: string, sessionId: string, checkpointId?: string, provider?: NonNullable<Chat['continuation']>['provider']) => void
   renameChat: (id: string, title: string) => void
@@ -106,7 +124,7 @@ interface StoreApi {
   updateMessage: (id: string, patch: Partial<Message>) => void
   createProject: (name: string, parentId: string | null, description: string) => string
   importLocalProject: (input: { id?: string; name: string; description: string; local: LocalProjectSettings }) => string
-  updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description' | 'routingDefaults' | 'workspaceKind' | 'local'>>) => void
+  updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description' | 'routingDefaults' | 'workspaceKind' | 'local' | 'perspective'>>) => void
   removeLocalProject: (id: string) => void
   setPinnedArtifacts: (items: PinnedArtifact[]) => void
   createAgent: (input: Omit<CustomAgent, 'id' | 'createdAt'>) => CustomAgent
@@ -457,20 +475,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       setData((current) => {
         const next = structuredClone(current)
-        const remoteChats = durableThreads.map<Chat>((thread) => ({
-          id: thread.id,
-          projectId: thread.projectId,
-          title: thread.title,
-          visibility: thread.visibility,
-          createdAt: thread.createdAt,
-          updatedAt: thread.updatedAt,
-          branchedFromId: thread.branchedFromId,
-          sharedWith: thread.sharedWith,
-          archived: Boolean(thread.archivedAt),
-          agentId: thread.agentId,
-          runConfig: thread.runConfig as Chat['runConfig'],
-          continuation: thread.continuation,
-        }))
+        const remoteChats = durableThreads.map(chatFromDurable)
         const remoteMessages = durableMessages.map(messageFromDurable)
           .map((message) => mergeRuntimeProjection(
             message,
@@ -591,20 +596,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
 
         const changedIds = new Set(changedThreads.map((thread) => thread.id))
-        const remoteChats = changedThreads.map<Chat>((thread) => ({
-          id: thread.id,
-          projectId: thread.projectId,
-          title: thread.title,
-          visibility: thread.visibility,
-          createdAt: thread.createdAt,
-          updatedAt: thread.updatedAt,
-          branchedFromId: thread.branchedFromId,
-          sharedWith: thread.sharedWith,
-          archived: Boolean(thread.archivedAt),
-          agentId: thread.agentId,
-          runConfig: thread.runConfig as Chat['runConfig'],
-          continuation: thread.continuation,
-        }))
+        const remoteChats = changedThreads.map(chatFromDurable)
         const remoteMessages = changedMessages.map(messageFromDurable)
         setData((current) => {
           const currentById = new Map(current.messages.map((message) => [message.id, message]))
@@ -732,6 +724,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (id) d.recentChatIds = [id, ...d.recentChatIds.filter((x) => x !== id)].slice(0, 12)
       return d
     }),
+    hydrateThread: async (id) => {
+      const threads = services?.threads
+      if (!threads) throw new Error('Authoritative Channels are unavailable')
+      const [durableThread, page] = await Promise.all([
+        threads.get(id),
+        threads.messages(id, { limit: 250 }),
+      ])
+      const hydrated = chatFromDurable(durableThread)
+      const remoteMessages = page.messages.map(messageFromDurable)
+      patch((d) => {
+        d.chats = [hydrated, ...d.chats.filter((candidate) => candidate.id !== id)]
+        const remoteIds = new Set(remoteMessages.map((message) => message.id))
+        d.messages = [
+          ...remoteMessages.map((message) => mergeRuntimeProjection(
+            message,
+            d.messages.find((existing) => existing.id === message.id),
+          )),
+          ...d.messages.filter((message) => message.chatId !== id || !remoteIds.has(message.id)),
+        ]
+        d.activeChatId = id
+        d.activeProjectId = hydrated.projectId
+        d.recentChatIds = [id, ...d.recentChatIds.filter((candidate) => candidate !== id)].slice(0, 12)
+        return normalizeWorkspace(d)
+      })
+      return hydrated
+    },
     createChat: (projectId, title = 'New chat', agentId, continuation, activate = true) => {
       const chat: Chat = { id: uid('chat'), projectId, title, visibility: 'private', createdAt: Date.now(), updatedAt: Date.now(), sharedWith: [], agentId, continuation }
       patch((d) => {

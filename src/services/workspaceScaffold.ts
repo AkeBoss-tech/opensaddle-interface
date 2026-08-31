@@ -4,6 +4,7 @@ import type {
   WorkspaceConnectorProposal,
   WorkspaceMemberProposal,
   WorkspacePermissionProposal,
+  WorkspacePerspectiveProposal,
   WorkspaceProposal,
   WorkspaceScanSnapshot,
 } from '../types'
@@ -12,24 +13,6 @@ const NOISE_DIRECTORIES = new Set([
   'node_modules', 'dist', 'build', '.git', 'coverage', 'vendor', 'target', '.venv', '__pycache__',
   'out', 'tmp', 'temp', '.cache', '.output', 'bin', 'obj', 'Pods', '.gradle', '.idea', '.vscode',
 ])
-
-/**
- * Every directory is offered, but only the first few are pre-checked. A repo with
- * eighteen top-level folders should not silently propose eighteen channels.
- */
-const MAX_RECOMMENDED_CHANNELS = 5
-
-/** Branches quiet for longer than this are not proposed as channels. */
-const MAX_BRANCH_AGE_MS = 90 * 24 * 60 * 60 * 1000
-const MAX_BRANCH_CHANNELS = 10
-
-function describeAge(at: number, now: number): string {
-  const days = Math.floor(Math.max(0, now - at) / (24 * 60 * 60 * 1000))
-  if (days < 1) return 'today'
-  if (days === 1) return 'yesterday'
-  if (days < 30) return `${days} days ago`
-  return `${Math.floor(days / 30)} month${days < 60 ? '' : 's'} ago`
-}
 
 const CONFIG_AGENTS: Array<{ path: string; harness: WorkspaceAgentProposal['harness'] }> = [
   { path: '.claude/', harness: 'claude' },
@@ -44,12 +27,6 @@ function stableId(prefix: string, value: string): string {
   let hash = 5381
   for (const character of value.toLowerCase()) hash = (hash * 33) ^ character.charCodeAt(0)
   return `${prefix}-${(hash >>> 0).toString(36)}`
-}
-
-function sourceDirectories(directories: string[]): string[] {
-  return [...new Set(directories)]
-    .filter((directory) => !NOISE_DIRECTORIES.has(directory) && !directory.startsWith('.'))
-    .sort((left, right) => left.localeCompare(right))
 }
 
 function isDeploymentScript(script: string): boolean {
@@ -157,51 +134,10 @@ const CONNECTOR_RULES: Array<{
 
 /** Converts desktop-collected evidence into a UI-selectable, non-persisted proposal. */
 export function deriveWorkspaceProposal(scan: WorkspaceScanSnapshot): WorkspaceProposal {
-  // Provenance must describe the item it labels. Reusing the repo-wide commit
-  // total made every directory claim the same misleading number.
-  const directoryProvenance = (directory: string) => {
-    const commits = scan.git.directoryCommitCounts?.[directory]
-    if (!scan.git.readable) return `${directory}/ · git history unavailable`
-    if (typeof commits === 'number') return `${directory}/ · ${commits} commit${commits === 1 ? '' : 's'}`
-    return `${directory}/ directory`
-  }
-  // Only branches touched recently are worth proposing. A long-lived repo can
-  // hold a hundred dead branches, which would bury every other suggestion.
-  const now = scan.scannedAt ?? 0
-  const activeBranches = [...new Set(scan.git.branches)]
-    .map((name) => ({ name, lastCommitAt: scan.git.branchActivity?.[name] }))
-    .filter((branch) => {
-      if (!branch.lastCommitAt) return false
-      return now === 0 || now - branch.lastCommitAt <= MAX_BRANCH_AGE_MS
-    })
-    .sort((left, right) => (right.lastCommitAt ?? 0) - (left.lastCommitAt ?? 0))
-    .slice(0, MAX_BRANCH_CHANNELS)
-
-  const mostActiveDirectories = new Set(
-    [...sourceDirectories(scan.directories)]
-      .sort((left, right) => (scan.git.directoryCommitCounts?.[right] ?? 0) - (scan.git.directoryCommitCounts?.[left] ?? 0))
-      .slice(0, MAX_RECOMMENDED_CHANNELS),
-  )
-  const channels: WorkspaceChannelProposal[] = [
-    ...sourceDirectories(scan.directories).map((directory) => ({
-      id: stableId('channel-directory', directory),
-      label: directory,
-      provenance: directoryProvenance(directory),
-      // Pre-check the most active directories, not the alphabetically first
-      // ones: a dormant folder should not be proposed ahead of a busy one.
-      recommended: mostActiveDirectories.has(directory),
-      kind: 'directory' as const,
-    })),
-    ...activeBranches.map((branch) => ({
-      id: stableId('channel-branch', branch.name),
-      label: branch.name,
-      provenance: branch.lastCommitAt
-        ? `branch · last commit ${describeAge(branch.lastCommitAt, now)}`
-        : `branch: ${branch.name}`,
-      recommended: false,
-      kind: 'branch' as const,
-    })),
-  ]
+  // Directories and branches are Project Source structure, not collaboration
+  // Channels. An agent may recommend intentional channels after onboarding,
+  // but deterministic folder discovery must not manufacture them.
+  const channels: WorkspaceChannelProposal[] = []
 
   const people = new Map<string, { name: string; email: string; commitCount: number }>()
   for (const author of scan.git.authors) {
@@ -280,7 +216,31 @@ export function deriveWorkspaceProposal(scan: WorkspaceScanSnapshot): WorkspaceP
   const memberReason = scan.git.readable
     ? 'Git log was read to propose individually deselectable members and their email addresses.'
     : scan.git.reason ?? 'Git history is unavailable; no members were proposed.'
-  const notes = scan.git.readable ? [] : [memberReason]
+  const sourceDirectoryCount = scan.directories.filter((directory) => !NOISE_DIRECTORIES.has(directory) && !directory.startsWith('.')).length
+  const notes = [
+    `${sourceDirectoryCount} top-level source ${sourceDirectoryCount === 1 ? 'folder was' : 'folders were'} detected and will be available to the Project; folders are not converted into Channels.`,
+    ...(scan.git.readable ? [] : [memberReason]),
+  ]
+  const perspectives: WorkspacePerspectiveProposal[] = [
+    {
+      id: 'perspective-developer-trace-evidence',
+      label: 'Trace and evidence',
+      description: 'Start with runs, verification, provenance, and recent project activity.',
+      provenance: 'Built-in Developer Perspective · projection.trace-evidence.v1',
+      recommended: true,
+      perspectiveId: 'opensaddle.developer',
+      viewId: 'trace-evidence',
+    },
+    {
+      id: 'perspective-developer-kanban',
+      label: 'Work board',
+      description: 'Start with the same project data grouped by work state.',
+      provenance: 'Built-in Developer Perspective · projection.kanban.v1',
+      recommended: false,
+      perspectiveId: 'opensaddle.developer',
+      viewId: 'kanban',
+    },
+  ]
   return {
     id: stableId('workspace-proposal', scan.folderPath),
     folderPath: scan.folderPath,
@@ -290,6 +250,7 @@ export function deriveWorkspaceProposal(scan: WorkspaceScanSnapshot): WorkspaceP
     agents,
     connectors,
     permissions,
+    perspectives,
     memberAnalysis: { source: 'git log', reason: memberReason },
     notes,
   }

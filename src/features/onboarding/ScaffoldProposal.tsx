@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import type { WorkspaceAgentProposal, WorkspaceChannelProposal, WorkspaceConnectorProposal, WorkspaceMemberProposal, WorkspacePermissionProposal, WorkspaceProposal, WorkspaceProposalItem } from '../../types'
+import type { WorkspaceAgentProposal, WorkspaceChannelProposal, WorkspaceConnectorProposal, WorkspaceMemberProposal, WorkspacePermissionProposal, WorkspaceProposal, WorkspaceProposalItem, WorkspaceScaffoldSelection } from '../../types'
 import { StateBadge } from '../../ui/StateBadge'
 import type { ProjectMemoryInitPlan, ProjectMemoryOperationStage } from '../../services/contracts'
 import { MEMORY_PROPOSAL_ID } from '../memory/projectMemory'
@@ -38,7 +38,7 @@ function countLabel(count: number, noun: string) {
 
 export function ScaffoldProposal({ proposal, onCreate, onBack, creating = false, memory }: {
   proposal: WorkspaceProposal
-  onCreate: (selectedIds: Set<string>) => void
+  onCreate: (selection: WorkspaceScaffoldSelection) => void
   onBack?: () => void
   creating?: boolean
   memory?: {
@@ -50,6 +50,7 @@ export function ScaffoldProposal({ proposal, onCreate, onBack, creating = false,
   }
 }) {
   const offersMemory = memory !== undefined
+  const perspectives = useMemo(() => proposal.perspectives ?? [], [proposal.perspectives])
   const initialSelection = useMemo(() => new Set([
     ...proposal.channels, ...proposal.members, ...proposal.agents, ...proposal.permissions,
   ].filter((item) => item.recommended).map((item) => item.id).concat(
@@ -57,15 +58,19 @@ export function ScaffoldProposal({ proposal, onCreate, onBack, creating = false,
     ...(offersMemory ? [MEMORY_PROPOSAL_ID] : []),
   )), [offersMemory, proposal])
   const [selectedIds, setSelectedIds] = useState(initialSelection)
+  const [startingPerspectiveId, setStartingPerspectiveId] = useState(
+    perspectives.find((perspective) => perspective.recommended)?.id ?? perspectives[0]?.id ?? '',
+  )
   const [customItems, setCustomItems] = useState<Record<CustomProposalGroup, CustomItem[]>>({ channels: [], members: [], agents: [], permissions: [] })
   const reviewProposal = useMemo(() => ({
     ...proposal,
+    perspectives,
     channels: [...proposal.channels, ...(customItems.channels as WorkspaceChannelProposal[])],
     members: [...proposal.members, ...(customItems.members as WorkspaceMemberProposal[])],
     agents: [...proposal.agents, ...(customItems.agents as WorkspaceAgentProposal[])],
     connectors: proposal.connectors,
     permissions: [...proposal.permissions, ...(customItems.permissions as WorkspacePermissionProposal[])],
-  }), [customItems, proposal])
+  }), [customItems, perspectives, proposal])
   const selectedCounts = useMemo(() => Object.fromEntries(GROUPS.map(({ key }) => [key,
     key === 'connectors'
       ? reviewProposal.connectors.filter((connector) => connector.scopes.some((scope) => selectedIds.has(scope.id))).length
@@ -104,6 +109,21 @@ export function ScaffoldProposal({ proposal, onCreate, onBack, creating = false,
       {proposal.notes.map((note) => <p key={note}>{note}</p>)}
     </aside>}
 
+    {perspectives.length > 0 && <section className="scaffold-group scaffold-perspectives" aria-labelledby="scaffold-perspective">
+      <header className="scaffold-group__header">
+        <div>
+          <h3 id="scaffold-perspective">Starting layout</h3>
+          <p className="scaffold-group__disclosure">Choose how this Project opens. Both layouts read the same governed Project and can be switched later.</p>
+        </div>
+      </header>
+      <div className="scaffold-perspective__choices">
+        {perspectives.map((perspective) => <label className={`scaffold-perspective__choice${startingPerspectiveId === perspective.id ? ' is-selected' : ''}`} key={perspective.id}>
+          <input type="radio" name="starting-perspective" value={perspective.id} checked={startingPerspectiveId === perspective.id} onChange={() => setStartingPerspectiveId(perspective.id)} />
+          <span><strong>{perspective.label}</strong><small>{perspective.description}</small><code>{perspective.provenance}</code></span>
+        </label>)}
+      </div>
+    </section>}
+
     <div className="scaffold-proposal__groups">
       {GROUPS.map(({ key, label, empty }) => {
         const items = reviewProposal[key]
@@ -113,7 +133,7 @@ export function ScaffoldProposal({ proposal, onCreate, onBack, creating = false,
               {key === 'members' && <p className="scaffold-group__disclosure">{proposal.memberAnalysis.reason}</p>}
             </div>
             <div className="scaffold-group__actions">
-              {items.length > 0 && <span>{countLabel(selectedCounts[key], label.toLowerCase())}</span>}
+              {items.length > 0 && <span>{countLabel(selectedCounts[key], label.slice(0, -1).toLowerCase())}</span>}
               {key !== 'connectors' && <button type="button" className="scaffold-group__add" onClick={() => addCustom(key)}>Add {label.slice(0, -1)}</button>}
             </div>
           </header>
@@ -152,10 +172,21 @@ export function ScaffoldProposal({ proposal, onCreate, onBack, creating = false,
           selectedCounts.permissions && countLabel(selectedCounts.permissions, 'permission'),
           memorySelected && 'Project Memory',
         ].filter(Boolean).join(', ')
-        : 'Select at least one item to create.'}</p>
+        : 'No optional collaboration items selected; the Project and intelligence snapshot will still be created.'}</p>
       <span className="scaffold-proposal__footer-actions">
         {onBack && <button className="secondary-btn" disabled={creating} onClick={onBack}>Back</button>}
-        <button className="primary-btn" disabled={!total || hasInvalidSelectedCustom || memoryBlocked || creating} onClick={() => onCreate(new Set(selectedIds))}>{creating ? 'Creating…' : 'Create workspace'}</button>
+        <button className="primary-btn" disabled={!startingPerspectiveId || hasInvalidSelectedCustom || memoryBlocked || creating} onClick={() => {
+          const perspective = reviewProposal.perspectives.find((item) => item.id === startingPerspectiveId)
+          if (!perspective) return
+          onCreate({
+            proposal: reviewProposal,
+            selectedIds: new Set(selectedIds),
+            perspective: {
+              perspectiveId: perspective.perspectiveId,
+              ...(perspective.viewId ? { viewId: perspective.viewId } : {}),
+            },
+          })
+        }}>{creating ? 'Creating…' : 'Create workspace'}</button>
       </span>
     </footer>
   </section>

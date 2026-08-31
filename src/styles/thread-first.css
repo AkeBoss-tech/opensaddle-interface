@@ -538,6 +538,7 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
 }
 .tf-state-inline-form > p strong { color: var(--muted); font-weight: 600; }
 .tf-state-inline-form input,
+.tf-state-inline-form select,
 .tf-state-inline-form textarea {
   width: 100%;
   box-sizing: border-box;
@@ -551,6 +552,7 @@ button.tf-state-row:disabled:hover { color: var(--muted); background: transparen
   font: 9px/1.4 var(--font-sans);
 }
 .tf-state-inline-form input:focus,
+.tf-state-inline-form select:focus,
 .tf-state-inline-form textarea:focus { border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); }
 .tf-state-inline-form > div { display: flex; justify-content: flex-end; gap: 5px; }
 .tf-state-inline-form button {

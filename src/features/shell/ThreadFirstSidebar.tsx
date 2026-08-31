@@ -461,6 +461,16 @@ export function ThreadFirstSidebar({
               <button className={location.pathname === `/project/${activeTeam.id}` ? 'active' : ''} onClick={() => openProject(activeTeam)}>
                 <Icon name="layout" className="icon sm" /><span>Team overview</span>
               </button>
+              <NavLink
+                to="/perspectives"
+                className={({ isActive }) => isActive ? 'active' : ''}
+                onClick={() => {
+                  setActiveProject(activeTeam.id)
+                  closeMobileNavigation()
+                }}
+              >
+                <Icon name="layout" className="icon sm" /><span>Perspectives</span>
+              </NavLink>
             </nav>
 
             {pinnedThreads.length > 0 && (

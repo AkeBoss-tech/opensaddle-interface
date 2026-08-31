@@ -23,6 +23,123 @@ export type MessageRole = 'user' | 'assistant' | 'system'
 export type EntityKind = 'user' | 'agent' | 'artifact' | 'thread' | 'run' | 'skill' | 'project'
 export type ActionabilityState = 'blocked' | 'actionable' | 'claimed' | 'in-progress' | 'done'
 
+export interface DiscoveredLocalProject {
+  id: string
+  rootPath: string
+  name: string
+  sources: Array<'codex' | 'cursor' | 'claude'>
+  lastSeenAt: number
+  tokenUsage: number | null
+  tokenUsageSources: Array<'codex-sessions' | 'claude-sessions' | 'claude-last-session'>
+  estimatedCostUsd: number | null
+  estimatedCostUpperBoundUsd: number | null
+  costPricedTokens: number
+  costUnpricedTokens: number
+  costPricingSources: Array<'openrouter-live' | 'configured-pricing' | 'claude-reported' | 'cursor-reported'>
+  costPricingObservedAt: number | null
+  usageAnalytics: ProjectUsageAnalytics
+}
+
+export interface UsageDimension {
+  key: string
+  label: string
+  tokens: number
+  sessions: number
+}
+
+export interface DailyTokenUsage {
+  day: string
+  tokens: number
+  sessions: number
+  costLowerUsd: number
+  costUpperUsd: number
+}
+
+export interface TokenBreakdown {
+  uncachedInputTokens: number
+  cachedInputTokens: number
+  cacheWriteInputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  unclassifiedTokens: number
+}
+
+export interface ProjectUsageAnalytics {
+  sessions: number
+  models: UsageDimension[]
+  harnesses: UsageDimension[]
+  daily: DailyTokenUsage[]
+  tokenBreakdown: TokenBreakdown
+  buckets: UsageBucket[]
+}
+
+export interface UsageBucket {
+  day: string
+  sessionKey: string
+  modelKey: string
+  modelLabel: string
+  harnessKey: string
+  harnessLabel: string
+  sessions: number
+  tokens: number
+  costLowerUsd: number
+  costUpperUsd: number
+  tokenMeasurement: 'measured' | 'unavailable'
+  costMeasurement: 'estimated' | 'reported' | 'unavailable'
+  tokenBreakdown: TokenBreakdown
+}
+
+export interface PublicTokenPrice {
+  modelId: string
+  source: 'openrouter' | 'configured-file'
+  sourceUrl: string
+  observedAt: number
+  tiers: Array<{
+    minPromptTokens?: number
+    inputUsdPerMillion: number
+    cachedInputUsdPerMillion?: number
+    cacheWriteUsdPerMillion?: number
+    outputUsdPerMillion: number
+    reasoningUsdPerMillion?: number
+  }>
+}
+
+export interface DiscoveredAgentSkill {
+  id: string
+  name: string
+  description: string
+  source: 'codex' | 'claude' | 'cursor'
+  sourcePath: string
+  modifiedAt: number
+  helperFileCount: number
+  content: string
+}
+
+export interface ProjectionSortDescriptor {
+  id: string
+  title: string
+  field: 'name' | 'lastSeenAt' | 'tokenUsage' | 'estimatedCostUsd'
+  direction: 'asc' | 'desc'
+  missing: 'first' | 'last'
+}
+
+export interface ProjectionViewDescriptor {
+  id: string
+  title: string
+  density: 'comfortable' | 'compact'
+  showPath: boolean
+  showUsage: boolean
+  showSources: boolean
+}
+
+export interface DiscoveredUiPlugin {
+  id: string
+  name: string
+  sourcePath: string
+  projectSorts: ProjectionSortDescriptor[]
+  projectViews: ProjectionViewDescriptor[]
+}
+
 /** Read-only evidence collected by the desktop process before a workspace exists. */
 export interface WorkspaceScanSnapshot {
   /** When the desktop process collected this evidence; keeps derivation pure. */
@@ -100,6 +217,21 @@ export interface WorkspaceConnectorProposal extends WorkspaceProposalItem {
   scopes: WorkspaceConnectorScopeProposal[]
 }
 
+export type WorkspacePerspectiveView = 'trace-evidence' | 'kanban'
+
+/** Project presentation preference. Namespaced string IDs allow extension Perspectives. */
+export interface ProjectPerspectivePreference {
+  perspectiveId: string
+  viewId?: string
+}
+
+/** A host-supported starting layout. It changes presentation, never Project authority. */
+export interface WorkspacePerspectiveProposal extends WorkspaceProposalItem {
+  perspectiveId: string
+  viewId?: string
+  description: string
+}
+
 /** A disposable projection of a folder. Applying it is a separate, explicit action. */
 export interface WorkspaceProposal {
   id: string
@@ -110,11 +242,19 @@ export interface WorkspaceProposal {
   agents: WorkspaceAgentProposal[]
   connectors: WorkspaceConnectorProposal[]
   permissions: WorkspacePermissionProposal[]
+  perspectives: WorkspacePerspectiveProposal[]
   memberAnalysis: {
     source: 'git log'
     reason: string
   }
   notes: string[]
+}
+
+export interface WorkspaceScaffoldSelection {
+  /** Includes review-time custom items; it may differ from the scanned proposal. */
+  proposal: WorkspaceProposal
+  selectedIds: Set<string>
+  perspective: ProjectPerspectivePreference
 }
 
 /** A source-backed artifact attached to a message or rendered in an unfurl. */
@@ -222,6 +362,8 @@ export interface Project {
     runtimeKey: RuntimeKind
     reviewProviderKey?: CodingProvider
   }
+  /** Changes the default projection only; it grants no additional authority. */
+  perspective?: ProjectPerspectivePreference
 }
 
 export interface PinnedArtifact {

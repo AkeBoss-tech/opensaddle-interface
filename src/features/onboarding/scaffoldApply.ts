@@ -1,7 +1,7 @@
-import type { LocalProjectSettings, Member, PermissionGrant, ServiceConn, WorkspaceConnectorProposal, WorkspaceProposal } from '../../types'
+import type { LocalProjectSettings, Member, PermissionGrant, ProjectPerspectivePreference, ServiceConn, WorkspaceConnectorProposal, WorkspaceProposal } from '../../types'
 
 export interface ScaffoldApplication {
-  project: { name: string; description: string; workspaceKind: 'local'; local: LocalProjectSettings }
+  project: { name: string; description: string; workspaceKind: 'local'; local: LocalProjectSettings; perspective: ProjectPerspectivePreference }
   channels: Array<{ id: string; title: string; custom?: true }>
   members: Array<Omit<Member, 'id'> & { custom?: true }>
   agents: Array<{ id: string; name: string; description: string; harnessId: string; custom?: true }>
@@ -18,7 +18,7 @@ function initials(name: string) {
  * It deliberately has no store or filesystem dependency; callers choose when
  * and how to persist these inputs.
  */
-export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: ReadonlySet<string>, folderPath: string, projectName = proposal.label): ScaffoldApplication {
+export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: ReadonlySet<string>, folderPath: string, projectName = proposal.label, perspectivePreference?: ProjectPerspectivePreference): ScaffoldApplication {
   const selected = <T extends { id: string }>(items: T[]) => items.filter((item) => selectedIds.has(item.id))
   const channels = selected(proposal.channels).map((channel) => ({ id: channel.id, title: channel.label, ...(channel.custom ? { custom: true as const } : {}) }))
   const members = selected(proposal.members).map((member) => ({
@@ -54,6 +54,12 @@ export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: Readonly
     : detectedConfigs.some((path) => path === 'CLAUDE.md' || path.startsWith('.claude/'))
       ? 'claude'
       : detectedConfigs.some((path) => path.startsWith('.cursor/')) ? 'cursor' : 'folder'
+  const startingPerspective = proposal.perspectives.find((perspective) => perspective.recommended) ?? proposal.perspectives[0]
+  if (!startingPerspective) throw new Error('Workspace proposal has no supported starting Perspective')
+  const perspective = perspectivePreference ?? {
+    perspectiveId: startingPerspective.perspectiveId,
+    ...(startingPerspective.viewId ? { viewId: startingPerspective.viewId } : {}),
+  }
 
   return {
     project: {
@@ -72,6 +78,7 @@ export function scaffoldApply(proposal: WorkspaceProposal, selectedIds: Readonly
         skills: [],
         documents: [],
       },
+      perspective,
     },
     channels,
     members,

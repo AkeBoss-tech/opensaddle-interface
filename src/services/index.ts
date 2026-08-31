@@ -1,5 +1,5 @@
 import { detectRuntimeMode, type RuntimeMode } from './capabilities'
-import type { FileStore, LocalProjectClient, PermissionClient, RuntimeClient, SandboxClient, ThreadClient, ToolClient, WorkflowClient, WorkspaceClient } from './contracts'
+import type { AutonomyPolicySummary, DelegationPolicySummary, ExtensionCatalogClient, FileStore, LocalProjectClient, PermissionClient, ProjectGoalClient, ProjectIntelligenceClient, RuntimeClient, SandboxClient, ThreadClient, ToolClient, WorkflowClient, WorkspaceClient } from './contracts'
 import { createFileStore } from './fileStore'
 import { MockRuntimeClient } from './mockRuntime'
 import { OpenSaddleRuntimeClient } from './opensaddleClient'
@@ -15,6 +15,9 @@ import { MockOAuthToolClient } from './oauthTools'
 import { RemoteIntegrationToolClient } from './remoteIntegrations'
 import { RemoteWorkflowClient } from './remoteWorkflows'
 import { BrowserAgentRuntime } from './browserAgentRuntime'
+import { RemoteProjectGoalClient } from './remoteProjectGoals'
+import { RemoteExtensionCatalogClient } from './remoteExtensions'
+import { RemoteProjectIntelligenceClient } from './remoteProjectIntelligence'
 import type { PermissionGrant } from './contracts'
 
 export interface ServiceBundle {
@@ -29,6 +32,9 @@ export interface ServiceBundle {
   threads?: ThreadClient
   localProjects?: LocalProjectClient
   workflows?: WorkflowClient
+  projectGoals?: ProjectGoalClient
+  extensions?: ExtensionCatalogClient
+  projectIntelligence?: ProjectIntelligenceClient
   controlPlane: {
     connected: boolean
     mode?: 'local' | 'company'
@@ -37,6 +43,8 @@ export interface ServiceBundle {
     storage?: string
     capabilities: string[]
     contracts?: Record<string, string>
+    delegation?: DelegationPolicySummary
+    autonomy?: AutonomyPolicySummary
   }
 }
 
@@ -109,6 +117,8 @@ export function initServices(opts: {
       let storage: string | undefined
       let backendCapabilities = new Set<string>()
       let backendContracts: Record<string, string> = {}
+      let delegation: DelegationPolicySummary | undefined
+      let autonomy: AutonomyPolicySummary | undefined
       if (connection.mode === 'remote' && mode !== 'mock') {
         try {
           const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/health`, {
@@ -124,6 +134,31 @@ export function initServices(opts: {
               storage?: { engine?: string }
               capabilities?: string[]
               contracts?: Record<string, unknown>
+              delegation?: {
+                enabled?: boolean
+                allowed_harnesses?: string[]
+                max_depth?: number
+                max_active_children_per_channel?: number
+                max_total_children_per_channel?: number
+                default_session_strategy?: DelegationPolicySummary['defaultSessionStrategy']
+                allow_network?: boolean
+                allow_write?: boolean
+                max_budget_usd_per_child?: number
+                max_minutes_per_child?: number
+              }
+              autonomy?: {
+                enabled?: boolean
+                allowed_harnesses?: string[]
+                max_active_sessions?: number
+                max_runs_per_session?: number
+                max_active_children_per_session?: number
+                max_minutes_per_session?: number
+                default_execution_mode?: AutonomyPolicySummary['defaultExecutionMode']
+                allow_write?: boolean
+                allow_network?: boolean
+                requires_explicit_goal?: boolean
+                requires_approvals?: boolean
+              }
             }
             backendMode = health.mode
             modelProvider = health.model_provider
@@ -134,6 +169,35 @@ export function initServices(opts: {
               Object.entries(health.contracts ?? {})
                 .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
             )
+            if (health.delegation) {
+              delegation = {
+                enabled: health.delegation.enabled === true,
+                allowedHarnesses: health.delegation.allowed_harnesses ?? [],
+                maxDepth: health.delegation.max_depth ?? 0,
+                maxActiveChildrenPerChannel: health.delegation.max_active_children_per_channel ?? 0,
+                maxTotalChildrenPerChannel: health.delegation.max_total_children_per_channel ?? 0,
+                defaultSessionStrategy: health.delegation.default_session_strategy ?? 'new',
+                allowNetwork: health.delegation.allow_network === true,
+                allowWrite: health.delegation.allow_write === true,
+                maxBudgetUsdPerChild: health.delegation.max_budget_usd_per_child ?? 0,
+                maxMinutesPerChild: health.delegation.max_minutes_per_child ?? 0,
+              }
+            }
+            if (health.autonomy) {
+              autonomy = {
+                enabled: health.autonomy.enabled === true,
+                allowedHarnesses: health.autonomy.allowed_harnesses ?? [],
+                maxActiveSessions: health.autonomy.max_active_sessions ?? 0,
+                maxRunsPerSession: health.autonomy.max_runs_per_session ?? 0,
+                maxActiveChildrenPerSession: health.autonomy.max_active_children_per_session ?? 0,
+                maxMinutesPerSession: health.autonomy.max_minutes_per_session ?? 0,
+                defaultExecutionMode: health.autonomy.default_execution_mode ?? 'plan',
+                allowWrite: health.autonomy.allow_write === true,
+                allowNetwork: health.autonomy.allow_network === true,
+                requiresExplicitGoal: health.autonomy.requires_explicit_goal !== false,
+                requiresApprovals: health.autonomy.requires_approvals !== false,
+              }
+            }
           }
         } catch {
           backendAvailable = false
@@ -182,6 +246,15 @@ export function initServices(opts: {
       const workflows = backendAvailable && backendMode !== 'local' && backendCapabilities.has('workflows')
         ? new RemoteWorkflowClient(baseUrl, getUserId, token)
         : undefined
+      const projectGoals = backendAvailable && backendCapabilities.has('project_self_driving_v1')
+        ? new RemoteProjectGoalClient(baseUrl, getUserId, token)
+        : undefined
+      const extensions = backendAvailable && backendCapabilities.has('extension_packages_v1')
+        ? new RemoteExtensionCatalogClient(baseUrl, getUserId, token)
+        : undefined
+      const projectIntelligence = backendAvailable && backendCapabilities.has('project_intelligence_snapshot_v1')
+        ? new RemoteProjectIntelligenceClient(baseUrl, getUserId, token)
+        : undefined
       const tools = connection.mode === 'remote' && mode !== 'mock'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
         : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
@@ -205,6 +278,9 @@ export function initServices(opts: {
         threads,
         localProjects,
         workflows,
+        projectGoals,
+        extensions,
+        projectIntelligence,
         controlPlane: {
           connected: backendAvailable,
           mode: backendMode,
@@ -213,6 +289,8 @@ export function initServices(opts: {
           storage,
           capabilities: [...backendCapabilities].sort(),
           contracts: backendContracts,
+          delegation,
+          autonomy,
         },
       }
     })()

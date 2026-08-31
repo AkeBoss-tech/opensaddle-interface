@@ -12,23 +12,27 @@ function snapshot(overrides: Partial<WorkspaceScanSnapshot> = {}): WorkspaceScan
   }
 }
 
-test('non-git scans propose directory channels, no members, and explain why', () => {
+test('source folders remain project context instead of becoming channels', () => {
   const proposal = deriveWorkspaceProposal(snapshot({
     directories: ['api', 'web'],
     git: { readable: false, reason: 'No readable git history was found for this folder.', branches: [], commitCount: 0, authors: [], hasRemote: false },
   }))
 
-  assert.deepEqual(proposal.channels.map((channel) => channel.label), ['api', 'web'])
+  assert.deepEqual(proposal.channels, [])
+  assert.match(proposal.notes.join(' '), /2 top-level source folders were detected/)
   assert.equal(proposal.members.length, 0)
   assert.match(proposal.memberAnalysis.reason, /No readable git history/)
+  assert.deepEqual(proposal.perspectives.map((item) => item.viewId), ['trace-evidence', 'kanban'])
+  assert.equal(proposal.perspectives.filter((item) => item.recommended).length, 1)
 })
 
-test('skips common generated and dependency directories', () => {
+test('counts source folders without converting generated directories into collaboration state', () => {
   const proposal = deriveWorkspaceProposal(snapshot({
     directories: ['src', 'node_modules', 'dist', 'build', '.git', 'coverage', 'vendor', 'target', '.venv', '__pycache__'],
   }))
 
-  assert.deepEqual(proposal.channels.map((channel) => channel.label), ['src'])
+  assert.deepEqual(proposal.channels, [])
+  assert.match(proposal.notes.join(' '), /1 top-level source folder was detected/)
 })
 
 test('collapses same-name git identities and sums their commits', () => {
@@ -81,7 +85,7 @@ test('production-shaped connector scopes require approval', () => {
   assert.equal(deployScope?.needsApproval, true)
 })
 
-test('drops branches that have been quiet for months and caps the rest', () => {
+test('branches remain source metadata instead of becoming channels', () => {
   const day = 24 * 60 * 60 * 1000
   const scannedAt = 1_800_000_000_000
   const names = Array.from({ length: 40 }, (_, index) => `branch-${index}`)
@@ -102,8 +106,5 @@ test('drops branches that have been quiet for months and caps the rest', () => {
     },
   } as never)
 
-  const branches = proposal.channels.filter((channel) => channel.kind === 'branch')
-  assert.equal(branches.length, 10, 'stale branches dropped and the rest capped')
-  assert.ok(branches.every((branch) => !branch.recommended), 'branch channels are never pre-checked')
-  assert.ok(branches.every((branch) => Number(branch.label.split('-')[1]) < 20), 'only recent branches survive')
+  assert.deepEqual(proposal.channels, [])
 })

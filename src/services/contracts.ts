@@ -88,6 +88,173 @@ export interface RuntimeRunSummary {
   lastEventType?: RunEventType
 }
 
+export interface DelegationRequest {
+  idempotencyKey: string
+  task: string
+  title?: string
+  sourceBoundarySequence?: number
+  /** Harness selected from the server-owned delegation allowlist. */
+  harnessId?: string
+  modelId?: string
+  reasoningEffort?: string
+  executionMode?: RunExecutionMode
+  sessionStrategy?: 'new' | 'fork_if_supported' | 'fork_required'
+  repo?: string
+}
+
+export interface DelegationPolicySummary {
+  enabled: boolean
+  allowedHarnesses: string[]
+  maxDepth: number
+  maxActiveChildrenPerChannel: number
+  maxTotalChildrenPerChannel: number
+  defaultSessionStrategy: 'new' | 'fork_if_supported' | 'fork_required'
+  allowNetwork: boolean
+  allowWrite: boolean
+  maxBudgetUsdPerChild: number
+  maxMinutesPerChild: number
+}
+
+export interface AutonomyPolicySummary {
+  enabled: boolean
+  allowedHarnesses: string[]
+  maxActiveSessions: number
+  maxRunsPerSession: number
+  maxActiveChildrenPerSession: number
+  maxMinutesPerSession: number
+  defaultExecutionMode: 'plan' | 'project'
+  allowWrite: boolean
+  allowNetwork: boolean
+  requiresExplicitGoal: boolean
+  requiresApprovals: boolean
+}
+
+export type ProjectGoalStatus = 'ready' | 'planning' | 'working' | 'needs_approval'
+  | 'paused' | 'blocked' | 'completed' | 'failed' | 'cancelled' | 'exhausted'
+
+export interface ProjectGoal {
+  goalId: string
+  projectId: string
+  version: number
+  revision: number
+  objective: string
+  acceptanceCriteria: string[]
+  status: ProjectGoalStatus
+  policyReceipt: Record<string, unknown>
+  rootThreadId?: string
+  supervisorRunId?: string
+  evidence: Array<Record<string, unknown>>
+  createdAt: string
+  updatedAt: string
+  availableActions: { start: boolean; pause: boolean; resume: boolean; stop: boolean }
+}
+
+export interface ProjectGoalClient {
+  get(projectId: string): Promise<ProjectGoal | null>
+  set(projectId: string, input: { objective: string; acceptanceCriteria: string[] }): Promise<ProjectGoal>
+  start(projectId: string, input: { harness: string; modelId?: string; reasoningEffort?: string; idempotencyKey: string }): Promise<ProjectGoal>
+  pause(projectId: string, revision: number): Promise<ProjectGoal>
+  resume(projectId: string, revision: number): Promise<ProjectGoal>
+  stop(projectId: string, revision: number): Promise<ProjectGoal>
+}
+
+export interface ProjectExtensionEnablement {
+  projectId: string
+  packageId: string
+  version: string
+  status: 'enabled' | 'disabled'
+  revision: number
+  policyReceipt: Record<string, unknown>
+}
+
+export interface ExtensionContribution {
+  kind: 'resource_type' | 'action' | 'workflow_blueprint' | 'factory_blueprint'
+    | 'participant' | 'evaluator' | 'perspective' | 'artifact_type' | 'runtime_requirement'
+  contributionId: string
+  title: string
+  description: string
+  packageId: string
+  packageVersion: string
+  manifestDigest: string
+  effect?: 'read' | 'write'
+  approvalRequired?: boolean
+  surfaceKind?: 'board' | 'dashboard' | 'document' | 'table' | 'timeline'
+  requiredCapabilities: string[]
+  descriptor: Record<string, unknown>
+}
+
+export interface ExtensionCatalogClient {
+  projectExtensions(projectId: string): Promise<ProjectExtensionEnablement[]>
+  contributions(projectId: string, kind?: ExtensionContribution['kind']): Promise<ExtensionContribution[]>
+}
+
+export interface ProjectIntelligenceSnapshot {
+  schemaVersion: 'opensaddle.project-intelligence-snapshot.v1'
+  snapshotId: string
+  snapshotDigest: string
+  projectId: string
+  version: number
+  revision: {
+    oid: string
+    treeOid: string
+    authorName: string
+    authoredAt: string
+    subject: string
+  }
+  summary: {
+    fileCount: number
+    totalBytes: number
+    languages: Array<{ language: string; fileCount: number }>
+    pathGroups: Array<{ name: string; fileCount: number; sizeBytes: number }>
+  }
+  evidence: Array<{
+    evidenceId: string
+    kind: string
+    locator: string
+    digest?: string
+  }>
+  recentChanges: Array<{
+    oid: string
+    authorName: string
+    authoredAt: string
+    subject: string
+  }>
+  uncertainties: Array<{
+    code: string
+    severity: 'material' | 'informational'
+    detail: string
+  }>
+  createdAt: string
+}
+
+export interface ProjectIntelligenceView {
+  snapshot: ProjectIntelligenceSnapshot
+  sourceFreshness: {
+    observedAt: string
+    currentHeadOid: string
+    snapshotRevisionOid: string
+    status: 'fresh' | 'stale' | 'unknown'
+    workingTreeDirty: boolean
+    workingTreeChangeCount: number
+  }
+}
+
+export interface ProjectIntelligenceClient {
+  latest(projectId: string): Promise<ProjectIntelligenceView | null>
+  create(projectId: string, revision?: string): Promise<ProjectIntelligenceView>
+}
+
+export interface DelegationResult {
+  delegationId: string
+  parentThreadId: string
+  childThreadId: string
+  runId: string
+  status: 'pending' | 'bound' | 'cancelled'
+  parentBoundarySequence: number
+  selectedRoute: Record<string, unknown>
+  effectivePolicy: Record<string, unknown>
+}
+
 /** A server-registered view that is visible within one Project. */
 export interface RegisteredSurface {
   id: string
@@ -229,6 +396,7 @@ export interface RuntimeClient {
     mode?: string
     route?: RouteEstimate
   }>
+  delegate(parentRunId: string, input: DelegationRequest): Promise<DelegationResult>
   listRuns?(): Promise<RuntimeRunSummary[]>
   listSurfaces?(projectId?: string): Promise<RegisteredSurface[]>
   subscribe(runId: string, onEvent: (event: SessionEvent) => void, onError?: (error: Error) => void): () => void

@@ -16,6 +16,26 @@ contextBridge.exposeInMainWorld('opensaddle', {
     clis: string[]
   }>,
   pickRepository: () => ipcRenderer.invoke('runtime:pick-repo') as Promise<string | null>,
+  discoverProjects: () => ipcRenderer.invoke('runtime:discover-projects') as Promise<Array<{
+    id: string; rootPath: string; name: string; sources: Array<'codex' | 'cursor' | 'claude'>; lastSeenAt: number
+    tokenUsage: number | null; tokenUsageSources: Array<'codex-sessions' | 'claude-sessions' | 'claude-last-session'>
+    estimatedCostUsd: number | null; estimatedCostUpperBoundUsd: number | null
+    costPricedTokens: number; costUnpricedTokens: number
+    costPricingSources: Array<'openrouter-live' | 'configured-pricing' | 'claude-reported' | 'cursor-reported'>; costPricingObservedAt: number | null
+  }>>,
+  listTokenPrices: () => ipcRenderer.invoke('runtime:list-token-prices') as Promise<Array<{
+    modelId: string; source: 'openrouter' | 'configured-file'; sourceUrl: string; observedAt: number
+    tiers: Array<{ minPromptTokens?: number; inputUsdPerMillion: number; cachedInputUsdPerMillion?: number; cacheWriteUsdPerMillion?: number; outputUsdPerMillion: number; reasoningUsdPerMillion?: number }>
+  }>>,
+  discoverSkills: () => ipcRenderer.invoke('runtime:discover-skills') as Promise<Array<{
+    id: string; name: string; description: string; source: 'codex' | 'claude' | 'cursor'; sourcePath: string
+    modifiedAt: number; helperFileCount: number; content: string
+  }>>,
+  discoverUiPlugins: () => ipcRenderer.invoke('runtime:discover-ui-plugins') as Promise<Array<{
+    id: string; name: string; sourcePath: string
+    projectSorts: Array<{ id: string; title: string; field: 'name' | 'lastSeenAt' | 'tokenUsage' | 'estimatedCostUsd'; direction: 'asc' | 'desc'; missing: 'first' | 'last' }>
+    projectViews: Array<{ id: string; title: string; density: 'comfortable' | 'compact'; showPath: boolean; showUsage: boolean; showSources: boolean }>
+  }>>,
   inspectProject: (path: string) => ipcRenderer.invoke('runtime:inspect-project', path) as Promise<{
     rootPath: string
     name: string

@@ -1,0 +1,70 @@
+.sa-panel { margin: 28px auto 4px; width: min(1180px, calc(100% - 48px)); color: var(--text); }
+.sa-header { display: flex; justify-content: space-between; gap: 28px; align-items: flex-end; padding: 24px; border: 1px solid var(--border); border-radius: 18px 18px 0 0; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--card)), var(--card)); }
+.sa-title { display: flex; gap: 14px; align-items: flex-start; min-width: 0; }
+.sa-plugin-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.sa-kicker { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.sa-kicker span { color: var(--accent); font-weight: 700; }
+.sa-kicker code { text-transform: none; letter-spacing: 0; font-family: var(--font-mono); }
+.sa-title h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
+.sa-title p { margin: 6px 0 0; max-width: 650px; color: var(--text-muted); line-height: 1.5; }
+.sa-actions { display: flex; gap: 10px; align-items: flex-end; flex: 0 0 auto; }
+.sa-actions label { display: grid; gap: 5px; color: var(--text-muted); font-size: 11px; font-weight: 650; }
+.sa-actions select { min-width: 170px; height: 38px; padding: 0 30px 0 11px; border: 1px solid var(--border); border-radius: 9px; color: var(--text); background: var(--surface); }
+.sa-audit-button { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 15px; border: 0; border-radius: 9px; color: white; background: var(--accent); font-weight: 700; cursor: pointer; }
+.sa-audit-button:disabled { opacity: .5; cursor: not-allowed; }
+.sa-provenance { display: flex; gap: 18px; align-items: center; min-height: 42px; padding: 0 16px; border: solid var(--border); border-width: 0 1px 1px; color: var(--text-muted); background: var(--card); font-size: 11px; }
+.sa-provenance > span:first-child { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-weight: 650; white-space: nowrap; }
+.sa-provenance i { width: 7px; height: 7px; border-radius: 99px; background: var(--yellow); }
+.sa-provenance .ready i { background: var(--green); }
+.sa-provenance > span:nth-child(2) { flex: 1; }
+.sa-provenance button { display: inline-flex; gap: 5px; align-items: center; border: 0; color: var(--text-muted); background: transparent; cursor: pointer; }
+.sa-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: solid var(--border); border-width: 0 1px 1px; background: var(--card); }
+.sa-metrics article { display: grid; gap: 6px; min-width: 0; padding: 20px; border-right: 1px solid var(--border); }
+.sa-metrics article:last-child { border-right: 0; }
+.sa-metrics span { color: var(--text-muted); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
+.sa-metrics strong { overflow: hidden; font-size: 25px; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.sa-metrics small { color: var(--text-muted); font-size: 11px; }
+.sa-analytics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding-top: 12px; }
+.sa-card, .sa-table-card { min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); }
+.sa-card.sa-wide { grid-column: span 2; }
+.sa-card.sa-prompt-card { grid-column: span 2; }
+.sa-card-heading { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.sa-card-heading > div { display: grid; gap: 4px; }
+.sa-card-heading span { color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.sa-card-heading strong { font-size: 14px; }
+.sa-card-heading b { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.sa-card-heading button { display: inline-flex; gap: 5px; align-items: center; border: 0; color: var(--accent); background: transparent; font-size: 12px; font-weight: 650; cursor: pointer; }
+.sa-chart { margin-top: 18px; }
+.sa-chart.sa-chart-empty { display:grid; place-items:center; min-height:172px; border:1px dashed var(--border); border-radius:10px; }
+.sa-chart.sa-chart-empty p { max-width:360px; margin:0; color:var(--text-muted); font-size:13px; line-height:1.5; text-align:center; }
+.sa-chart svg { display: block; width: 100%; height: 150px; overflow: visible; }
+.sa-chart-axis { stroke: var(--border); stroke-width: .4; }
+.sa-chart-area { fill: color-mix(in srgb, var(--accent) 15%, transparent); }
+.sa-chart-line { fill: none; stroke: var(--accent); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.sa-chart-labels { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; }
+.sa-bars { display: grid; gap: 13px; margin-top: 16px; }
+.sa-bar > div { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 5px; font-size: 11px; }
+.sa-bar > div span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-bar > div strong { color: var(--text-muted); }
+.sa-bar-track { display: block; height: 6px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text-muted) 12%, transparent); }
+.sa-bar-track > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 58%, #a978ff)); }
+.sa-footnote, .sa-empty { margin: 16px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.sa-table-card { margin-top: 12px; padding: 0; overflow: hidden; }
+.sa-table-card > .sa-card-heading { padding: 17px 18px 14px; border-bottom: 1px solid var(--border); }
+.sa-table-wrap { overflow-x: auto; }
+.sa-table-card table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sa-table-card th { padding: 10px 14px; color: var(--muted); background: color-mix(in srgb, var(--surface) 60%, transparent); font-size: 10px; text-align: left; text-transform: uppercase; letter-spacing: .06em; }
+.sa-table-card td { padding: 12px 14px; border-top: 1px solid var(--border); color: var(--text-muted); }
+.sa-table-card tbody tr { cursor: pointer; }
+.sa-table-card tbody tr:hover { background: var(--card-hover); }
+.sa-table-card td:first-child { min-width: 280px; }
+.sa-table-card td:first-child strong, .sa-table-card td:first-child small { display: block; }
+.sa-table-card td:first-child strong { max-width: 520px; overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+.sa-table-card td:first-child small { margin-top: 4px; color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.sa-status { display: inline-flex; padding: 4px 7px; border-radius: 99px; color: var(--text); background: color-mix(in srgb, var(--text-muted) 12%, transparent); font-size: 10px; }
+.sa-status.completed { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }
+.sa-status.failed, .sa-status.cancelled, .sa-status.timed_out { color: var(--danger); background: color-mix(in srgb, var(--danger) 11%, transparent); }
+.sa-status.running, .sa-status.provisioning { color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.sa-table-card > .sa-empty { margin: 0; padding: 28px 18px; }
+@media (max-width: 980px) { .sa-header { align-items: stretch; flex-direction: column; } .sa-actions { justify-content: flex-end; } .sa-metrics { grid-template-columns: repeat(2, 1fr); } .sa-metrics article:nth-child(2) { border-right: 0; } .sa-metrics article:nth-child(-n+2) { border-bottom: 1px solid var(--border); } .sa-analytics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .sa-panel { width: min(100% - 24px, 1180px); } .sa-actions { align-items: stretch; flex-direction: column; } .sa-actions select { width: 100%; } .sa-provenance { align-items: flex-start; flex-wrap: wrap; padding: 12px 14px; } .sa-provenance > span:nth-child(2) { flex-basis: 100%; } .sa-analytics-grid { grid-template-columns: 1fr; } .sa-card.sa-wide, .sa-card.sa-prompt-card { grid-column: span 1; } }
