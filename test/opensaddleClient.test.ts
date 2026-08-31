@@ -75,6 +75,65 @@ test('sends native reasoning effort and accepts the authoritative estimate route
   }
 })
 
+test('delegates through the authoritative child-channel endpoint without fallback', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: Array<{ path: string; method: string; body?: unknown }> = []
+  globalThis.fetch = async (input, init) => {
+    const path = input.toString().replace('http://daemon.test', '')
+    requests.push({
+      path,
+      method: init?.method ?? 'GET',
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    })
+    if (path === '/api/health') return json({ ok: true, capabilities: ['thread_delegation_v1'] })
+    if (path === '/api/runs/parent-run/delegations' && init?.method === 'POST') {
+      return json({
+        delegation_id: 'dlg-1',
+        parent_thread_id: 'thread-parent',
+        child_thread_id: 'thread-child',
+        run_id: 'run-child',
+        status: 'bound',
+        parent_boundary_sequence: 4,
+        selected_route: { harness: 'codex' },
+        effective_policy: { credentials_inherited: false },
+      }, 201)
+    }
+    return json({ detail: `unexpected path ${path}` }, 404)
+  }
+
+  try {
+    const client = new OpenSaddleRuntimeClient('http://daemon.test', undefined, {
+      allowFallback: true,
+    })
+    const result = await client.delegate('parent-run', {
+      idempotencyKey: 'delegate-1',
+      task: 'Inspect the failing tests',
+      harnessId: 'codex',
+      modelId: 'gpt-5.6-terra',
+      reasoningEffort: 'high',
+      sessionStrategy: 'fork_if_supported',
+    })
+
+    assert.deepEqual(requests[1], {
+      path: '/api/runs/parent-run/delegations',
+      method: 'POST',
+      body: {
+        idempotency_key: 'delegate-1',
+        task: 'Inspect the failing tests',
+        agent_id: 'codex',
+        model_id: 'gpt-5.6-terra',
+        reasoning_effort: 'high',
+        session_strategy: 'fork_if_supported',
+      },
+    })
+    assert.equal(result.childThreadId, 'thread-child')
+    assert.equal(result.runId, 'run-child')
+    assert.deepEqual(result.effectivePolicy, { credentials_inherited: false })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('adapts the authoritative repository API for the desktop Git panel', async () => {
   const originalFetch = globalThis.fetch
   const requests: Array<{ path: string; method: string; body?: unknown }> = []

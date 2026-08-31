@@ -13,6 +13,10 @@ const proposal: WorkspaceProposal = {
     scopes: [{ id: 'connector-supabase-read', name: 'Read project data', description: 'Read data.', needsApproval: false }, { id: 'connector-supabase-write', name: 'Modify project data', description: 'Write data.', needsApproval: true }],
   }],
   permissions: [{ id: 'permission', label: 'Read repository', scope: 'repository-read', provenance: 'Git remote detected', recommended: true, needsApproval: false }],
+  perspectives: [
+    { id: 'developer-evidence', label: 'Trace and evidence', description: 'Trace work.', provenance: 'Built-in capability', recommended: true, perspectiveId: 'opensaddle.developer', viewId: 'trace-evidence' },
+    { id: 'developer-board', label: 'Work board', description: 'Group work.', provenance: 'Built-in capability', recommended: false, perspectiveId: 'opensaddle.developer', viewId: 'kanban' },
+  ],
 }
 
 test('selecting a subset yields only the selected entities', () => {
@@ -30,6 +34,7 @@ test('selecting nothing yields no created entities', () => {
   assert.deepEqual(result.agents, [])
   assert.deepEqual(result.connectors, [])
   assert.deepEqual(result.permissionGrants, [])
+  assert.deepEqual(result.project.perspective, { perspectiveId: 'opensaddle.developer', viewId: 'trace-evidence' })
 })
 
 test('created team is folder-backed with the requested root path', () => {
@@ -46,6 +51,22 @@ test('a selected custom item survives scaffoldApply and remains marked custom', 
   }
   const result = scaffoldApply(customProposal, new Set(['custom-channel']), '/work/acme')
   assert.deepEqual(result.channels, [{ id: 'custom-channel', title: 'Marketing', custom: true }])
+})
+
+test('the chosen starting layout is carried into the Project preference', () => {
+  const result = scaffoldApply(proposal, new Set(), '/work/acme', 'acme', {
+    perspectiveId: 'opensaddle.developer',
+    viewId: 'kanban',
+  })
+  assert.deepEqual(result.project.perspective, { perspectiveId: 'opensaddle.developer', viewId: 'kanban' })
+})
+
+test('namespaced extension Perspective ids remain valid project preferences', () => {
+  const result = scaffoldApply(proposal, new Set(), '/work/acme', 'acme', {
+    perspectiveId: 'com.acme.maintenance',
+    viewId: 'risk-queue',
+  })
+  assert.deepEqual(result.project.perspective, { perspectiveId: 'com.acme.maintenance', viewId: 'risk-queue' })
 })
 
 test('unselected connector scopes yield no connector grants', () => {

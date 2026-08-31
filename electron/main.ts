@@ -12,6 +12,10 @@ import {
   incompatibleSidecarMessage,
   type SidecarHealth,
 } from './sidecarCompatibility.js'
+import { discoverLocalProjects } from './projectDiscovery.js'
+import { discoverAgentSkills } from './skillDiscovery.js'
+import { discoverUiPlugins } from './uiPluginDiscovery.js'
+import { listPublicTokenPrices } from './tokenPricing.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -885,6 +889,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('runtime:inspect-project', async (_evt, target: string) => inspectLocalProject(target))
 
   ipcMain.handle('runtime:scan-workspace', async (_evt, folderPath: string) => scanWorkspaceFolder(folderPath))
+  ipcMain.handle('runtime:discover-projects', async () => discoverLocalProjects())
+  ipcMain.handle('runtime:list-token-prices', async () => listPublicTokenPrices())
+  ipcMain.handle('runtime:discover-skills', async () => discoverAgentSkills())
+  ipcMain.handle('runtime:discover-ui-plugins', async () => discoverUiPlugins())
 
   ipcMain.handle('runtime:open-path', async (_evt, target: string) => {
     await shell.openPath(target)

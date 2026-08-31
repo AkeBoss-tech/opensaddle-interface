@@ -27,6 +27,7 @@ import { NativeBrowserPane } from './components/layout/NativeBrowserPane'
 import { ThreadFirstSidebar } from './features/shell/ThreadFirstSidebar'
 import { WorkspaceStatusBar } from './features/shell/WorkspaceStatusBar'
 import { WorkPage } from './features/work/WorkPage'
+import { PerspectivesPage } from './features/perspectives/PerspectivesPage'
 import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
 import { AddProjectDialog } from './features/onboarding/AddProjectDialog'
@@ -38,6 +39,7 @@ import { supportsGovernedProjectOnboarding } from './features/onboarding/onboard
 import { registerLocalWorkspace } from './features/onboarding/registerLocalWorkspace'
 import { scaffoldApply } from './features/onboarding/scaffoldApply'
 import { SurfaceErrorBoundary } from './ui/SurfaceHost'
+import type { DiscoveredLocalProject, DiscoveredUiPlugin } from './types'
 import './styles/app.css'
 import './styles/thread-first.css'
 import './styles/liquid-glass.css'
@@ -52,6 +54,11 @@ function Shell() {
   const { data, createChat, createProject, importLocalProject, createAgent, createMember, addServiceConnections, addPermissionGrants, updateProject, services, setTheme, resetData, toast, setActiveProject } = useStore()
   const [palette, setPalette] = useState(false)
   const [projectModal, setProjectModal] = useState(false)
+  const [discoveredProjects, setDiscoveredProjects] = useState<DiscoveredLocalProject[]>([])
+  const [discoveredUiPlugins, setDiscoveredUiPlugins] = useState<DiscoveredUiPlugin[]>([])
+  const [registeredDiscoveryRoots, setRegisteredDiscoveryRoots] = useState<string[]>([])
+  const [discoveryReady, setDiscoveryReady] = useState(false)
+  const discoveryPrompted = useRef(false)
   const [browserOpen, setBrowserOpen] = useState(false)
   const [browserCollapsed, setBrowserCollapsed] = useState(false)
   const [browserWidth, setBrowserWidth] = useState(620)
@@ -66,6 +73,41 @@ function Shell() {
   const settingsFocused = loc.pathname === '/settings'
   const globalStart = loc.pathname === '/start'
   const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
+
+  useEffect(() => {
+    let cancelled = false
+    if (!window.opensaddle?.discoverProjects) return
+    if (window.opensaddleDesktop && !services) return
+    void Promise.all([
+      window.opensaddle.discoverProjects(),
+      services?.localProjects?.listProjects?.().catch(() => []) ?? Promise.resolve([]),
+      window.opensaddle.discoverUiPlugins?.().catch(() => []) ?? Promise.resolve([]),
+    ]).then(([projects, registered, uiPlugins]) => {
+      if (cancelled) return
+      setDiscoveredProjects(projects)
+      setRegisteredDiscoveryRoots(registered.map((project) => project.root))
+      setDiscoveredUiPlugins(uiPlugins)
+      setDiscoveryReady(true)
+    }).catch(() => {
+      if (!cancelled) { setDiscoveredProjects([]); setRegisteredDiscoveryRoots([]); setDiscoveryReady(true) }
+    })
+    return () => { cancelled = true }
+  }, [services])
+
+  const availableDiscoveredProjects = useMemo(() => {
+    const normalize = (value: string) => value.replaceAll('\\', '/').replace(/\/+$/, '')
+    const imported = new Set([
+      ...data.projects.flatMap((project) => project.local?.rootPath ? [project.local.rootPath] : []),
+      ...registeredDiscoveryRoots,
+    ].map(normalize))
+    return discoveredProjects.filter((project) => !imported.has(normalize(project.rootPath)))
+  }, [data.projects, discoveredProjects, registeredDiscoveryRoots])
+
+  useEffect(() => {
+    if (!discoveryReady || !availableDiscoveredProjects.length || discoveryPrompted.current) return
+    discoveryPrompted.current = true
+    setProjectModal(true)
+  }, [availableDiscoveredProjects.length, discoveryReady])
 
   useEffect(() => {
     const open = () => setPalette(true)
@@ -95,6 +137,7 @@ function Shell() {
     const parts = loc.pathname.split('/').filter(Boolean)
     const routeLabels: Record<string, string> = {
       work: 'Work',
+      perspectives: 'Perspectives',
       start: 'Start',
       runs: 'Runs',
       wiki: 'Wiki',
@@ -167,6 +210,7 @@ function Shell() {
     { id: 'new', group: 'Create', label: 'New task', description: 'Start work in the current project', keywords: ['thread', 'chat'], icon: 'plus', run: () => { const c = createChat(data.activeProjectId, 'New task'); nav(`/chat/${c.id}`) } },
     { id: 'cproj', group: 'Create', label: 'Create project', description: 'Add a local folder or cloud workspace', keywords: ['workspace', 'folder'], icon: 'folder', run: () => setProjectModal(true) },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Approvals, active runs, and recent outcomes', icon: 'clock', run: () => nav('/work') },
+    { id: 'perspectives', group: 'Navigate', label: 'Workspace perspectives', description: 'Switch project-aware operational views', icon: 'layout', run: () => nav('/perspectives') },
     { id: 'wiki', group: 'Navigate', label: 'Team wiki', description: 'Browse shared project knowledge', icon: 'review', run: () => nav('/wiki') },
     { id: 'agents', group: 'Navigate', label: 'Agents', description: 'Inspect agents and availability', icon: 'spark', run: () => nav('/agents') },
     { id: 'workflows', group: 'Navigate', label: 'Workflows', description: 'Manage recurring automations', icon: 'clock', run: () => nav('/workflows') },
@@ -238,6 +282,7 @@ function Shell() {
             <Route path="/" element={<Navigate to="/start" replace />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
+            <Route path="/perspectives" element={<PerspectivesPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:chatId" element={<ChatPage />} />
             <Route path="/project/:projectId" element={<ProjectWorkspacePage />} />
@@ -259,7 +304,7 @@ function Shell() {
             <Route path="/permissions/:projectId" element={<PermissionsPage />} />
             <Route path="/environments" element={<EnvironmentsPage />} />
             <Route path="/plugins" element={<PluginsPage />} />
-            <Route path="/usage" element={<UsagePage />} />
+            <Route path="/usage" element={<UsagePage projects={discoveredProjects} activeProject={data.projects.find((project) => project.id === data.activeProjectId) ?? null} />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/icon-packs" element={<Suspense fallback={<div className="content-page"><div className="empty-state">Loading icon lab…</div></div>}><IconPacksPage /></Suspense>} />
             <Route path="/admin" element={data.members.find((m) => m.id === data.currentUserId)?.role === 'Admin' ? <AdminPage /> : <Navigate to="/settings" replace />} />
@@ -296,6 +341,8 @@ function Shell() {
       }} /> : <AddProjectDialog
         open={projectModal}
         projects={data.projects}
+        discoveredProjects={availableDiscoveredProjects}
+        uiPlugins={discoveredUiPlugins}
         defaultParentId={data.activeProjectId}
         governedOnboardingAvailable={supportsGovernedProjectOnboarding(services)}
         onClose={() => setProjectModal(false)}
@@ -305,12 +352,12 @@ function Shell() {
           toast('Project created', name)
           nav(`/project/${id}`)
         }}
-        onCreateLocal={async ({ name, color, proposal, selectedIds, krailRunner }) => {
+        onCreateLocal={async ({ name, color, selection, krailRunner }) => {
           const localProjects = services?.localProjects
           if (krailRunner && !supportsGovernedProjectOnboarding(services)) {
             throw new Error('Connect a local OpenSaddle server before starting governed KRAIL onboarding. Connected mode never falls back to a simulated run.')
           }
-          const application = scaffoldApply(proposal, selectedIds, proposal.folderPath, name)
+          const application = scaffoldApply(selection.proposal, selection.selectedIds, selection.proposal.folderPath, name, selection.perspective)
           const projectId = `local_${globalThis.crypto.randomUUID()}`
           await registerLocalWorkspace({
             projectId,
@@ -320,7 +367,7 @@ function Shell() {
               : undefined,
             commitRendererState: () => {
               importLocalProject({ id: projectId, name: application.project.name, description: application.project.description, local: application.project.local })
-              updateProject(projectId, { iconColor: color } as never)
+              updateProject(projectId, { iconColor: color, perspective: application.project.perspective } as never)
               application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
               application.members.forEach((member) => createMember(member))
               application.agents.forEach((agent) => createAgent({
@@ -333,6 +380,11 @@ function Shell() {
               })))
             },
           })
+          try {
+            await services?.projectIntelligence?.create(projectId)
+          } catch (error) {
+            toast('Workspace created; intelligence needs attention', error instanceof Error ? error.message : String(error))
+          }
           setActiveProject(projectId)
           toast('Local workspace created', name)
           nav(krailRunner

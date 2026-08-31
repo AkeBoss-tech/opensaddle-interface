@@ -1,5 +1,5 @@
 import { MockRuntimeClient } from './mockRuntime'
-import type { GitComparisonResult, GitStatusResult, RegisteredSurface, RuntimeClient, RouteEstimate, RuntimeRunSummary, SessionEvent } from './contracts'
+import type { DelegationRequest, DelegationResult, GitComparisonResult, GitStatusResult, RegisteredSurface, RuntimeClient, RouteEstimate, RuntimeRunSummary, SessionEvent } from './contracts'
 import type { CodingProvider, Harness, ModelKey, RunExecutionMode, RuntimeKind } from '../types'
 import { createOrderedEventEmitter } from './orderedEvents'
 
@@ -222,6 +222,52 @@ export class OpenSaddleRuntimeClient implements RuntimeClient {
       }
     } catch (error) {
       throw error
+    }
+  }
+
+  async delegate(parentRunId: string, input: DelegationRequest): Promise<DelegationResult> {
+    if (!(await this.healthy())) {
+      throw new Error(`OpenSaddle control plane unavailable at ${this.baseUrl}`)
+    }
+    const response = await fetch(
+      `${this.baseUrl}/api/runs/${encodeURIComponent(parentRunId)}/delegations`,
+      {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify({
+          idempotency_key: input.idempotencyKey,
+          task: input.task,
+          title: input.title,
+          source_boundary_sequence: input.sourceBoundarySequence,
+          agent_id: input.harnessId,
+          model_id: input.modelId,
+          reasoning_effort: input.reasoningEffort,
+          execution_mode: input.executionMode,
+          session_strategy: input.sessionStrategy,
+          repo: input.repo,
+        }),
+      },
+    )
+    if (!response.ok) throw await this.responseError(response)
+    const value = await response.json() as {
+      delegation_id: string
+      parent_thread_id: string
+      child_thread_id: string
+      run_id: string
+      status: DelegationResult['status']
+      parent_boundary_sequence: number
+      selected_route?: Record<string, unknown>
+      effective_policy?: Record<string, unknown>
+    }
+    return {
+      delegationId: value.delegation_id,
+      parentThreadId: value.parent_thread_id,
+      childThreadId: value.child_thread_id,
+      runId: value.run_id,
+      status: value.status,
+      parentBoundarySequence: value.parent_boundary_sequence,
+      selectedRoute: value.selected_route ?? {},
+      effectivePolicy: value.effective_policy ?? {},
     }
   }
 

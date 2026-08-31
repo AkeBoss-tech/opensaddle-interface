@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
 import { AgentAvatar, Button, Status } from '../../ui'
 import { selectThreadSummaries, type ThreadStatus } from '../thread/domain'
 import '../../styles/team-workspace.css'
+import { SelfDrivingGoalPanel } from './SelfDrivingGoalPanel'
+import { ExtensionCatalogPanel } from './ExtensionCatalogPanel'
+import { ProjectIntelligencePanel } from './ProjectIntelligencePanel'
+import { SessionAuditPanel } from '../review/SessionAuditPanel'
+import '../../styles/session-audit.css'
 
 type ProjectTab = 'overview' | 'threads' | 'context' | 'automations' | 'settings'
 
@@ -33,8 +38,11 @@ function statusTone(status: ThreadStatus) {
 
 export function ProjectWorkspacePage() {
   const { projectId } = useParams()
-  const { data, createChat, setActiveChat, setActiveProject } = useStore()
+  const { data, createChat, setActiveChat, setActiveProject, services: serviceBundle, harnessCapabilities, toast } = useStore()
   const navigate = useNavigate()
+  const showGoalError = useCallback((message: string) => toast('Self-driving mode', message), [toast])
+  const showExtensionError = useCallback((message: string) => toast('Extension catalog', message), [toast])
+  const showIntelligenceError = useCallback((message: string) => toast('Project intelligence', message), [toast])
   const [tab] = useState<ProjectTab>('overview')
   const [prompt, setPrompt] = useState('')
   const [selectedAgentId, setSelectedAgentId] = useState('auto')
@@ -91,8 +99,6 @@ export function ProjectWorkspacePage() {
     .sort((a, b) => b.createdAt - a.createdAt), [data.chats, data.messages, teamProjectIds])
 
   const featuredThread = threads[0]
-  const featuredAgent = teamAgents.find((agent) => agent.id === data.chats.find((chat) => chat.id === featuredThread?.chatId)?.agentId)
-    ?? teamAgents[0]
   const selectedAgent = teamAgents.find((agent) => agent.id === selectedAgentId)
 
   const startTask = (initialPrompt?: string) => {
@@ -121,6 +127,29 @@ export function ProjectWorkspacePage() {
     startTask(prompt)
   }
 
+  const onboardWithCodex = async () => {
+    if (!project.local?.rootPath || !serviceBundle?.runtime) {
+      toast('Codex onboarding unavailable', 'This action requires a registered local Project and a connected runtime.')
+      return
+    }
+    const codex = harnessCapabilities.find((harness) => harness.id === 'codex' && harness.availability === 'available' && harness.readiness === 'ready')
+    if (!codex) {
+      toast('Codex onboarding unavailable', 'Configure the Codex harness for this Project first.')
+      return
+    }
+    try {
+      const started = await serviceBundle.runtime.startRun({
+        projectId: project.id,
+        task: `Perform a read-only onboarding analysis of ${project.name}. Inspect the registered repository, its history, architecture, setup, tests, documentation, agent instructions, skills, and active areas. Produce an evidence-backed Project Scaffold Proposal covering intentional Channels, AI Participants, useful connectors, permissions, a wiki outline, and the recommended starting Perspective. Treat directories and branches as source structure, not collaboration Channels. Do not modify files, install dependencies, connect services, or apply the proposal. Cite exact source paths and clearly mark uncertainty.`,
+        providerKey: 'codex', harnessKey: 'coding', runtimeKey: 'local', modelKey: 'auto', executionMode: 'review', repo: project.local.rootPath,
+      })
+      toast('Codex onboarding started', 'The read-only proposal will appear in the run registry for review.')
+      navigate(`/runs?run=${encodeURIComponent(started.runId)}`)
+    } catch (error) {
+      toast('Codex onboarding failed', error instanceof Error ? error.message : String(error))
+    }
+  }
+
   const openThread = (threadId: string) => {
     setActiveProject(project.id)
     setActiveChat(threadId)
@@ -131,6 +160,7 @@ export function ProjectWorkspacePage() {
     ...(project.workspaceKind === 'local' && project.local
       ? [{ label: 'KRAIL onboarding', detail: 'Profile, recommendations, and governed commits', icon: 'spark', href: `/project/${project.id}/onboarding` }]
       : []),
+    { label: 'Tokens & pricing', detail: 'Measured usage, coverage, and model rate catalog', icon: 'chart', href: '/usage' },
     { label: 'Project sessions', detail: 'Resume or fork Codex and Claude Code', icon: 'clock', href: `/project/${project.id}/sessions` },
     { label: 'Agents', detail: `${teamAgents.length} configured`, icon: 'spark', href: `/agents/${project.id}` },
     { label: 'Knowledge', detail: `${knowledge.length + sources.length} sources`, icon: 'db', href: '/wiki' },
@@ -224,56 +254,49 @@ export function ProjectWorkspacePage() {
                 <button key={suggestion} onClick={() => setPrompt(suggestion)}>{suggestion}</button>
               ))}
             </div>
+            {project.workspaceKind === 'local' && <button type="button" className="secondary-btn" onClick={() => void onboardWithCodex()}><Icon name="spark" className="icon sm" />Onboard with Codex</button>}
             <a className="tw-scroll-cue" href="#team-explore">
               <span>Explore your team</span>
               <Icon name="chevron" className="icon xs" />
             </a>
           </section>
 
+          <SelfDrivingGoalPanel
+            projectId={project.id}
+            client={serviceBundle?.projectGoals}
+            policy={serviceBundle?.controlPlane.autonomy}
+            onOpenChannel={openThread}
+            onError={showGoalError}
+          />
+
+          <ProjectIntelligencePanel
+            projectId={project.id}
+            client={serviceBundle?.projectIntelligence}
+            onError={showIntelligenceError}
+          />
+
+          <SessionAuditPanel projectId={project.id} projectIds={teamProjectIds} />
+
+          <ExtensionCatalogPanel
+            projectId={project.id}
+            client={serviceBundle?.extensions}
+            onError={showExtensionError}
+          />
+
           <section className="tw-section tw-section-first" id="team-explore" aria-labelledby="collaboration-title">
             <div className="tw-section-heading">
-              <div><span className="tw-kicker">Human + AI collaboration</span><h2 id="collaboration-title">Team channels</h2><p>Conversation stays readable here; detailed reasoning lives in linked agent threads.</p></div>
+              <div><span className="tw-kicker">Human + AI collaboration</span><h2 id="collaboration-title">Project channels</h2><p>Channels are intentional collaboration spaces. Source folders are available as context but are not channels.</p></div>
               <button onClick={() => navigate('/work')}>See all conversations <Icon name="forward" className="icon xs" /></button>
             </div>
-            <div className="tw-channel-shell">
-              <nav className="tw-channel-list" aria-label="Team channels">
-                <button className="active"><span>#</span> engineering</button>
-                <button><span>#</span> product-help</button>
-                <button><span>#</span> releases</button>
-              </nav>
-              <div className="tw-channel">
-                <div className="tw-channel-head">
-                  <div><strong># engineering</strong><span>{data.members.length} people · {teamAgents.length} agents</span></div>
-                  {featuredThread && <button onClick={() => openThread(featuredThread.chatId)}>Open channel</button>}
-                </div>
-                <div className="tw-message">
-                  <span className="avatar">MC</span>
-                  <div>
-                    <p><strong>Maya Chen</strong><time>9:42 AM</time></p>
-                    <p>Can <button className="tw-mention" onClick={() => {
-                      if (featuredAgent) {
-                        setSelectedAgentId(featuredAgent.id)
-                        setPrompt(`@${featuredAgent.name} review the latest work and share anything the team needs to know`)
-                      }
-                    }}>@{featuredAgent?.name ?? 'Team Agent'}</button> review the latest work and share anything the team needs to know?</p>
-                  </div>
-                </div>
-                <div className="tw-message tw-agent-message">
-                  <AgentAvatar name={`${featuredAgent?.name ?? 'Builder'} ${featuredAgent?.description ?? 'Coding agent'}`} state="ready" size="sm" className="tw-agent-avatar" />
-                  <div>
-                    <p><strong>{featuredAgent?.name ?? 'OpenSaddle Agent'}</strong><span className="tw-bot-label">AI</span><time>9:44 AM</time></p>
-                    <p>{featuredThread?.latestTurnPreview ?? 'I reviewed the team context and recent work. The latest implementation is ready for review, with verification complete and no blocking issues.'}</p>
-                    <div className="tw-response-links">
-                      <button onClick={() => featuredThread && openThread(featuredThread.chatId)}><Icon name="file" className="icon sm" /> View artifact</button>
-                      <button onClick={() => featuredThread && openThread(featuredThread.chatId)}><Icon name="trace" className="icon sm" /> Open agent thread</button>
-                    </div>
-                  </div>
-                </div>
-                <button className="tw-channel-reply" onClick={() => {
-                  setPrompt(featuredAgent ? `@${featuredAgent.name} ` : '')
-                  document.getElementById('team-prompt')?.focus()
-                }}>Reply or @mention an agent…</button>
-              </div>
+            <div className="tf-project-thread-list tw-thread-list">
+              {threads.filter((thread) => data.chats.find((chat) => chat.id === thread.chatId)?.visibility !== 'private').slice(0, 5).map((thread) => (
+                <button key={thread.id} onClick={() => openThread(thread.chatId)}>
+                  <span className="tf-project-thread-icon">#</span>
+                  <span><strong>{thread.title}</strong><small>{thread.latestTurnPreview ?? 'No messages yet'} · {relativeTime(thread.updatedAt)}</small></span>
+                  <Status tone={statusTone(thread.status)} label={thread.statusLabel} pulse={thread.status === 'running'} />
+                </button>
+              ))}
+              {!threads.some((thread) => data.chats.find((chat) => chat.id === thread.chatId)?.visibility !== 'private') && <div className="tf-project-empty">No shared channels yet. Start a task, then share it with the Project when collaboration is useful.</div>}
             </div>
           </section>
 

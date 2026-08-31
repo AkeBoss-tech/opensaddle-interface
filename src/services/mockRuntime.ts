@@ -1,5 +1,5 @@
 import { deriveRoute, simulateAgentRun } from '../lib/simulation'
-import type { RuntimeClient, RouteEstimate, SessionEvent } from './contracts'
+import type { DelegationRequest, DelegationResult, RuntimeClient, RouteEstimate, SessionEvent } from './contracts'
 import type { CodingProvider, Harness, ModelKey, RunExecutionMode, RuntimeKind } from '../types'
 
 function uid(prefix: string) {
@@ -71,6 +71,10 @@ export class MockRuntimeClient implements RuntimeClient {
 
     void this.emitStream(runId, sessionId, input.task, route)
     return { runId, sessionId, mode: input.repo ? 'mock_with_repo' : 'mock' }
+  }
+
+  async delegate(_parentRunId: string, _input: DelegationRequest): Promise<DelegationResult> {
+    throw new Error('Mock runtime does not simulate governed delegation')
   }
 
   subscribe(runId: string, onEvent: (event: SessionEvent) => void): () => void {

@@ -38,6 +38,10 @@ interface Window {
     opensaddleUrl: string
     getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; opensaddleConnected: boolean; opensaddleError: string | null; opensaddleNotice: string | null; sessionBridgeUrl: string; /** @deprecated */ krailUrl: string; krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }; clis: string[] }>
     pickRepository: () => Promise<string | null>
+    discoverProjects: () => Promise<import('./types').DiscoveredLocalProject[]>
+    listTokenPrices: () => Promise<import('./types').PublicTokenPrice[]>
+    discoverSkills: () => Promise<import('./types').DiscoveredAgentSkill[]>
+    discoverUiPlugins: () => Promise<import('./types').DiscoveredUiPlugin[]>
     inspectProject: (path: string) => Promise<{
       rootPath: string
       name: string

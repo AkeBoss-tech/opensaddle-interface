@@ -14,6 +14,7 @@ import { useRunRegistry } from '../features/runs/RunRegistry'
 import { InlineAgentRequest } from '../features/runs/InlineAgentRequest'
 import { agentRunLifecycleControls } from '../features/runs/lifecycleControls'
 import { ChildRunList, UsedSourcesList, selectRelatedRuns, selectUsedRunSources } from '../features/runs/runRelations'
+import { createAndOpenDelegatedChannel, selectAuthoritativeRootRun } from '../features/runs/delegationFlow'
 import { CollapsibleOutput, JumpToLatest, MessageActions, useTranscriptPosition } from '../features/thread'
 import { buildPlanRevision } from '../features/thread/planRevision'
 import { selectPublishFlowStep } from '../features/git/publishFlow'
@@ -252,7 +253,7 @@ export function ChatPage() {
   const location = useLocation()
   const store = useStore()
   const runRegistry = useRunRegistry()
-  const { data, appendMessage, updateMessage, createChat, setActiveChat, setActiveProject, setChatVisibility, setChatArchived, updateChatRunConfig, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, connection, harnessCapabilities, refreshHarnessCapabilities } = store
+  const { data, appendMessage, updateMessage, createChat, hydrateThread, setActiveChat, setActiveProject, setChatVisibility, setChatArchived, updateChatRunConfig, branchChat, branchChatFromMessage, renameChat, deleteChat, updateSource, updateHunk, upsertPermissionGrant, consumePermissionGrant, toast, services, connection, harnessCapabilities, refreshHarnessCapabilities } = store
   const chat = data.chats.find((c) => c.id === (chatId ?? data.activeChatId))
   const durableRunConfigKey = JSON.stringify(chat?.runConfig ?? null)
   const continuationAction = chat?.continuation?.mode === 'fork' ? 'Fork' : 'Resume'
@@ -276,7 +277,7 @@ export function ChatPage() {
     .filter((path) => path.startsWith('.opensaddle/skills/'))
   const messages = useMemo(() => data.messages.filter((m) => m.chatId === chat?.id).sort((a, b) => a.createdAt - b.createdAt), [data.messages, chat?.id])
   const latestMessageRun = useMemo(() => [...messages].reverse().find((message) => message.run)?.run, [messages])
-  const rootRun = useMemo(() => [...messages].reverse().find((message) => message.run && !message.run.parentRunId)?.run, [messages])
+  const rootRun = useMemo(() => selectAuthoritativeRootRun(messages), [messages])
   const managedRuns = runRegistry.getForThread(chat?.id ?? '')
   const queuedManagedRuns = managedRuns.filter((managed) =>
     !managed.run.done && /queued after current turn/i.test(managed.run.statusText))
@@ -357,6 +358,10 @@ export function ChatPage() {
   const [repositoryDraft, setRepositoryDraft] = useState('')
   const [delegateEditorOpen, setDelegateEditorOpen] = useState(false)
   const [delegateDraft, setDelegateDraft] = useState('')
+  const [delegateHarness, setDelegateHarness] = useState('')
+  const [delegateSessionStrategy, setDelegateSessionStrategy] = useState<'new' | 'fork_if_supported' | 'fork_required'>('new')
+  const [delegating, setDelegating] = useState(false)
+  const delegationAttemptRef = useRef<{ task: string; key: string } | null>(null)
   const [mentionOpen, setMentionOpen] = useState(false)
   const [messageReferences, setMessageReferences] = useState<EntityReference[]>([])
   const [channelView, setChannelView] = useState<'messages' | 'canvas' | 'files'>('messages')
@@ -373,6 +378,24 @@ export function ChatPage() {
   const channelPanelRef = useRef<HTMLElement>(null)
   const channelPanelReturnFocusRef = useRef<HTMLElement | null>(null)
   const attachRef = useRef<HTMLInputElement>(null)
+  const delegationPolicy = services?.controlPlane.delegation
+  const delegationAvailable = Boolean(
+    services?.controlPlane.connected
+    && services.controlPlane.capabilities.includes('thread_delegation_v1')
+    && delegationPolicy?.enabled
+    && services.threads,
+  )
+  const delegationHarnesses = delegationPolicy?.allowedHarnesses ?? []
+  const delegationHarnessKey = delegationHarnesses.join('\u0000')
+  const defaultDelegationSessionStrategy = delegationPolicy?.defaultSessionStrategy
+
+  useEffect(() => {
+    if (!defaultDelegationSessionStrategy) return
+    setDelegateSessionStrategy(defaultDelegationSessionStrategy)
+    setDelegateHarness((current) => delegationHarnesses.includes(current)
+      ? current
+      : delegationHarnesses[0] ?? '')
+  }, [defaultDelegationSessionStrategy, delegationHarnessKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const persistInspector = (state: Partial<ThreadInspectorState>) => {
     const next = {
       open: state.open ?? inspector,
@@ -1609,7 +1632,11 @@ export function ChatPage() {
 
   const delegateSubtask = async (requestedTask?: string) => {
     if (!rootRun || !services?.runtime || !chat) {
-      toast('Start a run first', 'Subtasks need a parent run in this thread.')
+      toast('Start a run first', 'A child Channel needs a parent run in this Channel.')
+      return
+    }
+    if (!delegationAvailable) {
+      toast('Delegation unavailable', 'Enable collaboration.delegation on the connected OpenSaddle server.')
       return
     }
     const task = requestedTask?.trim()
@@ -1617,34 +1644,44 @@ export function ChatPage() {
       setDelegateEditorOpen(true)
       return
     }
-    const requestedRoute = deriveRoute(task, data.settings.routingPref)
-    const sourceMessage = appendMessage({
-      chatId: chat.id,
-      role: 'user',
-      text: task,
-      routingNote: 'Delegated subtask',
-    })
-    const result = await runRegistry.start({
-        projectId: project.id,
-        threadId: chat.id,
-        sourceMessageId: sourceMessage.id,
-        task,
-        route: requestedRoute,
-        agentId: chat.agentId,
-        agentDefinitionPath,
-        skillPaths: agentSkillPaths,
+    if (!delegateHarness) {
+      toast('No child harness allowed', 'Add at least one harness to collaboration.delegation.allowed_harnesses.')
+      return
+    }
+    if (delegating) return
+    const previousAttempt = delegationAttemptRef.current
+    const idempotencyKey = previousAttempt?.task === task
+      ? previousAttempt.key
+      : `ui-${crypto.randomUUID()}`
+    delegationAttemptRef.current = { task, key: idempotencyKey }
+    setDelegating(true)
+    try {
+      const delegated = await createAndOpenDelegatedChannel({
+        runtime: services.runtime,
         parentRunId: rootRun.id,
-        sourceIds: usedSources.map((source) => source.id),
-        title: `Subagent · ${task.slice(0, 52)}`,
-        executionMode,
-        capabilityIds: [...tools],
-        repo: repositoryPath,
+        request: {
+          idempotencyKey,
+          task,
+          title: task.slice(0, 120),
+          harnessId: delegateHarness,
+          modelId: openRouterModelId || undefined,
+          reasoningEffort: reasoningEffort || undefined,
+          executionMode: delegationPolicy?.allowWrite ? executionMode : 'plan',
+          sessionStrategy: delegateSessionStrategy,
+          repo: repositoryPath,
+        },
+        hydrateThread,
+        navigate: nav,
       })
-    if (result.status !== 'failed') {
       setDelegateDraft('')
       setDelegateEditorOpen(false)
-    } else {
-      toast('Subagent failed to start', result.error.message)
+      delegationAttemptRef.current = null
+      toast('Child Channel created', `${delegateHarness.replaceAll('_', ' ')} · ${delegated.status}`)
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      toast('Child Channel could not start', reason)
+    } finally {
+      setDelegating(false)
     }
   }
 
@@ -2708,15 +2745,27 @@ export function ChatPage() {
 
                 <section className="tf-state-card">
                   <div className="tf-state-heading">
-                    <span>Subagents</span>
-                    <button className="tf-state-heading-action" onClick={() => void delegateSubtask()} title="Delegate a subtask">
+                    <span>Child Channels</span>
+                    <button
+                      className="tf-state-heading-action"
+                      onClick={() => void delegateSubtask()}
+                      title={!rootRun ? 'Start a parent run first' : delegationAvailable ? 'Delegate to a child Channel' : 'Delegation is disabled by server policy'}
+                      disabled={!rootRun || !delegationAvailable || delegating}
+                    >
                       <Icon name="plus" className="icon sm" />
                     </button>
                   </div>
-                  <ChildRunList runs={visibleSubagents} onOpenRun={() => selectInspectorTab('activity')} />
+                  <ChildRunList runs={childRuns} onOpenRun={(runId) => {
+                    const managed = Object.values(runRegistry.runs).find((candidate) => candidate.runId === runId)
+                    if (managed?.threadId && managed.threadId !== chat.id) nav(`/chat/${managed.threadId}`)
+                    else selectInspectorTab('activity')
+                  }} />
+                  {!delegationAvailable && (
+                    <div className="tf-state-sublabel">Enable <code>collaboration.delegation</code> on the connected server to create governed child Channels.</div>
+                  )}
                   {delegateEditorOpen && (
                     <form className="tf-state-inline-form" onSubmit={(event) => { event.preventDefault(); void delegateSubtask(delegateDraft) }}>
-                      <label htmlFor="delegate-task">Subagent task</label>
+                      <label htmlFor="delegate-task">Child task</label>
                       <textarea
                         id="delegate-task"
                         value={delegateDraft}
@@ -2725,14 +2774,43 @@ export function ChatPage() {
                         rows={3}
                         autoFocus
                       />
+                      <label htmlFor="delegate-harness">Harness</label>
+                      <select id="delegate-harness" value={delegateHarness} onChange={(event) => setDelegateHarness(event.target.value)}>
+                        {delegationHarnesses.map((harness) => (
+                          <option key={harness} value={harness}>{harness.replaceAll('_', ' ')}</option>
+                        ))}
+                      </select>
+                      <label htmlFor="delegate-session-strategy">Session</label>
+                      <select
+                        id="delegate-session-strategy"
+                        value={delegateSessionStrategy}
+                        onChange={(event) => setDelegateSessionStrategy(event.target.value as typeof delegateSessionStrategy)}
+                      >
+                        <option value="new">New session</option>
+                        <option value="fork_if_supported">Fork if supported</option>
+                        <option value="fork_required">Require native fork</option>
+                      </select>
+                      {delegationPolicy && (
+                        <p>
+                          {delegationPolicy.allowWrite ? 'Write allowed' : 'Read-only'} · {delegationPolicy.allowNetwork ? 'Network allowed' : 'No network'} · {delegationPolicy.maxMinutesPerChild} min · ${delegationPolicy.maxBudgetUsdPerChild.toFixed(2)} max
+                        </p>
+                      )}
                       <div>
                         <button type="button" onClick={() => setDelegateEditorOpen(false)}>Cancel</button>
-                        <button type="submit" disabled={!delegateDraft.trim()}>Delegate</button>
+                        <button type="submit" disabled={!delegateDraft.trim() || !delegateHarness || delegating}>
+                          {delegating ? 'Creating…' : 'Create child Channel'}
+                        </button>
                       </div>
                     </form>
                   )}
                   {!!projectSessions.length && !visibleSubagents.length && (
                     <div className="tf-state-sublabel">{projectSessions.length} other project agent{projectSessions.length === 1 ? '' : 's'} available</div>
+                  )}
+                  {!!providerSubagents.length && (
+                    <>
+                      <div className="tf-state-sublabel">Provider-native subagents</div>
+                      <ChildRunList runs={providerSubagents} onOpenRun={() => selectInspectorTab('activity')} />
+                    </>
                   )}
                 </section>
 

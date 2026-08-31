@@ -42,18 +42,24 @@ export interface SurfaceHostProps<Inputs extends SurfaceInputs> {
 
 export function SurfaceHost<Inputs extends SurfaceInputs>({ surfaceId, projectId, inputs, permissions, userId = 'user-ad' }: SurfaceHostProps<Inputs>) {
   const definition = getSurface(surfaceId)
-  const [permission, setPermission] = useState<'allowed' | 'denied' | 'pending'>('allowed')
+  const [permission, setPermission] = useState<'allowed' | 'denied' | 'pending' | 'unavailable'>(
+    definition?.permission ? 'pending' : 'allowed',
+  )
 
   useEffect(() => {
     let active = true
-    if (!definition?.permission || !permissions) {
+    if (!definition?.permission) {
       setPermission('allowed')
+      return () => { active = false }
+    }
+    if (!permissions) {
+      setPermission('unavailable')
       return () => { active = false }
     }
     setPermission('pending')
     void permissions.check({ userId, resourceKind: definition.permission.resourceKind, resourceId: projectId, action: definition.permission.action })
       .then((result) => { if (active) setPermission(result.allowed ? 'allowed' : 'denied') })
-      .catch(() => { if (active) setPermission('denied') })
+      .catch(() => { if (active) setPermission('unavailable') })
     return () => { active = false }
   }, [definition, permissions, projectId, userId])
 
@@ -67,6 +73,7 @@ export function SurfaceHost<Inputs extends SurfaceInputs>({ surfaceId, projectId
 
   if (permission === 'pending') return <section className="os-surface-empty" role="status"><h2>Checking access</h2><p>Verifying permission for this view.</p></section>
   if (permission === 'denied') return <section className="os-surface-empty" role="status"><h2>View unavailable</h2><p>You do not have permission to view this surface.</p></section>
+  if (permission === 'unavailable') return <section className="os-surface-empty" role="status"><h2>Access check unavailable</h2><p>OpenSaddle could not verify permission for this view. No project data is being shown.</p></section>
 
   if (definition.empty?.(inputs)) {
     return <section className="os-surface-empty" role="status"><h2>{definition.emptyState?.title ?? 'Nothing to show'}</h2><p>{definition.emptyState?.description ?? 'There is no data for this view yet.'}</p></section>

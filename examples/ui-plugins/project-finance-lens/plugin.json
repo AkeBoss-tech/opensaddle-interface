@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "opensaddle.ui-plugin.v1",
+  "id": "example.project-finance-lens",
+  "name": "Project finance lens",
+  "contributions": {
+    "projectSorts": [
+      {
+        "id": "example.cost-low-to-high",
+        "title": "Lowest estimated cost",
+        "field": "estimatedCostUsd",
+        "direction": "asc",
+        "missing": "last"
+      }
+    ],
+    "projectViews": [
+      {
+        "id": "example.usage-focus",
+        "title": "Usage focus",
+        "density": "compact",
+        "showPath": false,
+        "showUsage": true,
+        "showSources": false
+      }
+    ]
+  }
+}
