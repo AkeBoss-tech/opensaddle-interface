@@ -14,7 +14,7 @@ The external-session transport rejects both a mismatched response envelope Proje
 
 Live fixture proof used Core 8903 v4 and private 0600 token paths without printing token contents. The disposable fixture was seeded once through Core's public owner-authorized external-session endpoint with a `source_managed` session whose capabilities explicitly say metadata true, transcript false, and usage false. A member read returned 200 for Command Center and external sessions, with three distinct Project Run IDs and the observed session at its exact `updated_at`. No worker or usage/quota read route exists in this composition, so those live states remain truthfully unavailable.
 
-Final local evidence: focused operations tests 7/7 passed; full repository tests 375/375 passed (312 workspace plus 63 feature/service); typecheck passed; lint passed with the same 19 pre-existing warnings outside this slice; production build passed with the existing large-chunk advisory; `git diff --check` passed. The Mac remains locked and no headless browser is installed, so no rendered-browser screenshot is claimed and no unlock/install was attempted.
+Final local evidence: focused operations tests passed; full repository tests 377/377 passed (313 workspace plus 64 feature/service); typecheck passed; production build passed with the existing large-chunk advisory; `git diff --check` passed. Isolated Chrome headless rendered the authenticated Core 8903 operations and participant inbox journeys without using the user's browser profile. The inspected 390 x 844 pass exposed sidebar clipping; the connected-local shell now uses a compact five-destination mobile nav and a source guard test prevents hiding it. Exact result navigation now uses React Router so the configured `/opensaddle-interface/` base path is retained. The saved desktop operations screenshot is under `docs/agents/evidence/`; no post-fix mobile screenshot is retained because the fixture connection could not be re-established after the final hot reload. It does not claim a physical touch device or production deployment.
 
 ## Current status — durable reviewer participant
 
@@ -32,7 +32,7 @@ Final local evidence after the independent fixes: focused participant plus revie
 
 Real HTTP verification used Core's disposable 8903 fixture and private token paths without printing token contents. A member create attempt returned the expected 403 owner/admin denial. Owner creation returned 201/revision 0; member discovery returned the same participant and exact command descriptor. Exact artifact submission returned 202 with a queued Run; replay with the same key returned 200 with the same message and Run. Durable inbox reload exposed queued and completed states, the completed message reopened its exact invocation, and the invocation retained the fixture's exact resource (the first automated comparison was order-sensitive JSON text; a field-level inspection confirmed equality). A separate created participant moved deliberately through paused revision 1, waiting revision 2, and retired revision 3.
 
-The remaining visual screenshot gate is explicit: the Mac is locked and no headless browser is installed. No unlock or installation was attempted, and no screenshot or rendered-browser proof is claimed. The live Core HTTP journey and mounted production surface tests are complete for this slice.
+The earlier no-headless limitation is superseded: the installed Chrome binary completed isolated localhost rendering without an unlock or package installation.
 
 ## Current status — immutable proposal approval
 

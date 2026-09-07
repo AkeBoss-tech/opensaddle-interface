@@ -2,6 +2,7 @@ import assert from'node:assert/strict'
 import test from'node:test'
 import React,{StrictMode}from'react'
 import{act,create,type ReactTestRenderer}from'react-test-renderer'
+import{MemoryRouter}from'react-router-dom'
 import type{ExactArtifactRef,Participant,ParticipantClient,ParticipantMessage}from'../../services/contracts'
 import{ParticipantReviewSurface}from'./ParticipantReviewPage'
 
@@ -11,7 +12,7 @@ const resource:ExactArtifactRef={project_id:'P1',run_id:'R1',artifact_id:'A1',di
 const participant=(id='ptc_1',lifecycle:Participant['lifecycle']='waiting',revision=0):Participant=>({participantId:id,projectId:'P1',source:'.opensaddle/participants/reviewer.md',ownerSubject:'owner-1',title:`Reviewer ${id}`,commandId:'dev.opensaddle.artifact.review',commandVersion:1,commandDescriptorDigest:'c'.repeat(64),lifecycle,revision})
 const message=(status='queued',invocationId?:string):ParticipantMessage=>({messageId:`pmsg_${status}`,participantId:'ptc_1',projectId:'P1',status,runId:'run_review_1',invocationId,resource,input:{}})
 const api=(overrides:Partial<ParticipantClient>={}):ParticipantClient=>({create:async()=>participant(),get:async id=>participant(id),lifecycle:async(id,_revision,next)=>participant(id,next,1),send:async()=>message(),message:async()=>message(),messages:async()=>[],...overrides})
-const view=(client:ParticipantClient,id='ptc_1',onSelectParticipant=()=>{})=><ParticipantReviewSurface client={client} participantId={id} projectId="P1" resource={resource} onSelectParticipant={onSelectParticipant}/>
+const view=(client:ParticipantClient,id='ptc_1',onSelectParticipant=()=>{})=><MemoryRouter><ParticipantReviewSurface client={client} participantId={id} projectId="P1" resource={resource} onSelectParticipant={onSelectParticipant}/></MemoryRouter>
 async function mount(client:ParticipantClient,id='ptc_1'){let renderer!:ReactTestRenderer;await act(async()=>{renderer=create(view(client,id));await Promise.resolve()});return renderer}
 const button=(renderer:ReactTestRenderer,label:string)=>renderer.root.findAllByType('button').find(node=>node.findAllByProps({className:'os-button__label'}).some(child=>child.children.join('')===label))!
 
