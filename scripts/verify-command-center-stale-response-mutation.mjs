@@ -6,8 +6,10 @@ const root = process.cwd()
 const directory = path.join(root, 'src/features/command-center')
 const sourcePath = path.join(directory, 'CommandCenterSurface.tsx')
 const testPath = path.join(directory, 'CommandCenterPage.mounted.test.tsx')
-const mutationPath = path.join(directory, 'CommandCenterSurface.__mutation.tsx')
-const mutationTestPath = path.join(directory, 'CommandCenterPage.__mutation.test.tsx')
+const suffix = `${process.pid}-${crypto.randomUUID()}`
+const mutationModule = `CommandCenterSurface.__mutation-${suffix}`
+const mutationPath = path.join(directory, `${mutationModule}.tsx`)
+const mutationTestPath = path.join(directory, `CommandCenterPage.__mutation-${suffix}.test.tsx`)
 
 const source = await readFile(sourcePath, 'utf8')
 const test = await readFile(testPath, 'utf8')
@@ -20,7 +22,7 @@ if (mutated === source || mutated.includes('if(current===generation.current)setS
   throw new Error('The controlled mutation did not remove the expected stale-response fences.')
 }
 
-const mutatedTest = test.replace("from'./CommandCenterSurface'", "from'./CommandCenterSurface.__mutation'")
+const mutatedTest = test.replace("from'./CommandCenterSurface'", `from'./${mutationModule}'`)
 if (mutatedTest === test) throw new Error('The mounted suite import did not bind to the disposable mutation.')
 
 try {

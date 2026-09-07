@@ -18,14 +18,22 @@ type Ready = {
   hostGeneration?: number
   reportedHostState?: 'loading' | 'ready' | 'error'
   reportedHostError?: string
+  hostRestart?: number
   allowStateTransfer: boolean
   stateNotice?: string
   initialState?: ApplicationState
 }
 type State = { kind: 'loading' } | { kind: 'unavailable'; reason: string } | ({ kind: 'ready' } & Ready)
+type HostReporter = { key: string; active: boolean; sequence: number; lastRequested?: 'loading' | 'ready' | 'error'; heartbeat?: ReturnType<typeof setTimeout>; session: Promise<{ session_id: string; report_token: string; next_sequence: number }>; chain: Promise<void>; report: (state: 'loading' | 'ready' | 'error', heartbeat?: boolean) => void }
 const samePackage = (a: { package_id: string; version: string; manifest_digest: string }, b: { package_id: string; version: string; manifest_digest: string }) => a.package_id === b.package_id && a.version === b.version && a.manifest_digest === b.manifest_digest
 const packageKey = (value: { package_id: string; version: string; manifest_digest: string }) => `${value.package_id}\0${value.version}\0${value.manifest_digest}`
 const errorText = (reason: unknown) => reason instanceof Error ? reason.message : String(reason)
+const hostObservationErrorText = (reason: unknown) => {
+  const detail = errorText(reason)
+  if (detail.includes('renderer_host_observation_stale')) return 'Core rejected a stale host report. Rechecking the current host session.'
+  if (detail.includes('renderer_host_session')) return 'The host observation session is no longer current. Rechecking authority.'
+  return detail
+}
 
 function replacementStateContract(current: ApplicationRendererDescriptor, candidate: ApplicationRendererCandidate, state?: ApplicationState) {
   try {
@@ -66,13 +74,16 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
   const stateAuthority = useRef('')
   const activeRenderer = useRef<ApplicationRendererDescriptor | undefined>(undefined)
   const hostId = useRef(`desktop:${crypto.randomUUID()}`)
-  const observation = useRef<{ key: string; active: boolean; sequence: number; lastRequested?: 'loading' | 'ready' | 'error'; heartbeat?: ReturnType<typeof setTimeout>; session: Promise<{ session_id: string; report_token: string; next_sequence: number }>; chain: Promise<void>; report: (state: 'loading' | 'ready' | 'error', heartbeat?: boolean) => void } | undefined>(undefined)
+  const observation = useRef<HostReporter | undefined>(undefined)
+  const currentHostStatus = useRef<'loading' | 'ready' | 'error'>('loading')
+  const hostRestarts = useRef(0)
   const [state, setState] = useState<State>({ kind: 'loading' })
 
   const authorityKey = `${connectionKey}\0${resource.project_id}\0${resource.run_id}\0${resource.artifact_id}\0${resource.digest}\0${applicationId}\0${instanceId}`
   if (stateAuthority.current !== authorityKey) {
     stateAuthority.current = authorityKey
     rendererStates.current.clear()
+    hostRestarts.current = 0
   }
 
   const load = useCallback(async (previous?: Ready['previous'], restoreSnapshot = false) => {
@@ -115,39 +126,80 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
   const observationKey = state.kind === 'ready' && state.hostGeneration
     ? `${authorityKey}\0${state.renderer.package_ref.package_id}\0${state.renderer.package_ref.version}\0${state.renderer.package_ref.manifest_digest}\0${state.environment.revision}\0${state.environment.definition_digest}\0${state.hostGeneration}`
     : ''
+  currentHostStatus.current = state.kind === 'ready' ? state.hostStatus : 'loading'
   useEffect(() => {
     if (!observationKey || state.kind !== 'ready' || !client.createRendererHostSession || !client.reportRendererHostObservation) return
     const captured = state
-    const reporter = {
-      key: observationKey,
-      active: true,
-      sequence: 0,
-      lastRequested: undefined as 'loading' | 'ready' | 'error' | undefined,
-      heartbeat: undefined as ReturnType<typeof setTimeout> | undefined,
-      session: client.createRendererHostSession(resource.project_id, { host_id: hostId.current, application_id: captured.renderer.application_id, instance_id: captured.renderer.instance_id, package_ref: captured.renderer.package_ref, environment_revision: captured.environment.revision, environment_definition_digest: captured.environment.definition_digest, generation: captured.hostGeneration! }),
-      chain: Promise.resolve(),
-      report: (_next: 'loading' | 'ready' | 'error', _heartbeat?: boolean) => {},
+    let cancelled = false
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    const start = () => {
+      if (cancelled) return
+      const reporter: HostReporter = {
+        key: observationKey, active: true, sequence: 0,
+        session: client.createRendererHostSession!(resource.project_id, { host_id: hostId.current, application_id: captured.renderer.application_id, instance_id: captured.renderer.instance_id, package_ref: captured.renderer.package_ref, environment_revision: captured.environment.revision, environment_definition_digest: captured.environment.definition_digest, generation: captured.hostGeneration! }),
+        chain: Promise.resolve(), report: () => {},
+      }
+      reporter.report = (next, heartbeat = false) => {
+        if (!heartbeat && reporter.lastRequested === next) return
+        reporter.lastRequested = next
+        if (reporter.heartbeat) clearTimeout(reporter.heartbeat)
+        reporter.chain = reporter.chain.then(async () => {
+          const session = await reporter.session
+          if (!reporter.active || observation.current !== reporter) return
+          if (reporter.sequence === 0) reporter.sequence = session.next_sequence
+          const sequence = reporter.sequence
+          await client.reportRendererHostObservation!(session.session_id, session.report_token, { sequence, state: next, ...(next === 'error' ? { error_code: 'renderer_unavailable' } : {}) })
+          reporter.sequence = sequence + 1
+          if (!reporter.active || observation.current !== reporter) return
+          if (next !== 'ready' || currentHostStatus.current === 'ready') {
+            setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostState: next, reportedHostError: undefined } : value)
+          }
+          if (next === 'ready') hostRestarts.current = 0
+          if (next === 'ready' && currentHostStatus.current === 'ready' && reporter.lastRequested === 'ready') {
+            reporter.heartbeat = setTimeout(() => {
+              if (currentHostStatus.current === 'ready' && reporter.lastRequested === 'ready') reporter.report('ready', true)
+            }, 10_000)
+          }
+        }).catch(reason => {
+          if (!reporter.active || observation.current !== reporter) return
+          if (reporter.heartbeat) clearTimeout(reporter.heartbeat)
+          setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostState: undefined, reportedHostError: hostObservationErrorText(reason) } : value)
+          const failedSequence = reporter.sequence
+          const failedState = reporter.lastRequested!
+          const reconcile = async (attempt: number) => {
+            if (!reporter.active || observation.current !== reporter || currentHostStatus.current === 'error' || !client.rendererHostObservations) return
+            try {
+              const rows = await client.rendererHostObservations(resource.project_id)
+              const session = await reporter.session
+              const row = rows.items.find(item => item.session_id === session.session_id)
+              if (!row || row.state === 'unknown') {
+                reporter.active = false
+                const canRestart = hostRestarts.current < 1
+                if (canRestart) hostRestarts.current++
+                setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, ...(canRestart ? { hostRestart: (value.hostRestart ?? 0) + 1 } : {}), reportedHostState: undefined, reportedHostError: canRestart ? 'The prior host observation session expired. Restarting the isolated renderer.' : 'The host observation session remains unavailable. Retry by reopening this application.' } : value)
+                return
+              }
+              if (row.sequence >= failedSequence) {
+                reporter.sequence = row.sequence + 1
+                setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostState: failedState, reportedHostError: undefined } : value)
+                if (failedState === 'ready') reporter.heartbeat = setTimeout(() => reporter.report('ready', true), 10_000)
+                return
+              }
+              reporter.chain = Promise.resolve()
+              reporter.lastRequested = undefined
+              reporter.report(failedState, true)
+            } catch {
+              if (attempt < 3 && reporter.active && observation.current === reporter) retryTimer = setTimeout(() => void reconcile(attempt + 1), attempt * 1_000)
+            }
+          }
+          retryTimer = setTimeout(() => void reconcile(1), 1_000)
+        })
+      }
+      observation.current = reporter
+      reporter.report(currentHostStatus.current)
     }
-    reporter.report = (next, heartbeat = false) => {
-      if (!heartbeat && reporter.lastRequested === next) return
-      reporter.lastRequested = next
-      if (reporter.heartbeat) clearTimeout(reporter.heartbeat)
-      reporter.chain = reporter.chain.then(async () => {
-        const session = await reporter.session
-        if (!reporter.active || observation.current !== reporter) return
-        if (reporter.sequence === 0) reporter.sequence = session.next_sequence
-        await client.reportRendererHostObservation!(session.session_id, session.report_token, { sequence: reporter.sequence++, state: next, ...(next === 'error' ? { error_code: 'renderer_unavailable' } : {}) })
-        if (!reporter.active || observation.current !== reporter) return
-        setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostState: next, reportedHostError: undefined } : value)
-        if (next === 'ready') reporter.heartbeat = setTimeout(() => reporter.report('ready', true), 10_000)
-      }).catch(reason => {
-        if (!reporter.active || observation.current !== reporter) return
-        setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostError: errorText(reason) } : value)
-      })
-    }
-    observation.current = reporter
-    reporter.report('loading')
-    return () => { reporter.active = false; if (reporter.heartbeat) clearTimeout(reporter.heartbeat); if (observation.current === reporter) observation.current = undefined }
+    start()
+    return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); const reporter = observation.current; if (reporter?.key === observationKey) { reporter.active = false; if (reporter.heartbeat) clearTimeout(reporter.heartbeat); observation.current = undefined } }
   }, [client, observationKey, resource.project_id])
   useEffect(() => {
     const reporter = observation.current
@@ -239,6 +291,6 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
   const alternatives = state.candidates.filter(candidate => candidate.available.available && !samePackage({ package_id: candidate.package_id, version: candidate.package_version, manifest_digest: candidate.manifest_digest }, state.renderer.package_ref))
   return <>
     <section className="cc-panel"><span className="eyebrow">Application lifecycle</span><h2>{state.renderer.application_id}</h2><p><strong>Selected version {state.renderer.package_ref.version}</strong> · signed package installed and enabled.</p><p>Core confirms the desired configuration. Runtime health from Core is unavailable; the desktop host reports its own isolated process state below.</p>{state.reportedHostState && <p role="status">Host report: {state.reportedHostState}. This client-asserted desktop observation is not semantic verification.</p>}{state.reportedHostError && <p role="alert">Host observation unavailable: {state.reportedHostError}</p>}{state.stateNotice && <p role="status">{state.stateNotice}</p>}{alternatives.length > 0 && <div className="page-actions">{alternatives.map(candidate => <button key={`${candidate.package_id}:${candidate.package_version}`} className="secondary-btn" disabled={state.pending} onClick={() => void replace(candidate)}>Replace with {candidate.title} {candidate.package_version}</button>)}</div>}{state.hostStatus === 'error' && state.previous && <div role="alert"><p>The replacement did not become ready in the desktop host.</p><button className="primary-btn" disabled={state.pending} onClick={() => void rollback()}>Restore previous version</button></div>}{state.error && <p role="alert">{state.error}</p>}<details><summary>Installed application details</summary><p>Environment revision {state.environment.revision} · package <code>{state.renderer.package_ref.package_id}@{state.renderer.package_ref.version}</code></p>{state.candidates.map(candidate => <p key={`${candidate.package_id}:${candidate.package_version}`}><code>{candidate.package_version}</code> · {candidate.enablement?.version === candidate.package_version && candidate.enablement.status === 'enabled' ? 'enabled' : 'installed'} · Core runtime health unavailable</p>)}</details></section>
-    <DesktopApplicationHost client={client} projectId={resource.project_id} manifest={state.renderer} connectionKey={connectionKey} projection={projection} onStatus={observeHostStatus} onState={observeRendererState} initialState={state.initialState} allowStateTransfer={state.allowStateTransfer} />
+    <DesktopApplicationHost client={client} projectId={resource.project_id} manifest={state.renderer} connectionKey={connectionKey} projection={projection} onStatus={observeHostStatus} onState={observeRendererState} initialState={state.initialState} allowStateTransfer={state.allowStateTransfer} restartGeneration={state.hostRestart ?? 0} />
   </>
 }
