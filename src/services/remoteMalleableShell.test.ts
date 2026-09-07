@@ -35,6 +35,8 @@ test('artifact content rejects corruption, unavailable bytes, and oversized bodi
 
 test('chunked artifact content cancels before buffering beyond the bound',async()=>{const original=globalThis.fetch;let cancelled=false,pulls=0;const stream=new ReadableStream<Uint8Array>({pull(controller){pulls++;controller.enqueue(new Uint8Array(140000));if(pulls===3)controller.close()},cancel(){cancelled=true}},{highWaterMark:0});globalThis.fetch=async()=>new Response(stream);try{await assert.rejects(new RemoteMalleableShellClient('https://core.example',()=> 'member').content({project_id:'P1',run_id:'R1',artifact_id:'A1',digest:'0'.repeat(64)}),/artifact_content_too_large/);assert.equal(cancelled,true);assert.equal(pulls,2)}finally{globalThis.fetch=original}})
 
+test('queued missing-length content is cancelled at the first over-limit read',async()=>{const original=globalThis.fetch;let cancelled=false;const stream=new ReadableStream<Uint8Array>({start(controller){for(let index=0;index<10;index++)controller.enqueue(new Uint8Array(100000));controller.close()},cancel(){cancelled=true}});globalThis.fetch=async()=>new Response(stream);try{await assert.rejects(new RemoteMalleableShellClient('https://core.example',()=> 'member').content({project_id:'P1',run_id:'R1',artifact_id:'A1',digest:'0'.repeat(64)}),/artifact_content_too_large/);assert.equal(cancelled,true)}finally{globalThis.fetch=original}})
+
 test('discovers only the run-scoped connector capabilities returned by Core', async () => {
   const originalFetch = globalThis.fetch
   let requested = ''
@@ -75,6 +77,10 @@ test('binds environment preview and apply to both revision and definition digest
     ])
   } finally { globalThis.fetch = originalFetch }
 })
+
+test('personal application presentation uses authenticated project-scoped CAS routes',async()=>{const original=globalThis.fetch;const requests:Array<{url:string;method?:string;body?:unknown}>=[];globalThis.fetch=async(input,init)=>{requests.push({url:String(input),method:init?.method,body:init?.body?JSON.parse(String(init.body)):undefined});return Response.json({revision:1,project_id:'P/1'})};const client=new RemoteMalleableShellClient('https://core.example',()=> 'member','token');const overrides={instances:{'evidence-main':{density:'compact' as const,presentation:'split' as const}}};try{await client.personalEnvironment('P/1');await client.previewPersonalEnvironment('P/1',0,overrides,'Preview mine');await client.applyPersonalEnvironment('P/1',0,overrides,'Save mine',4,'b'.repeat(64));await client.revertPersonalEnvironment('P/1',1,0,'Restore mine');assert.deepEqual(requests.map(({url,method,body})=>({path:new URL(url).pathname,method:method??'GET',body})),[{path:'/api/v2/projects/P%2F1/environment/personal',method:'GET',body:undefined},{path:'/api/v2/projects/P%2F1/environment/personal/changes/preview',method:'POST',body:{expected_revision:0,overrides,reason:'Preview mine'}},{path:'/api/v2/projects/P%2F1/environment/personal/changes',method:'POST',body:{expected_revision:0,overrides,reason:'Save mine',expected_base_environment_revision:4,base_definition_digest:'b'.repeat(64)}},{path:'/api/v2/projects/P%2F1/environment/personal/reverts',method:'POST',body:{expected_revision:1,target_revision:0,reason:'Restore mine'}}])}finally{globalThis.fetch=original}})
+
+test('personal presentation rejects a cross-project response',async()=>{const original=globalThis.fetch;globalThis.fetch=async()=>Response.json({project_id:'another-project'});try{await assert.rejects(new RemoteMalleableShellClient('https://core.example',()=> 'member').personalEnvironment('P1'),/project mismatch/)}finally{globalThis.fetch=original}})
 
 test('surfaces command API failures without local authority fallback', async () => {
   const originalFetch = globalThis.fetch
