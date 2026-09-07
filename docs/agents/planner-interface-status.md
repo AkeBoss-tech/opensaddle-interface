@@ -278,7 +278,7 @@ Validation: standard `npm test` passes 311 workspace tests and 36 feature tests;
 - Verified the real PostgreSQL-backed Core fixture at `127.0.0.1:8904` through the visible Connection settings flow. The member projection rendered one Project, two active Runs, one completed outcome, and the explicit `operation_proposals` capability gap; the outsider projection cleared all protected Project and Run rows.
 - Fixed Operations partial-source handling: an unavailable external-session registry no longer suppresses the independently authorized Command Center Run snapshot. Sessions now show an unavailable count and the source error, while three exact managed Run identities remain inspectable.
 - Verified the owner-only exact Run destination against `GET /api/v2/runs/:id`: the selected evidence view displayed the requested completed Run identity and remained within a 390px viewport (`scrollWidth === innerWidth`). A member can see the broader projection but receives the server's explicit authorization denial for that exact detail.
-- Fresh browser evidence: `docs/agents/evidence/command-center-postgres-8904-desktop-2026-09-07.png`, `docs/agents/evidence/operations-postgres-8904-desktop-2026-09-07.png`, `docs/agents/evidence/operations-exact-run-postgres-8904-mobile-2026-09-07.png`, and `docs/agents/evidence/command-center-postgres-outsider-cleared-2026-09-07.png`. No connection tokens are visible.
+- The initial captures exposed a mixed demo/connected shell defect and were superseded by the clean-shell evidence below.
 
 ### 2026-09-07 — authenticated v2 shell boundary repair
 
