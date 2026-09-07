@@ -9,6 +9,7 @@ export type JourneySnapshot = {
   rosterAvailable?: boolean
   canManage?: boolean
   currentSubject?: string
+  results?: Array<{ runId: string; title: string; verified: boolean }>
 }
 
 export interface JourneyAuthority {
@@ -18,6 +19,7 @@ export interface JourneyAuthority {
   acceptInvitation?(projectId: string, id: string, revision: number): Promise<unknown>
   revokeInvitation?(projectId: string, id: string, revision: number): Promise<unknown>
   review?(projectId: string, runId: string): Promise<{ runId: string; status: string; workerId: string; resource: { artifact_id: string; digest: string }; text: string }>
+  createProject?(projectId: string): Promise<unknown>
 }
 
 type State = { authority: JourneyAuthority; projectId: string; value?: JourneySnapshot; error?: string }
@@ -28,7 +30,6 @@ export function ConnectedJourneySurface({ authority, projectId }: { authority: J
   const [state, setState] = useState<State>({ authority, projectId })
   const [subject, setSubject] = useState('')
   const [worker, setWorker] = useState('')
-  const [runId, setRunId] = useState('')
   const [result, setResult] = useState<Awaited<ReturnType<NonNullable<JourneyAuthority['review']>>>>()
 
   const load = async () => {
@@ -80,6 +81,6 @@ export function ConnectedJourneySurface({ authority, projectId }: { authority: J
       {value.canManage && <div className="form-row"><label>Teammate identity<input value={subject} onChange={event => setSubject(event.target.value)} /></label><button className="primary-btn" disabled={!subject.trim()} onClick={() => void act(() => authority.invite(projectId, subject.trim()))}>Invite teammate</button></div>}
     </section>
     {value.rosterAvailable !== false && <><section className="cc-panel"><h2>People</h2>{value.members.map(item => <p key={item.subject}><strong>{item.subject}</strong> · {item.role} · {item.status}</p>)}</section><section className="cc-panel"><h2>Machines</h2>{value.workers.length ? value.workers.map(item => <p key={item.workerId}><strong>{item.workerId}</strong> · {item.runtimeKind.replaceAll('_', ' ')} · {item.status}</p>) : <p>No machine is registered for this Project.</p>}{value.canManage && <><p>Registering a machine creates its Project assignment. The worker still connects separately with its issued credential.</p><div className="form-row"><label>Machine name<input value={worker} onChange={event => setWorker(event.target.value)} /></label><button className="primary-btn" disabled={!worker.trim()} onClick={() => void act(() => authority.enroll(projectId, worker.trim()))}>Register machine</button></div></>}</section></>}
-    {value.rosterAvailable !== false && authority.review && <section className="cc-panel"><h2>Review a machine result</h2><div className="form-row"><label>Run ID<input value={runId} onChange={event => { setRunId(event.target.value); setResult(undefined) }} /></label><button className="primary-btn" disabled={!runId.trim()} onClick={() => void act(async () => setResult(await authority.review!(projectId, runId.trim())))}>Open exact result</button></div>{result && <article><p><strong>{result.status}</strong> on {result.workerId}</p><h3>Result</h3><pre>{result.text}</pre><details><summary>Exact evidence</summary><p><code>{result.runId}/{result.resource.artifact_id}</code></p><p><code>{result.resource.digest}</code></p></details></article>}</section>}
+    {value.rosterAvailable !== false && authority.review && <section className="cc-panel"><h2>Results</h2>{value.results?.length ? value.results.map(item => <article key={item.runId}><h3>{item.title}</h3><p>{item.verified ? 'Verified' : 'Artifact available · facts not independently verified'}</p><button className="primary-btn" onClick={() => void act(async () => setResult(await authority.review!(projectId, item.runId)))}>Review result</button></article>) : <p>No completed machine result is available.</p>}{result && <article><p><strong>{result.status}</strong> on {result.workerId}</p><h3>Result</h3><pre>{result.text}</pre><details><summary>Exact evidence</summary><p><code>{result.runId}/{result.resource.artifact_id}</code></p><p><code>{result.resource.digest}</code></p></details></article>}</section>}
   </main>
 }

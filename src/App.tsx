@@ -310,7 +310,7 @@ function Shell() {
           }}
         />
       )}
-      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Connected workflow"><NavLink to="/home">Home</NavLink><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to="/operations">Operations</NavLink>{services?.localProjects&&<button type="button" onClick={() => setProjectModal(true)}>Add project</button>}<NavLink to="/settings">Settings</NavLink></nav></aside>}
+      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Connected workflow"><NavLink to="/home">Home</NavLink><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to="/operations">Operations</NavLink><NavLink to="/collaboration">People &amp; machines</NavLink>{services?.localProjects&&<button type="button" onClick={() => setProjectModal(true)}>Add project</button>}<NavLink to="/settings">Settings</NavLink></nav></aside>}
       <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         {!settingsFocused && <DemoBanner />}
@@ -326,6 +326,7 @@ function Shell() {
             <Route path="/proposals/review" element={<ProposalReviewPage />} />
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />
+            <Route path="/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
@@ -344,6 +345,7 @@ function Shell() {
             <Route path="/proposals/review" element={<ProposalReviewPage />} />
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />
+            <Route path="/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
