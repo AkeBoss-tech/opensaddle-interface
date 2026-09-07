@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { ApplicationRendererCandidate, ApplicationRendererDescriptor, EnvironmentRevision, ExactArtifactRef, MalleableShellClient } from '../services/contracts'
 import type { ApplicationProjection } from './executableApplication'
 import { DesktopApplicationHost } from './DesktopApplicationHost'
-import { validateApplicationState, validateApplicationStateMigration, validateApplicationStateSchema, type ApplicationState } from './applicationState'
+import { migrateApplicationState, validateApplicationState, validateApplicationStateMigration, validateApplicationStateSchema, type ApplicationState } from './applicationState'
 
 void React
 
@@ -11,10 +11,13 @@ type Ready = {
   environment: EnvironmentRevision
   renderer: ApplicationRendererDescriptor
   candidates: ApplicationRendererCandidate[]
-  previous?: { revision: number; renderer: ApplicationRendererDescriptor; application: NonNullable<EnvironmentRevision['definition']['applications']>[number] }
+  previous?: { revision: number; renderer: ApplicationRendererDescriptor; application: NonNullable<EnvironmentRevision['definition']['applications']>[number]; replacementState?: ApplicationState }
   pending?: boolean
   error?: string
   hostStatus: 'loading' | 'ready' | 'error'
+  hostGeneration?: number
+  reportedHostState?: 'loading' | 'ready' | 'error'
+  reportedHostError?: string
   allowStateTransfer: boolean
   stateNotice?: string
   initialState?: ApplicationState
@@ -24,7 +27,7 @@ const samePackage = (a: { package_id: string; version: string; manifest_digest: 
 const packageKey = (value: { package_id: string; version: string; manifest_digest: string }) => `${value.package_id}\0${value.version}\0${value.manifest_digest}`
 const errorText = (reason: unknown) => reason instanceof Error ? reason.message : String(reason)
 
-function replacementStateContract(current: ApplicationRendererDescriptor, candidate: ApplicationRendererCandidate) {
+function replacementStateContract(current: ApplicationRendererDescriptor, candidate: ApplicationRendererCandidate, state?: ApplicationState) {
   try {
     const currentSchema = validateApplicationStateSchema(current.state_schema)
     const nextSchema = validateApplicationStateSchema(candidate.state_schema)
@@ -32,7 +35,9 @@ function replacementStateContract(current: ApplicationRendererDescriptor, candid
       if (JSON.stringify(currentSchema) !== JSON.stringify(nextSchema)) {
         throw Error('The replacement changes its saved-state schema without a migration.')
       }
-      return { migration: undefined, notice: undefined }
+      const replacementState = state === undefined ? undefined : validateApplicationState(state, nextSchema)
+      if (state !== undefined && !replacementState) throw Error('The current saved state does not satisfy the replacement schema.')
+      return { migration: undefined, notice: undefined, replacementState }
     }
     if (!candidate.state_compatibility?.accepts_from_versions.includes(current.state_schema_version)) {
       throw Error('The replacement does not accept saved state from the selected version.')
@@ -42,9 +47,12 @@ function replacementStateContract(current: ApplicationRendererDescriptor, candid
       .find((value): value is NonNullable<typeof value> => Boolean(value && value.from_version === current.state_schema_version && value.to_version === candidate.state_schema_version))
     if (!migration) throw Error('The replacement does not declare the required saved-state migration.')
     const removed = migration.operations.filter(operation => operation.op === 'drop').map(operation => operation.path)
+    const replacementState = state === undefined ? undefined : migrateApplicationState(state, currentSchema, nextSchema, migration)
+    if (state !== undefined && !replacementState) throw Error('The current saved state cannot be migrated into the replacement schema.')
     return {
       migration,
       notice: removed.length > 0 ? `The signed migration removes saved fields: ${removed.join(', ')}.` : undefined,
+      replacementState,
     }
   } catch (reason) {
     throw Error(`Replacement refused: ${errorText(reason)} The current application and its saved state remain active.`)
@@ -57,6 +65,8 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
   const rendererStates = useRef(new Map<string, ApplicationState>())
   const stateAuthority = useRef('')
   const activeRenderer = useRef<ApplicationRendererDescriptor | undefined>(undefined)
+  const hostId = useRef(`desktop:${crypto.randomUUID()}`)
+  const observation = useRef<{ key: string; active: boolean; sequence: number; lastRequested?: 'loading' | 'ready' | 'error'; heartbeat?: ReturnType<typeof setTimeout>; session: Promise<{ session_id: string; report_token: string; next_sequence: number }>; chain: Promise<void>; report: (state: 'loading' | 'ready' | 'error', heartbeat?: boolean) => void } | undefined>(undefined)
   const [state, setState] = useState<State>({ kind: 'loading' })
 
   const authorityKey = `${connectionKey}\0${resource.project_id}\0${resource.run_id}\0${resource.artifact_id}\0${resource.digest}\0${applicationId}\0${instanceId}`
@@ -82,7 +92,7 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
       const stateContract = previous && selected ? replacementStateContract(previous.renderer, selected) : undefined
       const allowStateTransfer = restoreSnapshot || Boolean(previous && stateContract)
       const stateNotice = stateContract?.notice
-      const initialState = restoreSnapshot ? rendererStates.current.get(packageKey(renderer.package_ref)) : undefined
+      const initialState = restoreSnapshot ? rendererStates.current.get(packageKey(renderer.package_ref)) : previous?.replacementState
       setState({ kind: 'ready', client, environment, renderer, candidates: eligible, previous, hostStatus: 'loading', allowStateTransfer, stateNotice, initialState })
     } catch (reason) {
       if (current === generation.current) setState(value => previous && value.kind === 'ready'
@@ -92,7 +102,7 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
   }, [applicationId, client, instanceId, resource.project_id])
 
   useEffect(() => { busy.current = false; void load(); return () => { generation.current++; busy.current = false } }, [load])
-  const observeHostStatus = useCallback((hostStatus: 'loading' | 'ready' | 'error') => setState(value => value.kind === 'ready' && value.hostStatus !== hostStatus ? { ...value, hostStatus } : value), [])
+  const observeHostStatus = useCallback((hostStatus: 'loading' | 'ready' | 'error', hostGeneration: number) => setState(value => value.kind === 'ready' && (value.hostStatus !== hostStatus || value.hostGeneration !== hostGeneration) ? { ...value, hostStatus, hostGeneration } : value), [])
   if (state.kind === 'ready') activeRenderer.current = state.renderer
   else activeRenderer.current = undefined
   const observeRendererState = useCallback((value: ApplicationState) => {
@@ -101,6 +111,50 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
     const valid = validateApplicationState(value, renderer.state_schema)
     if (valid) rendererStates.current.set(packageKey(renderer.package_ref), valid)
   }, [])
+
+  const observationKey = state.kind === 'ready' && state.hostGeneration
+    ? `${authorityKey}\0${state.renderer.package_ref.package_id}\0${state.renderer.package_ref.version}\0${state.renderer.package_ref.manifest_digest}\0${state.environment.revision}\0${state.environment.definition_digest}\0${state.hostGeneration}`
+    : ''
+  useEffect(() => {
+    if (!observationKey || state.kind !== 'ready' || !client.createRendererHostSession || !client.reportRendererHostObservation) return
+    const captured = state
+    const reporter = {
+      key: observationKey,
+      active: true,
+      sequence: 0,
+      lastRequested: undefined as 'loading' | 'ready' | 'error' | undefined,
+      heartbeat: undefined as ReturnType<typeof setTimeout> | undefined,
+      session: client.createRendererHostSession(resource.project_id, { host_id: hostId.current, application_id: captured.renderer.application_id, instance_id: captured.renderer.instance_id, package_ref: captured.renderer.package_ref, environment_revision: captured.environment.revision, environment_definition_digest: captured.environment.definition_digest, generation: captured.hostGeneration! }),
+      chain: Promise.resolve(),
+      report: (_next: 'loading' | 'ready' | 'error', _heartbeat?: boolean) => {},
+    }
+    reporter.report = (next, heartbeat = false) => {
+      if (!heartbeat && reporter.lastRequested === next) return
+      reporter.lastRequested = next
+      if (reporter.heartbeat) clearTimeout(reporter.heartbeat)
+      reporter.chain = reporter.chain.then(async () => {
+        const session = await reporter.session
+        if (!reporter.active || observation.current !== reporter) return
+        if (reporter.sequence === 0) reporter.sequence = session.next_sequence
+        await client.reportRendererHostObservation!(session.session_id, session.report_token, { sequence: reporter.sequence++, state: next, ...(next === 'error' ? { error_code: 'renderer_unavailable' } : {}) })
+        if (!reporter.active || observation.current !== reporter) return
+        setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostState: next, reportedHostError: undefined } : value)
+        if (next === 'ready') reporter.heartbeat = setTimeout(() => reporter.report('ready', true), 10_000)
+      }).catch(reason => {
+        if (!reporter.active || observation.current !== reporter) return
+        setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostError: errorText(reason) } : value)
+      })
+    }
+    observation.current = reporter
+    reporter.report('loading')
+    return () => { reporter.active = false; if (reporter.heartbeat) clearTimeout(reporter.heartbeat); if (observation.current === reporter) observation.current = undefined }
+  }, [client, observationKey, resource.project_id])
+  useEffect(() => {
+    const reporter = observation.current
+    if (!reporter || reporter.key !== observationKey || state.kind !== 'ready') return
+    reporter.report(state.hostStatus)
+    if (state.hostStatus !== 'ready' && reporter.heartbeat) clearTimeout(reporter.heartbeat)
+  }, [observationKey, state.kind === 'ready' ? state.hostStatus : 'loading'])
 
   const definitionFor = (environment: EnvironmentRevision, candidate: ApplicationRendererCandidate, application = candidate.environment_application!) => ({
     ...environment.definition,
@@ -113,13 +167,15 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
     const current = generation.current
     const application = state.environment.definition.applications?.find(value => value.application_id === applicationId)
     if (!application) return
+    let replacementState: ApplicationState | undefined
     try {
-      replacementStateContract(state.renderer, candidate)
+      const sourceState = rendererStates.current.get(packageKey(state.renderer.package_ref))
+      replacementState = replacementStateContract(state.renderer, candidate, sourceState).replacementState
     } catch (reason) {
       setState(value => value.kind === 'ready' ? { ...value, error: errorText(reason) } : value)
       return
     }
-    const previous = { revision: state.environment.revision, renderer: state.renderer, application }
+    const previous = { revision: state.environment.revision, renderer: state.renderer, application, replacementState }
     busy.current = true
     setState(value => value.kind === 'ready' ? { ...value, previous, pending: true, error: undefined } : value)
     try {
@@ -182,7 +238,7 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
   if (state.client !== client) return <section className="cc-panel" aria-busy="true"><p>Reauthorizing the desktop application…</p></section>
   const alternatives = state.candidates.filter(candidate => candidate.available.available && !samePackage({ package_id: candidate.package_id, version: candidate.package_version, manifest_digest: candidate.manifest_digest }, state.renderer.package_ref))
   return <>
-    <section className="cc-panel"><span className="eyebrow">Application lifecycle</span><h2>{state.renderer.application_id}</h2><p><strong>Selected version {state.renderer.package_ref.version}</strong> · signed package installed and enabled.</p><p>Core confirms the desired configuration. Runtime health from Core is unavailable; the desktop host reports its own isolated process state below.</p>{state.stateNotice && <p role="status">{state.stateNotice}</p>}{alternatives.length > 0 && <div className="page-actions">{alternatives.map(candidate => <button key={`${candidate.package_id}:${candidate.package_version}`} className="secondary-btn" disabled={state.pending} onClick={() => void replace(candidate)}>Replace with {candidate.title} {candidate.package_version}</button>)}</div>}{state.hostStatus === 'error' && state.previous && <div role="alert"><p>The replacement did not become ready in the desktop host.</p><button className="primary-btn" disabled={state.pending} onClick={() => void rollback()}>Restore previous version</button></div>}{state.error && <p role="alert">{state.error}</p>}<details><summary>Installed application details</summary><p>Environment revision {state.environment.revision} · package <code>{state.renderer.package_ref.package_id}@{state.renderer.package_ref.version}</code></p>{state.candidates.map(candidate => <p key={`${candidate.package_id}:${candidate.package_version}`}><code>{candidate.package_version}</code> · {candidate.enablement?.version === candidate.package_version && candidate.enablement.status === 'enabled' ? 'enabled' : 'installed'} · Core runtime health unavailable</p>)}</details></section>
+    <section className="cc-panel"><span className="eyebrow">Application lifecycle</span><h2>{state.renderer.application_id}</h2><p><strong>Selected version {state.renderer.package_ref.version}</strong> · signed package installed and enabled.</p><p>Core confirms the desired configuration. Runtime health from Core is unavailable; the desktop host reports its own isolated process state below.</p>{state.reportedHostState && <p role="status">Host report: {state.reportedHostState}. This client-asserted desktop observation is not semantic verification.</p>}{state.reportedHostError && <p role="alert">Host observation unavailable: {state.reportedHostError}</p>}{state.stateNotice && <p role="status">{state.stateNotice}</p>}{alternatives.length > 0 && <div className="page-actions">{alternatives.map(candidate => <button key={`${candidate.package_id}:${candidate.package_version}`} className="secondary-btn" disabled={state.pending} onClick={() => void replace(candidate)}>Replace with {candidate.title} {candidate.package_version}</button>)}</div>}{state.hostStatus === 'error' && state.previous && <div role="alert"><p>The replacement did not become ready in the desktop host.</p><button className="primary-btn" disabled={state.pending} onClick={() => void rollback()}>Restore previous version</button></div>}{state.error && <p role="alert">{state.error}</p>}<details><summary>Installed application details</summary><p>Environment revision {state.environment.revision} · package <code>{state.renderer.package_ref.package_id}@{state.renderer.package_ref.version}</code></p>{state.candidates.map(candidate => <p key={`${candidate.package_id}:${candidate.package_version}`}><code>{candidate.package_version}</code> · {candidate.enablement?.version === candidate.package_version && candidate.enablement.status === 'enabled' ? 'enabled' : 'installed'} · Core runtime health unavailable</p>)}</details></section>
     <DesktopApplicationHost client={client} projectId={resource.project_id} manifest={state.renderer} connectionKey={connectionKey} projection={projection} onStatus={observeHostStatus} onState={observeRendererState} initialState={state.initialState} allowStateTransfer={state.allowStateTransfer} />
   </>
 }

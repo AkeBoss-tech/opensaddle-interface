@@ -103,3 +103,33 @@ test('application renderer transport preserves exact authenticated package autho
   globalThis.fetch=async(input)=>{requests.push(String(input));if(String(input).includes('/content?'))return new Response('<p>renderer</p>',{headers:{'Content-Type':'text/html; profile=opensaddle-renderer-fragment.v1; charset=utf-8'}});return Response.json({project_id:'P/1',renderers:[{application_id:'review-evidence',instance_id:'review-main',entry_file:'renderer.html',content_digest:'b'.repeat(64),size:15,media_type:'text/html; profile=opensaddle-renderer-fragment.v1; charset=utf-8',package_ref:{package_id:'package/id',version:'1.0.0',manifest_digest:'a'.repeat(64)},input_schema:{},output_schema:{},state_schema_version:1,sandbox_policy:{scripts:true,network:false,same_origin:false,navigation:false},authority:'core'}]})}
   try{const client=new RemoteMalleableShellClient('https://core.example',()=> 'member','token');const[renderer]=await client.applicationRenderers('P/1');const response=await client.applicationRendererContent('P/1',renderer!);assert.equal(await response.text(),'<p>renderer</p>');const url=new URL(requests[1]!);assert.equal(url.pathname,'/api/v2/projects/P%2F1/application-renderers/review-evidence/content');assert.equal(url.searchParams.get('package_id'),'package/id');assert.equal(url.searchParams.get('manifest_digest'),'a'.repeat(64));assert.equal(url.searchParams.get('content_digest'),'b'.repeat(64))}finally{globalThis.fetch=original}
 })
+
+test('renderer host observations preserve exact package identity and the one-time report token header', async () => {
+  const original = globalThis.fetch
+  const requests: Array<{ path: string; method: string; headers: Headers; body?: unknown }> = []
+  globalThis.fetch = async (input, init) => {
+    requests.push({
+      path: new URL(String(input)).pathname,
+      method: init?.method ?? 'GET',
+      headers: new Headers(init?.headers),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    })
+    if (requests.length === 1) return Response.json({ session_id: 'rhs_1', report_token: 'opaque', expires_at: '2026-09-07T20:00:00Z', next_sequence: 1, host_identity_authority: 'client_asserted' })
+    if (requests.length === 2) return Response.json({ session_id: 'rhs_1', project_id: 'P/1', state: 'ready', sequence: 1 })
+    return Response.json({ schema_version: 'opensaddle.renderer-host-observations.v1', project_id: 'P/1', generated_at: '2026-09-07T19:00:00Z', items: [], authority: 'host_reported', semantic_correctness: 'not_verified' })
+  }
+  const client = new RemoteMalleableShellClient('https://core.example', () => 'member', 'bearer')
+  const packageRef = { package_id: 'pkg/id', version: '2', manifest_digest: 'a'.repeat(64) }
+  try {
+    const session = await client.createRendererHostSession('P/1', { host_id: 'desktop:test', application_id: 'review-evidence', instance_id: 'review-main', package_ref: packageRef, environment_revision: 3, environment_definition_digest: 'b'.repeat(64), generation: 7 })
+    await client.reportRendererHostObservation(session.session_id, session.report_token, { sequence: session.next_sequence, state: 'ready' })
+    await client.rendererHostObservations('P/1')
+    assert.deepEqual(requests.map(value => ({ path: value.path, method: value.method, body: value.body })), [
+      { path: '/api/v2/projects/P%2F1/renderer-host-sessions', method: 'POST', body: { host_id: 'desktop:test', application_id: 'review-evidence', instance_id: 'review-main', package_ref: packageRef, environment_revision: 3, environment_definition_digest: 'b'.repeat(64), generation: 7 } },
+      { path: '/api/v2/renderer-host-sessions/rhs_1/observations', method: 'POST', body: { sequence: 1, state: 'ready' } },
+      { path: '/api/v2/projects/P%2F1/renderer-host-observations', method: 'GET', body: undefined },
+    ])
+    assert.equal(requests[1]?.headers.get('X-OpenSaddle-Renderer-Host-Token'), 'opaque')
+    assert.equal(requests[1]?.headers.get('Authorization'), 'Bearer bearer')
+  } finally { globalThis.fetch = original }
+})
