@@ -1,0 +1,21 @@
+{
+  "run_id": "run_7c86c837ae0d4ce69bfba94602a9a52e",
+  "pre_cancel_statuses": [
+    "running"
+  ],
+  "cancel_http_status": 200,
+  "cancel_response_status": "running",
+  "final_status": "cancelled",
+  "assigned_worker_id": null,
+  "artifacts_after_cancel": 0,
+  "native_dispatch": {
+    "run_id": "run_7c86c837ae0d4ce69bfba94602a9a52e",
+    "attempt": 1,
+    "machine_id": "native-real-codex-worker",
+    "adapter_id": "codex-app-server",
+    "adapter_version": "app-server-v1",
+    "state": "effect_unknown",
+    "result_digest": null,
+    "error_class": "authority_changed_after_dispatch"
+  }
+}

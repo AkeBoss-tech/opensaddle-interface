@@ -1,0 +1,24 @@
+{
+  "run_id": "run_9ac02abb528d47da8be3ad37106155ec",
+  "run_status": "completed",
+  "assigned_worker_id": "native-real-codex-worker",
+  "requester_read_status": 200,
+  "owner_review_status": 200,
+  "owner_seen_run_status": "completed",
+  "artifact_listing_status": 200,
+  "artifact_id": "art_e520f4226bfb4aa59ba9bcc05365b36f",
+  "artifact_digest": "05b239bd7ff499d76bd6eef4a79337eafdfe0ac5f1f59124730c890623da1ff4",
+  "content_status": 200,
+  "content_text": "SADDLE-CERULEAN-7429",
+  "content_sha256": "05b239bd7ff499d76bd6eef4a79337eafdfe0ac5f1f59124730c890623da1ff4",
+  "native_dispatch": {
+    "run_id": "run_9ac02abb528d47da8be3ad37106155ec",
+    "attempt": 1,
+    "machine_id": "native-real-codex-worker",
+    "adapter_id": "codex-app-server",
+    "adapter_version": "app-server-v1",
+    "state": "completed",
+    "result_digest": "05b239bd7ff499d76bd6eef4a79337eafdfe0ac5f1f59124730c890623da1ff4",
+    "error_class": null
+  }
+}
