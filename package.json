@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "npm exec --prefix packages/control-plane -- tsx --test test/*.test.ts",
+    "test": "npm run test:workspace && npm run test:features",
+    "test:workspace": "npm exec --prefix packages/control-plane -- tsx --test test/*.test.ts",
+    "test:features": "node --import tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'",
     "build": "tsc -b && vite build",
     "lint": "oxlint src",
     "preview": "vite preview",
@@ -40,8 +42,10 @@
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/react-test-renderer": "^19.1.0",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
+    "react-test-renderer": "^19.2.7",
     "tsx": "^4.23.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"

@@ -152,10 +152,163 @@ export interface ProjectGoal {
 export interface ProjectGoalClient {
   get(projectId: string): Promise<ProjectGoal | null>
   set(projectId: string, input: { objective: string; acceptanceCriteria: string[] }): Promise<ProjectGoal>
+  revise?(projectId: string, input: { expectedRevision: number; objective: string; acceptanceCriteria: string[] }): Promise<ProjectGoal>
   start(projectId: string, input: { harness: string; modelId?: string; reasoningEffort?: string; idempotencyKey: string }): Promise<ProjectGoal>
   pause(projectId: string, revision: number): Promise<ProjectGoal>
   resume(projectId: string, revision: number): Promise<ProjectGoal>
   stop(projectId: string, revision: number): Promise<ProjectGoal>
+}
+
+export interface CommandCenterPriority {
+  projectId: string
+  goalId?: string
+  goalRevision?: number
+  objective: string
+  acceptanceCriteria: string[]
+  status: ProjectGoalStatus | 'unknown'
+  updatedAt?: string
+}
+
+export interface CommandCenterAttentionItem {
+  id: string
+  kind: 'approval' | 'run'
+  projectId: string
+  runId?: string
+  approvalId?: string
+  /** Immutable proposal identity for a governed KRAIL review. */
+  proposalId?: string
+  recordDigest?: string
+  title: string
+  detail: string
+  reason: string
+  requestedAction: string
+  urgency?: string
+  updatedAt?: string
+  availableActions: string[]
+}
+
+export interface CommandCenterRun {
+  runId: string
+  projectId: string
+  task?: string
+  status: string
+  updatedAt?: string
+}
+
+export interface CommandCenterProject {
+  projectId: string
+  status: 'active' | 'blocked' | 'paused' | 'done' | 'unknown'
+  objective?: string
+  nextAction?: string
+  latestActivity?: string
+  updatedAt?: string
+}
+
+export interface CommandCenterOutcome {
+  id: string
+  projectId: string
+  runId?: string
+  title: string
+  summary?: string
+  verified: boolean
+  completedAt: string
+}
+
+export interface CommandCenterSnapshot {
+  generatedAt: string
+  priority: CommandCenterPriority | null
+  priorityStatus: { state: 'available' | 'empty' | 'ambiguous' | 'unavailable'; reason?: string }
+  attentionItems: CommandCenterAttentionItem[]
+  activeRuns: CommandCenterRun[]
+  projects: CommandCenterProject[]
+  outcomes: CommandCenterOutcome[]
+  unavailableSections: Array<'priority' | 'work' | 'recurring_jobs' | 'inbox'>
+}
+
+export interface CommandCenterClient {
+  get(): Promise<CommandCenterSnapshot>
+}
+
+export interface ExternalOperationSession {
+  sessionId: string
+  projectId: string
+  harness: 'codex' | 'claude_code' | 'other'
+  externalSessionId: string
+  transcriptLocator: string
+  workspaceLocator?: string
+  authorityMode: 'source_managed' | 'opensaddle_managed' | 'hybrid'
+  sourceCapabilities: Record<string, boolean>
+  checkpointDigest?: string
+  authorityHash: string
+  linkedRunId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface OperationsSessionClient {
+  sessions(projectId: string): Promise<ExternalOperationSession[]>
+  run(runId: string): Promise<OperationRunDetail>
+}
+
+export interface OperationRunDetail { runId: string; projectId: string; sourceRef: string; task: string; requestedBy: string; status: string; cancellationRequested: boolean; assignedWorkerId?: string; leaseEpoch: number; leaseExpiresAt?: string; createdAt: string; updatedAt: string; policy: Record<string, unknown> }
+
+export interface OperationProposalTarget {
+  issuer: string
+  resourceType: string
+  resourceId: string
+  resourceVersion: string
+  expectedVersion: string
+  digest: string
+  source: { sourceId: string; origin: string; version: string; digest: string }
+}
+
+/** A proposal record is immutable: its ID is the approval precondition. */
+export interface OperationProposal {
+  proposalId: string
+  projectId: string
+  recordDigest: string
+  protectedInputDigest: string
+  registeredActionId: string
+  registeredActionVersion: number
+  actor: string
+  delegationChain: string[]
+  targets: OperationProposalTarget[]
+  declaredEffects: Array<{ effectClass: string; bounds: Record<string, unknown> }>
+  policy: { outcome: string; id: string; version: string; hash: string; reason: string | null }
+  requiredApprovals: Array<{ kind: string; role: string; count: number }>
+  costEstimate: { currency: string; estimatedMicrounits: number; budgetMicrounits: number | null }
+  validationResults: Array<{ code: string; passed: boolean; message: string | null }>
+  blockers: Array<{ code: string; message: string }>
+  expiresAt: string
+  createdAt: string
+}
+
+export interface KrailProposalApproval {
+  approvalId: string
+  proposalId: string
+  approvedBy: string
+  expiresAt: string
+  recordDigest: string
+}
+
+export interface KrailProposalClient {
+  get(proposalId: string): Promise<OperationProposal>
+  approve(proposalId: string, ttlSeconds: number): Promise<KrailProposalApproval>
+}
+export interface Participant { participantId: string; projectId: string; source: string; ownerSubject: string; title: string; commandId: string; commandVersion: number; commandDescriptorDigest: string; lifecycle: 'waiting' | 'paused' | 'retired'; revision: number }
+export interface ParticipantMessage { messageId: string; participantId: string; projectId: string; status: string; runId: string; invocationId?: string; resource: ExactArtifactRef; input: Record<string, unknown> }
+export interface ParticipantClient { create(projectId: string, input: { source: string; title: string; commandId: string }): Promise<Participant>; get(id: string): Promise<Participant>; lifecycle(id: string, revision: number, lifecycle: Participant['lifecycle']): Promise<Participant>; send(id: string, revision: number, resource: ExactArtifactRef, input: Record<string, unknown>, idempotencyKey: string): Promise<ParticipantMessage>; message(id: string): Promise<ParticipantMessage>; messages(id: string): Promise<ParticipantMessage[]> }
+
+export interface ExactArtifactRef { project_id: string; run_id: string; artifact_id: string; digest: string }
+export interface ShellCommandDescriptor { command_id: string; version: number; descriptor_digest: string; title: string; description: string; effect: 'read' | 'write' | 'execute'; required_actions: string[]; available: { available: boolean; reason?: string }; input_schema: Record<string, unknown>; output_schema: Record<string, unknown>; package_ref?: { package_id: string; version: string; manifest_digest: string }; contribution_id?: string; handler_id?: string; handler_version?: number }
+export interface ShellCommandResult { invocation_id: string; project_id: string; command_id: string; version: number; descriptor_digest: string; invoked_by: string; created_at: string; resource: ExactArtifactRef; input: Record<string, unknown>; status: string; result: { summary?: string; artifacts?: Array<Record<string, unknown>>; verified?: boolean }; receipt: { effect: string; resource_digest: string; verified: boolean } }
+export interface RunConnectorCapability { connector: string; protocol_version: string; status: { state: 'available' | 'offline'; reason: string | null }; actions: Array<{ action: string; title: string; description: string; effect: 'read'; input: { required: string[]; properties?: Record<string, unknown> }; result: { type: 'object'; additional_properties: true } }> }
+export interface ConnectorInvocationResult { result: Record<string, unknown>; receipt: { connector: string; action: string; request_digest: string; response_digest: string; credential_lease_id: string } }
+export interface EnvironmentRevision { schema_version: string; project_id: string; revision: number; definition: { commands: Array<{ command_id: string; version: number; descriptor_digest: string }>; bindings: string[]; services: Array<{ id: string; status: string }>; packages?: unknown[] }; definition_digest: string; changed_by: string | null; reason: string | null; parent_revision: number | null; created_at: string | null }
+export interface EnvironmentPreview { schema_version: string; project_id: string; base_revision: number; base_definition_digest: string; proposed_definition_digest: string; diff: Record<'commands' | 'bindings' | 'services', { added: unknown[]; removed: unknown[] }>; requirements: string[]; activatable: boolean; observed_service_health: { available: false; reason: string } }
+export interface MalleableShellClient {
+  commands(projectId?: string): Promise<ShellCommandDescriptor[]>; artifacts(runId: string, projectId: string): Promise<ExactArtifactRef[]>; invoke(descriptor: ShellCommandDescriptor, resource: ExactArtifactRef, input?: Record<string, unknown>): Promise<ShellCommandResult>; invocations(projectId: string): Promise<ShellCommandResult[]>; invocation(invocationId: string): Promise<ShellCommandResult>
+  connectors(runId: string): Promise<RunConnectorCapability[]>; invokeConnector(runId: string, connector: string, action: string, args: Record<string, unknown>): Promise<ConnectorInvocationResult>; environment(projectId: string): Promise<EnvironmentRevision>; preview(projectId: string, expectedRevision: number, definition: EnvironmentRevision['definition'], reason: string, baseDefinitionDigest: string): Promise<EnvironmentPreview>; apply(projectId: string, expectedRevision: number, definition: EnvironmentRevision['definition'], reason: string, baseDefinitionDigest: string): Promise<EnvironmentRevision>; revert(projectId: string, expectedRevision: number, targetRevision: number, reason: string): Promise<EnvironmentRevision>
 }
 
 export interface ProjectExtensionEnablement {

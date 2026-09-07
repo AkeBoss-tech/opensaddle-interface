@@ -27,6 +27,11 @@ import { NativeBrowserPane } from './components/layout/NativeBrowserPane'
 import { ThreadFirstSidebar } from './features/shell/ThreadFirstSidebar'
 import { WorkspaceStatusBar } from './features/shell/WorkspaceStatusBar'
 import { WorkPage } from './features/work/WorkPage'
+import { CommandCenterPage } from './features/command-center/CommandCenterPage'
+import { ReviewWorkspacePage } from './features/shell/ReviewWorkspacePage'
+import { ProposalReviewPage } from './features/proposals/ProposalReviewPage'
+import { ParticipantReviewPage } from './features/participants/ParticipantReviewPage'
+import { OperationsPage } from './features/operations/OperationsPage'
 import { PerspectivesPage } from './features/perspectives/PerspectivesPage'
 import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
@@ -73,6 +78,28 @@ function Shell() {
   const settingsFocused = loc.pathname === '/settings'
   const globalStart = loc.pathname === '/start'
   const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
+
+  const openArtifactReview = useCallback(async () => {
+    if (loc.pathname === '/review' && loc.search) {
+      nav(`/review${loc.search}`)
+      return
+    }
+    if (!services?.commandCenter) {
+      nav('/review')
+      return
+    }
+    try {
+      const snapshot = await services.commandCenter.get()
+      const outcome = snapshot.outcomes.find((item) => item.runId)
+      if (!outcome?.runId) {
+        nav('/review')
+        return
+      }
+      nav(`/review?${new URLSearchParams({ run: outcome.runId, project: outcome.projectId })}`)
+    } catch (reason) {
+      toast('Review command unavailable', reason instanceof Error ? reason.message : String(reason))
+    }
+  }, [loc.pathname, loc.search, nav, services?.commandCenter, toast])
 
   useEffect(() => {
     let cancelled = false
@@ -133,10 +160,23 @@ function Shell() {
     return () => window.removeEventListener('opensaddle:add-project', open)
   }, [])
 
+  useEffect(() => {
+    const openReview = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'r') {
+        event.preventDefault()
+        void openArtifactReview()
+      }
+    }
+    window.addEventListener('keydown', openReview)
+    return () => window.removeEventListener('keydown', openReview)
+  }, [openArtifactReview])
+
   const crumbs = useMemo(() => {
     const parts = loc.pathname.split('/').filter(Boolean)
     const routeLabels: Record<string, string> = {
       work: 'Work',
+      home: 'Command Center',
+      review: 'Review workspace',
       perspectives: 'Perspectives',
       start: 'Start',
       runs: 'Runs',
@@ -203,12 +243,16 @@ function Shell() {
   const items: PaletteItem[] = useMemo(() => connectedLocal ? [
     { id: 'cproj', group: 'Create', label: 'Add local project', description: 'Register a local Git project', icon: 'folder', run: () => setProjectModal(true) },
     { id: 'start', group: 'Navigate', label: 'Start', description: 'Open registered projects', icon: 'spark', run: () => nav('/start') },
+    { id: 'home', group: 'Navigate', label: 'Command Center', description: 'Priorities and attention', icon: 'layout', run: () => nav('/home') },
+    { id: 'review', group: 'Commands', label: 'Review selected artifact', description: 'Open the shared artifact review application', icon: 'review', run: () => void openArtifactReview() },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Governed onboarding runs', icon: 'clock', run: () => nav('/work') },
     { id: 'set', group: 'Navigate', label: 'Settings', description: 'Connection status', icon: 'settings', run: () => nav('/settings') },
     ...data.projects.filter((project) => project.workspaceKind === 'local').map((project) => ({ id: project.id, group: 'Projects', label: project.name, description: project.local?.rootPath ?? 'Local project', icon: 'folder', run: () => nav(`/project/${project.id}`) })),
   ] : [
     { id: 'new', group: 'Create', label: 'New task', description: 'Start work in the current project', keywords: ['thread', 'chat'], icon: 'plus', run: () => { const c = createChat(data.activeProjectId, 'New task'); nav(`/chat/${c.id}`) } },
     { id: 'cproj', group: 'Create', label: 'Create project', description: 'Add a local folder or cloud workspace', keywords: ['workspace', 'folder'], icon: 'folder', run: () => setProjectModal(true) },
+    { id: 'home', group: 'Navigate', label: 'Command Center', description: 'Priorities, human attention, active work, and outcomes', icon: 'layout', run: () => nav('/home') },
+    { id: 'review', group: 'Commands', label: 'Review selected artifact', description: 'Open the shared artifact review application', icon: 'review', run: () => void openArtifactReview() },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Approvals, active runs, and recent outcomes', icon: 'clock', run: () => nav('/work') },
     { id: 'perspectives', group: 'Navigate', label: 'Workspace perspectives', description: 'Switch project-aware operational views', icon: 'layout', run: () => nav('/perspectives') },
     { id: 'wiki', group: 'Navigate', label: 'Team wiki', description: 'Browse shared project knowledge', icon: 'review', run: () => nav('/wiki') },
@@ -238,7 +282,7 @@ function Shell() {
     })),
     { id: 'theme', group: 'Preferences', label: 'Toggle theme', description: 'Switch the current appearance', icon: 'sun', run: cycleTheme },
     { id: 'reset', group: 'Danger zone', label: 'Reset demo data', description: 'Remove local demonstration state', keywords: ['clear'], icon: 'refresh', tone: 'danger', run: () => { if (confirm('Reset demo data?')) resetData() } },
-  ], [connectedLocal, createChat, data.activeProjectId, data.chats, data.projects, nav, setActiveProject, cycleTheme, resetData])
+  ], [connectedLocal, createChat, data.activeProjectId, data.chats, data.projects, nav, setActiveProject, cycleTheme, resetData, openArtifactReview])
 
   if (loc.pathname.startsWith('/published/')) {
     return <Routes><Route path="/published/:slug" element={<PublishedSitePage />} /></Routes>
@@ -262,7 +306,7 @@ function Shell() {
           }}
         />
       )}
-      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Local workflow"><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><button type="button" onClick={() => setProjectModal(true)}>Add project</button><NavLink to="/settings">Settings</NavLink></nav></aside>}
+      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Local workflow"><NavLink to="/home">Home</NavLink><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to={`/operations?project=${encodeURIComponent(data.activeProjectId)}`}>Operations</NavLink><button type="button" onClick={() => setProjectModal(true)}>Add project</button><NavLink to="/settings">Settings</NavLink></nav></aside>}
       <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         {!settingsFocused && <DemoBanner />}
@@ -270,7 +314,13 @@ function Shell() {
         <div className="page-wrap">
           <SurfaceErrorBoundary key={loc.pathname} onRetry={() => nav(0)}>
           {connectedLocal ? <Routes>
-            <Route path="/" element={<Navigate to="/start" replace />} />
+            <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/home" element={<CommandCenterPage />} />
+            <Route path="/review" element={<ReviewWorkspacePage />} />
+            <Route path="/proposals/review" element={<ProposalReviewPage />} />
+            <Route path="/participants/review" element={<ParticipantReviewPage />} />
+            <Route path="/operations" element={<OperationsPage />} />
+            <Route path="/runs" element={<RunsPage />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/local" element={<Navigate to="/start" replace />} />
@@ -279,7 +329,12 @@ function Shell() {
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
             <Route path="*" element={<Navigate to="/start" replace />} />
           </Routes> : <Routes>
-            <Route path="/" element={<Navigate to="/start" replace />} />
+            <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/home" element={<CommandCenterPage />} />
+            <Route path="/review" element={<ReviewWorkspacePage />} />
+            <Route path="/proposals/review" element={<ProposalReviewPage />} />
+            <Route path="/participants/review" element={<ParticipantReviewPage />} />
+            <Route path="/operations" element={<OperationsPage />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/perspectives" element={<PerspectivesPage />} />

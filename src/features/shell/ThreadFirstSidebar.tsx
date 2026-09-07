@@ -448,6 +448,16 @@ export function ThreadFirstSidebar({
 
             <nav className="tf-team-nav" aria-label={`${activeTeam.name} navigation`}>
               <NavLink
+                to="/home"
+                className={({ isActive }) => isActive ? 'active' : ''}
+                onClick={() => {
+                  setActiveProject(activeTeam.id)
+                  closeMobileNavigation()
+                }}
+              >
+                <Icon name="layout" className="icon sm" /><span>Home</span>
+              </NavLink>
+              <NavLink
                 to="/work"
                 className={({ isActive }) => isActive ? 'active' : ''}
                 onClick={() => {

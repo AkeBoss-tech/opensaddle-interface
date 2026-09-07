@@ -318,14 +318,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (checking) return
       checking = true
       try {
-        const response = await fetch(`${connection.baseUrl.replace(/\/$/, '')}/api/health`, {
-          headers: connection.token ? { Authorization: `Bearer ${connection.token}` } : undefined,
+        const headers = {
+          'X-OpenSaddle-User': dataRef.current.currentUserId,
+          ...(connection.token ? { Authorization: `Bearer ${connection.token}` } : {}),
+        }
+        const legacyRecovery = services.controlPlane.runRecovery.available
+        const response = legacyRecovery ? await fetch(`${connection.baseUrl.replace(/\/$/, '')}/api/health`, {
+          headers,
           signal: AbortSignal.timeout(1_200),
-        })
-        const connected = response.ok
-        const health = connected
+        }) : null
+        let connected = response?.ok ?? false
+        const health = response?.ok
           ? await response.json() as { contracts?: { project_onboarding?: unknown } }
           : null
+        if (!connected) {
+          const capabilities = await fetch(`${connection.baseUrl.replace(/\/$/, '')}/api/v2/capabilities`, {
+            headers,
+            signal: AbortSignal.timeout(1_200),
+          })
+          connected = capabilities.ok
+        }
         const projectOnboardingContract = typeof health?.contracts?.project_onboarding === 'string'
           ? health.contracts.project_onboarding
           : undefined
@@ -690,11 +702,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     connectToServer: async (profile) => {
       const baseUrl = profile.baseUrl.trim().replace(/\/$/, '')
       if (!/^https?:\/\//i.test(baseUrl)) throw new Error('Server URL must start with http:// or https://')
-      const response = await fetch(`${baseUrl}/api/health`, {
-        headers: profile.token ? { Authorization: `Bearer ${profile.token}` } : undefined,
-        signal: AbortSignal.timeout(3000),
-      })
-      if (!response.ok) throw new Error(`OpenSaddle server returned HTTP ${response.status}`)
+      const headers = {
+        'X-OpenSaddle-User': dataRef.current.currentUserId,
+        ...(profile.token ? { Authorization: `Bearer ${profile.token}` } : {}),
+      }
+      const health = await fetch(`${baseUrl}/api/health`, { headers, signal: AbortSignal.timeout(3000) })
+      if (!health.ok) {
+        const capabilities = await fetch(`${baseUrl}/api/v2/capabilities`, { headers, signal: AbortSignal.timeout(3000) })
+        if (!capabilities.ok) throw new Error(`OpenSaddle server returned HTTP ${capabilities.status}`)
+      }
       setPersistenceStatus('loading')
       workspaceHydratedRef.current = false
       durableHydratedServiceRef.current = null

@@ -14,7 +14,12 @@ interface GoalWire {
   evidence: Array<Record<string, unknown>>
   created_at: string
   updated_at: string
-  available_actions: ProjectGoal['availableActions']
+  available_actions?: ProjectGoal['availableActions']
+}
+
+export class GoalRevisionConflictError extends Error {
+  readonly currentRevision?: number
+  constructor(currentRevision?: number) { super('This objective changed on the server. Your draft has been kept.'); this.currentRevision = currentRevision }
 }
 
 function project(value: GoalWire): ProjectGoal {
@@ -32,7 +37,7 @@ function project(value: GoalWire): ProjectGoal {
     evidence: value.evidence,
     createdAt: value.created_at,
     updatedAt: value.updated_at,
-    availableActions: value.available_actions,
+    availableActions: value.available_actions ?? { start: false, pause: false, resume: false, stop: false },
   }
 }
 
@@ -40,20 +45,23 @@ export class RemoteProjectGoalClient implements ProjectGoalClient {
   private readonly baseUrl: string
   private readonly getUserId: () => string
   private readonly token?: string
+  private readonly v2: boolean
 
   constructor(
     baseUrl: string,
     getUserId: () => string,
     token?: string,
+    v2 = false,
   ) {
     this.baseUrl = baseUrl
     this.getUserId = getUserId
     this.token = token
+    this.v2 = v2
   }
 
   private path(projectId: string, action = '') {
     const suffix = action ? `/${action}` : ''
-    return `${this.baseUrl.replace(/\/$/, '')}/api/projects/${encodeURIComponent(projectId)}/goal${suffix}`
+    return `${this.baseUrl.replace(/\/$/, '')}/${this.v2 ? 'api/v2' : 'api'}/projects/${encodeURIComponent(projectId)}/goal${suffix}`
   }
 
   private async request(projectId: string, action = '', init?: RequestInit): Promise<ProjectGoal> {
@@ -67,8 +75,12 @@ export class RemoteProjectGoalClient implements ProjectGoalClient {
     })
     if (response.status === 404 && !init) throw new Error('PROJECT_GOAL_NOT_FOUND')
     if (!response.ok) {
-      const body = await response.json().catch(() => null) as { detail?: string } | null
-      throw new Error(body?.detail ?? `OpenSaddle HTTP ${response.status}`)
+      const body = await response.json().catch(() => null) as { detail?: string | { message?: string; current_revision?: number }; current_revision?: number } | null
+      if (response.status === 409 && this.v2) {
+        const detail = body?.detail
+        throw new GoalRevisionConflictError(body?.current_revision ?? (typeof detail === 'object' ? detail.current_revision : undefined))
+      }
+      throw new Error(typeof body?.detail === 'string' ? body.detail : body?.detail?.message ?? `OpenSaddle HTTP ${response.status}`)
     }
     return project(await response.json() as GoalWire)
   }
@@ -82,8 +94,15 @@ export class RemoteProjectGoalClient implements ProjectGoalClient {
 
   set(projectId: string, input: { objective: string; acceptanceCriteria: string[] }) {
     return this.request(projectId, '', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      method: this.v2 ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ objective: input.objective, acceptance_criteria: input.acceptanceCriteria }),
+    })
+  }
+
+  revise(projectId: string, input: { expectedRevision: number; objective: string; acceptanceCriteria: string[] }) {
+    return this.request(projectId, '', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expected_revision: input.expectedRevision, objective: input.objective, acceptance_criteria: input.acceptanceCriteria }),
     })
   }
 

@@ -161,6 +161,7 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   } = useStore()
   const [runs, setRuns] = useState<Record<string, ManagedRun>>({})
   const controller = useRef(new OperationController())
+  const reportedUnsupportedRecovery = useRef('')
   const dataRef = useRef(data)
   const recoveringRuns = useRef(new Set<string>())
   const validatedStoredRuns = useRef(new Set<string>())
@@ -303,6 +304,15 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   // into a new task, then replay the full event snapshot into conversation UI.
   useEffect(() => {
     const runtime = services?.runtime
+    const recovery = services?.controlPlane.runRecovery
+    if (recovery && !recovery.available) {
+      const identity = `${connection.id}:${connection.baseUrl}`
+      if (recovery.reason && reportedUnsupportedRecovery.current !== identity) {
+        reportedUnsupportedRecovery.current = identity
+        toast('Task recovery unavailable', recovery.reason)
+      }
+      return
+    }
     if (
       !runtime?.listRuns
       || !threadHistoryHydrated
@@ -462,7 +472,7 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(kickoff)
       window.clearInterval(timer)
     }
-  }, [appendMessage, createChat, services, threadHistoryHydrated, toast, track, updateMessage])
+  }, [appendMessage, connection.baseUrl, connection.id, createChat, services, threadHistoryHydrated, toast, track, updateMessage])
 
   const stop = useCallback(async (runId: string) => {
     await services?.runtime.cancel(runId)

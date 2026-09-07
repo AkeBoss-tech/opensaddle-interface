@@ -1,5 +1,5 @@
 import { detectRuntimeMode, type RuntimeMode } from './capabilities'
-import type { AutonomyPolicySummary, DelegationPolicySummary, ExtensionCatalogClient, FileStore, LocalProjectClient, PermissionClient, ProjectGoalClient, ProjectIntelligenceClient, RuntimeClient, SandboxClient, ThreadClient, ToolClient, WorkflowClient, WorkspaceClient } from './contracts'
+import type { AutonomyPolicySummary, CommandCenterClient, DelegationPolicySummary, ExtensionCatalogClient, FileStore, KrailProposalClient, LocalProjectClient, MalleableShellClient, OperationsSessionClient, ParticipantClient, PermissionClient, ProjectGoalClient, ProjectIntelligenceClient, RuntimeClient, SandboxClient, ThreadClient, ToolClient, WorkflowClient, WorkspaceClient } from './contracts'
 import { createFileStore } from './fileStore'
 import { MockRuntimeClient } from './mockRuntime'
 import { OpenSaddleRuntimeClient } from './opensaddleClient'
@@ -18,6 +18,12 @@ import { BrowserAgentRuntime } from './browserAgentRuntime'
 import { RemoteProjectGoalClient } from './remoteProjectGoals'
 import { RemoteExtensionCatalogClient } from './remoteExtensions'
 import { RemoteProjectIntelligenceClient } from './remoteProjectIntelligence'
+import { RemoteCommandCenterClient } from './remoteCommandCenter'
+import { RemoteMalleableShellClient } from './remoteMalleableShell'
+import { RemoteKrailProposalClient } from './remoteKrailProposals'
+import { RemoteParticipantClient } from './remoteParticipants'
+import { RemoteOperationsSessionClient } from './remoteOperations'
+import { negotiateRunRecovery, type RunRecoverySupport } from './recoverySupport'
 import type { PermissionGrant } from './contracts'
 
 export interface ServiceBundle {
@@ -35,6 +41,11 @@ export interface ServiceBundle {
   projectGoals?: ProjectGoalClient
   extensions?: ExtensionCatalogClient
   projectIntelligence?: ProjectIntelligenceClient
+  commandCenter?: CommandCenterClient
+  krailProposals?: KrailProposalClient
+  participants?: ParticipantClient
+  operationsSessions?: OperationsSessionClient
+  malleableShell?: MalleableShellClient
   controlPlane: {
     connected: boolean
     mode?: 'local' | 'company'
@@ -45,6 +56,7 @@ export interface ServiceBundle {
     contracts?: Record<string, string>
     delegation?: DelegationPolicySummary
     autonomy?: AutonomyPolicySummary
+    runRecovery: RunRecoverySupport
   }
 }
 
@@ -117,6 +129,11 @@ export function initServices(opts: {
       let storage: string | undefined
       let backendCapabilities = new Set<string>()
       let backendContracts: Record<string, string> = {}
+      let commandCenterAvailable = false
+      let managedKrailAvailable = false
+      let participantsAvailable = false
+      let legacyHealthAvailable = false
+      let v2CapabilitiesAvailable = false
       let delegation: DelegationPolicySummary | undefined
       let autonomy: AutonomyPolicySummary | undefined
       if (connection.mode === 'remote' && mode !== 'mock') {
@@ -126,6 +143,7 @@ export function initServices(opts: {
             signal: AbortSignal.timeout(1200),
           })
           backendAvailable = response.ok
+          legacyHealthAvailable = response.ok
           if (response.ok) {
             const health = await response.json() as {
               mode?: 'local' | 'company'
@@ -202,6 +220,33 @@ export function initServices(opts: {
         } catch {
           backendAvailable = false
         }
+        try {
+          const capabilityResponse = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v2/capabilities`, {
+            headers: {
+              'X-OpenSaddle-User': getUserId(),
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            signal: AbortSignal.timeout(1200),
+          })
+          if (capabilityResponse.ok) {
+            v2CapabilitiesAvailable = true
+            const capabilities = await capabilityResponse.json() as {
+              capability_mode?: 'local' | 'company'
+              command_center?: { available?: boolean; path?: string; schema_version?: string }
+              managed_krail?: boolean
+              participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
+            }
+            backendAvailable = true
+            backendMode = capabilities.capability_mode ?? backendMode
+            commandCenterAvailable = capabilities.command_center?.available === true
+              && capabilities.command_center.path === '/api/v2/command-center'
+              && capabilities.command_center.schema_version === 'opensaddle.command-center.v1'
+            managedKrailAvailable = capabilities.managed_krail === true
+            participantsAvailable = capabilities.participants?.available === true && capabilities.participants.schema_version === 'opensaddle.participant.v1' && capabilities.participants.project_path_template === '/api/v2/projects/{project_id}/participants'
+          }
+        } catch {
+          commandCenterAvailable = false
+        }
       }
       let permissions: PermissionClient
       if (backendAvailable && (backendCapabilities.size === 0 || backendCapabilities.has('permissions'))) {
@@ -246,8 +291,8 @@ export function initServices(opts: {
       const workflows = backendAvailable && backendMode !== 'local' && backendCapabilities.has('workflows')
         ? new RemoteWorkflowClient(baseUrl, getUserId, token)
         : undefined
-      const projectGoals = backendAvailable && backendCapabilities.has('project_self_driving_v1')
-        ? new RemoteProjectGoalClient(baseUrl, getUserId, token)
+      const projectGoals = backendAvailable && (backendCapabilities.has('project_self_driving_v1') || commandCenterAvailable)
+        ? new RemoteProjectGoalClient(baseUrl, getUserId, token, commandCenterAvailable && !backendCapabilities.has('project_self_driving_v1'))
         : undefined
       const extensions = backendAvailable && backendCapabilities.has('extension_packages_v1')
         ? new RemoteExtensionCatalogClient(baseUrl, getUserId, token)
@@ -255,6 +300,17 @@ export function initServices(opts: {
       const projectIntelligence = backendAvailable && backendCapabilities.has('project_intelligence_snapshot_v1')
         ? new RemoteProjectIntelligenceClient(baseUrl, getUserId, token)
         : undefined
+      const commandCenter = backendAvailable && commandCenterAvailable
+        ? new RemoteCommandCenterClient(baseUrl, getUserId, token)
+        : undefined
+      const malleableShell = commandCenter
+        ? new RemoteMalleableShellClient(baseUrl, getUserId, token)
+        : undefined
+      const krailProposals = backendAvailable && managedKrailAvailable
+        ? new RemoteKrailProposalClient(baseUrl, getUserId, token)
+        : undefined
+      const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
+      const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
       const tools = connection.mode === 'remote' && mode !== 'mock'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
         : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
@@ -281,6 +337,11 @@ export function initServices(opts: {
         projectGoals,
         extensions,
         projectIntelligence,
+        commandCenter,
+        krailProposals,
+        participants,
+        operationsSessions,
+        malleableShell,
         controlPlane: {
           connected: backendAvailable,
           mode: backendMode,
@@ -291,6 +352,7 @@ export function initServices(opts: {
           contracts: backendContracts,
           delegation,
           autonomy,
+          runRecovery: negotiateRunRecovery(legacyHealthAvailable, v2CapabilitiesAvailable),
         },
       }
     })()
