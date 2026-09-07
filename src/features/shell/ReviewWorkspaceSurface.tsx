@@ -12,7 +12,7 @@ export interface ReviewApplicationConfig { applicationId: string; commandId: str
 // oxlint-disable-next-line react/only-export-components -- declarative config is part of the registered surface contract.
 export const builtInReviewApplication: ReviewApplicationConfig = { applicationId: 'opensaddle.review.workspace.v1', commandId: 'dev.opensaddle.artifact.review' }
 
-export function ReviewWorkspaceSurface({ client, runId, projectId, invocationId = '', application = builtInReviewApplication }: { client?: MalleableShellClient; runId: string; projectId: string; invocationId?: string; application?: ReviewApplicationConfig }) {
+export function ReviewWorkspaceSurface({ client, runId, projectId, invocationId = '', artifactId = '', artifactDigest = '', application = builtInReviewApplication }: { client?: MalleableShellClient; runId: string; projectId: string; invocationId?: string; artifactId?:string;artifactDigest?:string; application?: ReviewApplicationConfig }) {
   const [descriptor, setDescriptor] = useState<ShellCommandDescriptor>()
   const [descriptors, setDescriptors] = useState<ShellCommandDescriptor[]>([])
   const [artifacts, setArtifacts] = useState<ExactArtifactRef[]>([])
@@ -24,6 +24,7 @@ export function ReviewWorkspaceSurface({ client, runId, projectId, invocationId 
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadedState, setLoadedState] = useState<ReviewWorkspaceLoadedState>()
+  const [loadedRequestKey,setLoadedRequestKey]=useState('')
   const [connectors, setConnectors] = useState<RunConnectorCapability[]>([])
   const [selectedConnectorAction, setSelectedConnectorAction] = useState<{ connector: string; action: string }>()
   const [connectorArguments, setConnectorArguments] = useState<Record<string, unknown>>({})
@@ -42,6 +43,7 @@ export function ReviewWorkspaceSurface({ client, runId, projectId, invocationId 
     let active = true
     if (!client || !runId || !projectId) return
     setLoadedState(undefined)
+    setLoadedRequestKey('')
     setArtifacts([]); setDescriptor(undefined); setResult(undefined); setStaleResult(false)
     setLoading(true)
     setError('')
@@ -60,21 +62,26 @@ export function ReviewWorkspaceSurface({ client, runId, projectId, invocationId 
       if (!active || currentGeneration !== generation.current) return
       const discovered = commands.find((item) => item.command_id === application.commandId) ?? commands[0]
       const hydrated = hydrateReviewWorkspace({ projectId, runId }, refs, requestedInvocation ? [requestedInvocation] : invocations, discovered, application.commandId)
+      const requestKey=`${artifactId}:${artifactDigest}`
+      const explicitArtifact=Boolean(artifactId||artifactDigest)
+      const requested=refs.find(item=>item.artifact_id===artifactId&&(!artifactDigest||item.digest===artifactDigest))
       setDescriptor(discovered)
       setDescriptors(commands)
-      setArtifacts(refs)
-      setSelectedId(hydrated.selectedId)
+      setArtifacts(explicitArtifact&&!requested?[]:refs)
+      setSelectedId(explicitArtifact?(requested?.artifact_id??''):hydrated.selectedId)
       setEnvironment(revision)
-      setResult(hydrated.result)
+      setResult(requested?hydrated.result&&hydrated.result.resource.artifact_id===requested.artifact_id&&hydrated.result.resource.digest===requested.digest?hydrated.result:undefined:explicitArtifact?undefined:hydrated.result)
       setStaleResult(!hydrated.result && (requestedInvocation ? requestedInvocation.command_id === application.commandId : invocations.some((item) => item.command_id === application.commandId)))
       setConnectors(discoveredConnectors)
       setLoadedState(hydrated)
+      setLoadedRequestKey(requestKey)
+      if(explicitArtifact&&!requested)setError('The requested artifact version is missing, changed, or no longer authorized.')
       setLoading(false)
     }).catch((reason) => { if (active) { setError(reason instanceof Error ? reason.message : String(reason)); setLoading(false) } })
     return () => { active = false; generation.current++; invocationSequence.current++; invocationLock.current = false }
-  }, [application.commandId, client, invocationId, projectId, runId])
+  }, [application.commandId, artifactDigest, artifactId, client, invocationId, projectId, runId])
 
-  const identityMatches = Boolean(beginReviewWorkspaceTransition({ projectId, runId }, loadedState))
+  const identityMatches = Boolean(beginReviewWorkspaceTransition({ projectId, runId }, loadedState))&&loadedRequestKey===`${artifactId}:${artifactDigest}`
   const visibleDescriptor = identityMatches ? descriptor : undefined
   const visibleArtifacts = identityMatches ? artifacts : []
   const visibleResult = identityMatches ? result : undefined
@@ -156,6 +163,7 @@ export function ReviewWorkspaceSurface({ client, runId, projectId, invocationId 
       <section className="cc-panel"><span className="eyebrow">Resource inspector</span><h2>Exact artifact</h2><p>Project <code>{projectId}</code><br />Run <code>{runId}</code></p><label className="os-field"><span className="os-field__label">Artifact</span><select disabled={!identityMatches || loading} value={identityMatches ? selectedId : ''} onChange={(event) => { invalidatePendingInvocation(); setSelectedId(event.target.value); setResult((current) => current?.resource.artifact_id === event.target.value ? current : undefined) }}>{visibleArtifacts.map((item) => <option key={item.artifact_id} value={item.artifact_id}>{item.artifact_id} · {item.digest.slice(0, 12)}</option>)}</select></label>{resource && <dl><dt>Digest</dt><dd><code>{resource.digest}</code></dd></dl>}{identityMatches && !visibleArtifacts.length && <p role="status">No artifacts were returned for this Run.</p>}</section>
       <section className="cc-panel"><span className="eyebrow">Command inspector</span>{descriptors.length > 1 && <label className="os-field"><span className="os-field__label">Command</span><select aria-label="Review command" value={visibleDescriptor?.command_id ?? ''} onChange={(event) => { invalidatePendingInvocation(); setDescriptor(descriptors.find((item) => item.command_id === event.target.value)); setResult(undefined) }}>{descriptors.map((item) => <option key={item.command_id} value={item.command_id}>{item.title}</option>)}</select></label>}<h2>{visibleDescriptor?.title ?? 'Artifact review'}</h2>{visibleDescriptor ? <><p>{visibleDescriptor.description}</p><dl><dt>Command</dt><dd><code>{visibleDescriptor.command_id}@{visibleDescriptor.version}</code></dd><dt>Descriptor</dt><dd><code>{visibleDescriptor.descriptor_digest}</code></dd><dt>Effect</dt><dd>{visibleDescriptor.effect}</dd><dt>Authority</dt><dd>{visibleDescriptor.required_actions.join(', ')}</dd></dl>{!visibleDescriptor.available.available && <p role="status">{reviewCommandUnavailableMessage(visibleDescriptor)}</p>}<Button disabled={busy || loading || !resource || !visibleDescriptor.available.available} onClick={() => void invokeSelected()}>{visibleDescriptor.package_ref ? 'Run command' : 'Review artifact'}</Button></> : <p role="status">{loading ? 'Loading command authority…' : reviewCommandUnavailableMessage(undefined)}</p>}</section>
     </div>
+    {resource&&visibleDescriptor&&<section className="cc-panel"><span className="eyebrow">Open with</span><h2>Continue in another application</h2><p>The destination will reauthorize this exact resource and command descriptor. Opening it does not rerun the command.</p><a className="cc-text-link" href={`artifact-evidence?${new URLSearchParams({project:resource.project_id,run:resource.run_id,artifact:resource.artifact_id,digest:resource.digest,command:visibleDescriptor.command_id,version:String(visibleDescriptor.version),descriptor:visibleDescriptor.descriptor_digest,origin:application.applicationId,...(visibleResult?{invocation:visibleResult.invocation_id}:{})})}`}>Open with Artifact evidence notebook</a></section>}
     {visibleResult && <section className="cc-panel" aria-labelledby="review-result"><span className="eyebrow">Result surface</span><h2 id="review-result">{visibleResult.result.summary ?? 'Review completed'}</h2><p><strong>{visibleResult.result.verified ? 'Verified' : 'Not verified'}</strong> · invocation <code>{visibleResult.invocation_id}</code></p><p>Receipt <code>{visibleResult.receipt.resource_digest}</code></p></section>}
     {perspective === 'evidence' && resource && <section className="cc-panel" aria-labelledby="evidence-perspective-title"><span className="eyebrow">Evidence perspective</span><h2 id="evidence-perspective-title">Exact resource lineage</h2><dl><dt>Artifact</dt><dd><code>{resource.artifact_id}</code></dd><dt>Digest</dt><dd><code>{resource.digest}</code></dd><dt>Project / Run</dt><dd><code>{resource.project_id}</code> / <code>{resource.run_id}</code></dd>{visibleResult && <><dt>Durable invocation</dt><dd><code>{visibleResult.invocation_id}</code></dd><dt>Verification</dt><dd>{visibleResult.result.verified ? 'Verified by the command result' : 'Not verified'}</dd></>}</dl></section>}
     {identityMatches && staleResult && <section className="cc-unavailable" role="status"><div><h2>Prior review is stale</h2></div><p>A durable review exists, but it does not match this artifact version, digest, and command descriptor.</p></section>}
@@ -168,4 +176,4 @@ export function ReviewWorkspaceSurface({ client, runId, projectId, invocationId 
   </main>
 }
 
-if (!getSurface('artifact-review')) registerSurface({ id: 'artifact-review', inputs: ['client', 'runId', 'projectId', 'invocationId'], Component: ReviewWorkspaceSurface })
+if (!getSurface('artifact-review')) registerSurface({ id: 'artifact-review', inputs: ['client', 'runId', 'projectId', 'invocationId', 'artifactId', 'artifactDigest'], Component: ReviewWorkspaceSurface })

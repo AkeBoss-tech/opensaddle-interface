@@ -13,7 +13,7 @@ function snapshot(state: CommandCenterSnapshot['priorityStatus']['state'], revis
   return {
     generatedAt: '2026-09-07T05:00:00Z',
     priority: state === 'available' ? { projectId: 'P1', goalId: 'G1', goalRevision: revision, objective: 'Ship the daily loop', acceptanceCriteria: ['Find the real objective', 'Resolve human attention'], status: 'working', updatedAt: '2026-09-07T04:59:00Z' } : null,
-    priorityStatus: { state, reason: state === 'ambiguous' ? 'Two active Goals are authorized; no explicit selection exists.' : state === 'unavailable' ? 'Goal authority is not configured.' : undefined },
+    priorityStatus: { state, reason: state === 'ambiguous' ? 'Two active Goals are authorized; no explicit selection exists.' : state === 'unavailable' ? 'goal_authority_not_configured' : undefined },
     attentionItems: [], activeRuns: [], projects: state === 'ambiguous' ? [{ projectId: 'P1', status: 'active', objective: 'First objective' }, { projectId: 'P2', status: 'active', objective: 'Second objective' }] : state === 'empty' ? [{ projectId: 'P1', status: 'active' }] : [], outcomes: [], unavailableSections: state === 'unavailable' ? ['priority'] : [],
   }
 }
@@ -44,5 +44,5 @@ test('mounted objective distinguishes configured empty from unavailable authorit
   assert.match(JSON.stringify(empty.toJSON()), /No active objective is recorded/)
   assert.equal(empty.root.findByType('a').props.href, '/project/P1')
   assert.match(empty.root.findByType('a').children.join(''), /Create objective/)
-  assert.match(JSON.stringify((await mount(snapshot('unavailable'))).toJSON()), /Goal authority is not configured/)
+  const unavailable=JSON.stringify((await mount(snapshot('unavailable'))).toJSON());assert.match(unavailable,/Objective tracking is not configured for this server/);assert.doesNotMatch(unavailable,/goal_authority_not_configured/)
 })

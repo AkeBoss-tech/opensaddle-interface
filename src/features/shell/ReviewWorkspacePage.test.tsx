@@ -48,6 +48,8 @@ test('mounted surface selects the exact artifact belonging to the restored durab
   assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /inv-A/)
 })
 
+test('explicit same-Run artifact handoff fails closed when its digest changes',async()=>{const a=artifact('A');const renderer=await mount(client({artifacts:async()=>[a]}));await act(async()=>{renderer.update(<ReviewWorkspaceSurface client={client({artifacts:async()=>[{...a,digest:'digest-new'}]})} projectId="P1" runId="R1" artifactId="A" artifactDigest="digest-A"/>);await Promise.resolve()});const markup=JSON.stringify(renderer.toJSON());assert.match(markup,/requested artifact version is missing, changed, or no longer authorized/);assert.doesNotMatch(markup,/digest-new|Open with Artifact evidence notebook/);assert.equal(renderer.root.findAllByType('select')[0]?.props.value,'')})
+
 test('same exact artifact and durable result survive switching between two perspectives', async () => {
   const exact = artifact('A')
   const renderer = await mount(client({ artifacts: async () => [exact], invocations: async () => [invocation(exact)] }))

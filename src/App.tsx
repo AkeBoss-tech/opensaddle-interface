@@ -29,6 +29,7 @@ import { WorkspaceStatusBar } from './features/shell/WorkspaceStatusBar'
 import { WorkPage } from './features/work/WorkPage'
 import { CommandCenterPage } from './features/command-center/CommandCenterPage'
 import { ReviewWorkspacePage } from './features/shell/ReviewWorkspacePage'
+import { ArtifactEvidencePage } from './features/shell/ArtifactEvidenceApplication'
 import { ProposalReviewPage } from './features/proposals/ProposalReviewPage'
 import { ParticipantReviewPage } from './features/participants/ParticipantReviewPage'
 import { OperationsPage } from './features/operations/OperationsPage'
@@ -318,6 +319,7 @@ function Shell() {
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/home" element={<CommandCenterPage />} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
+            <Route path="/artifact-evidence" element={<ArtifactEvidencePage />} />
             <Route path="/proposals/review" element={<ProposalReviewPage />} />
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />
@@ -333,6 +335,7 @@ function Shell() {
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/home" element={<CommandCenterPage />} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
+            <Route path="/artifact-evidence" element={<ArtifactEvidencePage />} />
             <Route path="/proposals/review" element={<ProposalReviewPage />} />
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />

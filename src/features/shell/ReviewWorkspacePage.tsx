@@ -8,5 +8,5 @@ export function ReviewWorkspacePage() {
   const { services } = useStore()
   const [params] = useSearchParams()
   const projectId = params.get('project') ?? ''
-  return <SurfaceHost surfaceId="artifact-review" projectId={projectId} inputs={{ client: services?.malleableShell, runId: params.get('run') ?? '', projectId, invocationId: params.get('invocation') ?? '' }} />
+  return <SurfaceHost surfaceId="artifact-review" projectId={projectId} inputs={{ client: services?.malleableShell, runId: params.get('run') ?? '', projectId, invocationId: params.get('invocation') ?? '', artifactId:params.get('artifact')??'',artifactDigest:params.get('digest')??'' }} />
 }
