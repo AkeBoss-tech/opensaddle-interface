@@ -20,5 +20,11 @@
     "state": "completed",
     "result_digest": "05b239bd7ff499d76bd6eef4a79337eafdfe0ac5f1f59124730c890623da1ff4",
     "error_class": null
-  }
+  },
+  "owner_artifact_listing_status": 200,
+  "owner_content_status": 200,
+  "owner_content_text": "SADDLE-CERULEAN-7429",
+  "owner_content_sha256": "05b239bd7ff499d76bd6eef4a79337eafdfe0ac5f1f59124730c890623da1ff4",
+  "owner_content_recheck_core_base": "61dc2ef4461500959a39711f42cfb5f0b3c9159c",
+  "owner_content_recheck_source": "Core checkout src/opensaddle/control_plane/api.py; uncommitted source not pinned"
 }

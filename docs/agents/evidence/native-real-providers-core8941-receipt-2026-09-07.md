@@ -17,8 +17,9 @@ The exact synthetic file was `The exact fixture fact is: SADDLE-CERULEAN-7429.`
 - The real provider returned exactly `SADDLE-CERULEAN-7429`.
 - Core reached `completed` and published artifact `art_e520f4226bfb4aa59ba9bcc05365b36f`.
 - Artifact bytes and recorded digest both equal SHA-256 `05b239bd7ff499d76bd6eef4a79337eafdfe0ac5f1f59124730c890623da1ff4`.
-- The requesting member and a second authorized owner each read the completed Run through public Core APIs with HTTP 200.
+- The requesting member and a second authorized owner each read the completed Run through public Core APIs with HTTP 200. The original member artifact content read returned the exact bytes. A later API-only restart over the same persisted database let the owner independently list and fetch that same artifact with HTTP 200; its bytes and digest matched exactly.
 - The durable native row records attempt 1, `codex-app-server`, `app-server-v1`, `completed`, the same digest, and no error class.
+- The owner artifact-content recheck used the persisted database under Core base `61dc2ef4461500959a39711f42cfb5f0b3c9159c`. Reflog places that commit at 23:43:39Z, before the 23:49:36Z receipt update. The process imported `src/opensaddle/control_plane/api.py` from the Core checkout. The checkout also had active uncommitted Core39 work whose exact at-launch diff was not pinned. It did not execute or contact the provider again; this later API source is distinct from the original provider execution base.
 
 The fixture wrapper initially raised `AttributeError` only while printing a nonexistent `WorkerLoopResult.completed` field after `run_once()` returned. Core and the native row had already completed. The preserved probe uses the real `status` and `fenced` fields.
 
