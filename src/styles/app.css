@@ -1885,6 +1885,8 @@ a.nav-item { text-decoration: none; color: inherit; }
     min-width:0;
     border-top:1px solid #3b3b38;
     border-right:0;
+    transform:none;
+    box-shadow:none;
   }
   .app > .sidebar > .sidebar-nav {
     display:grid;
