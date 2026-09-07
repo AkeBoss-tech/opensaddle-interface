@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import{createHash}from'node:crypto'
 import { RemoteMalleableShellClient } from './remoteMalleableShell'
 
 const reviewDescriptor = { command_id: 'dev.opensaddle.artifact.review', version: 2, descriptor_digest: 'd'.repeat(64), title: 'Review artifact', description: '', effect: 'read' as const, required_actions: ['artifacts:read'], available: { available: true }, input_schema: {}, output_schema: {} }
@@ -27,6 +28,12 @@ test('uses exact server artifact identities and the durable invocation endpoints
     assert.match(requests[3]!.url, /command-invocations\/invocation-1$/)
   } finally { globalThis.fetch = originalFetch }
 })
+
+test('reads bounded exact artifact bytes and verifies their SHA-256 digest',async()=>{const original=globalThis.fetch;const bytes=new TextEncoder().encode('# Report\nCited source.');const digest=createHash('sha256').update(bytes).digest('hex');let request!:Request;globalThis.fetch=async(input,init)=>{request=new Request(input,init);return new Response(bytes,{headers:{'Content-Type':'application/octet-stream','Content-Length':String(bytes.length)}})};try{const resource={project_id:'P1',run_id:'R1',artifact_id:'A1',digest};const content=await new RemoteMalleableShellClient('https://core.example',()=> 'member','token').content(resource);assert.equal(request.url,'https://core.example/api/v2/runs/R1/artifacts/A1/content');assert.equal(request.headers.get('Authorization'),'Bearer token');assert.deepEqual(content,{text:'# Report\nCited source.',mediaType:'application/octet-stream',sizeBytes:bytes.length,digest})}finally{globalThis.fetch=original}})
+
+test('artifact content rejects corruption, unavailable bytes, and oversized bodies',async()=>{const original=globalThis.fetch;const client=new RemoteMalleableShellClient('https://core.example',()=> 'member');const resource={project_id:'P1',run_id:'R1',artifact_id:'A1',digest:'0'.repeat(64)};try{globalThis.fetch=async()=>new Response('changed');await assert.rejects(client.content(resource),/artifact_content_integrity_denied/);globalThis.fetch=async()=>Response.json({detail:{code:'artifact_bytes_unavailable'}},{status:409});await assert.rejects(client.content(resource),/artifact_bytes_unavailable/);globalThis.fetch=async()=>new Response('small',{headers:{'Content-Length':'262145'}});await assert.rejects(client.content(resource),/artifact_content_too_large/)}finally{globalThis.fetch=original}})
+
+test('chunked artifact content cancels before buffering beyond the bound',async()=>{const original=globalThis.fetch;let cancelled=false,pulls=0;const stream=new ReadableStream<Uint8Array>({pull(controller){pulls++;controller.enqueue(new Uint8Array(140000));if(pulls===3)controller.close()},cancel(){cancelled=true}},{highWaterMark:0});globalThis.fetch=async()=>new Response(stream);try{await assert.rejects(new RemoteMalleableShellClient('https://core.example',()=> 'member').content({project_id:'P1',run_id:'R1',artifact_id:'A1',digest:'0'.repeat(64)}),/artifact_content_too_large/);assert.equal(cancelled,true);assert.equal(pulls,2)}finally{globalThis.fetch=original}})
 
 test('discovers only the run-scoped connector capabilities returned by Core', async () => {
   const originalFetch = globalThis.fetch
