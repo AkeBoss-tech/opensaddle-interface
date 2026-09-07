@@ -8,8 +8,9 @@ import { CanonicalRendererLifecycle } from './CanonicalRendererLifecycle'
 void React
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 const digest = (value: string) => value.repeat(64).slice(0, 64)
-const candidate = (version: string, revision = 1): ApplicationRendererCandidate => ({ application_id: 'review-evidence', title: 'Evidence view', package_id: 'pkg', package_version: version, manifest_digest: digest(version), content_digest: digest(version === '1' ? 'a' : 'b'), size_bytes: 10, state_schema_version: 1, state_compatibility: { accepts_from_versions: [1] }, available: { available: true, reason: null }, enablement: { status: 'enabled', version: '1', revision }, activation: { desired: version === '1', observed_health: 'unavailable', receipt: null }, environment_application: { application_id: 'review-evidence', version: Number(version), definition_digest: digest(version === '1' ? 'c' : 'd'), source_ref: { authority: 'core', resource_type: 'application-renderer', resource_id: `pkg/${version}`, version, digest: `sha256:${digest(version === '1' ? 'a' : 'b')}` }, package_ref: { package_id: 'pkg', version, manifest_digest: digest(version) }, instances: [{ instance_id: 'review-main', defaults: { density: 'comfortable', presentation: 'document', order: 1 } }] } })
-const renderer = (version: string): ApplicationRendererDescriptor => ({ application_id: 'review-evidence', instance_id: 'review-main', entry_file: 'view.html', content_digest: digest(version === '1' ? 'a' : 'b'), size: 10, media_type: 'text/html; profile=opensaddle-renderer-fragment.v1; charset=utf-8', package_ref: { package_id: 'pkg', version, manifest_digest: digest(version) }, input_schema: {}, output_schema: {}, state_schema_version: 1, sandbox_policy: { scripts: true, same_origin: false, network_isolation: 'unavailable', navigation_containment: 'host_observed_only' }, authority: 'core', execution_trust: 'trusted_signed_publisher' })
+const stateSchema = { type: 'object' as const, additionalProperties: false as const, maxProperties: 1, properties: { query: { type: 'string' as const, maxLength: 200 } } }
+const candidate = (version: string, revision = 1): ApplicationRendererCandidate => ({ application_id: 'review-evidence', title: 'Evidence view', package_id: 'pkg', package_version: version, manifest_digest: digest(version), content_digest: digest(version === '1' ? 'a' : 'b'), size_bytes: 10, state_schema_version: 1, state_max_bytes: 8192, state_schema: stateSchema, state_migrations: [], state_compatibility: { accepts_from_versions: [1] }, available: { available: true, reason: null }, enablement: { status: 'enabled', version: '1', revision }, activation: { desired: version === '1', observed_health: 'unavailable', receipt: null }, environment_application: { application_id: 'review-evidence', version: Number(version), definition_digest: digest(version === '1' ? 'c' : 'd'), source_ref: { authority: 'core', resource_type: 'application-renderer', resource_id: `pkg/${version}`, version, digest: `sha256:${digest(version === '1' ? 'a' : 'b')}` }, package_ref: { package_id: 'pkg', version, manifest_digest: digest(version) }, instances: [{ instance_id: 'review-main', defaults: { density: 'comfortable', presentation: 'document', order: 1 } }] } })
+const renderer = (version: string): ApplicationRendererDescriptor => ({ application_id: 'review-evidence', instance_id: 'review-main', entry_file: 'view.html', content_digest: digest(version === '1' ? 'a' : 'b'), size: 10, media_type: 'text/html; profile=opensaddle-renderer-fragment.v1; charset=utf-8', package_ref: { package_id: 'pkg', version, manifest_digest: digest(version) }, input_schema: {}, output_schema: {}, state_schema_version: 1, state_max_bytes: 8192, state_schema: stateSchema, state_migrations: [], sandbox_policy: { scripts: true, same_origin: false, network_isolation: 'unavailable', navigation_containment: 'host_observed_only' }, authority: 'core', execution_trust: 'trusted_signed_publisher' })
 const environment = (revision: number, version: string): EnvironmentRevision => ({ schema_version: 'opensaddle.environment.v1', project_id: 'P', revision, definition: { commands: [], bindings: [], services: [], packages: [candidate(version).environment_application.package_ref!], applications: [candidate(version).environment_application] }, definition_digest: digest(String(revision)), changed_by: 'owner', reason: null, parent_revision: revision ? revision - 1 : null, created_at: null })
 const resource = { project_id: 'P', run_id: 'R', artifact_id: 'A', digest: digest('f') }
 const projection = { resource, text: 'report', verified_bytes: true as const, fact_verification: 'not_verified' as const }
@@ -36,6 +37,32 @@ test('replacement uses exact enablement then Environment preview/apply and offer
   assert.match(JSON.stringify(view.toJSON()), /replacement did not become ready/i)
   await act(async () => { findButton(view, 'Restore previous').props.onClick(); await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)) })
   assert.deepEqual(calls.slice(3), ['enable:1:2', 'preview:2', 'apply:2'])
+  assert.match(JSON.stringify(view.toJSON()), /Selected version.*1/s)
+  await act(async () => view.unmount())
+  globalThis.window = oldWindow
+})
+
+test('replacement refuses an incompatible state contract before enablement and leaves the current application active', async () => {
+  const oldWindow = globalThis.window
+  Object.assign(globalThis, { window: {} })
+  const incompatible = {
+    ...candidate('2'),
+    state_schema_version: 2,
+    state_schema: { ...stateSchema, properties: { search: { type: 'string' as const, maxLength: 200 } } },
+    state_migrations: [],
+  }
+  let enables = 0
+  const client = {
+    applicationRenderers: async () => [renderer('1')],
+    applicationRendererCandidates: async () => [candidate('1'), incompatible],
+    enableApplicationRendererCandidate: async () => { enables++ },
+    environment: async () => environment(1, '1'),
+  } as unknown as MalleableShellClient
+  let view!: ReactTestRenderer
+  await act(async () => { view = create(<CanonicalRendererLifecycle client={client} resource={resource} projection={projection} connectionKey="owner" />); await new Promise(resolve => setImmediate(resolve)) })
+  await act(async () => { findButton(view, 'Replace with').props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+  assert.equal(enables, 0)
+  assert.match(JSON.stringify(view.toJSON()), /Replacement refused.*current application and its saved state remain active/i)
   assert.match(JSON.stringify(view.toJSON()), /Selected version.*1/s)
   await act(async () => view.unmount())
   globalThis.window = oldWindow

@@ -19,6 +19,7 @@ import { discoverAgentSkills } from './skillDiscovery.js'
 import { discoverUiPlugins } from './uiPluginDiscovery.js'
 import { listPublicTokenPrices } from './tokenPricing.js'
 import { desktopRendererDocument, rendererRequestAllowed, validateDesktopRendererMessage, validateDesktopRendererRequest, type DesktopRendererRequest } from './applicationRendererPolicy.js'
+import { migrateApplicationState, type ApplicationStateSchema } from './applicationState.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -376,6 +377,8 @@ async function openApplicationRenderer(request: DesktopRendererRequest) {
   closeApplicationRenderer()
   const identity = `${value.connectionKey}\0${value.instanceId}\0${value.generation}\0${value.packageRef.package_id}\0${value.packageRef.version}\0${value.packageRef.manifest_digest}\0${value.contentDigest}\0${value.projection.resource.project_id}\0${value.projection.resource.run_id}\0${value.projection.resource.artifact_id}\0${value.projection.resource.digest}`
   const view = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'applicationRendererPreload.cjs'), partition: `opensaddle-renderer-${Date.now()}-${Math.random()}`, contextIsolation: true, nodeIntegration: false, sandbox: true } })
+  const document = desktopRendererDocument(value)
+  const rendererUrl = `data:text/html;base64,${Buffer.from(document).toString('base64')}`
   applicationRenderer = { view, identity, generation: value.generation }
   const fail = (reason: string) => {
     if (applicationRenderer?.identity !== identity) return
@@ -393,6 +396,9 @@ async function openApplicationRenderer(request: DesktopRendererRequest) {
   denyProxy.once('close', () => fail('desktop_renderer_network_isolation_lost'))
   const address = denyProxy.address(); if (!address || typeof address === 'string') { fail('desktop_renderer_network_isolation_unavailable'); throw Error('desktop_renderer_network_isolation_unavailable') }
   await view.webContents.session.setProxy({ mode: 'fixed_servers', proxyRules: `http=127.0.0.1:${address.port};https=127.0.0.1:${address.port};socks=127.0.0.1:${address.port}`, proxyBypassRules: '<-loopback>' })
+  if (!applicationRenderer || applicationRenderer.identity !== identity) return false
+  if (applicationRenderer.timer) clearTimeout(applicationRenderer.timer)
+  applicationRenderer.timer = setTimeout(() => { if (applicationRenderer?.identity !== identity) return; const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId(); if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer(); fail('desktop_renderer_ready_timeout') }, 3000)
   view.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   view.webContents.on('will-navigate', (event) => event.preventDefault())
@@ -403,8 +409,7 @@ async function openApplicationRenderer(request: DesktopRendererRequest) {
   view.webContents.session.on('will-download', (event) => event.preventDefault())
   view.setBounds({ x: Math.round(value.bounds.x), y: Math.round(value.bounds.y), width: Math.round(value.bounds.width), height: Math.round(value.bounds.height) })
   mainWindow?.contentView.addChildView(view)
-  const document = desktopRendererDocument(value)
-  try { await Promise.race([view.webContents.loadURL(`data:text/html;base64,${Buffer.from(document).toString('base64')}`), new Promise<never>((_resolve, reject) => setTimeout(() => reject(Error('desktop_renderer_load_timeout')), 3250))]) } catch (reason) { if (applicationRenderer?.identity === identity) closeApplicationRenderer(); throw reason }
+  try { await Promise.race([view.webContents.loadURL(rendererUrl), new Promise<never>((_resolve, reject) => setTimeout(() => reject(Error('desktop_renderer_load_timeout')), 3250))]) } catch (reason) { if (applicationRenderer?.identity === identity) closeApplicationRenderer(); throw reason }
   if (!applicationRenderer || applicationRenderer.identity !== identity) return false
   if (!mainWindow || view.webContents.getOSProcessId() === mainWindow.webContents.getOSProcessId()) { closeApplicationRenderer(); throw Error('desktop_renderer_process_isolation_unavailable') }
   const nonce = randomUUID(), { port1, port2 } = new MessageChannelMain()
@@ -440,7 +445,8 @@ async function openApplicationRenderer(request: DesktopRendererRequest) {
 }
 
 async function runApplicationRendererSelfTest() {
-  const make = (fragment: string, version: string): DesktopRendererRequest => ({ instanceId: 'self-test', generation: Number(version), connectionKey: 'self-test', packageRef: { package_id: 'self-test', version, manifest_digest: version.repeat(64).slice(0, 64) }, contentDigest: createHash('sha256').update(fragment).digest('hex'), fragment, projection: { resource: { project_id: 'self-test', run_id: 'run', artifact_id: 'artifact', digest: 'a'.repeat(64) }, text: 'synthetic report', verified_bytes: true, fact_verification: 'not_verified' }, bounds: { x: 0, y: 0, width: 500, height: 320 } })
+  const defaultSchema: ApplicationStateSchema = { type: 'object', additionalProperties: false, maxProperties: 2, properties: { filter: { type: 'string', maxLength: 200 }, note: { type: 'string', maxLength: 4000 } } }
+  const make = (fragment: string, version: string, stateSchema = defaultSchema, state?: DesktopRendererRequest['state']): DesktopRendererRequest => ({ instanceId: 'self-test', generation: Number(version), connectionKey: 'self-test', packageRef: { package_id: 'self-test', version, manifest_digest: version.repeat(64).slice(0, 64) }, contentDigest: createHash('sha256').update(fragment).digest('hex'), fragment, stateMaxBytes: 8192, stateSchema, ...(state ? { state } : {}), projection: { resource: { project_id: 'self-test', run_id: 'run', artifact_id: 'artifact', digest: 'a'.repeat(64) }, text: 'synthetic report', verified_bytes: true, fact_verification: 'not_verified' }, bounds: { x: 0, y: 0, width: 500, height: 320 } })
   const preReady = '<script>while(true){}</script>'
   const ready = `<script>addEventListener('message',event=>{const m=event.data;if(m?.kind==='init')window.postMessage({...m,kind:'ready',projection:undefined},'*')})</script>`
   const postReadyHang = `<script>addEventListener('message',event=>{const m=event.data;if(m?.kind==='init'){window.postMessage({...m,kind:'ready',projection:undefined},'*');setTimeout(()=>{while(true){}},50)}})</script>`
@@ -452,8 +458,19 @@ async function runApplicationRendererSelfTest() {
   while (applicationRenderer && Date.now() < postReadyDeadline) await new Promise(resolve => setTimeout(resolve, 50))
   const postReadyRecovered = applicationRenderer === null
   const first = await openApplicationRenderer(make(ready, '3')), second = await openApplicationRenderer(make(ready, '4'))
+  const v1Schema: ApplicationStateSchema = { type: 'object', additionalProperties: false, maxProperties: 2, properties: { query: { type: 'string', maxLength: 200 }, pinned: { type: 'boolean' } } }
+  const v2Schema: ApplicationStateSchema = { type: 'object', additionalProperties: false, maxProperties: 3, properties: { search: { type: 'string', maxLength: 200 }, pinned: { type: 'boolean' }, layout: { type: 'string', maxLength: 12 } }, required: ['search', 'layout'] }
+  const priorState = { query: 'evidence', pinned: true }
+  const migrated = migrateApplicationState(priorState, v1Schema, v2Schema, { from_version: 1, to_version: 2, operations: [{ op: 'rename', from: 'query', to: 'search' }, { op: 'set_default', path: 'layout', value: 'compact' }] })
+  const stateDisplay = `<output></output><script>addEventListener('message',event=>{const m=event.data;if(m?.kind==='init'){document.querySelector('output').textContent=JSON.stringify(m.state);window.postMessage({...m,kind:'ready',projection:undefined,state:undefined},'*')}})</script>`
+  await openApplicationRenderer(make(stateDisplay, '5', v2Schema, migrated))
+  await new Promise(resolve => setTimeout(resolve, 100))
+  const migratedVisible = await applicationRenderer?.view.webContents.executeJavaScript(`document.querySelector('output')?.textContent`)
+  await openApplicationRenderer(make(stateDisplay, '6', v1Schema, priorState))
+  await new Promise(resolve => setTimeout(resolve, 100))
+  const rollbackVisible = await applicationRenderer?.view.webContents.executeJavaScript(`document.querySelector('output')?.textContent`)
   await new Promise(resolve => setTimeout(resolve, 200)); clearInterval(heartbeat)
-  console.log(JSON.stringify({ applicationRendererSelfTest: true, preReadyRecovered, postReadyRecovered, hostResponsive: ticks > 2, elapsedMs: Date.now() - started, replacementIdentityChanged: Boolean(first && second && first.identity !== second.identity), rendererPidDistinct: Boolean(second && mainWindow && second.rendererPid !== mainWindow.webContents.getOSProcessId()) }))
+  console.log(JSON.stringify({ applicationRendererSelfTest: true, preReadyRecovered, postReadyRecovered, hostResponsive: ticks > 2, elapsedMs: Date.now() - started, replacementIdentityChanged: Boolean(first && second && first.identity !== second.identity), rendererPidDistinct: Boolean(second && mainWindow && second.rendererPid !== mainWindow.webContents.getOSProcessId()), migratedStateVisible: migratedVisible === JSON.stringify(migrated), rollbackStateVisible: rollbackVisible === JSON.stringify(priorState) }))
   closeApplicationRenderer(); quitAfterSidecars = true; app.quit()
 }
 
