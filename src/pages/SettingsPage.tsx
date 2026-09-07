@@ -69,7 +69,7 @@ function humanizeSetting(value: string) {
 export function SettingsPage() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
-  const [active, setActive] = useState<SettingsDestinationId>('settings-general')
+  const [active, setActive] = useState<SettingsDestinationId>(() => new URLSearchParams(location.search).get('section') === 'connection' ? 'settings-connection' : 'settings-general')
   const destinations = SETTINGS_DESTINATIONS.filter((item) =>
     item.label.toLowerCase().includes(query.trim().toLowerCase()))
   const open = (id: SettingsDestinationId) => setActive(id)

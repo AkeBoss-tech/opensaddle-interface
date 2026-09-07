@@ -161,7 +161,6 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
   } = useStore()
   const [runs, setRuns] = useState<Record<string, ManagedRun>>({})
   const controller = useRef(new OperationController())
-  const reportedUnsupportedRecovery = useRef('')
   const dataRef = useRef(data)
   const recoveringRuns = useRef(new Set<string>())
   const validatedStoredRuns = useRef(new Set<string>())
@@ -306,11 +305,6 @@ export function RunRegistryProvider({ children }: { children: ReactNode }) {
     const runtime = services?.runtime
     const recovery = services?.controlPlane.runRecovery
     if (recovery && !recovery.available) {
-      const identity = `${connection.id}:${connection.baseUrl}`
-      if (recovery.reason && reportedUnsupportedRecovery.current !== identity) {
-        reportedUnsupportedRecovery.current = identity
-        toast('Task recovery unavailable', recovery.reason)
-      }
       return
     }
     if (

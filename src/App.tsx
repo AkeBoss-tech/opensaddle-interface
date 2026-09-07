@@ -344,6 +344,7 @@ function Shell() {
             <Route path="/proposals/review" element={<ProposalReviewPage />} />
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />
+            <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/perspectives" element={<PerspectivesPage />} />
