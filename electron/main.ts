@@ -377,7 +377,12 @@ async function openApplicationRenderer(request: DesktopRendererRequest) {
   const identity = `${value.connectionKey}\0${value.instanceId}\0${value.generation}\0${value.packageRef.package_id}\0${value.packageRef.version}\0${value.packageRef.manifest_digest}\0${value.contentDigest}\0${value.projection.resource.project_id}\0${value.projection.resource.run_id}\0${value.projection.resource.artifact_id}\0${value.projection.resource.digest}`
   const view = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'applicationRendererPreload.cjs'), partition: `opensaddle-renderer-${Date.now()}-${Math.random()}`, contextIsolation: true, nodeIntegration: false, sandbox: true } })
   applicationRenderer = { view, identity, generation: value.generation }
-  applicationRenderer.timer = setTimeout(() => { if (applicationRenderer?.identity !== identity) return; const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId(); if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer(); closeApplicationRenderer() }, 3000)
+  const fail = (reason: string) => {
+    if (applicationRenderer?.identity !== identity) return
+    mainWindow?.webContents.send('runtime:application-renderer-event', { identity, instanceId: value.instanceId, generation: value.generation, kind: 'error', reason })
+    closeApplicationRenderer()
+  }
+  applicationRenderer.timer = setTimeout(() => { if (applicationRenderer?.identity !== identity) return; const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId(); if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer(); fail('desktop_renderer_ready_timeout') }, 3000)
   const deny = (details: { url: string }, callback: (result: { cancel: boolean }) => void) => callback({ cancel: !rendererRequestAllowed(details.url) })
   view.webContents.session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, deny)
   view.webContents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
@@ -385,15 +390,16 @@ async function openApplicationRenderer(request: DesktopRendererRequest) {
   await new Promise<void>((resolve, reject) => { denyProxy.once('error', reject); denyProxy.listen(0, '127.0.0.1', () => { denyProxy.removeListener('error', reject); resolve() }) })
   if (!applicationRenderer || applicationRenderer.identity !== identity) { denyProxy.close(); return false }
   applicationRenderer.denyProxy = denyProxy
-  denyProxy.once('close', () => { if (applicationRenderer?.identity === identity) closeApplicationRenderer() })
-  const address = denyProxy.address(); if (!address || typeof address === 'string') { closeApplicationRenderer(); throw Error('desktop_renderer_network_isolation_unavailable') }
+  denyProxy.once('close', () => fail('desktop_renderer_network_isolation_lost'))
+  const address = denyProxy.address(); if (!address || typeof address === 'string') { fail('desktop_renderer_network_isolation_unavailable'); throw Error('desktop_renderer_network_isolation_unavailable') }
   await view.webContents.session.setProxy({ mode: 'fixed_servers', proxyRules: `http=127.0.0.1:${address.port};https=127.0.0.1:${address.port};socks=127.0.0.1:${address.port}`, proxyBypassRules: '<-loopback>' })
   view.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   view.webContents.on('will-navigate', (event) => event.preventDefault())
   view.webContents.on('will-frame-navigate', (event) => event.preventDefault())
   view.webContents.on('will-redirect', (event) => event.preventDefault())
-  view.webContents.on('unresponsive', () => { if (applicationRenderer?.identity !== identity) return; const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId(); if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer(); closeApplicationRenderer() })
+  view.webContents.on('unresponsive', () => { if (applicationRenderer?.identity !== identity) return; const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId(); if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer(); fail('desktop_renderer_unresponsive') })
+  view.webContents.on('render-process-gone', () => fail('desktop_renderer_process_ended'))
   view.webContents.session.on('will-download', (event) => event.preventDefault())
   view.setBounds({ x: Math.round(value.bounds.x), y: Math.round(value.bounds.y), width: Math.round(value.bounds.width), height: Math.round(value.bounds.height) })
   mainWindow?.contentView.addChildView(view)
@@ -415,7 +421,7 @@ async function openApplicationRenderer(request: DesktopRendererRequest) {
         if (applicationRenderer?.identity !== identity) return
         const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId()
         if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer()
-        closeApplicationRenderer()
+        fail('desktop_renderer_unresponsive')
       }
     }, 1000)
   }
@@ -429,7 +435,7 @@ async function openApplicationRenderer(request: DesktopRendererRequest) {
   })
   port2.start()
   view.webContents.postMessage('opensaddle-application-port', null, [port1])
-  port2.postMessage({ protocol: 'opensaddle.application.v1', kind: 'init', nonce, generation: value.generation, instance_id: value.instanceId, connection_key: value.connectionKey, package_ref: value.packageRef, projection: value.projection })
+  port2.postMessage({ protocol: 'opensaddle.application.v1', kind: 'init', nonce, generation: value.generation, instance_id: value.instanceId, connection_key: value.connectionKey, package_ref: value.packageRef, projection: value.projection, ...(value.state ? { state: value.state } : {}) })
   return { identity, rendererPid: view.webContents.getOSProcessId() }
 }
 
@@ -934,9 +940,10 @@ function createWindow() {
   })
 
   // Set OPENSADDLE_DEV_SERVER=1 to attach to a running Vite for hot reload.
-  // Vite binds [::1] rather than 127.0.0.1, so address it by hostname.
   if (isDev && process.env.OPENSADDLE_DEV_SERVER) {
-    void mainWindow.loadURL('http://localhost:5173/opensaddle-interface/')
+    const devServer = new URL(process.env.OPENSADDLE_DEV_SERVER_URL ?? 'http://localhost:5173/opensaddle-interface/')
+    if (devServer.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(devServer.hostname)) throw Error('desktop_dev_server_url_denied')
+    void mainWindow.loadURL(devServer.toString())
     return
   }
 
