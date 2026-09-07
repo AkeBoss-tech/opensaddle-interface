@@ -222,7 +222,7 @@ export interface CommandCenterSnapshot {
   activeRuns: CommandCenterRun[]
   projects: CommandCenterProject[]
   outcomes: CommandCenterOutcome[]
-  unavailableSections: Array<'priority' | 'work' | 'recurring_jobs' | 'inbox'>
+  unavailableSections: Array<'priority' | 'work' | 'recurring_jobs' | 'inbox' | 'operation_proposals'>
 }
 
 export interface CommandCenterClient {

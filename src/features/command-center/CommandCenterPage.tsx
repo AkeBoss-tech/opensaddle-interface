@@ -42,6 +42,7 @@ const UNAVAILABLE_REASON: Record<CommandCenterSnapshot['unavailableSections'][nu
   priority: 'The control plane has no authoritative priority source yet.',
   work: 'Canonical Work items are not included in this projection yet.',
   recurring_jobs: 'Recurring jobs are not exposed by the authoritative scheduler projection yet.',
+  operation_proposals: 'Managed operation proposals are not exposed by the authoritative proposal projection yet.',
   inbox: 'Inbox findings and triage actions do not have an authoritative API yet.',
 }
 

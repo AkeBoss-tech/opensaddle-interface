@@ -14,7 +14,7 @@ test('maps the authoritative command center projection without inventing missing
       active_runs: [{ run_id: 'run-1', project_id: 'project-1', task: 'Build UI', status: 'running' }],
       projects: [{ project_id: 'project-1', status: 'active', next_action: 'Review the run' }],
       outcomes: [{ id: 'outcome-1', project_id: 'project-1', run_id: 'run-0', title: 'Contract verified', verified: true, completed_at: '2026-09-07T02:00:00Z' }],
-      unavailable_sections: ['recurring_jobs'],
+      unavailable_sections: ['recurring_jobs', 'operation_proposals'],
     })
   }
   try {
@@ -23,7 +23,7 @@ test('maps the authoritative command center projection without inventing missing
     assert.equal(snapshot.attentionItems[0]?.approvalId, 'approval-1')
     assert.equal(snapshot.attentionItems[0]?.proposalId, 'prp_1')
     assert.equal(snapshot.outcomes[0]?.verified, true)
-    assert.deepEqual(snapshot.unavailableSections, ['recurring_jobs'])
+    assert.deepEqual(snapshot.unavailableSections, ['recurring_jobs', 'operation_proposals'])
     assert.equal(headers?.get('X-OpenSaddle-User'), 'user-1')
     assert.equal(headers?.get('Authorization'), 'Bearer token-1')
   } finally {

@@ -81,7 +81,7 @@ function Shell() {
 
   const openArtifactReview = useCallback(async () => {
     if (loc.pathname === '/review' && loc.search) {
-      nav(`/review${loc.search}`)
+      window.dispatchEvent(new CustomEvent('opensaddle:invoke-artifact-review'))
       return
     }
     if (!services?.commandCenter) {
@@ -163,6 +163,7 @@ function Shell() {
   useEffect(() => {
     const openReview = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'r') {
+        if (event.target instanceof HTMLElement && (event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName))) return
         event.preventDefault()
         void openArtifactReview()
       }
@@ -244,7 +245,7 @@ function Shell() {
     { id: 'cproj', group: 'Create', label: 'Add local project', description: 'Register a local Git project', icon: 'folder', run: () => setProjectModal(true) },
     { id: 'start', group: 'Navigate', label: 'Start', description: 'Open registered projects', icon: 'spark', run: () => nav('/start') },
     { id: 'home', group: 'Navigate', label: 'Command Center', description: 'Priorities and attention', icon: 'layout', run: () => nav('/home') },
-    { id: 'review', group: 'Commands', label: 'Review selected artifact', description: 'Open the shared artifact review application', icon: 'review', run: () => void openArtifactReview() },
+    { id: 'review', group: 'Commands', label: 'Run selected artifact review', description: 'Dispatch the exact selected resource through the shared review command', keywords: ['review selected artifact'], icon: 'review', run: () => void openArtifactReview() },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Governed onboarding runs', icon: 'clock', run: () => nav('/work') },
     { id: 'set', group: 'Navigate', label: 'Settings', description: 'Connection status', icon: 'settings', run: () => nav('/settings') },
     ...data.projects.filter((project) => project.workspaceKind === 'local').map((project) => ({ id: project.id, group: 'Projects', label: project.name, description: project.local?.rootPath ?? 'Local project', icon: 'folder', run: () => nav(`/project/${project.id}`) })),
@@ -252,7 +253,7 @@ function Shell() {
     { id: 'new', group: 'Create', label: 'New task', description: 'Start work in the current project', keywords: ['thread', 'chat'], icon: 'plus', run: () => { const c = createChat(data.activeProjectId, 'New task'); nav(`/chat/${c.id}`) } },
     { id: 'cproj', group: 'Create', label: 'Create project', description: 'Add a local folder or cloud workspace', keywords: ['workspace', 'folder'], icon: 'folder', run: () => setProjectModal(true) },
     { id: 'home', group: 'Navigate', label: 'Command Center', description: 'Priorities, human attention, active work, and outcomes', icon: 'layout', run: () => nav('/home') },
-    { id: 'review', group: 'Commands', label: 'Review selected artifact', description: 'Open the shared artifact review application', icon: 'review', run: () => void openArtifactReview() },
+    { id: 'review', group: 'Commands', label: 'Run selected artifact review', description: 'Dispatch the exact selected resource through the shared review command', keywords: ['review selected artifact'], icon: 'review', run: () => void openArtifactReview() },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Approvals, active runs, and recent outcomes', icon: 'clock', run: () => nav('/work') },
     { id: 'perspectives', group: 'Navigate', label: 'Workspace perspectives', description: 'Switch project-aware operational views', icon: 'layout', run: () => nav('/perspectives') },
     { id: 'wiki', group: 'Navigate', label: 'Team wiki', description: 'Browse shared project knowledge', icon: 'review', run: () => nav('/wiki') },

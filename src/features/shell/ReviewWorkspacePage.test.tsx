@@ -73,6 +73,72 @@ test('mounted generic shell discovers and invokes two package commands without c
   const markup = JSON.stringify(renderer.toJSON()); assert.match(markup, /example\.review-tools/); assert.match(markup, /manifest-1/); assert.match(markup, /handler\.example\.classify/)
 })
 
+test('palette and keybinding intent dispatches the selected extension command through the canonical client', async () => {
+  ;(globalThis as typeof globalThis & { window: EventTarget }).window = new EventTarget()
+  const extension = { ...descriptor(), command_id: 'example.review', version: 7, descriptor_digest: 'exact-descriptor', package_ref: { package_id: 'example.review-tools', version: '1.0.0', manifest_digest: 'manifest-1' } }
+  const calls: Array<{ command: string; version: number; digest: string; resource: ExactArtifactRef }> = []
+  const renderer = await mount(client({ commands: async () => [extension], invoke: async (selected, resource) => { calls.push({ command: selected.command_id, version: selected.version, digest: selected.descriptor_digest, resource }); return { ...invocation(resource), command_id: selected.command_id, version: selected.version, descriptor_digest: selected.descriptor_digest } } }))
+  await act(async () => { window.dispatchEvent(new CustomEvent('opensaddle:invoke-artifact-review')) })
+  assert.deepEqual(calls, [{ command: 'example.review', version: 7, digest: 'exact-descriptor', resource: artifact('A') }])
+  assert.match(JSON.stringify(renderer.toJSON()), /inv-A/)
+  await act(async () => renderer.unmount())
+  delete (globalThis as typeof globalThis & { window?: EventTarget }).window
+})
+
+test('shared dispatch intent fails closed when discovered command authority is denied', async () => {
+  ;(globalThis as typeof globalThis & { window: EventTarget }).window = new EventTarget()
+  let calls = 0
+  const renderer = await mount(client({ commands: async () => [descriptor(false)], invoke: async (_selected, resource) => { calls++; return invocation(resource) } }))
+  await act(async () => { window.dispatchEvent(new CustomEvent('opensaddle:invoke-artifact-review')) })
+  assert.equal(calls, 0)
+  assert.match(JSON.stringify(renderer.toJSON()), /artifact registry offline/)
+  await act(async () => renderer.unmount())
+  delete (globalThis as typeof globalThis & { window?: EventTarget }).window
+})
+
+test('shared dispatch locks same-tick duplicate intent and rejects substituted result identity', async () => {
+  ;(globalThis as typeof globalThis & { window: EventTarget }).window = new EventTarget()
+  let calls = 0
+  const renderer = await mount(client({ invoke: async (_selected, resource) => { calls++; return { ...invocation(resource), resource: artifact('other') } } }))
+  await act(async () => {
+    window.dispatchEvent(new CustomEvent('opensaddle:invoke-artifact-review'))
+    window.dispatchEvent(new CustomEvent('opensaddle:invoke-artifact-review'))
+  })
+  assert.equal(calls, 1)
+  assert.match(JSON.stringify(renderer.toJSON()), /Command result identity mismatch/)
+  await act(async () => renderer.unmount())
+  delete (globalThis as typeof globalThis & { window?: EventTarget }).window
+})
+
+test('pending shared dispatch cannot publish after route and client replacement', async () => {
+  ;(globalThis as typeof globalThis & { window: EventTarget }).window = new EventTarget()
+  let resolveOld!: (value: ShellCommandResult) => void
+  let renderer!: ReactTestRenderer
+  await act(async () => { renderer = create(<ReviewWorkspaceSurface client={client({ invoke: async () => new Promise(resolve => { resolveOld = resolve }) })} projectId="P1" runId="R1" />) })
+  await act(async () => { window.dispatchEvent(new CustomEvent('opensaddle:invoke-artifact-review')) })
+  await act(async () => { renderer.update(<ReviewWorkspaceSurface client={client()} projectId="P2" runId="R2" />) })
+  await act(async () => { resolveOld(invocation(artifact('A'))); await Promise.resolve() })
+  assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /inv-A|Reviewed A/)
+  await act(async () => renderer.unmount())
+  delete (globalThis as typeof globalThis & { window?: EventTarget }).window
+})
+
+test('changing selected artifact fences a pending shared command result', async () => {
+  ;(globalThis as typeof globalThis & { window: EventTarget }).window = new EventTarget()
+  let resolveOld!: (value: ShellCommandResult) => void
+  const a = artifact('A'); const b = artifact('B')
+  const renderer = await mount(client({ artifacts: async () => [a, b], invoke: async () => new Promise(resolve => { resolveOld = resolve }) }))
+  await act(async () => { window.dispatchEvent(new CustomEvent('opensaddle:invoke-artifact-review')) })
+  const artifactSelect = renderer.root.findAllByType('select').find(node => node.props['aria-label'] !== 'Review command')!
+  await act(async () => { artifactSelect.props.onChange({ target: { value: 'B' } }) })
+  await act(async () => { resolveOld(invocation(a)); await Promise.resolve() })
+  const markup = JSON.stringify(renderer.toJSON())
+  assert.match(markup, /digest-B/)
+  assert.doesNotMatch(markup, /inv-A|Reviewed A/)
+  await act(async () => renderer.unmount())
+  delete (globalThis as typeof globalThis & { window?: EventTarget }).window
+})
+
 test('mounted perspectives distinguish stale result, revoked access, and unavailable resources', async () => {
   const a = artifact('A')
   const stale = await mount(client({ artifacts: async () => [a], invocations: async () => [invocation(artifact('B'))] }))

@@ -64,7 +64,6 @@ export function CommandPalette({ open, onClose, items }: { open: boolean; onClos
         <div className="palette-input">
           <Icon name="search" />
           <input
-            autoFocus
             role="combobox"
             aria-autocomplete="list"
             aria-controls="palette-results"

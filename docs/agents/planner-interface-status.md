@@ -2,6 +2,14 @@
 
 Updated: 2026-09-07 11:43 America/New_York
 
+## Current status — shared typed review command intent
+
+The palette item and `mod+shift+r` now publish one explicit review-command intent only when the exact Review workspace is open. The mounted surface resolves the selected server descriptor and artifact, then calls the same `MalleableShellClient.invoke` used by its visible button. An immediate ref lock prevents same-tick duplicate dispatch. Generation and sequence fences prevent an old client, route, selection, or unmounted surface from publishing a delayed result, while durable server work continues. Returned command id, version, descriptor digest, and complete resource identity must match before presentation; mismatches fail closed and no invocation is retried automatically.
+
+Mounted tests cover exact package command/version/digest/resource dispatch, denied authority, same-tick duplicate intent, wrong result identity, stale route/client completion, and the existing stale-descriptor behavior. Live isolated Chrome against Core 8903 invoked the exact participant-proof review through both `Ctrl+Shift+R` and `Ctrl+K` followed by typed search and Enter. Merely opening or highlighting the palette did not dispatch. The palette focused its combobox, Escape restored focus to the invoking Evidence perspective tab, and Enter closed the palette after dispatch. Screenshot: `docs/agents/evidence/review-command-palette-core8903-mobile-2026-09-07.png`.
+
+Full validation passes 383 tests (314 workspace and 69 feature/service), typecheck, production build, and `git diff --check`; the build retains its existing chunk-size advisory. The additive Command Center `operation_proposals` unavailable section is typed and has a readable managed-proposal explanation, with the remote projection test preserving it rather than dropping or rendering a blank reason.
+
 ## Current status — unified Project operations first slice
 
 The connected shell now mounts `/operations?project={project_id}` as a read-only Project operations view. It reads managed Run identities from the existing authenticated `GET /api/v2/command-center` projection and explicitly registered external sessions from `GET /api/v2/projects/{project_id}/external-sessions`. Active and outcome rows are deduplicated strictly by authoritative Run ID. External session records remain separate unless Core supplies an exact `run_id`; no title/time heuristic correlates them. Authority modes are translated without widening them: `opensaddle_managed` is Managed, `hybrid` is Cooperative, and `source_managed` is Observed.
