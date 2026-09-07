@@ -11,6 +11,7 @@ const start = source('src/features/projects/ConnectedLocalStartPage.tsx')
 const project = source('src/features/projects/ConnectedLocalProjectPage.tsx')
 const dialog = source('src/features/onboarding/ConnectedLocalProjectDialog.tsx')
 const appCss = source('src/styles/app.css')
+const commandCenterCss = source('src/features/command-center/command-center.css')
 
 const required: Array<[string, string, string]> = [
   ['local routes are selected by authoritative connection mode', app, "controlPlane.connected && services.controlPlane.mode === 'local'"],
@@ -82,4 +83,11 @@ test('connected-local mobile layout keeps compact primary navigation without cov
   assert.match(appCss, /grid-template-columns:repeat\(5, minmax\(0, 1fr\)\)/)
   assert.doesNotMatch(appCss, /\.app > \.sidebar \{ display:none/)
   for (const label of ['Home', 'Start', 'Work', 'Operations', 'Settings']) assert.match(app, new RegExp(`>${label}<`))
+})
+
+test('review surfaces constrain cards, fields, and long evidence to the viewport', () => {
+  assert.match(commandCenterCss, /\.cc-page \{ width: 100%; min-width: 0;/)
+  assert.match(commandCenterCss, /\.cc-priority, \.cc-panel, \.cc-unavailable \{ min-width: 0;/)
+  assert.match(commandCenterCss, /\.cc-panel select \{ width: 100%; min-width: 0; max-width: 100%; \}/)
+  assert.match(commandCenterCss, /\.cc-unavailable > \* \{ min-width: 0; overflow-wrap: anywhere; \}/)
 })

@@ -1,15 +1,16 @@
-.cc-page { max-width: 1180px; margin: 0 auto; display: grid; gap: var(--os-space-5); }
+.cc-page { width: 100%; min-width: 0; max-width: 1180px; margin: 0 auto; display: grid; gap: var(--os-space-5); }
 .cc-header, .cc-section-heading, .cc-row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--os-space-4); }
 .cc-header h1, .cc-section-heading h2 { margin: .2rem 0 0; }
 .cc-header p { margin: var(--os-space-2) 0 0; color: var(--os-color-text-muted); }
 .cc-freshness { display: grid; justify-items: end; gap: var(--os-space-1); color: var(--os-color-text-subtle); font-size: var(--os-font-size-xs); }
-.cc-priority, .cc-panel, .cc-unavailable { border: 1px solid var(--os-color-border); border-radius: var(--os-radius-lg); background: var(--os-color-surface); }
+.cc-priority, .cc-panel, .cc-unavailable { min-width: 0; border: 1px solid var(--os-color-border); border-radius: var(--os-radius-lg); background: var(--os-color-surface); }
 .cc-priority { padding: var(--os-space-6); background: linear-gradient(135deg, var(--os-color-accent-soft), transparent 48%), var(--os-color-surface); }
 .cc-panel, .cc-unavailable { padding: var(--os-space-5); }
 .cc-panel dl { min-width: 0; }
 .cc-panel dd { min-width: 0; margin-inline-start: var(--os-space-4); }
 .cc-panel code { overflow-wrap: anywhere; word-break: break-word; }
-.cc-panel select { max-width: 100%; }
+.cc-panel .os-field { min-width: 0; }
+.cc-panel select { width: 100%; min-width: 0; max-width: 100%; }
 .cc-objective { display: inline-block; max-width: 54rem; margin-top: var(--os-space-5); color: var(--os-color-text); font-size: clamp(1.35rem, 3vw, 2rem); font-weight: var(--os-weight-semibold); line-height: var(--os-line-tight); text-decoration: none; }
 .cc-objective:hover { color: var(--os-color-accent-hover); }
 .cc-identity { color: var(--os-color-text-muted); }
@@ -38,6 +39,7 @@
 .cc-project small { display: block; margin-top: var(--os-space-3); color: var(--os-color-text-subtle); }
 .cc-section-empty { margin: var(--os-space-4) 0 0; color: var(--os-color-text-muted); }
 .cc-unavailable { display: grid; grid-template-columns: minmax(12rem, .35fr) 1fr; gap: var(--os-space-5); border-style: dashed; }
+.cc-unavailable > * { min-width: 0; overflow-wrap: anywhere; }
 .cc-unavailable ul { margin: 0; padding: 0; display: grid; gap: var(--os-space-2); list-style: none; }
 .cc-unavailable li { display: grid; grid-template-columns: minmax(8rem, .3fr) 1fr; gap: var(--os-space-3); color: var(--os-color-text-muted); }
 .cc-text-link { align-self: center; color: var(--os-color-accent); }
