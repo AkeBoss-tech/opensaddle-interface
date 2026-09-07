@@ -14,7 +14,7 @@ const appCss = source('src/styles/app.css')
 const commandCenterCss = source('src/features/command-center/command-center.css')
 
 const required: Array<[string, string, string]> = [
-  ['local routes are selected by authoritative connection mode', app, "controlPlane.connected && services.controlPlane.mode === 'local'"],
+  ['connected routes are selected by the authenticated v2 capability contract', app, 'controlPlane.connected && services.controlPlane.v2Capabilities'],
   ['local root redirects to Command Center', app, '<Route path="/" element={<Navigate to="/home" replace />} />'],
   ['both shells mount Command Center', app, '<Route path="/home" element={<CommandCenterPage />} />'],
   ['local Start is mounted', app, '<Route path="/start" element={<StartPage />} />'],
@@ -31,8 +31,8 @@ const required: Array<[string, string, string]> = [
   ['local registration navigates to governed onboarding', app, '/onboarding?${new URLSearchParams'],
   ['local command palette offers adding a project', app, "label: 'Add local project'"],
   ['local shortcut cannot create a generic chat', app, '!connectedLocal && (e.metaKey || e.ctrlKey)'],
-  ['loopback mode cannot instantiate remote workspace', services, "backendMode !== 'local'"],
-  ['loopback mode cannot instantiate remote threads', services, "const threads = backendAvailable && backendMode !== 'local'"],
+  ['v2-only mode cannot instantiate legacy remote workspace', services, "backendAvailable && legacyHealthAvailable && backendMode !== 'local'"],
+  ['v2-only mode cannot instantiate legacy remote threads', services, "const threads = backendAvailable && legacyHealthAvailable && backendMode !== 'local'"],
   ['loopback mode cannot instantiate remote workflows', services, "const workflows = backendAvailable && backendMode !== 'local'"],
   ['registry hydration imports only missing projects', store, 'next.projects.push(projectFromRegisteredLocalProject'],
   ['Work reads the governed run registry', work, 'listOnboardingRuns?.(200)'],
@@ -64,6 +64,14 @@ test('local registry hydration does not synthesize permission grants', () => {
 test('local routes do not mount generic chat or workflow pages', () => {
   const localRoutes = app.slice(app.indexOf('{connectedLocal ? <Routes>'), app.indexOf('</Routes> : <Routes>'))
   assert.doesNotMatch(localRoutes, /ChatPage|WorkflowsPage|PermissionsPage|BrowserRuntimePage|LocalProjectsPage/)
+})
+
+test('connected navigation does not expose demo identity or unsupported project mutation', () => {
+  const connectedShell = app.slice(app.indexOf("!settingsFocused && connectedLocal && <aside"), app.indexOf('<main className={`main'))
+  assert.match(connectedShell, /aria-label="Connected workflow"/)
+  assert.match(connectedShell, /to="\/operations"/)
+  assert.match(connectedShell, /services\?\.localProjects&&<button/)
+  assert.doesNotMatch(connectedShell, /data\.activeProjectId|Corporate Base|DEMO DATA/)
 })
 
 test('the removed Local Projects destination redirects to Start in both shells', () => {

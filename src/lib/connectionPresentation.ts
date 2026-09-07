@@ -22,7 +22,7 @@ export function connectionPresentation(input: {
     }
   }
   if (controlPlane?.connected) {
-    const label = controlPlane.mode === 'company' ? 'Cloud' : 'Local'
+    const label = controlPlane.mode === 'company' ? 'Cloud' : controlPlane.mode === 'local' ? 'Local' : 'Server'
     return {
       label,
       title: `${label} control plane · ${controlPlane.modelProvider ?? 'native harnesses'} · ${controlPlane.storage ?? 'server'}`,

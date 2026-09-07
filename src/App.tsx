@@ -77,7 +77,7 @@ function Shell() {
   const loc = useLocation()
   const settingsFocused = loc.pathname === '/settings'
   const globalStart = loc.pathname === '/start'
-  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
+  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.v2Capabilities)
 
   const openArtifactReview = useCallback(async () => {
     if (loc.pathname === '/review' && loc.search) {
@@ -307,7 +307,7 @@ function Shell() {
           }}
         />
       )}
-      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Local workflow"><NavLink to="/home">Home</NavLink><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to={`/operations?project=${encodeURIComponent(data.activeProjectId)}`}>Operations</NavLink><button type="button" onClick={() => setProjectModal(true)}>Add project</button><NavLink to="/settings">Settings</NavLink></nav></aside>}
+      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Connected workflow"><NavLink to="/home">Home</NavLink><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to="/operations">Operations</NavLink>{services?.localProjects&&<button type="button" onClick={() => setProjectModal(true)}>Add project</button>}<NavLink to="/settings">Settings</NavLink></nav></aside>}
       <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         {!settingsFocused && <DemoBanner />}

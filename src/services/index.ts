@@ -48,7 +48,8 @@ export interface ServiceBundle {
   malleableShell?: MalleableShellClient
   controlPlane: {
     connected: boolean
-    mode?: 'local' | 'company'
+    mode?: string
+    v2Capabilities?: boolean
     modelProvider?: string
     models: string[]
     storage?: string
@@ -123,7 +124,7 @@ export function initServices(opts: {
       const token = connection.token
       const getUserId = opts.getCurrentUserId ?? (() => opts.currentUserId)
       let backendAvailable = false
-      let backendMode: 'local' | 'company' | undefined
+      let backendMode: string | undefined
       let modelProvider: string | undefined
       let configuredModels: string[] = []
       let storage: string | undefined
@@ -231,7 +232,7 @@ export function initServices(opts: {
           if (capabilityResponse.ok) {
             v2CapabilitiesAvailable = true
             const capabilities = await capabilityResponse.json() as {
-              capability_mode?: 'local' | 'company'
+              capability_mode?: string
               command_center?: { available?: boolean; path?: string; schema_version?: string }
               managed_krail?: boolean
               participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
@@ -270,10 +271,10 @@ export function initServices(opts: {
             allowFallback: false,
           })
           : new MockRuntimeClient()
-      const workspace = backendAvailable && backendMode !== 'local' && (backendCapabilities.size === 0 || backendCapabilities.has('workspace'))
+      const workspace = backendAvailable && legacyHealthAvailable && backendMode !== 'local' && (backendCapabilities.size === 0 || backendCapabilities.has('workspace'))
         ? new RemoteWorkspaceClient(baseUrl, getUserId, token)
         : undefined
-      const threads = backendAvailable && backendMode !== 'local'
+      const threads = backendAvailable && legacyHealthAvailable && backendMode !== 'local'
         ? backendCapabilities.has('threads')
           ? new AuthoritativeThreadClient(baseUrl, getUserId, token)
           : backendCapabilities.size === 0
@@ -345,6 +346,7 @@ export function initServices(opts: {
         controlPlane: {
           connected: backendAvailable,
           mode: backendMode,
+          v2Capabilities: v2CapabilitiesAvailable,
           modelProvider,
           models: configuredModels,
           storage,

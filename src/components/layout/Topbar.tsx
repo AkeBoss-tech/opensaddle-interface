@@ -56,7 +56,7 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
     controlPlane: services?.controlPlane ?? null,
     desktop: Boolean(window.opensaddleDesktop),
   })
-  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
+  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.v2Capabilities)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -127,7 +127,7 @@ export function DemoBanner() {
         {connection.mode === 'demo'
           ? 'Demo workspace · seeded sample data · simulated runs · no control-plane enforcement'
           : services?.controlPlane.connected
-          ? `Connected · ${services.controlPlane.mode === 'company' ? 'company' : 'local'} control plane · ${services.controlPlane.modelProvider && services.controlPlane.modelProvider !== 'unconfigured' ? services.controlPlane.modelProvider : 'native harnesses'} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
+          ? `Connected · ${services.controlPlane.mode === 'company' ? 'company' : services.controlPlane.mode === 'local' ? 'local' : services.controlPlane.mode ?? 'v2'} control plane · ${services.controlPlane.modelProvider && services.controlPlane.modelProvider !== 'unconfigured' ? services.controlPlane.modelProvider : 'native harnesses'} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
           : `Control plane unavailable · reconnect to ${connection.baseUrl} for durable chats and enforced permissions`}
       </span>
       <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>

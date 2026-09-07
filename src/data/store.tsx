@@ -13,6 +13,7 @@ import {
   type WorkspaceRecovery,
 } from './workspacePersistence'
 import { defaultConnectionProfile, initServices, resetServices, type ConnectionProfile, type ServiceBundle } from '../services'
+import { loadSessionConnection, saveSessionConnection } from './connectionSession'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
 import { adoptNativeContinuation } from '../lib/nativeContinuation'
@@ -195,7 +196,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [persistenceStatus, setPersistenceStatus] = useState<StoreApi['persistenceStatus']>('loading')
   const [threadHistoryHydrated, setThreadHistoryHydrated] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
-  const [connection, setConnection] = useState<ConnectionProfile>(() => defaultConnectionProfile())
+  const [connection, setConnection] = useState<ConnectionProfile>(() => loadSessionConnection(defaultConnectionProfile()))
   const [harnessCapabilities, setHarnessCapabilities] = useState<HarnessCapability[]>([])
   const [localProjectManifests, setLocalProjectManifests] = useState<Record<string, ProjectArtifactManifest>>({})
   const grantsRef = useRef(data.permissionGrants)
@@ -715,9 +716,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       workspaceHydratedRef.current = false
       durableHydratedServiceRef.current = null
       setServices(null)
-      setConnection({ id: `remote-${baseUrl}`, name: profile.name.trim() || baseUrl, mode: 'remote', baseUrl, token: profile.token, allowMockFallback: false })
+      const next={ id: `remote-${baseUrl}`, name: profile.name.trim() || baseUrl, mode: 'remote' as const, baseUrl, token: profile.token, allowMockFallback: false }
+      saveSessionConnection(next)
+      setConnection(next)
     },
     switchToDemo: () => {
+      saveSessionConnection({ id: 'demo', name: 'Demo workspace', mode: 'demo', baseUrl: 'http://127.0.0.1:8765', allowMockFallback: true })
       workspaceHydratedRef.current = false
       durableHydratedServiceRef.current = null
       setServices(null)
