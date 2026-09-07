@@ -1,11 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, type MessagePortMain, net, protocol, shell, WebContentsView } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { createServer } from 'node:net'
+import { createHash, randomUUID } from 'node:crypto'
+import { createServer, type Server } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs'
 import { readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { desktopCliPath, resolveDesktopCli } from './cliDiscovery.js'
 import { resolveKrailRuntime } from './runtimeBundle.js'
 import {
@@ -21,6 +22,8 @@ import { desktopRendererDocument, rendererRequestAllowed, validateDesktopRendere
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
+if (process.env.OPENSADDLE_RENDERER_SELF_TEST === '1') app.setPath('userData', mkdtempSync(path.join(tmpdir(), 'opensaddle-renderer-selftest-')))
+
 
 /**
  * The renderer is an ES-module bundle, and a module script cannot be fetched
@@ -61,7 +64,7 @@ let mainWindow: BrowserWindow | null = null
 let opensaddleProc: ChildProcess | null = null
 let sessionBridgeProc: ChildProcess | null = null
 let embeddedBrowser: WebContentsView | null = null
-let applicationRenderer: { view: WebContentsView; identity: string; generation: number; port?: MessagePortMain; timer?: NodeJS.Timeout } | null = null
+let applicationRenderer: { view: WebContentsView; identity: string; generation: number; port?: MessagePortMain; timer?: NodeJS.Timeout; denyProxy?: Server } | null = null
 let sidecarsShuttingDown = false
 let opensaddleRestartTimer: NodeJS.Timeout | null = null
 let opensaddleHealthTimer: NodeJS.Timeout | null = null
@@ -358,50 +361,94 @@ function embeddedWebContents(): WebContentsView {
 }
 
 function closeApplicationRenderer() {
-  if (!applicationRenderer) return
-  mainWindow?.contentView.removeChildView(applicationRenderer.view)
-  if (applicationRenderer.timer) clearTimeout(applicationRenderer.timer)
-  applicationRenderer.port?.close()
-  applicationRenderer.view.webContents.close({ waitForBeforeUnload: false })
+  const active = applicationRenderer
+  if (!active) return
   applicationRenderer = null
+  mainWindow?.contentView.removeChildView(active.view)
+  if (active.timer) clearTimeout(active.timer)
+  active.port?.close()
+  active.view.webContents.close({ waitForBeforeUnload: false })
+  active.denyProxy?.close()
 }
 
 async function openApplicationRenderer(request: DesktopRendererRequest) {
   const value = validateDesktopRendererRequest(request)
   closeApplicationRenderer()
-  const identity = `${value.connectionKey}\0${value.instanceId}\0${value.generation}\0${value.packageRef.package_id}\0${value.packageRef.version}\0${value.packageRef.manifest_digest}`
+  const identity = `${value.connectionKey}\0${value.instanceId}\0${value.generation}\0${value.packageRef.package_id}\0${value.packageRef.version}\0${value.packageRef.manifest_digest}\0${value.contentDigest}\0${value.projection.resource.project_id}\0${value.projection.resource.run_id}\0${value.projection.resource.artifact_id}\0${value.projection.resource.digest}`
   const view = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'applicationRendererPreload.cjs'), partition: `opensaddle-renderer-${Date.now()}-${Math.random()}`, contextIsolation: true, nodeIntegration: false, sandbox: true } })
   applicationRenderer = { view, identity, generation: value.generation }
   applicationRenderer.timer = setTimeout(() => { if (applicationRenderer?.identity !== identity) return; const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId(); if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer(); closeApplicationRenderer() }, 3000)
   const deny = (details: { url: string }, callback: (result: { cancel: boolean }) => void) => callback({ cancel: !rendererRequestAllowed(details.url) })
   view.webContents.session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, deny)
+  view.webContents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
+  const denyProxy = createServer(socket => socket.destroy())
+  await new Promise<void>((resolve, reject) => { denyProxy.once('error', reject); denyProxy.listen(0, '127.0.0.1', () => { denyProxy.removeListener('error', reject); resolve() }) })
+  if (!applicationRenderer || applicationRenderer.identity !== identity) { denyProxy.close(); return false }
+  applicationRenderer.denyProxy = denyProxy
+  denyProxy.once('close', () => { if (applicationRenderer?.identity === identity) closeApplicationRenderer() })
+  const address = denyProxy.address(); if (!address || typeof address === 'string') { closeApplicationRenderer(); throw Error('desktop_renderer_network_isolation_unavailable') }
+  await view.webContents.session.setProxy({ mode: 'fixed_servers', proxyRules: `http=127.0.0.1:${address.port};https=127.0.0.1:${address.port};socks=127.0.0.1:${address.port}`, proxyBypassRules: '<-loopback>' })
   view.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   view.webContents.on('will-navigate', (event) => event.preventDefault())
   view.webContents.on('will-frame-navigate', (event) => event.preventDefault())
   view.webContents.on('will-redirect', (event) => event.preventDefault())
+  view.webContents.on('unresponsive', () => { if (applicationRenderer?.identity !== identity) return; const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId(); if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer(); closeApplicationRenderer() })
   view.webContents.session.on('will-download', (event) => event.preventDefault())
   view.setBounds({ x: Math.round(value.bounds.x), y: Math.round(value.bounds.y), width: Math.round(value.bounds.width), height: Math.round(value.bounds.height) })
   mainWindow?.contentView.addChildView(view)
   const document = desktopRendererDocument(value)
-  try { await view.webContents.loadURL(`data:text/html;base64,${Buffer.from(document).toString('base64')}`) } catch (reason) { if (applicationRenderer?.identity === identity) closeApplicationRenderer(); throw reason }
+  try { await Promise.race([view.webContents.loadURL(`data:text/html;base64,${Buffer.from(document).toString('base64')}`), new Promise<never>((_resolve, reject) => setTimeout(() => reject(Error('desktop_renderer_load_timeout')), 3250))]) } catch (reason) { if (applicationRenderer?.identity === identity) closeApplicationRenderer(); throw reason }
   if (!applicationRenderer || applicationRenderer.identity !== identity) return false
   if (!mainWindow || view.webContents.getOSProcessId() === mainWindow.webContents.getOSProcessId()) { closeApplicationRenderer(); throw Error('desktop_renderer_process_isolation_unavailable') }
   const nonce = randomUUID(), { port1, port2 } = new MessageChannelMain()
   applicationRenderer.port = port2
   let count = 0, windowStart = Date.now()
+  const armHeartbeat = () => {
+    if (!applicationRenderer || applicationRenderer.identity !== identity) return
+    applicationRenderer.timer = setTimeout(async () => {
+      if (!applicationRenderer || applicationRenderer.identity !== identity) return
+      try {
+        await Promise.race([view.webContents.executeJavaScript('1'), new Promise<never>((_resolve, reject) => setTimeout(() => reject(Error('desktop_renderer_unresponsive')), 750))])
+        armHeartbeat()
+      } catch {
+        if (applicationRenderer?.identity !== identity) return
+        const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId()
+        if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer()
+        closeApplicationRenderer()
+      }
+    }, 1000)
+  }
   port2.on('message', ({ data }) => {
     if (!applicationRenderer || applicationRenderer.identity !== identity) return
     const now = Date.now(); if (now - windowStart > 1000) { count = 0; windowStart = now }; if (++count > 32) return
     const message = validateDesktopRendererMessage(data, value, nonce)
     if (!message) return
-    if (message.kind === 'ready' && applicationRenderer.timer) { clearTimeout(applicationRenderer.timer); applicationRenderer.timer = undefined }
-    mainWindow?.webContents.send('runtime:application-renderer-event', { instanceId: value.instanceId, generation: value.generation, kind: message.kind, state: message.kind === 'state' ? message.state : undefined })
+    if (message.kind === 'ready' && applicationRenderer.timer) { clearTimeout(applicationRenderer.timer); applicationRenderer.timer = undefined; armHeartbeat() }
+    mainWindow?.webContents.send('runtime:application-renderer-event', { identity, instanceId: value.instanceId, generation: value.generation, kind: message.kind, state: message.kind === 'state' ? message.state : undefined })
   })
   port2.start()
   view.webContents.postMessage('opensaddle-application-port', null, [port1])
   port2.postMessage({ protocol: 'opensaddle.application.v1', kind: 'init', nonce, generation: value.generation, instance_id: value.instanceId, connection_key: value.connectionKey, package_ref: value.packageRef, projection: value.projection })
   return { identity, rendererPid: view.webContents.getOSProcessId() }
+}
+
+async function runApplicationRendererSelfTest() {
+  const make = (fragment: string, version: string): DesktopRendererRequest => ({ instanceId: 'self-test', generation: Number(version), connectionKey: 'self-test', packageRef: { package_id: 'self-test', version, manifest_digest: version.repeat(64).slice(0, 64) }, contentDigest: createHash('sha256').update(fragment).digest('hex'), fragment, projection: { resource: { project_id: 'self-test', run_id: 'run', artifact_id: 'artifact', digest: 'a'.repeat(64) }, text: 'synthetic report', verified_bytes: true, fact_verification: 'not_verified' }, bounds: { x: 0, y: 0, width: 500, height: 320 } })
+  const preReady = '<script>while(true){}</script>'
+  const ready = `<script>addEventListener('message',event=>{const m=event.data;if(m?.kind==='init')window.postMessage({...m,kind:'ready',projection:undefined},'*')})</script>`
+  const postReadyHang = `<script>addEventListener('message',event=>{const m=event.data;if(m?.kind==='init'){window.postMessage({...m,kind:'ready',projection:undefined},'*');setTimeout(()=>{while(true){}},50)}})</script>`
+  let ticks = 0; const heartbeat = setInterval(() => ticks++, 25); const started = Date.now()
+  let preReadyRecovered = false
+  try { await openApplicationRenderer(make(preReady, '1')) } catch { preReadyRecovered = true }
+  await openApplicationRenderer(make(postReadyHang, '2'))
+  const postReadyDeadline = Date.now() + 8000
+  while (applicationRenderer && Date.now() < postReadyDeadline) await new Promise(resolve => setTimeout(resolve, 50))
+  const postReadyRecovered = applicationRenderer === null
+  const first = await openApplicationRenderer(make(ready, '3')), second = await openApplicationRenderer(make(ready, '4'))
+  await new Promise(resolve => setTimeout(resolve, 200)); clearInterval(heartbeat)
+  console.log(JSON.stringify({ applicationRendererSelfTest: true, preReadyRecovered, postReadyRecovered, hostResponsive: ticks > 2, elapsedMs: Date.now() - started, replacementIdentityChanged: Boolean(first && second && first.identity !== second.identity), rendererPidDistinct: Boolean(second && mainWindow && second.rendererPid !== mainWindow.webContents.getOSProcessId()) }))
+  closeApplicationRenderer(); quitAfterSidecars = true; app.quit()
 }
 
 function cliResolutionOptions() {
@@ -865,6 +912,7 @@ async function stopSidecars(): Promise<void> {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    show: process.env.OPENSADDLE_RENDERER_SELF_TEST !== '1',
     width: 1440,
     height: 960,
     minWidth: 1100,
@@ -899,11 +947,18 @@ app.whenReady().then(async () => {
   app.setName('OpenSaddle')
   if (process.platform === 'darwin') app.dock?.setIcon(APP_ICON)
   registerRendererProtocol()
-  await startSidecars()
+  if (process.env.OPENSADDLE_RENDERER_SELF_TEST !== '1') await startSidecars()
   ipcMain.on('runtime:opensaddle-url', (event) => {
     event.returnValue = opensaddleUrl
   })
   createWindow()
+  if (process.env.OPENSADDLE_RENDERER_SELF_TEST === '1') {
+    setTimeout(() => { void runApplicationRendererSelfTest().catch(error => {
+      console.error(JSON.stringify({ applicationRendererSelfTest: true, error: error instanceof Error ? error.message : String(error) }))
+      quitAfterSidecars = true
+      app.quit()
+    }) }, 250)
+  }
 
   ipcMain.handle('runtime:info', async () => {
     const krailRuntime = packagedKrailRuntime()
