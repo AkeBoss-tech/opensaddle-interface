@@ -30,6 +30,7 @@ import { WorkPage } from './features/work/WorkPage'
 import { CommandCenterPage } from './features/command-center/CommandCenterPage'
 import { ReviewWorkspacePage } from './features/shell/ReviewWorkspacePage'
 import { ArtifactEvidencePage } from './features/shell/ArtifactEvidenceApplication'
+import { ExecutableApplicationFixturePage } from './applications/SandboxApplicationHost'
 import { ProposalReviewPage } from './features/proposals/ProposalReviewPage'
 import { ParticipantReviewPage } from './features/participants/ParticipantReviewPage'
 import { OperationsPage } from './features/operations/OperationsPage'
@@ -320,6 +321,7 @@ function Shell() {
             <Route path="/home" element={<CommandCenterPage />} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
             <Route path="/artifact-evidence" element={<ArtifactEvidencePage />} />
+            {import.meta.env.DEV&&<Route path="/dev/application-fixture" element={<ExecutableApplicationFixturePage />} />}
             <Route path="/proposals/review" element={<ProposalReviewPage />} />
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />
@@ -336,6 +338,7 @@ function Shell() {
             <Route path="/home" element={<CommandCenterPage />} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
             <Route path="/artifact-evidence" element={<ArtifactEvidencePage />} />
+            {import.meta.env.DEV&&<Route path="/dev/application-fixture" element={<ExecutableApplicationFixturePage />} />}
             <Route path="/proposals/review" element={<ProposalReviewPage />} />
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />

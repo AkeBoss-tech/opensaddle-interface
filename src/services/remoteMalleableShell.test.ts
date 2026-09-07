@@ -97,3 +97,9 @@ test('renders structured server validation details instead of object coercion', 
     await assert.rejects(new RemoteMalleableShellClient('https://control.example', () => 'user-1').revert('project-1', 1, 0, 'Restore'), /target_revision.*must name an existing revision/)
   } finally { globalThis.fetch = originalFetch }
 })
+test('application renderer transport preserves exact authenticated package authority',async()=>{
+  const original=globalThis.fetch
+  const requests:string[]=[]
+  globalThis.fetch=async(input)=>{requests.push(String(input));if(String(input).includes('/content?'))return new Response('<p>renderer</p>',{headers:{'Content-Type':'text/html; profile=opensaddle-renderer-fragment.v1; charset=utf-8'}});return Response.json({project_id:'P/1',renderers:[{application_id:'review-evidence',instance_id:'review-main',entry_file:'renderer.html',content_digest:'b'.repeat(64),size:15,media_type:'text/html; profile=opensaddle-renderer-fragment.v1; charset=utf-8',package_ref:{package_id:'package/id',version:'1.0.0',manifest_digest:'a'.repeat(64)},input_schema:{},output_schema:{},state_schema_version:1,sandbox_policy:{scripts:true,network:false,same_origin:false,navigation:false},authority:'core'}]})}
+  try{const client=new RemoteMalleableShellClient('https://core.example',()=> 'member','token');const[renderer]=await client.applicationRenderers('P/1');const response=await client.applicationRendererContent('P/1',renderer!);assert.equal(await response.text(),'<p>renderer</p>');const url=new URL(requests[1]!);assert.equal(url.pathname,'/api/v2/projects/P%2F1/application-renderers/review-evidence/content');assert.equal(url.searchParams.get('package_id'),'package/id');assert.equal(url.searchParams.get('manifest_digest'),'a'.repeat(64));assert.equal(url.searchParams.get('content_digest'),'b'.repeat(64))}finally{globalThis.fetch=original}
+})

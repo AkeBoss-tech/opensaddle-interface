@@ -1,5 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, WebContentsView } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, type MessagePortMain, net, protocol, shell, WebContentsView } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,6 +17,7 @@ import { discoverLocalProjects } from './projectDiscovery.js'
 import { discoverAgentSkills } from './skillDiscovery.js'
 import { discoverUiPlugins } from './uiPluginDiscovery.js'
 import { listPublicTokenPrices } from './tokenPricing.js'
+import { desktopRendererDocument, rendererRequestAllowed, validateDesktopRendererMessage, validateDesktopRendererRequest, type DesktopRendererRequest } from './applicationRendererPolicy.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -59,6 +61,7 @@ let mainWindow: BrowserWindow | null = null
 let opensaddleProc: ChildProcess | null = null
 let sessionBridgeProc: ChildProcess | null = null
 let embeddedBrowser: WebContentsView | null = null
+let applicationRenderer: { view: WebContentsView; identity: string; generation: number; port?: MessagePortMain; timer?: NodeJS.Timeout } | null = null
 let sidecarsShuttingDown = false
 let opensaddleRestartTimer: NodeJS.Timeout | null = null
 let opensaddleHealthTimer: NodeJS.Timeout | null = null
@@ -352,6 +355,53 @@ function embeddedWebContents(): WebContentsView {
   mainWindow?.contentView.addChildView(view)
   embeddedBrowser = view
   return view
+}
+
+function closeApplicationRenderer() {
+  if (!applicationRenderer) return
+  mainWindow?.contentView.removeChildView(applicationRenderer.view)
+  if (applicationRenderer.timer) clearTimeout(applicationRenderer.timer)
+  applicationRenderer.port?.close()
+  applicationRenderer.view.webContents.close({ waitForBeforeUnload: false })
+  applicationRenderer = null
+}
+
+async function openApplicationRenderer(request: DesktopRendererRequest) {
+  const value = validateDesktopRendererRequest(request)
+  closeApplicationRenderer()
+  const identity = `${value.connectionKey}\0${value.instanceId}\0${value.generation}\0${value.packageRef.package_id}\0${value.packageRef.version}\0${value.packageRef.manifest_digest}`
+  const view = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'applicationRendererPreload.cjs'), partition: `opensaddle-renderer-${Date.now()}-${Math.random()}`, contextIsolation: true, nodeIntegration: false, sandbox: true } })
+  applicationRenderer = { view, identity, generation: value.generation }
+  applicationRenderer.timer = setTimeout(() => { if (applicationRenderer?.identity !== identity) return; const rendererPid = view.webContents.getOSProcessId(), hostPid = mainWindow?.webContents.getOSProcessId(); if (rendererPid > 0 && hostPid && rendererPid !== hostPid) view.webContents.forcefullyCrashRenderer(); closeApplicationRenderer() }, 3000)
+  const deny = (details: { url: string }, callback: (result: { cancel: boolean }) => void) => callback({ cancel: !rendererRequestAllowed(details.url) })
+  view.webContents.session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, deny)
+  view.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  view.webContents.on('will-navigate', (event) => event.preventDefault())
+  view.webContents.on('will-frame-navigate', (event) => event.preventDefault())
+  view.webContents.on('will-redirect', (event) => event.preventDefault())
+  view.webContents.session.on('will-download', (event) => event.preventDefault())
+  view.setBounds({ x: Math.round(value.bounds.x), y: Math.round(value.bounds.y), width: Math.round(value.bounds.width), height: Math.round(value.bounds.height) })
+  mainWindow?.contentView.addChildView(view)
+  const document = desktopRendererDocument(value)
+  try { await view.webContents.loadURL(`data:text/html;base64,${Buffer.from(document).toString('base64')}`) } catch (reason) { if (applicationRenderer?.identity === identity) closeApplicationRenderer(); throw reason }
+  if (!applicationRenderer || applicationRenderer.identity !== identity) return false
+  if (!mainWindow || view.webContents.getOSProcessId() === mainWindow.webContents.getOSProcessId()) { closeApplicationRenderer(); throw Error('desktop_renderer_process_isolation_unavailable') }
+  const nonce = randomUUID(), { port1, port2 } = new MessageChannelMain()
+  applicationRenderer.port = port2
+  let count = 0, windowStart = Date.now()
+  port2.on('message', ({ data }) => {
+    if (!applicationRenderer || applicationRenderer.identity !== identity) return
+    const now = Date.now(); if (now - windowStart > 1000) { count = 0; windowStart = now }; if (++count > 32) return
+    const message = validateDesktopRendererMessage(data, value, nonce)
+    if (!message) return
+    if (message.kind === 'ready' && applicationRenderer.timer) { clearTimeout(applicationRenderer.timer); applicationRenderer.timer = undefined }
+    mainWindow?.webContents.send('runtime:application-renderer-event', { instanceId: value.instanceId, generation: value.generation, kind: message.kind, state: message.kind === 'state' ? message.state : undefined })
+  })
+  port2.start()
+  view.webContents.postMessage('opensaddle-application-port', null, [port1])
+  port2.postMessage({ protocol: 'opensaddle.application.v1', kind: 'init', nonce, generation: value.generation, instance_id: value.instanceId, connection_key: value.connectionKey, package_ref: value.packageRef, projection: value.projection })
+  return { identity, rendererPid: view.webContents.getOSProcessId() }
 }
 
 function cliResolutionOptions() {
@@ -898,6 +948,11 @@ app.whenReady().then(async () => {
     await shell.openPath(target)
   })
 
+  const fromMainFrame = (event: Electron.IpcMainInvokeEvent) => Boolean(mainWindow && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame)
+  ipcMain.handle('runtime:open-application-renderer', async (event, request: DesktopRendererRequest) => { if (!fromMainFrame(event)) throw Error('desktop_renderer_sender_denied'); return openApplicationRenderer(request) })
+  ipcMain.handle('runtime:close-application-renderer', async (event, identity: string) => { if (!fromMainFrame(event) || applicationRenderer?.identity !== identity) return false; closeApplicationRenderer(); return true })
+  ipcMain.handle('runtime:application-renderer-bounds', async (event, identity: string, bounds: DesktopRendererRequest['bounds']) => { if (!fromMainFrame(event) || !applicationRenderer || applicationRenderer.identity !== identity || Object.values(bounds).some(value => !Number.isFinite(value)) || bounds.width < 1 || bounds.height < 1) return false; applicationRenderer.view.setBounds({ x: Math.round(bounds.x), y: Math.round(bounds.y), width: Math.round(bounds.width), height: Math.round(bounds.height) }); return true })
+
   ipcMain.handle('runtime:open-browser', async (_evt, target: string) => {
     const view = embeddedWebContents()
     await view.webContents.loadURL(browserUrl(target))
@@ -969,6 +1024,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', (event) => {
+  closeApplicationRenderer()
   if (quitAfterSidecars) return
   event.preventDefault()
   if (!sidecarsStopPromise) {
