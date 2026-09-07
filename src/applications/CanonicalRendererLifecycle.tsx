@@ -24,7 +24,7 @@ type Ready = {
   initialState?: ApplicationState
 }
 type State = { kind: 'loading' } | { kind: 'unavailable'; reason: string } | ({ kind: 'ready' } & Ready)
-type HostReporter = { key: string; active: boolean; sequence: number; lastRequested?: 'loading' | 'ready' | 'error'; heartbeat?: ReturnType<typeof setTimeout>; session: Promise<{ session_id: string; report_token: string; next_sequence: number }>; chain: Promise<void>; report: (state: 'loading' | 'ready' | 'error', heartbeat?: boolean) => void }
+type HostReporter = { key: string; active: boolean; reconciling: boolean; sequence: number; lastRequested?: 'loading' | 'ready' | 'error'; heartbeat?: ReturnType<typeof setTimeout>; session: Promise<{ session_id: string; report_token: string; next_sequence: number }>; chain: Promise<void>; report: (state: 'loading' | 'ready' | 'error', heartbeat?: boolean) => void }
 const samePackage = (a: { package_id: string; version: string; manifest_digest: string }, b: { package_id: string; version: string; manifest_digest: string }) => a.package_id === b.package_id && a.version === b.version && a.manifest_digest === b.manifest_digest
 const packageKey = (value: { package_id: string; version: string; manifest_digest: string }) => `${value.package_id}\0${value.version}\0${value.manifest_digest}`
 const errorText = (reason: unknown) => reason instanceof Error ? reason.message : String(reason)
@@ -135,7 +135,7 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
     const start = () => {
       if (cancelled) return
       const reporter: HostReporter = {
-        key: observationKey, active: true, sequence: 0,
+        key: observationKey, active: true, reconciling: false, sequence: 0,
         session: client.createRendererHostSession!(resource.project_id, { host_id: hostId.current, application_id: captured.renderer.application_id, instance_id: captured.renderer.instance_id, package_ref: captured.renderer.package_ref, environment_revision: captured.environment.revision, environment_definition_digest: captured.environment.definition_digest, generation: captured.hostGeneration! }),
         chain: Promise.resolve(), report: () => {},
       }
@@ -143,6 +143,7 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
         if (!heartbeat && reporter.lastRequested === next) return
         reporter.lastRequested = next
         if (reporter.heartbeat) clearTimeout(reporter.heartbeat)
+        if (reporter.reconciling) return
         reporter.chain = reporter.chain.then(async () => {
           const session = await reporter.session
           if (!reporter.active || observation.current !== reporter) return
@@ -162,31 +163,51 @@ export function CanonicalRendererLifecycle({ client, resource, projection, conne
           }
         }).catch(reason => {
           if (!reporter.active || observation.current !== reporter) return
+          reporter.reconciling = true
           if (reporter.heartbeat) clearTimeout(reporter.heartbeat)
           setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostState: undefined, reportedHostError: hostObservationErrorText(reason) } : value)
           const failedSequence = reporter.sequence
           const failedState = reporter.lastRequested!
           const reconcile = async (attempt: number) => {
-            if (!reporter.active || observation.current !== reporter || currentHostStatus.current === 'error' || !client.rendererHostObservations) return
+            if (!reporter.active || observation.current !== reporter || !client.rendererHostObservations) return
             try {
               const rows = await client.rendererHostObservations(resource.project_id)
+              if (!reporter.active || observation.current !== reporter) return
               const session = await reporter.session
+              if (!reporter.active || observation.current !== reporter) return
               const row = rows.items.find(item => item.session_id === session.session_id)
               if (!row || row.state === 'unknown') {
                 reporter.active = false
-                const canRestart = hostRestarts.current < 1
+                const canRestart = currentHostStatus.current !== 'error' && hostRestarts.current < 1
                 if (canRestart) hostRestarts.current++
-                setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, ...(canRestart ? { hostRestart: (value.hostRestart ?? 0) + 1 } : {}), reportedHostState: undefined, reportedHostError: canRestart ? 'The prior host observation session expired. Restarting the isolated renderer.' : 'The host observation session remains unavailable. Retry by reopening this application.' } : value)
+                setState(value => observation.current === reporter && value.kind === 'ready' && observationKey === reporter.key ? { ...value, ...(canRestart ? { hostRestart: (value.hostRestart ?? 0) + 1 } : {}), reportedHostState: undefined, reportedHostError: canRestart ? 'The prior host observation session expired. Restarting the isolated renderer.' : 'The host observation session is unavailable. Reopen this application to report a new process state.' } : value)
+                return
+              }
+              if (currentHostStatus.current === 'error') {
+                reporter.sequence = Math.max(row.sequence + 1, failedSequence)
+                if (row.state !== 'error') {
+                  reporter.chain = Promise.resolve()
+                  reporter.lastRequested = undefined
+                  reporter.reconciling = false
+                  reporter.report('error', true)
+                } else {
+                  reporter.reconciling = false
+                  setState(value => reporter.active && observation.current === reporter && value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostState: 'error', reportedHostError: undefined } : value)
+                }
                 return
               }
               if (row.sequence >= failedSequence) {
                 reporter.sequence = row.sequence + 1
-                setState(value => value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostState: failedState, reportedHostError: undefined } : value)
-                if (failedState === 'ready') reporter.heartbeat = setTimeout(() => reporter.report('ready', true), 10_000)
+                if (failedState !== 'ready' || currentHostStatus.current === 'ready') {
+                  setState(value => reporter.active && observation.current === reporter && value.kind === 'ready' && observationKey === reporter.key ? { ...value, reportedHostState: failedState, reportedHostError: undefined } : value)
+                }
+                reporter.reconciling = false
+                if (failedState === 'ready' && currentHostStatus.current === 'ready') reporter.heartbeat = setTimeout(() => reporter.report('ready', true), 10_000)
                 return
               }
               reporter.chain = Promise.resolve()
               reporter.lastRequested = undefined
+              reporter.reconciling = false
               reporter.report(failedState, true)
             } catch {
               if (attempt < 3 && reporter.active && observation.current === reporter) retryTimer = setTimeout(() => void reconcile(attempt + 1), attempt * 1_000)

@@ -166,7 +166,8 @@ test('desktop lifecycle reports loading, ready, and error with the exact native 
   globalThis.window = oldWindow
 })
 
-test('an uncertain heartbeat clears stale ready and recovers through a new bounded session', async () => {
+// INV-RENDERER-HEALTH-FENCE: response ambiguity cannot preserve ready after the native process has failed.
+test('a native crash after a committed ready response loss reconciles the terminal sequence', async () => {
   const oldWindow = globalThis.window
   const fragment = '<p>health renderer</p>'
   const contentDigest = createHash('sha256').update(fragment).digest('hex')
@@ -197,9 +198,11 @@ test('an uncertain heartbeat clears stale ready and recovers through a new bound
   await until(() => reports.some(value => value.session === 'old' && value.sequence === 8))
   assert.doesNotMatch(JSON.stringify(view.toJSON()), /Host report: ready/)
   assert.match(JSON.stringify(view.toJSON()), /Host observation unavailable:.*temporary offline after commit/)
+  await act(async () => listeners[0]({ identity, instanceId: request.instanceId, generation: request.generation, kind: 'error' }))
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 1_050)) })
-  await until(() => JSON.stringify(view.toJSON()).includes('Host report'))
-  assert.match(JSON.stringify(view.toJSON()), /Host report:.*ready/)
+  await until(() => reports.some(value => value.session === 'old' && value.sequence === 9 && value.state === 'error'))
+  assert.doesNotMatch(JSON.stringify(view.toJSON()), /Host report:.*ready/)
+  assert.match(JSON.stringify(view.toJSON()), /Host report:.*error/)
   assert.equal(reports.filter(value => value.session === 'old' && value.sequence === 8).length, 1)
   assert.equal(sessions, 1)
   await act(async () => view.unmount())
@@ -233,10 +236,12 @@ test('an expired observation session restarts the native host with a new generat
   await until(() => requests.length === 1 && reports.some(value => value.state === 'loading'))
   const first = requests[0]
   const firstIdentity = [first.connectionKey, first.instanceId, first.generation, first.packageRef.package_id, first.packageRef.version, first.packageRef.manifest_digest, first.contentDigest, first.projection.resource.project_id, first.projection.resource.run_id, first.projection.resource.artifact_id, first.projection.resource.digest].join('\0')
+  await act(async () => listeners[0]({ identity: firstIdentity, instanceId: first.instanceId, generation: first.generation, kind: 'state', state: { query: 'expiry-restart-proof' } }))
   await act(async () => listeners[0]({ identity: firstIdentity, instanceId: first.instanceId, generation: first.generation, kind: 'ready' }))
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 1_050)) })
   await until(() => requests.length === 2 && sessions === 2)
   assert.notEqual(requests[1].generation, first.generation)
+  assert.deepEqual(requests[1].state, { query: 'expiry-restart-proof' })
   assert.equal(reports.filter(value => value.session === 'session-1' && value.state === 'ready').length, 1)
   assert.ok(reports.some(value => value.session === 'session-2' && value.state === 'loading'))
   const second = requests[1]
