@@ -136,6 +136,7 @@ export function initServices(opts: {
       let commandCenterAvailable = false
       let managedKrailAvailable = false
       let participantsAvailable = false
+      let resourceCapacityAvailable = false
       let legacyHealthAvailable = false
       let v2CapabilitiesAvailable = false
       let delegation: DelegationPolicySummary | undefined
@@ -239,6 +240,7 @@ export function initServices(opts: {
               command_center?: { available?: boolean; path?: string; schema_version?: string }
               managed_krail?: boolean
               participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
+              resource_capacity?: { available?: boolean; schema_version?: string; project_config_path_template?: string; status_path_template?: string }
             }
             backendAvailable = true
             backendMode = capabilities.capability_mode ?? backendMode
@@ -247,6 +249,7 @@ export function initServices(opts: {
               && capabilities.command_center.schema_version === 'opensaddle.command-center.v1'
             managedKrailAvailable = capabilities.managed_krail === true
             participantsAvailable = capabilities.participants?.available === true && capabilities.participants.schema_version === 'opensaddle.participant.v1' && capabilities.participants.project_path_template === '/api/v2/projects/{project_id}/participants'
+            resourceCapacityAvailable = capabilities.resource_capacity?.available === true && capabilities.resource_capacity.schema_version === 'opensaddle.resource-capacity.v1' && capabilities.resource_capacity.project_config_path_template === '/api/v2/projects/{project_id}/capacity-limits' && capabilities.resource_capacity.status_path_template === '/api/v2/projects/{project_id}/capacity'
           }
         } catch {
           commandCenterAvailable = false
@@ -315,7 +318,7 @@ export function initServices(opts: {
         : undefined
       const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
-      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token) : undefined
+      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable) : undefined
       const tools = connection.mode === 'remote' && mode !== 'mock'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
         : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
