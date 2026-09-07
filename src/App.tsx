@@ -42,6 +42,7 @@ import { ProjectOnboardingPage } from './features/onboarding/ProjectOnboardingPa
 import { ConnectedLocalProjectPage } from './features/projects/ConnectedLocalProjectPage'
 import { ConnectedLocalSettingsPage } from './features/projects/ConnectedLocalSettingsPage'
 import { ConnectedLocalProjectDialog } from './features/onboarding/ConnectedLocalProjectDialog'
+import { ConnectedJourneyPage } from './features/onboarding/ConnectedJourneyPage'
 import { supportsGovernedProjectOnboarding } from './features/onboarding/onboardingAvailability'
 import { registerLocalWorkspace } from './features/onboarding/registerLocalWorkspace'
 import { scaffoldApply } from './features/onboarding/scaffoldApply'
@@ -331,6 +332,7 @@ function Shell() {
             <Route path="/local" element={<Navigate to="/start" replace />} />
             <Route path="/project/:projectId" element={<ConnectedLocalProjectPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
+            <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
             <Route path="*" element={<Navigate to="/start" replace />} />
           </Routes> : <Routes>

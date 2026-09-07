@@ -23,6 +23,8 @@ import { RemoteMalleableShellClient } from './remoteMalleableShell'
 import { RemoteKrailProposalClient } from './remoteKrailProposals'
 import { RemoteParticipantClient } from './remoteParticipants'
 import { RemoteOperationsSessionClient } from './remoteOperations'
+import { RemoteJourneyClient } from './remoteJourney'
+import type { JourneyAuthority } from '../features/onboarding/ConnectedJourneySurface'
 import { negotiateRunRecovery, type RunRecoverySupport } from './recoverySupport'
 import type { PermissionGrant } from './contracts'
 
@@ -46,6 +48,7 @@ export interface ServiceBundle {
   participants?: ParticipantClient
   operationsSessions?: OperationsSessionClient
   malleableShell?: MalleableShellClient
+  journey?: JourneyAuthority
   controlPlane: {
     connected: boolean
     mode?: string
@@ -312,6 +315,7 @@ export function initServices(opts: {
         : undefined
       const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
+      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token) : undefined
       const tools = connection.mode === 'remote' && mode !== 'mock'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
         : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
@@ -343,6 +347,7 @@ export function initServices(opts: {
         participants,
         operationsSessions,
         malleableShell,
+        journey,
         controlPlane: {
           connected: backendAvailable,
           mode: backendMode,

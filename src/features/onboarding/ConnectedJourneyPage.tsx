@@ -1,0 +1,2 @@
+import{useParams}from'react-router-dom';import{useStore}from'../../data/store';import{ConnectedJourneySurface}from'./ConnectedJourneySurface'
+export function ConnectedJourneyPage(){const{projectId}=useParams(),{services}=useStore();if(!projectId||!services?.journey)return <main className="content-page cc-page"><h1>People and machines</h1><p role="alert">Connected collaboration authority is unavailable from this server.</p></main>;return <ConnectedJourneySurface authority={services.journey} projectId={projectId}/>}

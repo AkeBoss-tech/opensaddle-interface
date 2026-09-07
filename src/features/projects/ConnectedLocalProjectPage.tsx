@@ -24,7 +24,7 @@ export function ConnectedLocalProjectPage() {
     return () => { cancelled = true }
   }, [projectId, services])
   if (!project && services?.projectGoals) return <div className="content-page connected-local-page">
-    <header className="page-header"><div><span className="eyebrow">Authoritative project</span><h1><code>{projectId}</code></h1></div></header>
+    <header className="page-header"><div><span className="eyebrow">Authoritative project</span><h1><code>{projectId}</code></h1></div>{services.journey&&<Button onClick={()=>navigate(`/project/${projectId}/collaboration`)}>People and machines</Button>}</header>
     <ProjectGoalEditor projectId={projectId} client={services.projectGoals} />
   </div>
   if (!project) return <div className="content-page"><div className="empty-state">Project not found.</div></div>
