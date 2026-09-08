@@ -24,6 +24,7 @@ import { RemoteKrailProposalClient } from './remoteKrailProposals'
 import { RemoteParticipantClient } from './remoteParticipants'
 import { RemoteOperationsSessionClient } from './remoteOperations'
 import { RemoteJourneyClient } from './remoteJourney'
+import { PersonalRuntimeClient } from './personalRuntime'
 import type { JourneyAuthority } from '../features/onboarding/ConnectedJourneySurface'
 import { negotiateRunRecovery, type RunRecoverySupport } from './recoverySupport'
 import type { PermissionGrant } from './contracts'
@@ -49,6 +50,7 @@ export interface ServiceBundle {
   operationsSessions?: OperationsSessionClient
   malleableShell?: MalleableShellClient
   journey?: JourneyAuthority
+  personalRuntime?: PersonalRuntimeClient
   controlPlane: {
     connected: boolean
     mode?: string
@@ -140,6 +142,7 @@ export function initServices(opts: {
       let resourceCapacityAvailable = false
       let nativeAdaptersAvailable = false
       let authorizedContextAvailable = false
+      let personalRuntimeAvailable = false
       let portableContinuationAvailable = false
       let nativeSessionResume = false
       let legacyHealthAvailable = false
@@ -246,7 +249,7 @@ export function initServices(opts: {
               managed_krail?: boolean
               participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
               resource_capacity?: { available?: boolean; schema_version?: string; project_config_path_template?: string; status_path_template?: string }
-              native_adapters?: { available?: boolean; schema_version?: string; supported_adapter_ids?: unknown; unsupported_adapter_ids?: unknown; readiness_path_template?: string; report_path_template?: string; selection_field?: string; observation_authority?: string; policy_authority?: string }; portable_run_continuations?: { available?: boolean; schema_version?: string; checkpoint_path_template?: string; continuation_path_template?: string; mode?: string; native_session_resume?: boolean }; authorized_context_packets?: { available?: boolean; schema_version?: string; selection_field?: string; inspector_path_template?: string; worker_path_template?: string; reauthorization_schema_version?: string; unavailable_reason?: string; sources_path_template?: string }
+              native_adapters?: { available?: boolean; schema_version?: string; supported_adapter_ids?: unknown; unsupported_adapter_ids?: unknown; readiness_path_template?: string; report_path_template?: string; selection_field?: string; observation_authority?: string; policy_authority?: string }; portable_run_continuations?: { available?: boolean; schema_version?: string; checkpoint_path_template?: string; continuation_path_template?: string; mode?: string; native_session_resume?: boolean }; authorized_context_packets?: { available?: boolean; schema_version?: string; selection_field?: string; inspector_path_template?: string; worker_path_template?: string; reauthorization_schema_version?: string; unavailable_reason?: string; sources_path_template?: string }; personal_runtime?: {available?:boolean;schema_version?:string;status_path?:string;action_path?:string;authority?:string;ui_process_owner?:boolean}
             }
             backendAvailable = true
             backendMode = capabilities.capability_mode ?? backendMode
@@ -263,6 +266,8 @@ export function initServices(opts: {
             nativeSessionResume=continuation?.native_session_resume===true
             const context = capabilities.authorized_context_packets
             authorizedContextAvailable = context?.available === true && context.schema_version === 'krail.authorized-context-packet.v2' && context.selection_field === 'authorized_context_source_ids' && context.inspector_path_template === '/api/v2/runs/{run_id}/authorized-context-packet' && context.worker_path_template === '/api/v2/workers/{worker_id}/runs/{run_id}/authorized-context-packet' && context.reauthorization_schema_version === 'krail.authorized-context-reauthorization.v1' && context.unavailable_reason === 'context_packet_unavailable' && context.sources_path_template === '/api/v2/projects/{project_id}/authorized-context-sources'
+            const personal=capabilities.personal_runtime
+            personalRuntimeAvailable=personal?.available===true&&personal.schema_version==='opensaddle.personal-runtime.v1'&&personal.status_path==='/api/v2/personal-runtime'&&personal.action_path==='/api/v2/personal-runtime/lifecycle'&&personal.authority==='local_installation_owner'&&personal.ui_process_owner===false
           }
         } catch {
           commandCenterAvailable = false
@@ -332,6 +337,7 @@ export function initServices(opts: {
       const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
       const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable, authorizedContextAvailable, portableContinuationAvailable, nativeSessionResume) : undefined
+      const personalRuntime=backendAvailable&&personalRuntimeAvailable?new PersonalRuntimeClient(baseUrl,getUserId,token):undefined
       const tools = connection.mode === 'remote'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
         : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
@@ -364,6 +370,7 @@ export function initServices(opts: {
         operationsSessions,
         malleableShell,
         journey,
+        personalRuntime,
         controlPlane: {
           connected: backendAvailable,
           mode: backendMode,
