@@ -214,6 +214,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [threadHistoryHydrated, setThreadHistoryHydrated] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [connection, setConnection] = useState<ConnectionProfile>(() => loadSessionConnection(defaultConnectionProfile()))
+  useEffect(() => {
+    let live = true
+    if (!window.opensaddleDesktop || !window.opensaddle?.adoptPersonalRuntime) return
+    void window.opensaddle.adoptPersonalRuntime().then((handoff) => {
+      if (!live) return
+      const next: ConnectionProfile = { id:`remote-${handoff.baseUrl.replace(/\/$/,'')}`,name:'Personal runtime',mode:'remote',baseUrl:handoff.baseUrl.replace(/\/$/,''),token:handoff.bearerToken,allowMockFallback:false }
+      saveSessionConnection(next, undefined, false)
+      setConnection(next)
+    }).catch(() => undefined)
+    return () => { live = false }
+  }, [])
   const [harnessCapabilities, setHarnessCapabilities] = useState<HarnessCapability[]>([])
   const [localProjectManifests, setLocalProjectManifests] = useState<Record<string, ProjectArtifactManifest>>({})
   const grantsRef = useRef(data.permissionGrants)

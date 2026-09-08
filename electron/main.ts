@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createServer, type Server } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { existsSync, mkdirSync, mkdtempSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync } from 'node:fs'
 import { readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { desktopCliPath, resolveDesktopCli } from './cliDiscovery.js'
@@ -20,6 +20,7 @@ import { discoverUiPlugins } from './uiPluginDiscovery.js'
 import { listPublicTokenPrices } from './tokenPricing.js'
 import { desktopRendererDocument, rendererRequestAllowed, validateDesktopRendererMessage, validateDesktopRendererRequest, type DesktopRendererRequest } from './applicationRendererPolicy.js'
 import { migrateApplicationState, type ApplicationStateSchema } from './applicationState.js'
+import { adoptPersonalRuntime, commissionPersonalRuntimeProcess, type DesktopPersonalRuntimeRequest } from './personalRuntimeCommissioning.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -1005,6 +1006,31 @@ app.whenReady().then(async () => {
     },
     clis: await discoverClis(),
     })
+  })
+
+  ipcMain.handle('runtime:commission-personal', async (event, request: DesktopPersonalRuntimeRequest) => {
+    if (!fromMainFrame(event)) throw Error('personal_runtime_sender_denied')
+    if (!await ensureOpenSaddle()) throw Error('Local project registry is unavailable')
+    const [projectResponse, harnessResponse] = await Promise.all([fetch(`${opensaddleUrl}/api/projects`), fetch(`${opensaddleUrl}/api/harness-capabilities`)])
+    if (!projectResponse.ok || !harnessResponse.ok) throw Error('Local project or coding-agent inventory is unavailable')
+    const projects = (await projectResponse.json() as { projects?: unknown[] }).projects ?? [], harnesses = (await harnessResponse.json() as { harnesses?: unknown[] }).harnesses ?? []
+    const project = projects.find((raw): raw is { project_id:string;root:string } => !!raw && typeof raw === 'object' && (raw as {project_id?:unknown}).project_id === request.projectId && typeof (raw as {root?:unknown}).root === 'string')
+    const harness = harnesses.find((raw): raw is { id:string;availability:string;readiness:string;resolvedPath:string } => !!raw && typeof raw === 'object' && (raw as {id?:unknown}).id === request.adapter && (raw as {availability?:unknown}).availability === 'available' && (raw as {readiness?:unknown}).readiness === 'ready' && typeof (raw as {resolvedPath?:unknown}).resolvedPath === 'string')
+    if (!project || path.resolve(project.root) !== path.resolve(request.workspace)) throw Error('Registered local project changed; refresh before commissioning')
+    if (!harness || path.resolve(harness.resolvedPath) !== path.resolve(request.executable)) throw Error('Installed coding agent changed; refresh before commissioning')
+    const launch = await resolveOpenSaddleLaunch(); if (!launch) throw Error('Packaged OpenSaddle runtime is unavailable')
+    const personalUrl = await unusedLoopbackUrl(), stateDir = path.join(opensaddleStateDir(), 'personal-runtime'), commandIndex = launch.args.indexOf('serve-api')
+    const result = await commissionPersonalRuntimeProcess({ command:launch.command,commandPrefix:commandIndex<0?[]:launch.args.slice(0,commandIndex),request,config:{projectDatabase:path.join(opensaddleStateDir(),'projects.db'),stateDir,port:Number(new URL(personalUrl).port),allowedOrigin:'opensaddle://app',handoffFd:3},expected:{baseUrl:personalUrl,projectId:request.projectId} })
+    const metadata={schema_version:'opensaddle.personal-runtime-desktop.v1',base_url:result.handoff.baseUrl,installation_id:result.handoff.installationId,project_id:result.handoff.projectId,adoption_socket:result.handoff.adoptionSocket}
+    mkdirSync(stateDir,{recursive:true,mode:0o700});chmodSync(stateDir,0o700);await writeFile(path.join(stateDir,'desktop-adoption.json'),JSON.stringify(metadata),{encoding:'utf8',mode:0o600})
+    return result.handoff
+  })
+
+  ipcMain.handle('runtime:adopt-personal', async (event) => {
+    if (!fromMainFrame(event)) throw Error('personal_runtime_sender_denied')
+    const stateDir=path.join(opensaddleStateDir(),'personal-runtime'),raw=JSON.parse(await readFile(path.join(stateDir,'desktop-adoption.json'),'utf8')) as Record<string,unknown>
+    if(raw.schema_version!=='opensaddle.personal-runtime-desktop.v1'||typeof raw.base_url!=='string'||typeof raw.installation_id!=='string'||typeof raw.project_id!=='string'||typeof raw.adoption_socket!=='string')throw Error('Personal runtime adoption metadata is invalid')
+    return adoptPersonalRuntime({stateDir,socketPath:raw.adoption_socket,baseUrl:raw.base_url,installationId:raw.installation_id,projectId:raw.project_id})
   })
 
   ipcMain.handle('runtime:pick-repo', async () => {

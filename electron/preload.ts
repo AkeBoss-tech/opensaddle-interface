@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('opensaddle', {
     krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }
     clis: string[]
   }>,
+  commissionPersonalRuntime: (request: unknown) => ipcRenderer.invoke('runtime:commission-personal', request),
+  adoptPersonalRuntime: () => ipcRenderer.invoke('runtime:adopt-personal'),
   pickRepository: () => ipcRenderer.invoke('runtime:pick-repo') as Promise<string | null>,
   discoverProjects: () => ipcRenderer.invoke('runtime:discover-projects') as Promise<Array<{
     id: string; rootPath: string; name: string; sources: Array<'codex' | 'cursor' | 'claude'>; lastSeenAt: number
