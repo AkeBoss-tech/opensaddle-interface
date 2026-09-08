@@ -13,6 +13,7 @@ This is a local integration receipt, not hosted or visible-GUI proof. The macOS 
 - Folder contents were not imported or copied by this registration proof. The registration itself deleted or overwrote no existing Project rows or user files.
 - Handoff state: verification PID `87545` was stopped cleanly after confirming the durable row. Coordinator-owned Core PID `88079` then opened the same canonical directory without legacy development mutations; an unauthenticated loopback GET returned HTTP 200 and included the new `opensaddle` row. This receipt makes no always-on or reboot-process claim. The desktop sidecar uses the same canonical directory for future launches.
 - Two exact registrations whose temporary roots no longer existed were removed separately by the coordinator after a mode-0600 SQLite backup and clean foreign-key check. The three registrations for existing folders remained; their unrelated identities are intentionally omitted here.
+- Final restart: PID `88079` shut down gracefully on SIGTERM; retained PID `90636` reopened the exact canonical directory without legacy development mutations. A fresh loopback GET returned HTTP 200, retained the exact `opensaddle` root, and confirmed the two stale fixture registrations remained absent. PID `90636` was running at handoff.
 
 The runnable probes are retained outside the repository in the persistent agent runtime. They contain only the local loopback URL, Project id, and authorized local root; no token or credential is present.
 
