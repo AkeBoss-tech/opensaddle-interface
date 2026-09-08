@@ -26,7 +26,7 @@
     "electron:build": "npm run build --prefix electron",
     "electron:dev": "VITE_APP_BASE=./ npm run build && npm run build --prefix electron && npm run start --prefix electron",
     "desktop": "npm run electron:dev",
-    "desktop:package": "npm run runtime:krail:bundle && VITE_APP_BASE=./ npm run build && npm run package:mac --prefix electron"
+    "desktop:package": "node scripts/build-krail-runtime.mjs --required && VITE_APP_BASE=./ npm run build && npm run package:mac --prefix electron"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

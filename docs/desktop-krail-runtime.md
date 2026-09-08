@@ -15,6 +15,12 @@ KRAIL_VERSION=1.2.0rc2 \
 KRAIL_WHEEL=/absolute/path/krail-1.2.0rc2-py3-none-any.whl \
 OPENSADDLE_VERSION=1.2.0rc5 \
 OPENSADDLE_WHEEL=/absolute/path/opensaddle-1.2.0rc5-py3-none-any.whl \
+INTERFACE_SOURCE_REVISION=<exact-40-character-git-sha> \
+INTERFACE_SOURCE_TREE=<exact-40-character-git-tree> \
+KRAIL_SOURCE_REVISION=<exact-40-character-git-sha> \
+KRAIL_SOURCE_TREE=<exact-40-character-git-tree> \
+OPENSADDLE_SOURCE_REVISION=<exact-40-character-git-sha> \
+OPENSADDLE_SOURCE_TREE=<exact-40-character-git-tree> \
 KRAIL_PYTHON_RUNTIME=/absolute/path/python-install-only-arm64.tar.gz \
 KRAIL_PYTHON_RUNTIME_SHA256=<64-lowercase-hex-characters> \
 KRAIL_RUNTIME_LOCK=electron/runtime-lock/runtime-lock-macos-arm64-python3.13.json \
@@ -22,6 +28,42 @@ KRAIL_REQUIREMENTS_LOCK=electron/runtime-lock/requirements-macos-arm64-python3.1
 KRAIL_WHEELHOUSE=/absolute/path/to/validated-wheelhouse \
 npm run runtime:krail:bundle
 ```
+
+`npm run desktop:package` requires the complete runtime and fails before
+packaging if any wheel, source revision, lock, or Python input is absent. The
+builder assembles and smoke-tests a candidate directory first, then replaces
+the prior bundle only after every check passes. Invalid inputs therefore do not
+erase a previously validated bundle.
+
+Reviewed source-built candidates set `KRAIL_WHEEL_PROVENANCE=reviewed_local`
+and `OPENSADDLE_WHEEL_PROVENANCE=reviewed_local`. Each corresponding runtime
+lock entry must bind the official repository, accepted revision, wheel bytes,
+and wheel digest. Build receipts also record the immutable source archive/tree
+digest, `SOURCE_DATE_EPOCH`, interpreter, and build-tool versions. The builder
+verifies the Interface revision and official origin against a clean tracked
+checkout and verifies both local
+wheels against those lock records. Environment revision strings alone are not
+source provenance. Builds from a Git archive must instead carry and verify a
+reviewed source receipt with the archive and source-tree digests; they cannot
+impersonate a checkout that has no Git metadata. Published `pypi` inputs remain supported for an explicitly
+reviewed release lock, but must not stand in for newer local source changes.
+
+Runtime manifests use schema version 2. Desktop rejects legacy version 1
+manifests because they do not carry repository-bound source records.
+
+Create an archive-backed Interface input without copying dirty working bytes:
+
+```bash
+node scripts/export-runtime-source.mjs \
+  /absolute/path/to/opensaddle-interface \
+  <accepted-40-character-revision> \
+  /absolute/path/to/source-export
+```
+
+After extracting `source.tar`, pass the unchanged archive and
+`source-receipt.json` as `INTERFACE_SOURCE_ARCHIVE` and
+`INTERFACE_SOURCE_RECEIPT`. The builder verifies their digest, repository,
+revision, and tree before staging the runtime.
 
 The declared versions are mandatory and must exactly match the wheel filenames.
 This prevents an old published backend from being relabeled as the current

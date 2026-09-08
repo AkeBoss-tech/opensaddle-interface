@@ -1,0 +1,14 @@
+{
+  "schema_version":"opensaddle.regression-proof.v1-ts-adapter",
+  "invariant":"DESKTOP-RUNTIME-PACKAGE-1",
+  "baseRevision":"07be56ee36dd2091620ecd8480368c9ca65f9826",
+  "fixedBuilderSha256":"e2b3cfa084642edf5e669b18f352a9d6d949241864e75d88985b17e8cb2ef4d1",
+  "sourceExportDriverSha256":"904cc40dceb141306c31d3b44b0d5db31777b905d0b945238dfc0d438354262c",
+  "command":"node scripts/build-krail-runtime.mjs --required with all runtime environment inputs removed in isolated copied repositories",
+  "preFix":{"exitCode":0,"priorBundleSentinel":"absent"},
+  "postFix":{"exitCode":1,"priorBundleSentinel":"present"},
+  "outputSha256":"11b43419940beaaf69a2e9ccf6669dc423ee10a8956c404054a54f22c539be7d",
+  "postInstallPreservation":{"command":"npm exec tsx -- --test test/desktopReleaseWorkflow.test.ts","result":"7 passed","boundary":"A synthetic install-only archive and locked local wheels make the offline pip subprocess return success without its required report; the later failure exits 1 and preserves the prior bundle sentinel."},
+  "sourceExport":{"result":"exact commit/tree/archive digest bound; dirty working bytes excluded","test":"runtime source export binds immutable archive bytes to exact commit and tree"},
+  "adaptation":"The production JavaScript builder was copied from the immutable base and current tree into separate private repository-shaped directories. No canonical runtime bundle was read or changed. The post-install test uses synthetic executable fixtures and does not claim a real Python dependency smoke."
+}

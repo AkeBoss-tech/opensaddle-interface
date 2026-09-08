@@ -6,8 +6,6 @@ import path from 'node:path'
 import test from 'node:test'
 import { resolveKrailRuntime } from '../electron/runtimeBundle.ts'
 
-const runtimeBuilder = readFileSync('scripts/build-krail-runtime.mjs', 'utf8')
-
 function fixture() {
   const resourceRoot = mkdtempSync(path.join(os.tmpdir(), 'opensaddle-krail-runtime-'))
   const runtime = path.join(resourceRoot, 'krail-runtime')
@@ -28,9 +26,14 @@ function fixture() {
   writeFileSync(path.join(runtime, 'requirements.txt'), 'krail==1.2.0rc1 --hash=sha256:test\n')
   const fileDigest = (name: string) => createHash('sha256').update(readFileSync(path.join(runtime, name))).digest('hex')
   const manifest = {
-    schemaVersion: 1, runtime: 'krail',
-    wheel: { version: '1.2.0rc1', name: 'krail-1.2.0rc1-py3-none-any.whl', sha256: 'a'.repeat(64) },
-    opensaddle: { version: '1.2.0rc1', name: 'opensaddle-1.2.0rc1-py3-none-any.whl', sha256: 'c'.repeat(64), command: '../opensaddle-backend/opensaddle' },
+    schemaVersion: 2, runtime: 'krail',
+    sources: {
+      interface:{repository:'https://github.com/AkeBoss-tech/opensaddle-interface.git',revision:'1'.repeat(40),tree:'4'.repeat(40)},
+      krail:{repository:'https://github.com/AkeBoss-tech/knowledge.git',revision:'2'.repeat(40),tree:'5'.repeat(40)},
+      opensaddle:{repository:'https://github.com/AkeBoss-tech/opensaddle.git',revision:'3'.repeat(40),tree:'6'.repeat(40)},
+    },
+    wheel: { version: '1.2.0rc1', name: 'krail-1.2.0rc1-py3-none-any.whl', sha256: 'a'.repeat(64), provenance:'reviewed_local' },
+    opensaddle: { version: '1.2.0rc1', name: 'opensaddle-1.2.0rc1-py3-none-any.whl', sha256: 'c'.repeat(64), command: '../opensaddle-backend/opensaddle', provenance:'reviewed_local' },
     python: { name: 'python.tar.gz', sha256: 'b'.repeat(64), command: 'python/bin/python3' },
     dependencies: { report: 'dependency-install-report.json', sha256: dependencyDigest },
     runtimeLock: { name: 'runtime-lock.json', sha256: fileDigest('runtime-lock.json') },
@@ -56,11 +59,17 @@ test('packaged KRAIL runtime resolves only a complete validated manifest', () =>
   }
 })
 
-test('runtime build binds both top-level wheels to the official lock', () => {
-  assert.match(runtimeBuilder, /top-level KRAIL and OpenSaddle wheels must exactly match the runtime lock/)
-  assert.match(runtimeBuilder, /sha256\(wheel\) !== lockedKrail\.sha256/)
-  assert.match(runtimeBuilder, /sha256\(opensaddleWheel\) !== lockedOpenSaddle\.sha256/)
-})
+test('packaged runtime requires exact source keys, repositories, revisions, schema and wheel provenance',()=>{const value=fixture();try{
+  const original=structuredClone(value.manifest)
+  for(const mutate of [
+    (manifest:any)=>{manifest.sources={}},
+    (manifest:any)=>{manifest.sources.extra=manifest.sources.interface},
+    (manifest:any)=>{manifest.sources.krail.revision='bad'},
+    (manifest:any)=>{manifest.sources.opensaddle.repository='https://example.invalid/repo.git'},
+    (manifest:any)=>{manifest.schemaVersion=1},
+    (manifest:any)=>{manifest.wheel.provenance='unknown'},
+  ]) { Object.assign(value.manifest,structuredClone(original)); mutate(value.manifest); writeFileSync(path.join(value.runtime,'manifest.json'),JSON.stringify(value.manifest)); assert.equal(resolveKrailRuntime(value.resourceRoot),null) }
+}finally{rmSync(value.resourceRoot,{recursive:true,force:true})}})
 
 test('packaged KRAIL runtime rejects traversal and missing manifests', () => {
   const value = fixture()
