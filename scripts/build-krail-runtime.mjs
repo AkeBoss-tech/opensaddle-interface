@@ -120,7 +120,7 @@ if (!cleanCheckout) {
   const members = listing.status === 0 ? listing.stdout.split('\n').filter((member) => member && !member.endsWith('/')) : []
   const archiveMatches = members.length > 0 && members.every((member) => {
     if (member.startsWith('/') || member.split('/').includes('..')) return false
-    const extracted = spawnSync('tar', ['-xOf', archivePath, member])
+    const extracted = spawnSync('tar', ['-xOf', archivePath, member], { maxBuffer: 128 * 1024 * 1024 })
     const local = path.resolve(repositoryRoot, member)
     return extracted.status === 0 && local.startsWith(`${repositoryRoot}${path.sep}`) && existsSync(local) && Buffer.compare(extracted.stdout, readFileSync(local)) === 0
   })
