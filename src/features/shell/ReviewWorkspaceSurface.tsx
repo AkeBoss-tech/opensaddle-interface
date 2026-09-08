@@ -116,6 +116,11 @@ export function ReviewWorkspaceSurface({ client, runId, projectId, invocationId 
     const currentGeneration = generation.current
     const selectedDescriptor = visibleDescriptor
     const selectedResource = resource
+    // The existing result is protected by the same current authorization as
+    // this fresh invocation. Hide it before the authority check crosses the
+    // network so a revoked caller never keeps stale bytes on screen.
+    setResult(undefined)
+    setStaleResult(false)
     setBusy(true)
     setError('')
     try {

@@ -1,0 +1,15 @@
+{
+  "schema_version": "opensaddle.regression-proof.v1-ts-adapter",
+  "invariant": "PROTECTED-COMMAND-RESULT-1",
+  "baseRevision": "56b68c49afce4b81ef9f5aaf87859105c6bd8faa",
+  "test": "src/features/shell/ReviewWorkspacePage.test.tsx::fresh command authorization clears a prior protected result before denial settles",
+  "testOverlaySha256": "2dbc6375ae6d3bcc56fbfafbceaab8f4ce8fce9eb6dc96b5f324edcfba196836",
+  "fixedSourceSha256": "7c8d05104b74b967b173906b18592b62047f5f8d2b66010532734ffe5a9efa33",
+  "preFix": "failed",
+  "preFixExitCode": 1,
+  "preFixFailure": "prior Reviewed A and inv-A remained visible while fresh authorization was pending",
+  "preFixOutputSha256": "e54652a6d7968b8c0efcb7f014cc661cb4befca40091d0a278fae6d5aeb2c4bb",
+  "postFix": "passed",
+  "postFixOutputSha256": "4c271bc94d14e37d1abeb20febbcf150f11ba93ed5bd1834a32a56740b13ac3b",
+  "adaptation": "The repository prove_regression.py accepts only pytest tests under tests/. This proof used an immutable git archive, overlaid the identical current TS test only, linked the existing node_modules, and ran the same node --test name pattern before and after. No production source was overlaid into the base export."
+}

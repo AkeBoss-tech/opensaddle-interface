@@ -112,6 +112,26 @@ test('shared dispatch locks same-tick duplicate intent and rejects substituted r
   delete (globalThis as typeof globalThis & { window?: EventTarget }).window
 })
 
+test('fresh command authorization clears a prior protected result before denial settles', async () => {
+  ;(globalThis as typeof globalThis & { window: EventTarget }).window = new EventTarget()
+  const exact = artifact('A')
+  let rejectFresh!: (reason: Error) => void
+  const renderer = await mount(client({
+    artifacts: async () => [exact],
+    invocations: async () => [invocation(exact)],
+    invoke: async () => new Promise((_resolve, reject) => { rejectFresh = reject }),
+  }))
+  assert.match(JSON.stringify(renderer.toJSON()), /Reviewed A/)
+  await act(async () => { window.dispatchEvent(new CustomEvent('opensaddle:invoke-artifact-review')) })
+  assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /Reviewed A|inv-A/)
+  await act(async () => { rejectFresh(new Error('409 protected command result unavailable')); await Promise.resolve() })
+  const denied = JSON.stringify(renderer.toJSON())
+  assert.match(denied, /protected command result unavailable/)
+  assert.doesNotMatch(denied, /Reviewed A|inv-A/)
+  await act(async () => renderer.unmount())
+  delete (globalThis as typeof globalThis & { window?: EventTarget }).window
+})
+
 test('pending shared dispatch cannot publish after route and client replacement', async () => {
   ;(globalThis as typeof globalThis & { window: EventTarget }).window = new EventTarget()
   let resolveOld!: (value: ShellCommandResult) => void
