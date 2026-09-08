@@ -179,7 +179,7 @@ export class RemoteJourneyClient {
       participants: (Array.isArray(participantList.items) ? participantList.items : []).map(value => { const item = value as Json; return { participantId: String(item.participant_id), title: String(item.title), lifecycle: String(item.lifecycle) } }),
       sourceDiscoveryAvailable,
       sources: (Array.isArray(sourceList.items) ? sourceList.items : []).map(value => { const item = value as Json; return { sourceId: String(item.source_id), label: String(item.display_label) } }),
-      activeRuns: (Array.isArray(center.active_runs) ? center.active_runs : []).flatMap(value => { const item = value as Json; return item.project_id === projectId && typeof item.run_id === 'string' ? [{ runId: item.run_id, task: String(item.task ?? 'Run'), status: String(item.status), ...this.nativeSelection(item) }] : [] }),
+      activeRuns: (Array.isArray(center.active_runs) ? center.active_runs : []).flatMap(value => { const item = value as Json; return item.project_id === projectId && typeof item.run_id === 'string' && typeof item.requested_by === 'string' && typeof item.cancellation_requested === 'boolean' ? [{ runId: item.run_id, task: String(item.task ?? 'Run'), status: String(item.status), requestedBy: item.requested_by, cancellationRequested: item.cancellation_requested, ...this.nativeSelection(item) }] : [] }),
       results,
       rosterAvailable: true,
       currentSubject: this.user(),
