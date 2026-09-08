@@ -2,9 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type {
   AgentInterface, AppData, Chat, CodingProvider, CustomAgent, Dashboard, LocalProjectSettings, Member, Message, PermissionGrant, PinnedArtifact, Project, ProjectSource, QuickApi, ServiceConn, SettingsState, Site, SiteVersion, Theme, Visibility, WikiSettings, WorkflowDef, WorkflowRun,
 } from '../types'
-import { createSeedData, DATA_VERSION, STORAGE_KEY } from './seed'
+import { DATA_VERSION, STORAGE_KEY } from './seed'
+import { createEmptyWorkspace } from './emptyWorkspace'
 import {
   captureWorkspaceRecovery,
+  containsLegacySampleWorkspace,
   deleteWorkspaceRecovery,
   listWorkspaceRecoveries,
   loadWorkspace,
@@ -12,7 +14,7 @@ import {
   readWorkspaceRecovery,
   type WorkspaceRecovery,
 } from './workspacePersistence'
-import { defaultConnectionProfile, initServices, resetServices, type ConnectionProfile, type ServiceBundle } from '../services'
+import { defaultConnectionProfile, initServices, type ConnectionProfile, type ServiceBundle } from '../services'
 import { loadSessionConnection, saveSessionConnection } from './connectionSession'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
@@ -23,10 +25,29 @@ import type {
   DurableThreadMessage,
   HarnessCapability,
   ProjectArtifactManifest,
+  RegisteredLocalProject,
 } from '../services/contracts'
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+// oxlint-disable-next-line react/only-export-components -- authoritative hydration is tested as a public state transition.
+export function hydrateRegisteredLocalProjects(
+  current: AppData,
+  registrations: RegisteredLocalProject[],
+  preferredHarness: string,
+): AppData {
+  const missing = registrations.filter((registration) =>
+    !current.projects.some((project) => project.id === registration.projectId))
+  if (!missing.length && current.activeProjectId) return current
+  const next = structuredClone(current)
+  for (const registration of missing) next.projects.push(projectFromRegisteredLocalProject(registration, preferredHarness))
+  if (!next.activeProjectId && registrations.length) {
+    const newest = [...registrations].sort((left, right) => right.createdAt - left.createdAt)[0]
+    next.activeProjectId = newest.projectId
+  }
+  return next
 }
 
 // oxlint-disable-next-line react/only-export-components -- pure append semantics are covered independently of React.
@@ -160,9 +181,6 @@ interface StoreApi {
   attachSource: (input: Omit<ProjectSource, 'id' | 'lastSyncAt'>) => ProjectSource
   updateSource: (id: string, patch: Partial<Pick<ProjectSource, 'name' | 'url' | 'status' | 'branch' | 'folderPath'>>) => void
   updateHunk: (messageId: string, hunkId: string, status: 'accepted' | 'rejected') => void
-  /** Deletes seeded sample teams, people and conversations. Snapshot kept. */
-  removeDemoData: () => void
-  resetData: () => void
   exportData: () => string
   toast: (title: string, message: string) => void
   toasts: Array<{ id: string; title: string; message: string }>
@@ -178,7 +196,6 @@ interface StoreApi {
   lastSavedAt: number | null
   connection: ConnectionProfile
   connectToServer: (profile: Pick<ConnectionProfile, 'name' | 'baseUrl' | 'token'>) => Promise<void>
-  switchToDemo: () => void
   initializeRemoteWorkspace: () => Promise<void>
   workspaceRecoveries: WorkspaceRecovery[]
   restoreWorkspaceRecovery: (id: string) => void
@@ -266,30 +283,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       connection,
     }).then(async (bundle) => {
       if (cancelled) return
-      setServices(bundle)
       if (!workspaceHydratedRef.current && bundle.workspace) {
         try {
           const remote = await bundle.workspace.load()
           if (cancelled) return
           if (remote?.version === DATA_VERSION) {
             const normalized = normalizeWorkspace(remote)
-            setData(normalized)
+            if (containsLegacySampleWorkspace(normalized)) {
+              const raw = JSON.stringify(remote)
+              const recovery = captureWorkspaceRecovery(localStorage, 'remote-workspace', raw, 'Remote sample workspace preserved before real-project migration')
+              if (!recovery || localStorage.getItem(recovery.storageKey) !== raw) {
+                toast('Remote sample workspace left untouched', 'A recovery copy could not be verified, so OpenSaddle did not replace the current workspace.')
+                setPersistenceStatus('error')
+                setServices(bundle)
+                return
+              } else {
+                setWorkspaceRecoveries(listWorkspaceRecoveries())
+                setData(createEmptyWorkspace())
+                toast('Remote sample workspace archived', 'The sample workspace is available in recovery. Add or open a registered Project to continue.')
+              }
+            } else {
+              setData(normalized)
+            }
           } else {
             workspaceHydratedRef.current = true
             setPersistenceStatus('needs_setup')
-            toast('Remote workspace needs setup', 'No compatible workspace was found. Choose Initialize remote workspace to upload demo data explicitly.')
+            setServices(bundle)
+            toast('Remote workspace is empty', 'No compatible workspace was found. Add or open a real project to begin.')
             return
           }
           workspaceHydratedRef.current = true
           setPersistenceStatus('synced')
+          setServices(bundle)
         } catch (error) {
-          workspaceHydratedRef.current = true
+          workspaceHydratedRef.current = false
           setPersistenceStatus('error')
+          setServices(bundle)
           toast('Database sync unavailable', error instanceof Error ? error.message : String(error))
         }
       } else if (!bundle.workspace) {
         workspaceHydratedRef.current = true
         setPersistenceStatus('local')
+        setServices(bundle)
+      } else {
+        setServices(bundle)
       }
     }).catch((error: unknown) => {
       if (!cancelled) {
@@ -417,14 +454,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .then((registrations) => {
         if (cancelled || !registrations.length) return
         setData((current) => {
-          const missing = registrations.filter((registration) =>
-            !current.projects.some((project) => project.id === registration.projectId))
-          if (!missing.length) return current
-          const next = structuredClone(current)
-          for (const registration of missing) {
-            next.projects.push(projectFromRegisteredLocalProject(registration, preferredHarness))
-          }
-          return next
+          return hydrateRegisteredLocalProjects(current, registrations, preferredHarness)
         })
       })
       .catch(() => undefined)
@@ -643,7 +673,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [persistenceStatus, services])
 
   useEffect(() => {
-    if (!services?.workspace || !workspaceHydratedRef.current || persistenceStatus === 'needs_setup') return
+    if (!services?.workspace || !workspaceHydratedRef.current || persistenceStatus === 'needs_setup' || persistenceStatus === 'error' || persistenceStatus === 'loading') return
     const sequence = ++saveSequenceRef.current
     setPersistenceStatus('syncing')
     const timer = window.setTimeout(() => {
@@ -719,15 +749,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const next={ id: `remote-${baseUrl}`, name: profile.name.trim() || baseUrl, mode: 'remote' as const, baseUrl, token: profile.token, allowMockFallback: false }
       saveSessionConnection(next)
       setConnection(next)
-    },
-    switchToDemo: () => {
-      saveSessionConnection({ id: 'demo', name: 'Demo workspace', mode: 'demo', baseUrl: 'http://127.0.0.1:8765', allowMockFallback: true })
-      workspaceHydratedRef.current = false
-      durableHydratedServiceRef.current = null
-      setServices(null)
-      setConnection(defaultConnectionProfile().mode === 'demo' ? defaultConnectionProfile() : {
-        id: 'demo', name: 'Demo workspace', mode: 'demo', baseUrl: 'http://127.0.0.1:8765', allowMockFallback: true,
-      })
     },
     initializeRemoteWorkspace: async () => {
       if (!services?.workspace || connection.mode !== 'remote') throw new Error('Connect to a remote server first')
@@ -1554,38 +1575,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       for (const f of files) for (const h of f.hunks) if (h.id === hunkId) h.status = status
       return d
     }),
-    removeDemoData: () => {
-      captureWorkspaceRecovery(localStorage, STORAGE_KEY, JSON.stringify(data), 'Snapshot before removing demo data')
-      setWorkspaceRecoveries(listWorkspaceRecoveries())
-      setData((current) => {
-        const demoProjectIds = new Set(current.projects.filter((project) => project.demo).map((project) => project.id))
-        const demoChatIds = new Set(current.chats.filter((chat) => demoProjectIds.has(chat.projectId)).map((chat) => chat.id))
-        const survivingProjects = current.projects.filter((project) => !demoProjectIds.has(project.id))
-        return normalizeWorkspace({
-          ...current,
-          projects: survivingProjects,
-          // The signed-in user is never demo data, so they always survive.
-          members: current.members.filter((member) => !member.demo || member.id === current.currentUserId),
-          chats: current.chats.filter((chat) => !demoChatIds.has(chat.id)),
-          messages: current.messages.filter((message) => !demoChatIds.has(message.chatId)),
-          agents: current.agents.filter((agent) => !demoProjectIds.has(agent.projectId)),
-          services: current.services.filter((service) => !demoProjectIds.has(service.projectId)),
-          permissionGrants: current.permissionGrants.filter((grant) =>
-            !(grant.resourceKind === 'project' && demoProjectIds.has(grant.resourceId))),
-          activeProjectId: survivingProjects[0]?.id ?? '',
-          activeChatId: '',
-        })
-      })
-      toast('Demo data removed', 'Sample teams and people are gone. A snapshot is available in recovery.')
-    },
-    resetData: () => {
-      resetServices()
-      captureWorkspaceRecovery(localStorage, STORAGE_KEY, JSON.stringify(data), 'Snapshot before reset to seed')
-      setWorkspaceRecoveries(listWorkspaceRecoveries())
-      const seed = createSeedData()
-      setData(seed)
-      toast('Data reset', 'Demo workspace restored from seed. The previous workspace is available in recovery.')
-    },
     exportData: () => JSON.stringify(data, null, 2),
     workspaceRecoveries,
     restoreWorkspaceRecovery: (id) => {

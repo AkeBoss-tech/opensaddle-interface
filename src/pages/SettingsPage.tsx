@@ -111,14 +111,12 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
     data,
     updateSettings,
     setTheme,
-    resetData,
     exportData,
     services,
     persistenceStatus,
     lastSavedAt,
     connection,
     connectToServer,
-    switchToDemo,
     initializeRemoteWorkspace,
     workspaceRecoveries,
     restoreWorkspaceRecovery,
@@ -249,10 +247,9 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
           <div className="form-row"><label>Bearer token <span className="muted">(kept in this session only)</span></label><input type="password" value={serverToken} onChange={(e) => setServerToken(e.target.value)} placeholder="Optional for local servers" /></div>
           <div className="setting-actions">
             <button className="primary-btn" disabled={connecting || !serverUrl.trim()} onClick={() => { setConnecting(true); void connectToServer({ name: serverName, baseUrl: serverUrl, token: serverToken || undefined }).then(() => toast('Server connected', 'Remote workspace loading.')).catch((error: unknown) => toast('Connection failed', error instanceof Error ? error.message : String(error))).finally(() => setConnecting(false)) }}>{connecting ? 'Connecting…' : 'Connect server'}</button>
-            <button className="tiny-btn" onClick={switchToDemo}>Use demo mode</button>
-            {persistenceStatus === 'needs_setup' && <button className="tiny-btn" onClick={() => { void initializeRemoteWorkspace().then(() => toast('Remote workspace initialized', 'The current demo data was explicitly uploaded.')).catch((error: unknown) => toast('Initialization failed', error instanceof Error ? error.message : String(error))) }}>Initialize remote workspace</button>}
+            {persistenceStatus === 'needs_setup' && <button className="tiny-btn" onClick={() => { void initializeRemoteWorkspace().then(() => toast('Remote workspace initialized', 'The current empty workspace structure was saved. Add a real project to begin.')).catch((error: unknown) => toast('Initialization failed', error instanceof Error ? error.message : String(error))) }}>Initialize remote workspace</button>}
           </div>
-          <p className="provider-note"><Icon name="shield" className="icon sm" />A remote server is authoritative. The browser will not upload demo data unless you explicitly initialize it.</p>
+          <p className="provider-note"><Icon name="shield" className="icon sm" />The connected server is authoritative. OpenSaddle loads only projects and records returned for this connection.</p>
         </div>
       </section>
 
@@ -282,7 +279,6 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
           <div className="setting-row"><div className="setting-copy"><strong>Theme</strong><span>{s.theme}</span></div>
             <button className="tiny-btn" onClick={() => { const order = ['dark', 'light', 'liquid', 'hc'] as const; setTheme(order[(order.indexOf(s.theme) + 1) % order.length]); }}>Cycle</button>
           </div>
-          <div className="setting-row"><div className="setting-copy"><strong>Demo mode banner</strong><span>Show when the workspace is using sample data</span></div><button aria-label="Toggle demo mode banner" className={`switch ${s.demoMode ? 'on' : ''}`} onClick={() => updateSettings({ demoMode: !s.demoMode })} /></div>
         </div></div>
 
         <div className="card" hidden={active !== 'settings-models'}><div className="card-header"><div><h3>Model routing</h3></div><SettingsHelp text="These preferences guide automatic routing but never override team access policies." /></div><div className="card-body">
@@ -310,9 +306,8 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
           <div className="setting-row"><div className="setting-copy"><strong>Last database save</strong><span>{lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString() : 'Waiting for first sync'}</span></div><span className={`sync-badge ${persistenceStatus}`}>{persistenceStatus}</span></div>
         </div></div>
 
-        <div className="card" hidden={active !== 'settings-data'}><div className="card-header"><div><h3>Workspace data</h3></div><SettingsHelp text="Export a portable backup before resetting this demo workspace." /></div><div className="card-body">
+        <div className="card" hidden={active !== 'settings-data'}><div className="card-header"><div><h3>Workspace data</h3></div><SettingsHelp text="Export a portable backup of locally cached workspace state." /></div><div className="card-body">
           <div className="setting-row"><div className="setting-copy"><strong>Export workspace JSON</strong><span>Portable backup of the current workspace</span></div><button className="tiny-btn" onClick={download}>Export</button></div>
-          <div className="setting-row"><div className="setting-copy"><strong>Reset to seed</strong><span>Restores the full demo workspace</span></div><button className="danger-btn" onClick={() => { if (confirm('Reset all local demo data?')) resetData() }}>Reset</button></div>
         </div></div>
 
         <div className="card" hidden={active !== 'settings-data'}><div className="card-header"><div><h3>Workspace recovery</h3><p>Raw snapshots preserved before migration, reset, or recovery.</p></div><div className="settings-card-meta"><span className="sync-badge local">{workspaceRecoveries.length}</span><SettingsHelp text="Restoring replaces the current workspace after first preserving a backup." /></div></div><div className="card-body">

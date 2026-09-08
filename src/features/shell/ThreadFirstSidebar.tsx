@@ -98,7 +98,6 @@ export function ThreadFirstSidebar({
     setActiveChat,
     setActiveProject,
     services,
-    removeDemoData,
     removeLocalProject,
     toast,
     updateProject,
@@ -502,16 +501,6 @@ export function ThreadFirstSidebar({
 
           {teamSettingsOpen && (
             <div className="tf-team-header-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-              {data.projects.some((project) => project.demo) && (
-                <button role="menuitem" onClick={() => {
-                  if (confirm('Remove all demo teams, people and conversations? A snapshot is kept in recovery.')) {
-                    removeDemoData()
-                    setTeamSettingsOpen(false)
-                  }
-                }}>
-                  <Icon name="trash" className="icon sm" />Remove demo data
-                </button>
-              )}
               {adminShortcuts.map((shortcut) => (
                 <button key={shortcut.id} role="menuitem" onClick={() => { shortcut.open(); setTeamSettingsOpen(false) }}>
                   <Icon name={shortcut.icon} className="icon sm" /><span>{shortcut.label}</span>

@@ -10,15 +10,28 @@ export type JourneySnapshot = {
   rosterAvailable?: boolean
   canManage?: boolean
   currentSubject?: string
-  results?: Array<{ runId: string; title: string; verified: boolean; workerId?: string; status?: string; updatedAt?: string }>
+  results?: Array<{ runId: string; title: string; verified: boolean; artifactAvailable?: boolean; workerId?: string; status?: string; updatedAt?: string; nativeAdapterId?: NativeAdapterId; nativeModel?: string }>
   participantDiscoveryAvailable?: boolean
   participants?: Array<{ participantId: string; title: string; lifecycle: string }>
   sourceDiscoveryAvailable?: boolean
   sources?: Array<{ sourceId: string; label: string }>
-  activeRuns?: Array<{ runId: string; task: string; status: string }>
+  activeRuns?: Array<{ runId: string; task: string; status: string; nativeAdapterId?: NativeAdapterId; nativeModel?: string }>
+  nativeAdaptersAvailable?: boolean
+  nativeAdapters?: NativeAdapterReadiness[]
+  nativeAdaptersError?: string
   capacityAvailable?: boolean
   capacity?: ProjectCapacityStatus
   capacityError?: string
+}
+
+export type NativeAdapterId = 'codex-app-server' | 'claude-code-stream-json'
+export type NativeAdapterReadiness = {
+  workerId: string; adapterId: NativeAdapterId; sourceId: string; revision: string; digest: string
+  executableState: 'installed'|'missing'|'version_unsupported'|'probe_failed'; executableVersion?: string
+  authenticationState: 'authenticated'|'unauthenticated'|'unknown'|'probe_failed'; accountMode?: string
+  protocolState: 'compatible'|'incompatible'|'unknown'; protocolVersion?: string
+  workspaceState: 'configured'|'unavailable'|'stale'; ready: boolean; reason?: string
+  observedAt: string; expiresAt: string; reportedAt: string
 }
 
 type CapacityValues = { cpuMillicores: number; memoryMiB: number; concurrency: number }
@@ -48,7 +61,7 @@ export interface JourneyAuthority {
   revokeInvitation?(projectId: string, id: string, revision: number): Promise<unknown>
   review?(projectId: string, runId: string): Promise<{ runId: string; status: string; workerId: string; resource: { artifact_id: string; digest: string }; text: string }>
   createProject?(projectId: string): Promise<unknown>
-  delegate?(projectId: string, sourceId: string, task: string): Promise<unknown>
+  delegate?(projectId: string, sourceId: string, task: string, nativeAdapterId?: NativeAdapterId): Promise<unknown>
   cancel?(runId: string): Promise<unknown>
   configureCapacity?(projectId: string, limits: { cpuMillicores: number; memoryMiB: number; maxConcurrency: number }): Promise<unknown>
 }
@@ -64,6 +77,7 @@ export function ConnectedJourneySurface({ authority, projectId }: { authority: J
   const [result, setResult] = useState<Awaited<ReturnType<NonNullable<JourneyAuthority['review']>>>>()
   const [sourceId, setSourceId] = useState('')
   const [task, setTask] = useState('')
+  const [nativeAdapterId, setNativeAdapterId] = useState<NativeAdapterId | '' | undefined>(undefined)
   const [capacityDraft, setCapacityDraft] = useState<{ cpuMillicores?: string; memoryMiB?: string; maxConcurrency?: string }>({})
 
   const load = async () => {
@@ -80,6 +94,7 @@ export function ConnectedJourneySurface({ authority, projectId }: { authority: J
     setResult(undefined)
     setSourceId('')
     setTask('')
+    setNativeAdapterId(undefined)
     setCapacityDraft({})
     void load()
     return () => { generation.current++; operation.current = undefined }
@@ -125,6 +140,9 @@ export function ConnectedJourneySurface({ authority, projectId }: { authority: J
   const selectedSource = value.sources?.some(source => source.sourceId === sourceId)
     ? sourceId
     : value.sources?.[0]?.sourceId ?? ''
+  const sourceAdapters = value.nativeAdapters?.filter(item => item.sourceId === selectedSource) ?? []
+  const adapterGroups = (['codex-app-server','claude-code-stream-json'] as const).flatMap(adapterId => { const items=sourceAdapters.filter(item=>item.adapterId===adapterId); return items.length ? [{ adapterId, items, ready:items.some(item=>item.ready) }] : [] })
+  const selectedAdapter = nativeAdapterId === undefined ? adapterGroups.find(item=>item.ready)?.adapterId ?? '' : adapterGroups.some(item=>item.adapterId===nativeAdapterId && item.ready) ? nativeAdapterId : ''
   const review = async (runId: string) => {
     if (!authority.review || operation.current) return
     const token = Symbol('journey-review')
@@ -162,8 +180,8 @@ export function ConnectedJourneySurface({ authority, projectId }: { authority: J
       </>}
       {value.canManage && value.capacityAvailable !== false && authority.configureCapacity && <div className="form-row"><label>CPU limit (mCPU)<input type="number" min="1" max="1000000" step="1" value={draft.cpuMillicores} onChange={event => setCapacityDraft(current => ({ ...current, cpuMillicores: event.target.value }))} /></label><label>Memory limit (MiB)<input type="number" min="1" max="67108864" step="1" value={draft.memoryMiB} onChange={event => setCapacityDraft(current => ({ ...current, memoryMiB: event.target.value }))} /></label><label>Concurrent Runs<input type="number" min="1" max="10000" step="1" value={draft.maxConcurrency} onChange={event => setCapacityDraft(current => ({ ...current, maxConcurrency: event.target.value }))} /></label><button className="primary-btn" disabled={!capacityInputValid} onClick={() => void act(async () => { await authority.configureCapacity!(projectId, capacityInput); setCapacityDraft({}) })}>Save capacity limits</button></div>}
     </section>}
-    {value.rosterAvailable !== false && authority.delegate && <section className="cc-panel"><h2>Delegate work</h2><p>Choose an authorized Project source. An available worker will claim the task.</p>{value.sources?.length ? <div className="form-row"><label>Project source<select value={selectedSource} onChange={event => setSourceId(event.target.value)}>{value.sources.map(source => <option key={source.sourceId} value={source.sourceId}>{source.label}</option>)}</select></label><label>Task<textarea value={task} onChange={event => setTask(event.target.value)} /></label><button className="primary-btn" disabled={!selectedSource || !task.trim()} onClick={() => void act(async () => { await authority.delegate!(projectId, selectedSource, task.trim()); setTask('') })}>Delegate task</button></div> : <p>{value.sourceDiscoveryAvailable === false ? 'Project source discovery is unavailable from this server.' : 'Add a Project source before delegating work.'}</p>}{value.activeRuns?.length ? <div><h3>In progress</h3>{value.activeRuns.map(run => <article key={run.runId}><p><strong>{run.task}</strong> · {run.status}</p>{authority.cancel && <button className="tiny-btn" onClick={() => void act(() => authority.cancel!(run.runId))}>Cancel run</button>}</article>)}</div> : null}<p>Pausing and resuming are unavailable for these Runs.</p></section>}
-    {value.rosterAvailable !== false && authority.review && <section className="cc-panel"><h2>Results</h2>{value.results?.length ? value.results.map(item => <article key={item.runId}><h3>{item.title}</h3><p>{item.workerId ? `${item.status ?? 'completed'} on ${item.workerId}` : 'Completed Run'}{item.updatedAt ? ` · ${new Date(item.updatedAt).toLocaleString()}` : ''}</p><p>{item.verified ? 'Verified' : 'Artifact available · facts not independently verified'}</p><button className="primary-btn" onClick={() => void review(item.runId)}>Review result</button></article>) : <p>No completed machine result is available.</p>}{result && <article><p><strong>{result.status}</strong> on {result.workerId}</p><h3>Result</h3><pre>{result.text}</pre>{value.participants?.map(participant => <Link key={participant.participantId} className="primary-btn" to={`/participants/review?${new URLSearchParams({ project: projectId, participant: participant.participantId, run: result.runId, artifact: result.resource.artifact_id, digest: result.resource.digest })}`}>Ask {participant.title} to review this result</Link>)}<details><summary>Exact evidence</summary><p><code>{result.runId}/{result.resource.artifact_id}</code></p><p><code>{result.resource.digest}</code></p></details></article>}</section>}
+    {value.rosterAvailable !== false && authority.delegate && <section className="cc-panel"><h2>Delegate work</h2><p>Choose a source and coding agent for this task.</p>{value.sources?.length ? <div className="form-row"><label>Project source<select value={selectedSource} onChange={event => { setSourceId(event.target.value); setNativeAdapterId(undefined) }}>{value.sources.map(source => <option key={source.sourceId} value={source.sourceId}>{source.label}</option>)}</select></label>{value.nativeAdaptersAvailable === false ? <p>Native coding-agent selection is unavailable from this server.</p> : value.nativeAdaptersError ? <p role="status">Coding-agent readiness is unavailable: {value.nativeAdaptersError}</p> : <label>Coding agent<select value={selectedAdapter} onChange={event => setNativeAdapterId(event.target.value as NativeAdapterId)}><option value="">Choose an available agent</option>{adapterGroups.map(group => <option key={group.adapterId} value={group.adapterId} disabled={!group.ready}>{group.adapterId === 'codex-app-server' ? 'Codex' : 'Claude Code'}{group.ready ? '' : ` — unavailable: ${(group.items[0].reason ?? group.items[0].authenticationState).replaceAll('_',' ')}`}</option>)}</select></label>}<label>Task<textarea value={task} onChange={event => setTask(event.target.value)} /></label><button className="primary-btn" disabled={!selectedSource || !task.trim() || !selectedAdapter} onClick={() => void act(async () => { if (selectedAdapter) await authority.delegate!(projectId, selectedSource, task.trim(), selectedAdapter); else await authority.delegate!(projectId, selectedSource, task.trim()); setTask('') })}>Delegate task</button></div> : <p>{value.sourceDiscoveryAvailable === false ? 'Project source discovery is unavailable from this server.' : 'Add a Project source before delegating work.'}</p>}{value.nativeAdaptersAvailable && sourceAdapters.length ? <details><summary>Coding-agent readiness</summary>{sourceAdapters.map(item => <p key={`${item.workerId}:${item.adapterId}:detail`}><strong>{item.adapterId === 'codex-app-server' ? 'Codex' : 'Claude Code'}</strong> on {item.workerId} · {item.ready ? 'available' : (item.reason ?? 'unavailable').replaceAll('_',' ')} · executable {item.executableState}{item.executableVersion ? ` ${item.executableVersion}` : ''} · authentication {item.authenticationState}{item.accountMode ? ` (${item.accountMode})` : ''} · protocol {item.protocolState}{item.protocolVersion ? ` ${item.protocolVersion}` : ''} · workspace {item.workspaceState} at {item.revision} · worker self-reported {new Date(item.observedAt).toLocaleString()}, expires {new Date(item.expiresAt).toLocaleString()}</p>)}</details> : null}{value.activeRuns?.length ? <div><h3>In progress</h3>{value.activeRuns.map(run => <article key={run.runId}><p><strong>{run.task}</strong> · {run.status}{run.nativeAdapterId ? ` · requested ${run.nativeAdapterId === 'codex-app-server' ? 'Codex' : 'Claude Code'}${run.nativeModel ? ` (${run.nativeModel})` : ''}` : ''}</p>{authority.cancel && <button className="tiny-btn" onClick={() => void act(() => authority.cancel!(run.runId))}>Cancel run</button>}</article>)}</div> : null}<p>Pausing and resuming are unavailable for these Runs.</p></section>}
+    {value.rosterAvailable !== false && authority.review && <section className="cc-panel"><h2>Results</h2>{value.results?.length ? value.results.map(item => <article key={item.runId}><h3>{item.title}</h3><p>{item.workerId ? `${item.status ?? 'completed'} on ${item.workerId}` : `${item.status ?? 'terminal'} Run`}{item.nativeAdapterId ? ` · requested ${item.nativeAdapterId === 'codex-app-server' ? 'Codex' : 'Claude Code'}${item.nativeModel ? ` (${item.nativeModel})` : ''}` : ''}{item.updatedAt ? ` · ${new Date(item.updatedAt).toLocaleString()}` : ''}</p><p>{item.artifactAvailable ? item.verified ? 'Verified' : 'Artifact available · facts not independently verified' : 'No result artifact was published'}{item.nativeAdapterId ? ' · admitted by Core policy on the assigned worker; provider-reported execution provenance is unavailable' : ''}</p>{item.artifactAvailable ? <button className="primary-btn" onClick={() => void review(item.runId)}>Review result</button> : <p role="status">This {item.status ?? 'terminal'} Run has no reviewable result.</p>}</article>) : <p>No terminal machine result is available.</p>}{result && <article><p><strong>{result.status}</strong> on {result.workerId}</p><h3>Result</h3><pre>{result.text}</pre>{value.participants?.map(participant => <Link key={participant.participantId} className="primary-btn" to={`/participants/review?${new URLSearchParams({ project: projectId, participant: participant.participantId, run: result.runId, artifact: result.resource.artifact_id, digest: result.resource.digest })}`}>Ask {participant.title} to review this result</Link>)}<details><summary>Exact evidence</summary><p><code>{result.runId}/{result.resource.artifact_id}</code></p><p><code>{result.resource.digest}</code></p></details></article>}</section>}
     {value.rosterAvailable !== false && <section className="cc-panel"><h2>Reviewers</h2>{value.participants?.length ? value.participants.map(item => <article key={item.participantId}><h3>{item.title}</h3><p>{item.lifecycle}</p><Link className="primary-btn" to={`/participants/review?${new URLSearchParams({ project: projectId, participant: item.participantId })}`}>Open reviewer inbox</Link></article>) : <p>{value.participantDiscoveryAvailable === false ? 'Reviewer discovery is unavailable from this server.' : 'No reviewer participant is registered for this Project.'}</p>}</section>}
   </main>
 }

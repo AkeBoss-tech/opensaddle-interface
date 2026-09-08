@@ -114,7 +114,6 @@ export function usePaletteItems(actions: {
   newChat: () => void
   createProject: () => void
   toggleTheme: () => void
-  reset: () => void
 }): PaletteItem[] {
   const nav = useNavigate()
   return useMemo(() => [
@@ -127,6 +126,5 @@ export function usePaletteItems(actions: {
     { id: 'settings', group: 'Navigate', label: 'Settings', description: 'Configure OpenSaddle', icon: 'settings', run: () => nav('/settings') },
     { id: 'admin', group: 'Navigate', label: 'Organization admin', description: 'Manage enterprise policy', icon: 'users', run: () => nav('/admin') },
     { id: 'theme', group: 'Preferences', label: 'Toggle theme', description: 'Switch the current appearance', icon: 'sun', run: actions.toggleTheme },
-    { id: 'reset', group: 'Danger zone', label: 'Reset demo data', description: 'Remove local demonstration state', keywords: ['clear'], icon: 'refresh', tone: 'danger', run: actions.reset },
   ], [actions, nav])
 }

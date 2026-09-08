@@ -116,21 +116,3 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
     </header>
   )
 }
-
-export function DemoBanner() {
-  const { connection, data, updateSettings, toast, services } = useStore()
-  if (!data.settings.demoMode) return null
-  return (
-    <div className="demo-banner">
-      <Icon name="saddle" className="icon sm" />
-      <span>
-        {connection.mode === 'demo'
-          ? 'Demo workspace · seeded sample data · simulated runs · no control-plane enforcement'
-          : services?.controlPlane.connected
-          ? `Connected · ${services.controlPlane.mode === 'company' ? 'company' : services.controlPlane.mode === 'local' ? 'local' : 'authenticated v2'} control plane · ${services.controlPlane.modelProvider && services.controlPlane.modelProvider !== 'unconfigured' ? services.controlPlane.modelProvider : 'native harnesses'} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
-          : `Control plane unavailable · reconnect to ${connection.baseUrl} for durable chats and enforced permissions`}
-      </span>
-      <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>
-    </div>
-  )
-}

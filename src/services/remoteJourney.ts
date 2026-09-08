@@ -7,7 +7,8 @@ export class RemoteJourneyClient {
   private readonly user: () => string
   private readonly token?: string
   private readonly capacityAvailable: boolean
-  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable }
+  private readonly nativeAdaptersAvailable: boolean
+  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable }
 
   private async request(path: string, method: string, body?: unknown): Promise<Json> {
     const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-OpenSaddle-User': this.user(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
@@ -24,7 +25,7 @@ export class RemoteJourneyClient {
   async enroll(projectId: string, workerId: string) { await this.registerWorker({ workerId, organizationId: projectId, projectIds: [projectId], runtimeKind: 'remote_worker' }) }
   registerWorker(input: { workerId: string; organizationId: string; projectIds: string[]; runtimeKind: 'remote_worker' | 'aws_firecracker' | 'gcp_microvm' | 'azure_microvm' }) { return this.request('/api/v2/workers', 'POST', { worker_id: input.workerId, organization_id: input.organizationId, project_ids: input.projectIds, runtime_kind: input.runtimeKind }) }
   createRun(input: { projectId: string; sourceId: string; task: string }) { return this.request('/api/v2/runs', 'POST', { project_id: input.projectId, source_id: input.sourceId, task: input.task }) }
-  delegate(projectId: string, sourceId: string, task: string) { return this.createRun({ projectId, sourceId, task }) }
+  delegate(projectId: string, sourceId: string, task: string, nativeAdapterId?: 'codex-app-server'|'claude-code-stream-json') { return this.request('/api/v2/runs', 'POST', { project_id: projectId, source_id: sourceId, task, ...(nativeAdapterId ? { native_adapter_id: nativeAdapterId } : {}) }) }
   run(runId: string) { return this.request(`/api/v2/runs/${encodeURIComponent(runId)}`, 'GET') }
   cancel(runId: string) { return this.request(`/api/v2/runs/${encodeURIComponent(runId)}/cancel`, 'POST', {}) }
   configureCapacity(projectId: string, limits: { cpuMillicores: number; memoryMiB: number; maxConcurrency: number }) { return this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/capacity-limits`, 'PUT', { cpu_millicores: limits.cpuMillicores, memory_mib: limits.memoryMiB, max_concurrency: limits.maxConcurrency }) }
@@ -61,6 +62,29 @@ export class RemoteJourneyClient {
     }
   }
 
+  private async nativeAdapters(projectId: string) {
+    if (!this.nativeAdaptersAvailable) return undefined
+    const value = await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/native-adapters`, 'GET')
+    const object = (input: unknown, label: string) => { if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error(`Connected journey native ${label} is invalid`); return input as Json }
+    const text = (input: unknown, label: string, nullable = false) => { if (nullable && input === null) return undefined; if (typeof input !== 'string' || !input || input.length > 200) throw Error(`Connected journey native ${label} is invalid`); return input }
+    const known = <T extends string>(input: unknown, values: readonly T[], label: string) => { if (!values.includes(input as T)) throw Error(`Connected journey native ${label} is invalid`); return input as T }
+    const timestamp = (input: unknown, label: string) => { const result = text(input,label); if (!result || !Number.isFinite(Date.parse(result))) throw Error(`Connected journey native ${label} is invalid`); return result }
+    if (value.schema_version !== 'opensaddle.native-adapter-readiness.v1' || value.project_id !== projectId || !Array.isArray(value.items)) throw Error('Connected journey native adapter Project identity mismatch')
+    timestamp(value.generated_at, 'generation time')
+    return value.items.map(raw => { const item=object(raw,'adapter'); if (item.schema_version !== 'opensaddle.native-adapter-readiness.v1' || item.project_id !== projectId || typeof item.ready !== 'boolean') throw Error('Connected journey native adapter identity is invalid'); const digest=text(item.digest,'source digest'); if (!digest || !/^[a-f0-9]{64}$/.test(digest)) throw Error('Connected journey native source digest is invalid'); const executableState=known(item.executable_state,['installed','missing','version_unsupported','probe_failed'] as const,'executable state'), authenticationState=known(item.authentication_state,['authenticated','unauthenticated','unknown','probe_failed'] as const,'authentication state'), protocolState=known(item.protocol_state,['compatible','incompatible','unknown'] as const,'protocol state'), workspaceState=known(item.workspace_state,['configured','unavailable','stale'] as const,'workspace state'), observedAt=timestamp(item.observed_at,'observation time'), expiresAt=timestamp(item.expires_at,'expiry time'); if (Date.parse(expiresAt)<=Date.parse(observedAt) || item.ready && (executableState!=='installed'||authenticationState!=='authenticated'||protocolState!=='compatible'||workspaceState!=='configured')) throw Error('Connected journey native ready state is invalid'); return { workerId:text(item.worker_id,'worker id')!,adapterId:known(item.adapter_id,['codex-app-server','claude-code-stream-json'] as const,'adapter id'),sourceId:text(item.source_id,'source id')!,revision:text(item.revision,'revision')!,digest,executableState,executableVersion:text(item.executable_version,'executable version',true),authenticationState,accountMode:text(item.account_mode,'account mode',true),protocolState,protocolVersion:text(item.protocol_version,'protocol version',true),workspaceState,ready:item.ready,reason:text(item.reason,'reason',true),observedAt,expiresAt,reportedAt:timestamp(item.reported_at,'report time') } })
+  }
+
+  private nativeSelection(run: Json) {
+    const policy = run.policy && typeof run.policy === 'object' && !Array.isArray(run.policy) ? run.policy as Json : undefined
+    const obligations = policy?.obligations && typeof policy.obligations === 'object' && !Array.isArray(policy.obligations) ? policy.obligations as Json : undefined
+    const adapter = obligations?.native_adapter_id
+    if (adapter === undefined) return {}
+    if (adapter !== 'codex-app-server' && adapter !== 'claude-code-stream-json') throw Error('Connected journey Run native adapter is invalid')
+    const model = obligations?.native_model
+    if (model !== undefined && (typeof model !== 'string' || !model || model.length > 100)) throw Error('Connected journey Run native model is invalid')
+    return { nativeAdapterId: adapter, ...(typeof model === 'string' ? { nativeModel:model } : {}) }
+  }
+
   async snapshot(projectId: string) {
     const invitations = await this.invitations(projectId).catch(() => ({ project_id: projectId, invitations: [] }))
     if (invitations.project_id !== projectId) throw Error('Connected journey Project identity mismatch')
@@ -70,19 +94,20 @@ export class RemoteJourneyClient {
     catch (reason) { if (mappedInvitations.some(item => item.status === 'pending')) return { projectId, members: [], workers: [], invitations: mappedInvitations, rosterAvailable: false, canManage: false, currentSubject: this.user() }; throw reason }
     if (members.project_id !== projectId || workers.project_id !== projectId) throw Error('Connected journey Project identity mismatch')
     let participantDiscoveryAvailable = true, sourceDiscoveryAvailable = true
-    let capacityError: string | undefined
-    const [participantList, sourceList, capacity] = await Promise.all([
+    let capacityError: string | undefined, nativeAdaptersError: string | undefined
+    const [participantList, sourceList, capacity, nativeAdapters] = await Promise.all([
       this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/participants?limit=100`, 'GET').catch(() => { participantDiscoveryAvailable = false; return { items: [] } }),
       this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/sources?limit=100`, 'GET').catch(() => { sourceDiscoveryAvailable = false; return { items: [] } }),
       this.capacity(projectId).catch(reason => { capacityError = reason instanceof Error ? reason.message : String(reason); return undefined }),
+      this.nativeAdapters(projectId).catch(reason => { nativeAdaptersError = reason instanceof Error ? reason.message : String(reason); return undefined }),
     ])
     if ((participantDiscoveryAvailable && (!('project_id' in participantList) || participantList.project_id !== projectId)) || (sourceDiscoveryAvailable && (!('project_id' in sourceList) || sourceList.project_id !== projectId))) throw Error('Connected journey discovery Project identity mismatch')
     const memberItems = Array.isArray(members.members) ? members.members : []
-    const outcomes = (Array.isArray(center.outcomes) ? center.outcomes : []).flatMap(value => { const item = value as Json; return item.project_id === projectId && typeof item.run_id === 'string' ? [{ runId: item.run_id, fallbackTitle: String(item.title), verified: item.verified === true }] : [] })
+    const outcomes = (Array.isArray(center.outcomes) ? center.outcomes : []).flatMap(value => { const item = value as Json; return item.project_id === projectId && typeof item.run_id === 'string' && typeof item.artifact_available === 'boolean' ? [{ runId: item.run_id, fallbackTitle: String(item.task ?? item.title), verified: item.verified === true, artifactAvailable:item.artifact_available }] : [] })
     const results = await Promise.all(outcomes.map(async outcome => {
       const detail = await this.run(outcome.runId)
       if (detail.project_id !== projectId || detail.run_id !== outcome.runId) throw Error('Connected journey result Run identity mismatch')
-      return { runId: outcome.runId, title: typeof detail.task === 'string' ? detail.task : outcome.fallbackTitle, verified: outcome.verified, workerId: typeof detail.assigned_worker_id === 'string' ? detail.assigned_worker_id : undefined, status: typeof detail.status === 'string' ? detail.status : undefined, updatedAt: typeof detail.updated_at === 'string' ? detail.updated_at : undefined }
+      return { runId: outcome.runId, title: typeof detail.task === 'string' ? detail.task : outcome.fallbackTitle, verified: outcome.verified, artifactAvailable:outcome.artifactAvailable, workerId: typeof detail.assigned_worker_id === 'string' ? detail.assigned_worker_id : undefined, status: typeof detail.status === 'string' ? detail.status : undefined, updatedAt: typeof detail.updated_at === 'string' ? detail.updated_at : undefined, ...this.nativeSelection(detail) }
     }))
     return {
       projectId,
@@ -93,7 +118,7 @@ export class RemoteJourneyClient {
       participants: (Array.isArray(participantList.items) ? participantList.items : []).map(value => { const item = value as Json; return { participantId: String(item.participant_id), title: String(item.title), lifecycle: String(item.lifecycle) } }),
       sourceDiscoveryAvailable,
       sources: (Array.isArray(sourceList.items) ? sourceList.items : []).map(value => { const item = value as Json; return { sourceId: String(item.source_id), label: String(item.display_label) } }),
-      activeRuns: (Array.isArray(center.active_runs) ? center.active_runs : []).flatMap(value => { const item = value as Json; return item.project_id === projectId && typeof item.run_id === 'string' ? [{ runId: item.run_id, task: String(item.task ?? 'Run'), status: String(item.status) }] : [] }),
+      activeRuns: (Array.isArray(center.active_runs) ? center.active_runs : []).flatMap(value => { const item = value as Json; return item.project_id === projectId && typeof item.run_id === 'string' ? [{ runId: item.run_id, task: String(item.task ?? 'Run'), status: String(item.status), ...this.nativeSelection(item) }] : [] }),
       results,
       rosterAvailable: true,
       currentSubject: this.user(),
@@ -101,6 +126,9 @@ export class RemoteJourneyClient {
       capacityAvailable: this.capacityAvailable,
       capacity,
       capacityError,
+      nativeAdaptersAvailable: this.nativeAdaptersAvailable,
+      nativeAdapters,
+      nativeAdaptersError,
     }
   }
 

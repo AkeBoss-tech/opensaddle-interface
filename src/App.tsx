@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, HashRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { StoreProvider, useStore } from './data/store'
-import { DemoBanner, Topbar } from './components/layout/Topbar'
+import { Topbar } from './components/layout/Topbar'
 import { ToastStack } from './components/common/ToastStack'
 import { CommandPalette, type PaletteItem } from './components/common/CommandPalette'
 import { ChatPage } from './pages/ChatPage'
@@ -37,15 +37,12 @@ import { OperationsPage } from './features/operations/OperationsPage'
 import { PerspectivesPage } from './features/perspectives/PerspectivesPage'
 import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
-import { AddProjectDialog } from './features/onboarding/AddProjectDialog'
 import { ProjectOnboardingPage } from './features/onboarding/ProjectOnboardingPage'
 import { ConnectedLocalProjectPage } from './features/projects/ConnectedLocalProjectPage'
 import { ConnectedLocalSettingsPage } from './features/projects/ConnectedLocalSettingsPage'
 import { ConnectedLocalProjectDialog } from './features/onboarding/ConnectedLocalProjectDialog'
 import { ConnectedJourneyPage } from './features/onboarding/ConnectedJourneyPage'
-import { supportsGovernedProjectOnboarding } from './features/onboarding/onboardingAvailability'
-import { registerLocalWorkspace } from './features/onboarding/registerLocalWorkspace'
-import { scaffoldApply } from './features/onboarding/scaffoldApply'
+import { usesConnectedProductSurface } from './services'
 import { SurfaceErrorBoundary } from './ui/SurfaceHost'
 import type { DiscoveredLocalProject, DiscoveredUiPlugin } from './types'
 import './styles/app.css'
@@ -59,11 +56,11 @@ import './features/investigation/components/investigation.css'
 const IconPacksPage = lazy(() => import('./pages/IconPacksPage').then((module) => ({ default: module.IconPacksPage })))
 
 function Shell() {
-  const { data, createChat, createProject, importLocalProject, createAgent, createMember, addServiceConnections, addPermissionGrants, updateProject, services, setTheme, resetData, toast, setActiveProject } = useStore()
+  const { data, createChat, importLocalProject, services, setTheme, toast, setActiveProject } = useStore()
   const [palette, setPalette] = useState(false)
   const [projectModal, setProjectModal] = useState(false)
   const [discoveredProjects, setDiscoveredProjects] = useState<DiscoveredLocalProject[]>([])
-  const [discoveredUiPlugins, setDiscoveredUiPlugins] = useState<DiscoveredUiPlugin[]>([])
+  const [, setDiscoveredUiPlugins] = useState<DiscoveredUiPlugin[]>([])
   const [registeredDiscoveryRoots, setRegisteredDiscoveryRoots] = useState<string[]>([])
   const [discoveryReady, setDiscoveryReady] = useState(false)
   const discoveryPrompted = useRef(false)
@@ -80,7 +77,7 @@ function Shell() {
   const loc = useLocation()
   const settingsFocused = loc.pathname === '/settings'
   const globalStart = loc.pathname === '/start'
-  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.v2Capabilities)
+  const connectedLocal = usesConnectedProductSurface(services)
 
   const openArtifactReview = useCallback(async () => {
     if (loc.pathname === '/review' && loc.search) {
@@ -254,7 +251,7 @@ function Shell() {
     ...data.projects.filter((project) => project.workspaceKind === 'local').map((project) => ({ id: project.id, group: 'Projects', label: project.name, description: project.local?.rootPath ?? 'Local project', icon: 'folder', run: () => nav(`/project/${project.id}`) })),
   ] : [
     { id: 'new', group: 'Create', label: 'New task', description: 'Start work in the current project', keywords: ['thread', 'chat'], icon: 'plus', run: () => { const c = createChat(data.activeProjectId, 'New task'); nav(`/chat/${c.id}`) } },
-    { id: 'cproj', group: 'Create', label: 'Create project', description: 'Add a local folder or cloud workspace', keywords: ['workspace', 'folder'], icon: 'folder', run: () => setProjectModal(true) },
+    { id: 'cproj', group: 'Connect', label: 'Connect local service', description: 'Connect OpenSaddle before adding a project folder', keywords: ['workspace', 'folder'], icon: 'folder', run: () => nav('/settings') },
     { id: 'home', group: 'Navigate', label: 'Command Center', description: 'Priorities, human attention, active work, and outcomes', icon: 'layout', run: () => nav('/home') },
     { id: 'review', group: 'Commands', label: 'Run selected artifact review', description: 'Dispatch the exact selected resource through the shared review command', keywords: ['review selected artifact'], icon: 'review', run: () => void openArtifactReview() },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Approvals, active runs, and recent outcomes', icon: 'clock', run: () => nav('/work') },
@@ -285,8 +282,7 @@ function Shell() {
       run: () => nav(`/chat/${chat.id}`),
     })),
     { id: 'theme', group: 'Preferences', label: 'Toggle theme', description: 'Switch the current appearance', icon: 'sun', run: cycleTheme },
-    { id: 'reset', group: 'Danger zone', label: 'Reset demo data', description: 'Remove local demonstration state', keywords: ['clear'], icon: 'refresh', tone: 'danger', run: () => { if (confirm('Reset demo data?')) resetData() } },
-  ], [connectedLocal, createChat, data.activeProjectId, data.chats, data.projects, nav, setActiveProject, cycleTheme, resetData, openArtifactReview])
+  ], [connectedLocal, createChat, data.activeProjectId, data.chats, data.projects, nav, setActiveProject, cycleTheme, openArtifactReview])
 
   if (loc.pathname.startsWith('/published/')) {
     return <Routes><Route path="/published/:slug" element={<PublishedSitePage />} /></Routes>
@@ -302,7 +298,7 @@ function Shell() {
           collapsed={sidebarCollapsed}
           globalMode={globalStart}
           onCollapsedChange={setSidebarCollapsed}
-          onCreateProject={() => setProjectModal(true)}
+          onCreateProject={() => nav('/settings')}
           onResizeStart={beginSidebarResize}
           onResetWidth={() => {
             setSidebarWidth(292)
@@ -313,7 +309,6 @@ function Shell() {
       {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Connected workflow"><NavLink to="/home">Home</NavLink><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to="/operations">Operations</NavLink><NavLink to="/collaboration">People &amp; machines</NavLink>{services?.localProjects&&<button type="button" onClick={() => setProjectModal(true)}>Add project</button>}<NavLink to="/settings">Settings</NavLink></nav></aside>}
       <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
-        {!settingsFocused && <DemoBanner />}
         <div ref={workspaceRef} className="workspace-split">
         <div className="page-wrap">
           <SurfaceErrorBoundary key={loc.pathname} onRetry={() => nav(0)}>
@@ -396,7 +391,7 @@ function Shell() {
       <ToastStack />
       <CommandPalette open={palette} onClose={() => setPalette(false)} items={items} />
 
-      {connectedLocal ? <ConnectedLocalProjectDialog open={projectModal} onClose={() => setProjectModal(false)} onRegister={async ({ root, runner }) => {
+      {services?.localProjects ? <ConnectedLocalProjectDialog open={projectModal} onClose={() => setProjectModal(false)} onRegister={async ({ root, runner }) => {
         if (!services?.localProjects?.registerProject) throw new Error('The connected local server does not advertise project registration.')
         const proposedId = `local_${globalThis.crypto.randomUUID()}`
         const registered = await services.localProjects.registerProject(proposedId, root)
@@ -405,60 +400,7 @@ function Shell() {
         setActiveProject(registered.projectId)
         toast('Local project registered', name)
         nav(`/project/${registered.projectId}/onboarding?${new URLSearchParams({ start: '1', runner })}`)
-      }} /> : <AddProjectDialog
-        open={projectModal}
-        projects={data.projects}
-        discoveredProjects={availableDiscoveredProjects}
-        uiPlugins={discoveredUiPlugins}
-        defaultParentId={data.activeProjectId}
-        governedOnboardingAvailable={supportsGovernedProjectOnboarding(services)}
-        onClose={() => setProjectModal(false)}
-        onCreateCloud={({ name, parentId, color }) => {
-          const id = createProject(name, parentId, 'Cloud workspace')
-          updateProject(id, { iconColor: color } as never)
-          toast('Project created', name)
-          nav(`/project/${id}`)
-        }}
-        onCreateLocal={async ({ name, color, selection, krailRunner }) => {
-          const localProjects = services?.localProjects
-          if (krailRunner && !supportsGovernedProjectOnboarding(services)) {
-            throw new Error('Connect a local OpenSaddle server before starting governed KRAIL onboarding. Connected mode never falls back to a simulated run.')
-          }
-          const application = scaffoldApply(selection.proposal, selection.selectedIds, selection.proposal.folderPath, name, selection.perspective)
-          const projectId = `local_${globalThis.crypto.randomUUID()}`
-          await registerLocalWorkspace({
-            projectId,
-            root: application.project.local.rootPath,
-            registerProject: localProjects?.registerProject
-              ? localProjects.registerProject.bind(localProjects)
-              : undefined,
-            commitRendererState: () => {
-              importLocalProject({ id: projectId, name: application.project.name, description: application.project.description, local: application.project.local })
-              updateProject(projectId, { iconColor: color, perspective: application.project.perspective } as never)
-              application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
-              application.members.forEach((member) => createMember(member))
-              application.agents.forEach((agent) => createAgent({
-                projectId, name: agent.name, description: agent.description, systemPrompt: agent.description, modelPolicy: 'auto', harness: 'coding', harnessId: agent.harnessId, runtime: 'local',
-                permissionPolicy: { sandbox: 'workspace-write', approvals: 'on-request', network: false, allowedTools: [], deniedTools: [] }, skillIds: [], tools: ['Files', 'Shell', 'Git'], knowledgeSourceIds: [], visibility: 'private',
-              }))
-              addServiceConnections(projectId, application.connectors)
-              addPermissionGrants(application.permissionGrants.map((permission) => ({
-                principalKind: 'user', principalId: data.currentUserId, resourceKind: 'project', resourceId: projectId, action: permission.action, effect: 'allow', inheritance: 'direct', approvalRequired: permission.approvalRequired,
-              })))
-            },
-          })
-          try {
-            await services?.projectIntelligence?.create(projectId)
-          } catch (error) {
-            toast('Workspace created; intelligence needs attention', error instanceof Error ? error.message : String(error))
-          }
-          setActiveProject(projectId)
-          toast('Local workspace created', name)
-          nav(krailRunner
-            ? `/project/${projectId}/onboarding?${new URLSearchParams({ start: '1', runner: krailRunner })}`
-            : `/project/${projectId}`)
-        }}
-      />}
+      }} /> : null}
     </div>
   )
 }

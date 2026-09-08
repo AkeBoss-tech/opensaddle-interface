@@ -60,7 +60,7 @@ const MODE_CAPS: Record<RuntimeMode, Capability[]> = {
 }
 
 export function detectRuntimeMode(): RuntimeMode {
-  const env = (import.meta.env.VITE_RUNTIME as RuntimeMode | undefined) ?? undefined
+  const env = ((import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_RUNTIME as RuntimeMode | undefined) ?? undefined
   if (env === 'mock' || env === 'browser' || env === 'desktop') return env
   if (typeof window !== 'undefined' && (window as Window & { opensaddleDesktop?: boolean }).opensaddleDesktop) {
     return 'desktop'

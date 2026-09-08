@@ -1,5 +1,6 @@
 import type { AppData } from '../types'
-import { createSeedData, DATA_VERSION, SEED_MEMBER_IDS, SEED_PROJECT_IDS, STORAGE_KEY } from './seed'
+import { DATA_VERSION, SEED_MEMBER_IDS, SEED_PROJECT_IDS, STORAGE_KEY } from './seed'
+import { createEmptyWorkspace } from './emptyWorkspace'
 
 const RECOVERY_INDEX_KEY = 'opensaddle-recovery-index-v1'
 const LEGACY_STORAGE_KEYS = Array.from(
@@ -23,6 +24,12 @@ export interface WorkspaceLoadResult {
   notice?: string
 }
 
+export function containsLegacySampleWorkspace(data: AppData): boolean {
+  return data.settings.demoMode === true
+    || data.projects.some((project) => project.demo === true || SEED_PROJECT_IDS.has(project.id))
+    || data.members.some((member) => member.demo === true || SEED_MEMBER_IDS.has(member.id))
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -30,8 +37,8 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 
 export function normalizeWorkspace(data: AppData): AppData {
-  // Label seeded sample content wherever it came from, so a demo team is never
-  // mistaken for a real one and can be removed in one action.
+  // Mark legacy sample identities so the loader can quarantine the complete
+  // snapshot before a real Project is shown. Individual rows are never deleted.
   data = {
     ...data,
     projects: data.projects.map((project) => SEED_PROJECT_IDS.has(project.id) ? { ...project, demo: true as const } : project),
@@ -79,7 +86,7 @@ export function migrateWorkspace(snapshot: unknown): AppData {
     throw new Error(`Workspace version ${sourceVersion} is newer than this app supports`)
   }
 
-  const seed = createSeedData()
+  const seed = createEmptyWorkspace()
   const sourceSettings = record(source.settings)
   const sourceNotifications = record(sourceSettings?.notifications)
   const migrated = {
@@ -164,6 +171,7 @@ export function captureWorkspaceRecovery(
       reason,
     }
     storage.setItem(storageKey, raw)
+    if (storage.getItem(storageKey) !== raw) return null
     const previous = listWorkspaceRecoveries(storage)
     const next = [recovery, ...previous].slice(0, MAX_RECOVERIES)
     for (const stale of previous) {
@@ -196,8 +204,24 @@ export function loadWorkspace(storage: Storage = localStorage): WorkspaceLoadRes
         captureWorkspaceRecovery(storage, key, raw, `Migrated workspace v${version} to v${DATA_VERSION}`)
         notice = `Workspace data was migrated from version ${version}; the original snapshot is available in Settings.`
       }
+      const migrated = migrateWorkspace(parsed)
+      if (containsLegacySampleWorkspace(migrated)) {
+        const recovery = captureWorkspaceRecovery(storage, key, raw, 'Legacy sample workspace preserved before real-project migration')
+        if (!recovery) {
+          return {
+            data: migrated,
+            recoveries: listWorkspaceRecoveries(storage),
+            notice: 'The sample workspace could not be preserved for recovery, so it was left untouched. Free browser storage and reload to finish migration.',
+          }
+        }
+        return {
+          data: createEmptyWorkspace(),
+          recoveries: listWorkspaceRecoveries(storage),
+          notice: 'The prior sample workspace was preserved in recovery. Add or open a registered local project to continue.',
+        }
+      }
       return {
-        data: migrateWorkspace(parsed),
+        data: migrated,
         recoveries: listWorkspaceRecoveries(storage),
         notice,
       }
@@ -208,7 +232,7 @@ export function loadWorkspace(storage: Storage = localStorage): WorkspaceLoadRes
   }
 
   return {
-    data: normalizeWorkspace(createSeedData()),
+    data: normalizeWorkspace(createEmptyWorkspace()),
     recoveries: listWorkspaceRecoveries(storage),
     notice,
   }

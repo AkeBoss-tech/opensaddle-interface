@@ -73,6 +73,10 @@ export interface ConnectionProfile {
   allowMockFallback: boolean
 }
 
+export function usesConnectedProductSurface(services: ServiceBundle | null): boolean {
+  return Boolean(services?.controlPlane.connected && (services.controlPlane.v2Capabilities || services.localProjects))
+}
+
 export function connectionProfileForRuntime(input: {
   runtimeMode: RuntimeMode
   configuredUrl?: string
@@ -80,13 +84,10 @@ export function connectionProfileForRuntime(input: {
   allowMockFallback?: boolean
 }): ConnectionProfile {
   const explicitUrl = input.configuredUrl ?? input.desktopUrl
-  if (input.runtimeMode === 'mock' && !explicitUrl) {
+  if (input.runtimeMode === 'mock' && !explicitUrl && input.allowMockFallback === true) {
     return {
-      id: 'demo',
-      name: 'Demo workspace',
-      mode: 'demo',
-      baseUrl: 'http://127.0.0.1:8765',
-      allowMockFallback: true,
+      id: 'explicit-dev-fixture', name: 'Development fixture', mode: 'demo',
+      baseUrl: 'http://127.0.0.1:8765', allowMockFallback: true,
     }
   }
   const baseUrl = explicitUrl ?? 'http://127.0.0.1:8765'
@@ -137,6 +138,7 @@ export function initServices(opts: {
       let managedKrailAvailable = false
       let participantsAvailable = false
       let resourceCapacityAvailable = false
+      let nativeAdaptersAvailable = false
       let legacyHealthAvailable = false
       let v2CapabilitiesAvailable = false
       let delegation: DelegationPolicySummary | undefined
@@ -241,6 +243,7 @@ export function initServices(opts: {
               managed_krail?: boolean
               participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
               resource_capacity?: { available?: boolean; schema_version?: string; project_config_path_template?: string; status_path_template?: string }
+              native_adapters?: { available?: boolean; schema_version?: string; supported_adapter_ids?: unknown; unsupported_adapter_ids?: unknown; readiness_path_template?: string; report_path_template?: string; selection_field?: string; observation_authority?: string; policy_authority?: string }
             }
             backendAvailable = true
             backendMode = capabilities.capability_mode ?? backendMode
@@ -250,6 +253,8 @@ export function initServices(opts: {
             managedKrailAvailable = capabilities.managed_krail === true
             participantsAvailable = capabilities.participants?.available === true && capabilities.participants.schema_version === 'opensaddle.participant.v1' && capabilities.participants.project_path_template === '/api/v2/projects/{project_id}/participants'
             resourceCapacityAvailable = capabilities.resource_capacity?.available === true && capabilities.resource_capacity.schema_version === 'opensaddle.resource-capacity.v1' && capabilities.resource_capacity.project_config_path_template === '/api/v2/projects/{project_id}/capacity-limits' && capabilities.resource_capacity.status_path_template === '/api/v2/projects/{project_id}/capacity'
+            const native = capabilities.native_adapters
+            nativeAdaptersAvailable = native?.available === true && native.schema_version === 'opensaddle.native-adapter-readiness.v1' && JSON.stringify(native.supported_adapter_ids) === JSON.stringify(['codex-app-server','claude-code-stream-json']) && JSON.stringify(native.unsupported_adapter_ids) === JSON.stringify(['cursor']) && native.readiness_path_template === '/api/v2/projects/{project_id}/native-adapters' && native.report_path_template === '/api/v2/workers/{worker_id}/native-adapter-readiness' && native.selection_field === 'native_adapter_id' && native.observation_authority === 'worker_self_reported' && native.policy_authority === 'core'
           }
         } catch {
           commandCenterAvailable = false
@@ -268,7 +273,7 @@ export function initServices(opts: {
       } else {
         permissions = new LocalPermissionClient(opts.getGrants, opts.setGrants)
       }
-      const runtime = connection.mode === 'remote' && (mode === 'desktop' || mode === 'browser')
+      const runtime = connection.mode === 'remote'
           ? new OpenSaddleRuntimeClient(baseUrl, new MockRuntimeClient(), {
             token,
             getUserId,
@@ -318,8 +323,8 @@ export function initServices(opts: {
         : undefined
       const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
-      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable) : undefined
-      const tools = connection.mode === 'remote' && mode !== 'mock'
+      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable) : undefined
+      const tools = connection.mode === 'remote'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
         : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
       const sandbox = new WorkerSandboxClient()
