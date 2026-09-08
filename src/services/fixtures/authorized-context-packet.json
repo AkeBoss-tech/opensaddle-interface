@@ -1,0 +1,326 @@
+{
+  "available": true,
+  "core_binding": {
+    "packet_digest": "sha256:72aa9198734ca400d2456c966129ed16cc439482fb08abdba0bc69f8bb9586e1",
+    "project_id": "project-a",
+    "request_digest": "sha256:f57e1c2d5d80d1bd7d903be5546e48b3861ff1e8db28a62829a95f64794e4d59",
+    "run_id": "run-fixture"
+  },
+  "packet": {
+    "authorization_digest": "sha256:756e5ccbb5a06552afa715c45a5336e8b5d3115bf1bf97194fa72e238af625da",
+    "canonical_context_utf8_bytes": 8481,
+    "canonical_packet_utf8_bytes": 10648,
+    "capability_descriptor_digest": "sha256:1a26bb14e4247cd1fdf7000fa1cf41399e075f84cb9a70212338947e032d417e",
+    "capability_id": "krail.authorized-context-packet",
+    "capability_version": "1.0.0",
+    "context": {
+      "assertions": [
+        {
+          "assertion_id": "sha256:9a2df2a2fda441df332482bbc6395fc9dec14ecaed6ed423156b7adbd6fedea9",
+          "locator": "docs/repository.md#utf8:0-61",
+          "processing_versions": [
+            {
+              "component": "conflict",
+              "version": "krail.context-conflict.v1"
+            },
+            {
+              "component": "context-brief",
+              "version": "krail.context-brief.v1"
+            },
+            {
+              "component": "freshness",
+              "version": "krail.context-freshness.v1"
+            },
+            {
+              "component": "ranking",
+              "version": "krail.context-ranking.v1"
+            }
+          ],
+          "source": {
+            "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+            "contract": "krail.provider.model.v1",
+            "digest": "sha256:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150",
+            "resource_id": "docs/repository.md",
+            "resource_type": "document",
+            "version": "content:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150"
+          },
+          "text": "# Repository\n\nShared packet architecture and public evidence."
+        },
+        {
+          "assertion_id": "sha256:8276c857c8bc3d174f76dd6da2105c665a4d7fd6b95050b84f2491b6c16e6ccd",
+          "locator": "topics/issue.md#utf8:0-53",
+          "processing_versions": [
+            {
+              "component": "conflict",
+              "version": "krail.context-conflict.v1"
+            },
+            {
+              "component": "context-brief",
+              "version": "krail.context-brief.v1"
+            },
+            {
+              "component": "freshness",
+              "version": "krail.context-freshness.v1"
+            },
+            {
+              "component": "ranking",
+              "version": "krail.context-ranking.v1"
+            }
+          ],
+          "source": {
+            "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+            "contract": "krail.provider.model.v1",
+            "digest": "sha256:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da",
+            "resource_id": "topics/issue.md",
+            "resource_type": "topic",
+            "version": "content:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da"
+          },
+          "text": "# Issue\n\nBuild the shared packet from cited evidence."
+        },
+        {
+          "assertion_id": "sha256:ae531fb1dfe783d4f114a93d3434eb499b573e72e4b0f22b87e12cec5d407b0d",
+          "locator": "sources/private.md#utf8:0-57",
+          "processing_versions": [
+            {
+              "component": "conflict",
+              "version": "krail.context-conflict.v1"
+            },
+            {
+              "component": "context-brief",
+              "version": "krail.context-brief.v1"
+            },
+            {
+              "component": "freshness",
+              "version": "krail.context-freshness.v1"
+            },
+            {
+              "component": "ranking",
+              "version": "krail.context-ranking.v1"
+            }
+          ],
+          "source": {
+            "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+            "contract": "krail.provider.model.v1",
+            "digest": "sha256:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e",
+            "resource_id": "sources/private.md",
+            "resource_type": "source",
+            "version": "content:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e"
+          },
+          "text": "# Private\n\nNeedleWide evidence contains Private-Zebra-42."
+        }
+      ],
+      "brief_digest": "sha256:2b794efbdb0267fe13c555ddcc0af145260f6abc70ebc457f49dab34cc914b9e",
+      "conflicts": [],
+      "domain_event_ref": {
+        "causation_id": null,
+        "correlation_id": null,
+        "event_digest": "sha256:2b794efbdb0267fe13c555ddcc0af145260f6abc70ebc457f49dab34cc914b9e",
+        "event_type": "krail.context-brief-assembled.v1",
+        "operation_id": null,
+        "schema_version": "krail.domain-event-ref.v1"
+      },
+      "evaluated_at": "2026-09-07T15:00:00Z",
+      "evidence": {
+        "contract": "krail.provider.model.v1",
+        "generated_at": "2026-09-07T15:00:00Z",
+        "items": [
+          {
+            "contract": "krail.provider.model.v1",
+            "excerpt": "# Repository\n\nShared packet architecture and public evidence.",
+            "locator": "docs/repository.md#utf8:0-61",
+            "media_type": "text/markdown",
+            "relevance": null,
+            "source": {
+              "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+              "contract": "krail.provider.model.v1",
+              "digest": "sha256:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150",
+              "resource_id": "docs/repository.md",
+              "resource_type": "document",
+              "version": "content:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150"
+            }
+          },
+          {
+            "contract": "krail.provider.model.v1",
+            "excerpt": "# Issue\n\nBuild the shared packet from cited evidence.",
+            "locator": "topics/issue.md#utf8:0-53",
+            "media_type": "text/markdown",
+            "relevance": null,
+            "source": {
+              "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+              "contract": "krail.provider.model.v1",
+              "digest": "sha256:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da",
+              "resource_id": "topics/issue.md",
+              "resource_type": "topic",
+              "version": "content:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da"
+            }
+          },
+          {
+            "contract": "krail.provider.model.v1",
+            "excerpt": "# Private\n\nNeedleWide evidence contains Private-Zebra-42.",
+            "locator": "sources/private.md#utf8:0-57",
+            "media_type": "text/markdown",
+            "relevance": 1.0,
+            "source": {
+              "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+              "contract": "krail.provider.model.v1",
+              "digest": "sha256:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e",
+              "resource_id": "sources/private.md",
+              "resource_type": "source",
+              "version": "content:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e"
+            }
+          }
+        ],
+        "packet_id": "packet:072b70cb1419ad02a010dc56",
+        "query": "NeedleWide",
+        "truncated": false
+      },
+      "freshness": [
+        {
+          "basis": "source carries no recognized explicit freshness declaration",
+          "processing_version": "krail.context-freshness.v1",
+          "source": {
+            "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+            "contract": "krail.provider.model.v1",
+            "digest": "sha256:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150",
+            "resource_id": "docs/repository.md",
+            "resource_type": "document",
+            "version": "content:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150"
+          },
+          "status": "unknown"
+        },
+        {
+          "basis": "source carries no recognized explicit freshness declaration",
+          "processing_version": "krail.context-freshness.v1",
+          "source": {
+            "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+            "contract": "krail.provider.model.v1",
+            "digest": "sha256:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da",
+            "resource_id": "topics/issue.md",
+            "resource_type": "topic",
+            "version": "content:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da"
+          },
+          "status": "unknown"
+        },
+        {
+          "basis": "source carries no recognized explicit freshness declaration",
+          "processing_version": "krail.context-freshness.v1",
+          "source": {
+            "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+            "contract": "krail.provider.model.v1",
+            "digest": "sha256:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e",
+            "resource_id": "sources/private.md",
+            "resource_type": "source",
+            "version": "content:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e"
+          },
+          "status": "unknown"
+        }
+      ],
+      "gaps": [
+        {
+          "code": "freshness-unknown",
+          "message": "At least one cited source has no explicit freshness metadata."
+        }
+      ],
+      "issue": {
+        "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+        "contract": "krail.provider.model.v1",
+        "digest": "sha256:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da",
+        "resource_id": "topics/issue.md",
+        "resource_type": "topic",
+        "version": "content:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da"
+      },
+      "omissions": [
+        {
+          "disclosure": "Additional evidence may exist but is not visible in this authorization context.",
+          "reason": "authorization-policy"
+        }
+      ],
+      "processing_versions": [
+        {
+          "component": "conflict",
+          "version": "krail.context-conflict.v1"
+        },
+        {
+          "component": "context-brief",
+          "version": "krail.context-brief.v1"
+        },
+        {
+          "component": "freshness",
+          "version": "krail.context-freshness.v1"
+        },
+        {
+          "component": "ranking",
+          "version": "krail.context-ranking.v1"
+        }
+      ],
+      "ranking_trace": [
+        {
+          "rank": 1,
+          "ranking_version": "krail.context-ranking.v1",
+          "score": 1.0,
+          "source": {
+            "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+            "contract": "krail.provider.model.v1",
+            "digest": "sha256:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e",
+            "resource_id": "sources/private.md",
+            "resource_type": "source",
+            "version": "content:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e"
+          }
+        }
+      ],
+      "repository": {
+        "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+        "contract": "krail.provider.model.v1",
+        "digest": "sha256:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150",
+        "resource_id": "docs/repository.md",
+        "resource_type": "document",
+        "version": "content:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150"
+      },
+      "schema_version": "krail.context-brief.v1",
+      "truncated": false
+    },
+    "context_token_upper_bound": 8481,
+    "exact_evidence_refs": [
+      {
+        "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+        "contract": "krail.provider.model.v1",
+        "digest": "sha256:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150",
+        "resource_id": "docs/repository.md",
+        "resource_type": "document",
+        "version": "content:4de3e985fa99577a85efa4b47f525de0e585753c32a26c667698133ddc570150"
+      },
+      {
+        "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+        "contract": "krail.provider.model.v1",
+        "digest": "sha256:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e",
+        "resource_id": "sources/private.md",
+        "resource_type": "source",
+        "version": "content:1795f04cc76950e44faa0fef23c727b04384ef20ec97c0e941679a27f8ca1e0e"
+      },
+      {
+        "authority": "git+file:///private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-knowledge-packet-uej3z016",
+        "contract": "krail.provider.model.v1",
+        "digest": "sha256:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da",
+        "resource_id": "topics/issue.md",
+        "resource_type": "topic",
+        "version": "content:892dff8c68d7d522424eb7a3111727683c7fda23f64a02a518caf9e56fe332da"
+      }
+    ],
+    "max_context_tokens": 32768,
+    "packet_digest": "sha256:72aa9198734ca400d2456c966129ed16cc439482fb08abdba0bc69f8bb9586e1",
+    "packet_id": "sha256:72aa9198734ca400d2456c966129ed16cc439482fb08abdba0bc69f8bb9586e1",
+    "purpose": "Inspect authorized project context",
+    "request_digest": "sha256:f57e1c2d5d80d1bd7d903be5546e48b3861ff1e8db28a62829a95f64794e4d59",
+    "schema_version": "krail.authorized-context-packet.v2",
+    "scope": "project-a",
+    "token_estimation": "canonical-context-utf8-bytes-conservative-upper-bound",
+    "truncated": false,
+    "truncation_uncertainty": "bounded-search-or-source-truncation-may-omit-evidence"
+  },
+  "reauthorization": {
+    "current_authorization_digest": "sha256:d043d118e09badf0f770295df90d24f294ccbefe0284fb9ef3fae9326730473a",
+    "decision_digest": "sha256:a5755f101a478809cdad0bdda92a6cd5038d435c40545cdd7298d7aa3d4017ac",
+    "reauthorized_at": "2026-09-07T15:00:00Z",
+    "schema_version": "krail.authorized-context-reauthorization.v1"
+  }
+}

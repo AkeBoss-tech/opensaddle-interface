@@ -1,4 +1,5 @@
 import { RemoteMalleableShellClient } from './remoteMalleableShell'
+import type { AuthorizedContextHandle } from '../features/onboarding/ConnectedJourneySurface'
 
 type Json = Record<string, unknown>
 
@@ -8,7 +9,8 @@ export class RemoteJourneyClient {
   private readonly token?: string
   private readonly capacityAvailable: boolean
   private readonly nativeAdaptersAvailable: boolean
-  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable }
+  private readonly authorizedContextAvailable: boolean
+  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false, authorizedContextAvailable = false) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable; this.authorizedContextAvailable = authorizedContextAvailable }
 
   private async request(path: string, method: string, body?: unknown): Promise<Json> {
     const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-OpenSaddle-User': this.user(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
@@ -25,11 +27,21 @@ export class RemoteJourneyClient {
   async enroll(projectId: string, workerId: string) { await this.registerWorker({ workerId, organizationId: projectId, projectIds: [projectId], runtimeKind: 'remote_worker' }) }
   registerWorker(input: { workerId: string; organizationId: string; projectIds: string[]; runtimeKind: 'remote_worker' | 'aws_firecracker' | 'gcp_microvm' | 'azure_microvm' }) { return this.request('/api/v2/workers', 'POST', { worker_id: input.workerId, organization_id: input.organizationId, project_ids: input.projectIds, runtime_kind: input.runtimeKind }) }
   createRun(input: { projectId: string; sourceId: string; task: string }) { return this.request('/api/v2/runs', 'POST', { project_id: input.projectId, source_id: input.sourceId, task: input.task }) }
-  delegate(projectId: string, sourceId: string, task: string, nativeAdapterId?: 'codex-app-server'|'claude-code-stream-json') { return this.request('/api/v2/runs', 'POST', { project_id: projectId, source_id: sourceId, task, ...(nativeAdapterId ? { native_adapter_id: nativeAdapterId } : {}) }) }
+  delegate(projectId: string, sourceId: string, task: string, nativeAdapterId?: 'codex-app-server'|'claude-code-stream-json', authorizedContextSourceIds: string[] = []) { if (authorizedContextSourceIds.length>32 || new Set(authorizedContextSourceIds).size!==authorizedContextSourceIds.length || authorizedContextSourceIds.some(id=>!id)) throw Error('Authorized context source selection is invalid'); return this.request('/api/v2/runs', 'POST', { project_id: projectId, source_id: sourceId, task, ...(nativeAdapterId ? { native_adapter_id: nativeAdapterId } : {}), ...(authorizedContextSourceIds.length ? { authorized_context_source_ids: authorizedContextSourceIds } : {}) }) }
   run(runId: string) { return this.request(`/api/v2/runs/${encodeURIComponent(runId)}`, 'GET') }
   cancel(runId: string) { return this.request(`/api/v2/runs/${encodeURIComponent(runId)}/cancel`, 'POST', {}) }
   configureCapacity(projectId: string, limits: { cpuMillicores: number; memoryMiB: number; maxConcurrency: number }) { return this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/capacity-limits`, 'PUT', { cpu_millicores: limits.cpuMillicores, memory_mib: limits.memoryMiB, max_concurrency: limits.maxConcurrency }) }
 
+
+  private async authorizedContextSources(projectId: string) {
+    if (!this.authorizedContextAvailable) return undefined
+    const value=await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/authorized-context-sources?limit=100`,'GET')
+    if(value.schema_version!=='opensaddle.authorized-context-source-list.v1'||value.project_id!==projectId||!Array.isArray(value.items)||value.items.length>100)throw Error('Connected journey authorized context source list is invalid')
+    const text=(input:unknown,label:string,max=2048)=>{if(typeof input!=='string'||!input||input.length>max)throw Error(`Connected journey authorized context source ${label} is invalid`);return input}
+    const digest=(input:unknown)=>{const value=text(input,'digest',71);if(!/^sha256:[a-f0-9]{64}$/.test(value))throw Error('Connected journey authorized context source digest is invalid');return value}
+    const ids=new Set<string>()
+    return value.items.map(raw=>{if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Connected journey authorized context source is invalid');const item=raw as Json,ref=item.resource_ref;if(!ref||typeof ref!=='object'||Array.isArray(ref))throw Error('Connected journey authorized context source ResourceRef is invalid');const resource=ref as Json,sourceId=text(item.source_id,'ID',512),version=text(item.source_version,'version',512),classification=text(item.classification,'classification',128),authority=text(resource.authority,'authority',512),resourceType=text(resource.resource_type,'resource type',128),resourceId=text(resource.resource_id,'resource ID'),resourceVersion=text(resource.version,'resource version',512);digest(resource.digest);if(ids.has(sourceId)||item.immutable!==true||item.provider_freshness!=='rechecked_at_packet_create_and_read'||resourceVersion!==version||!['public','internal','confidential','restricted'].includes(classification)||!/^([a-z][a-z0-9+.-]*):[^\s?#]+$/.test(authority)||!/^[a-z][a-z0-9._-]*$/.test(resourceType)||['latest','current','head','working-tree'].includes(version.toLowerCase()))throw Error('Connected journey authorized context source contract is invalid');ids.add(sourceId);return{sourceId,label:resourceId,version,classification}})
+  }
   private async capacity(projectId: string) {
     if (!this.capacityAvailable) return undefined
     const value = await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/capacity`, 'GET')
@@ -85,6 +97,54 @@ export class RemoteJourneyClient {
     return { nativeAdapterId: adapter, ...(typeof model === 'string' ? { nativeModel:model } : {}) }
   }
 
+  private authorizedContextSelection(run: Json) {
+    const policy = run.policy && typeof run.policy === 'object' && !Array.isArray(run.policy) ? run.policy as Json : undefined
+    const obligations = policy?.obligations && typeof policy.obligations === 'object' && !Array.isArray(policy.obligations) ? policy.obligations as Json : undefined
+    const raw = obligations?.authorized_context_packet
+    if (raw === undefined) return {}
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Error('Connected journey Run context packet is invalid')
+    const item = raw as Json
+    const digest = (value: unknown, label: string) => { if (typeof value !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(value)) throw Error(`Connected journey Run context ${label} is invalid`); return value }
+    if (item.capability_id !== 'krail.authorized-context-packet' || item.capability_version !== '1.0.0') throw Error('Connected journey Run context capability is invalid')
+    return { authorizedContext: { packetDigest:digest(item.packet_digest,'packet digest'), requestDigest:digest(item.request_digest,'request digest'), capabilityId:item.capability_id, capabilityVersion:item.capability_version, capabilityDescriptorDigest:digest(item.capability_descriptor_digest,'descriptor digest') } as AuthorizedContextHandle }
+  }
+
+  async authorizedContextPacket(projectId: string, runId: string, handle: AuthorizedContextHandle) {
+    void projectId
+    if (!this.authorizedContextAvailable) throw Error('context_packet_unavailable')
+    let value: Json
+    try { value = await this.request(`/api/v2/runs/${encodeURIComponent(runId)}/authorized-context-packet`, 'GET') }
+    catch { throw Error('context_packet_unavailable') }
+    const object = (input: unknown, label: string) => { if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error(`Connected journey context ${label} is invalid`); return input as Json }
+    const string = (input: unknown, label: string, max=8192) => { if (typeof input !== 'string' || !input || input.length>max) throw Error(`Connected journey context ${label} is invalid`); return input }
+    const digest = (input: unknown, label: string) => { const result=string(input,label,71); if (!/^sha256:[a-f0-9]{64}$/.test(result)) throw Error(`Connected journey context ${label} is invalid`); return result }
+    const timestamp = (input: unknown, label: string) => { const result=string(input,label,64); if (!Number.isFinite(Date.parse(result))) throw Error(`Connected journey context ${label} is invalid`); return result }
+    if (value.available !== true) throw Error('context_packet_unavailable')
+    const packet=object(value.packet,'packet'), reauth=object(value.reauthorization,'reauthorization'), coreBinding=object(value.core_binding,'Core binding'), context=object(packet.context,'brief')
+    const packetDigest=digest(packet.packet_digest,'packet digest'), packetId=digest(packet.packet_id,'packet id'), requestDigest=digest(packet.request_digest,'request digest')
+    if (packet.schema_version!=='krail.authorized-context-packet.v2' || packetId!==packetDigest || packetDigest!==handle.packetDigest || requestDigest!==handle.requestDigest || packet.capability_id!==handle.capabilityId || packet.capability_version!==handle.capabilityVersion || digest(packet.capability_descriptor_digest,'descriptor digest')!==handle.capabilityDescriptorDigest) throw Error('Connected journey context packet does not match admitted Run')
+    if (reauth.schema_version!=='krail.authorized-context-reauthorization.v1' || string(coreBinding.project_id,'Core Project')!==projectId || string(coreBinding.run_id,'Core Run')!==runId || digest(coreBinding.request_digest,'Core request digest')!==handle.requestDigest || digest(coreBinding.packet_digest,'Core packet digest')!==handle.packetDigest) throw Error('Connected journey context reauthorization does not match admitted Run')
+    if (context.schema_version!=='krail.context-brief.v1' || typeof packet.truncated!=='boolean') throw Error('Connected journey context packet shape is invalid')
+    const positiveInteger=(input:unknown,label:string,max:number)=>{if(!Number.isSafeInteger(input)||Number(input)<1||Number(input)>max)throw Error(`Connected journey context ${label} is invalid`);return Number(input)}
+    positiveInteger(packet.canonical_context_utf8_bytes,'context byte bound',524288); positiveInteger(packet.canonical_packet_utf8_bytes,'packet byte bound',524288); positiveInteger(packet.max_context_tokens,'token limit',32768); positiveInteger(packet.context_token_upper_bound,'token bound',32768)
+    if(packet.token_estimation!=='canonical-context-utf8-bytes-conservative-upper-bound'||packet.truncation_uncertainty!=='bounded-search-or-source-truncation-may-omit-evidence')throw Error('Connected journey context packet bounds are invalid')
+    const resource = (input: unknown) => { const item=object(input,'resource'), authority=string(item.authority,'resource authority',512),resourceType=string(item.resource_type,'resource type',100),resourceId=string(item.resource_id,'resource id',2048),version=string(item.version,'resource version',512),resourceDigest=digest(item.digest,'resource digest'); if(!/^[a-z][a-z0-9+.-]*:[^\s?#]+$/.test(authority)||['latest','current','head','working-tree'].includes(version.toLowerCase()))throw Error('Connected journey context resource is invalid'); return { resourceId,version,key:JSON.stringify([authority,resourceType,resourceId,version,resourceDigest]) } }
+    if (!Array.isArray(packet.exact_evidence_refs) || packet.exact_evidence_refs.length<1 || packet.exact_evidence_refs.length>256) throw Error('Connected journey context evidence refs are invalid')
+    const exactKeys=new Set(packet.exact_evidence_refs.map(item=>resource(item).key)); if(exactKeys.size!==packet.exact_evidence_refs.length) throw Error('Connected journey context evidence refs are invalid')
+    const referencedKeys=new Set<string>()
+    const referencedResource=(input:unknown,label:string)=>{const ref=resource(input);if(!exactKeys.has(ref.key))throw Error(`Connected journey context ${label} is outside admitted evidence`);referencedKeys.add(ref.key);return ref}
+    referencedResource(context.repository,'repository'); referencedResource(context.issue,'issue')
+    const strictArray=(input:unknown,label:string,max=32)=>{if(!Array.isArray(input)||input.length>max)throw Error(`Connected journey context ${label} is invalid`);return input}
+    const assertions = strictArray(context.assertions,'assertions').map(raw=>{const item=object(raw,'assertion'), ref=referencedResource(item.source,'assertion');digest(item.assertion_id,'assertion id');strictArray(item.processing_versions,'assertion processing versions',16);return {text:string(item.text,'assertion',16384),locator:string(item.locator,'assertion locator',2048),resourceId:ref.resourceId,version:ref.version}})
+    strictArray(context.freshness,'freshness').forEach(raw=>referencedResource(object(raw,'freshness item').source,'freshness'))
+    strictArray(context.conflicts,'conflicts').forEach(raw=>strictArray(object(raw,'conflict').sources,'conflict sources',2).forEach(ref=>referencedResource(ref,'conflict')))
+    strictArray(context.ranking_trace,'ranking trace').forEach(raw=>referencedResource(object(raw,'ranking item').source,'ranking'))
+    const evidence=object(context.evidence,'evidence'); if (typeof evidence.packet_id!=='string' || !evidence.packet_id || !string(evidence.query,'evidence query') || !timestamp(evidence.generated_at,'evidence generation') || typeof evidence.truncated!=='boolean') throw Error('Connected journey context evidence is invalid'); if (!Array.isArray(evidence.items) || evidence.items.length<1 || evidence.items.length>100) throw Error('Connected journey context evidence is invalid')
+    const citations=evidence.items.map(raw=>{const item=object(raw,'evidence item'),ref=referencedResource(item.source,'evidence');return {content:string(item.excerpt,'evidence excerpt',32768),locator:string(item.locator,'evidence locator',2048),resourceId:ref.resourceId,version:ref.version}})
+    if (assertions.length>32 || citations.length>500 || referencedKeys.size!==exactKeys.size) throw Error('Connected journey context evidence refs do not match the admitted packet')
+    return { packetId,packetDigest,requestDigest,capabilityId:handle.capabilityId,capabilityVersion:handle.capabilityVersion,capabilityDescriptorDigest:handle.capabilityDescriptorDigest,reauthorizedAt:timestamp(reauth.reauthorized_at,'reauthorized time'),currentAuthorizationDigest:digest(reauth.current_authorization_digest,'current authorization digest'),decisionDigest:digest(reauth.decision_digest,'decision digest'),purpose:string(packet.purpose,'purpose',512),scope:string(packet.scope,'scope',512),truncated:packet.truncated===true,assertions,citations }
+  }
+
   async snapshot(projectId: string) {
     const invitations = await this.invitations(projectId).catch(() => ({ project_id: projectId, invitations: [] }))
     if (invitations.project_id !== projectId) throw Error('Connected journey Project identity mismatch')
@@ -94,12 +154,13 @@ export class RemoteJourneyClient {
     catch (reason) { if (mappedInvitations.some(item => item.status === 'pending')) return { projectId, members: [], workers: [], invitations: mappedInvitations, rosterAvailable: false, canManage: false, currentSubject: this.user() }; throw reason }
     if (members.project_id !== projectId || workers.project_id !== projectId) throw Error('Connected journey Project identity mismatch')
     let participantDiscoveryAvailable = true, sourceDiscoveryAvailable = true
-    let capacityError: string | undefined, nativeAdaptersError: string | undefined
-    const [participantList, sourceList, capacity, nativeAdapters] = await Promise.all([
+    let capacityError: string | undefined, nativeAdaptersError: string | undefined, authorizedContextSourcesError: string | undefined
+    const [participantList, sourceList, capacity, nativeAdapters, authorizedContextSources] = await Promise.all([
       this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/participants?limit=100`, 'GET').catch(() => { participantDiscoveryAvailable = false; return { items: [] } }),
       this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/sources?limit=100`, 'GET').catch(() => { sourceDiscoveryAvailable = false; return { items: [] } }),
       this.capacity(projectId).catch(reason => { capacityError = reason instanceof Error ? reason.message : String(reason); return undefined }),
       this.nativeAdapters(projectId).catch(reason => { nativeAdaptersError = reason instanceof Error ? reason.message : String(reason); return undefined }),
+      this.authorizedContextSources(projectId).catch(reason => { authorizedContextSourcesError = reason instanceof Error ? reason.message : String(reason); return undefined }),
     ])
     if ((participantDiscoveryAvailable && (!('project_id' in participantList) || participantList.project_id !== projectId)) || (sourceDiscoveryAvailable && (!('project_id' in sourceList) || sourceList.project_id !== projectId))) throw Error('Connected journey discovery Project identity mismatch')
     const memberItems = Array.isArray(members.members) ? members.members : []
@@ -107,7 +168,7 @@ export class RemoteJourneyClient {
     const results = await Promise.all(outcomes.map(async outcome => {
       const detail = await this.run(outcome.runId)
       if (detail.project_id !== projectId || detail.run_id !== outcome.runId) throw Error('Connected journey result Run identity mismatch')
-      return { runId: outcome.runId, title: typeof detail.task === 'string' ? detail.task : outcome.fallbackTitle, verified: outcome.verified, artifactAvailable:outcome.artifactAvailable, workerId: typeof detail.assigned_worker_id === 'string' ? detail.assigned_worker_id : undefined, status: typeof detail.status === 'string' ? detail.status : undefined, updatedAt: typeof detail.updated_at === 'string' ? detail.updated_at : undefined, ...this.nativeSelection(detail) }
+      return { runId: outcome.runId, title: typeof detail.task === 'string' ? detail.task : outcome.fallbackTitle, verified: outcome.verified, artifactAvailable:outcome.artifactAvailable, workerId: typeof detail.assigned_worker_id === 'string' ? detail.assigned_worker_id : undefined, status: typeof detail.status === 'string' ? detail.status : undefined, updatedAt: typeof detail.updated_at === 'string' ? detail.updated_at : undefined, ...this.nativeSelection(detail), ...this.authorizedContextSelection(detail) }
     }))
     return {
       projectId,
@@ -129,6 +190,10 @@ export class RemoteJourneyClient {
       nativeAdaptersAvailable: this.nativeAdaptersAvailable,
       nativeAdapters,
       nativeAdaptersError,
+      authorizedContextAvailable: this.authorizedContextAvailable,
+      authorizedContextSourcesAvailable: this.authorizedContextAvailable && authorizedContextSources !== undefined,
+      authorizedContextSources,
+      authorizedContextSourcesError,
     }
   }
 
