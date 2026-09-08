@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('opensaddle', {
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:info'),
   commissionPersonalRuntime: (request) => ipcRenderer.invoke('runtime:commission-personal', request),
   adoptPersonalRuntime: () => ipcRenderer.invoke('runtime:adopt-personal'),
+  personalRuntimeRequest: (request) => ipcRenderer.invoke('runtime:personal-request', request),
   pickRepository: () => ipcRenderer.invoke('runtime:pick-repo'),
   discoverProjects: () => ipcRenderer.invoke('runtime:discover-projects'),
   listTokenPrices: () => ipcRenderer.invoke('runtime:list-token-prices'),

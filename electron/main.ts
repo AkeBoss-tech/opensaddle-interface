@@ -21,9 +21,12 @@ import { listPublicTokenPrices } from './tokenPricing.js'
 import { desktopRendererDocument, rendererRequestAllowed, validateDesktopRendererMessage, validateDesktopRendererRequest, type DesktopRendererRequest } from './applicationRendererPolicy.js'
 import { migrateApplicationState, type ApplicationStateSchema } from './applicationState.js'
 import { adoptPersonalRuntime, commissionPersonalRuntimeProcess, preparePersonalRuntimeStateDir, validatePersonalRuntimeInventory, type DesktopPersonalRuntimeRequest } from './personalRuntimeCommissioning.js'
+import { proxyPersonalRuntimeRequest } from './personalRuntimeProxy.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
+let activePersonalRuntime: import('./personalRuntimeCommissioning.js').PersonalRuntimeHandoff | undefined
+const publicPersonalRuntime=(value:NonNullable<typeof activePersonalRuntime>)=>({baseUrl:value.baseUrl,installationId:value.installationId,ownerSubject:value.ownerSubject,projectId:value.projectId,adoptionSocket:value.adoptionSocket,ipcDir:value.ipcDir})
 if (process.env.OPENSADDLE_RENDERER_SELF_TEST === '1') app.setPath('userData', mkdtempSync(path.join(tmpdir(), 'opensaddle-renderer-selftest-')))
 
 
@@ -1018,15 +1021,20 @@ app.whenReady().then(async () => {
     const result = await commissionPersonalRuntimeProcess({ command:launch.command,commandPrefix:commandIndex<0?[]:launch.args.slice(0,commandIndex),request,config:{projectDatabase:path.join(opensaddleStateDir(),'projects.db'),stateDir,ipcDir,port:Number(new URL(personalUrl).port),handoffFd:3},expected:{baseUrl:personalUrl,projectId:request.projectId,ipcDir} })
     const metadata={schema_version:'opensaddle.personal-runtime-desktop.v1',base_url:result.handoff.baseUrl,installation_id:result.handoff.installationId,project_id:result.handoff.projectId,adoption_socket:result.handoff.adoptionSocket,ipc_dir:result.handoff.ipcDir}
     chmodSync(stateDir,0o700);await writeFile(path.join(stateDir,'desktop-adoption.json'),JSON.stringify(metadata),{encoding:'utf8',mode:0o600})
-    return result.handoff
+    activePersonalRuntime=result.handoff
+    return publicPersonalRuntime(result.handoff)
   })
 
   ipcMain.handle('runtime:adopt-personal', async (event) => {
     if (!fromMainFrame(event)) throw Error('personal_runtime_sender_denied')
     const stateDir=path.join(opensaddleStateDir(),'personal-runtime'),raw=JSON.parse(await readFile(path.join(stateDir,'desktop-adoption.json'),'utf8')) as Record<string,unknown>
     if(raw.schema_version!=='opensaddle.personal-runtime-desktop.v1'||typeof raw.base_url!=='string'||typeof raw.installation_id!=='string'||typeof raw.project_id!=='string'||typeof raw.adoption_socket!=='string'||typeof raw.ipc_dir!=='string')throw Error('Personal runtime adoption metadata is invalid')
-    return adoptPersonalRuntime({stateDir,ipcDir:raw.ipc_dir,socketPath:raw.adoption_socket,baseUrl:raw.base_url,installationId:raw.installation_id,projectId:raw.project_id})
+    const handoff=await adoptPersonalRuntime({stateDir,ipcDir:raw.ipc_dir,socketPath:raw.adoption_socket,baseUrl:raw.base_url,installationId:raw.installation_id,projectId:raw.project_id})
+    activePersonalRuntime=handoff
+    return publicPersonalRuntime(handoff)
   })
+
+  ipcMain.handle('runtime:personal-request',async(event,value:unknown)=>{if(!fromMainFrame(event))throw Error('personal_runtime_sender_denied');const authority=activePersonalRuntime;if(!authority)throw Error('Personal runtime is not adopted');const response=await proxyPersonalRuntimeRequest(authority,value);if(activePersonalRuntime!==authority)throw Error('Personal runtime authority changed while the request was pending');return response})
 
   ipcMain.handle('runtime:pick-repo', async () => {
     const result = await dialog.showOpenDialog({

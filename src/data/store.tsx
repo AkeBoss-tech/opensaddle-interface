@@ -16,6 +16,7 @@ import {
 } from './workspacePersistence'
 import { defaultConnectionProfile, initServices, type ConnectionProfile, type ServiceBundle } from '../services'
 import { loadSessionConnection, saveSessionConnection } from './connectionSession'
+import { installPersonalRuntimeTransport } from '../services/personalRuntimeTransport'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
 import { adoptNativeContinuation } from '../lib/nativeContinuation'
@@ -214,12 +215,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [threadHistoryHydrated, setThreadHistoryHydrated] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [connection, setConnection] = useState<ConnectionProfile>(() => loadSessionConnection(defaultConnectionProfile()))
+  const connectionRef = useRef(connection)
+  connectionRef.current = connection
   useEffect(() => {
     let live = true
+    const startingConnection = connectionRef.current
     if (!window.opensaddleDesktop || !window.opensaddle?.adoptPersonalRuntime) return
     void window.opensaddle.adoptPersonalRuntime().then((handoff) => {
-      if (!live) return
-      const next: ConnectionProfile = { id:`remote-${handoff.baseUrl.replace(/\/$/,'')}`,name:'Personal runtime',mode:'remote',baseUrl:handoff.baseUrl.replace(/\/$/,''),token:handoff.bearerToken,allowMockFallback:false }
+      if (!live || connectionRef.current !== startingConnection) return
+      installPersonalRuntimeTransport(handoff)
+      const next: ConnectionProfile = { id:`remote-${handoff.baseUrl.replace(/\/$/,'')}`,name:'Personal runtime',mode:'remote',baseUrl:handoff.baseUrl.replace(/\/$/,''),allowMockFallback:false }
       saveSessionConnection(next, undefined, false)
       setConnection(next)
     }).catch(() => undefined)

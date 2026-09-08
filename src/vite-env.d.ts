@@ -37,8 +37,9 @@ interface Window {
   opensaddle?: {
     opensaddleUrl: string
     getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; opensaddleConnected: boolean; opensaddleError: string | null; opensaddleNotice: string | null; sessionBridgeUrl: string; /** @deprecated */ krailUrl: string; krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }; clis: string[] }>
-    commissionPersonalRuntime: (request: import('./services/personalRuntimeCommissioning').PersonalRuntimeCommissionRequest) => Promise<{baseUrl:string;installationId:string;ownerSubject:string;projectId:string;bearerToken:string;adoptionSocket:string}>
-    adoptPersonalRuntime: () => Promise<{baseUrl:string;installationId:string;ownerSubject:string;projectId:string;bearerToken:string;adoptionSocket:string}>
+    commissionPersonalRuntime: (request: import('./services/personalRuntimeCommissioning').PersonalRuntimeCommissionRequest) => Promise<{baseUrl:string;installationId:string;ownerSubject:string;projectId:string;adoptionSocket:string;ipcDir:string}>
+    adoptPersonalRuntime: () => Promise<{baseUrl:string;installationId:string;ownerSubject:string;projectId:string;adoptionSocket:string;ipcDir:string}>
+    personalRuntimeRequest: (request:{path:string;method:'GET'|'POST'|'PUT';body?:string;expectedBaseUrl:string;expectedInstallationId:string;expectedProjectId:string}) => Promise<{status:number;contentType:string;bodyBase64:string}>
     pickRepository: () => Promise<string | null>
     discoverProjects: () => Promise<import('./types').DiscoveredLocalProject[]>
     listTokenPrices: () => Promise<import('./types').PublicTokenPrice[]>
