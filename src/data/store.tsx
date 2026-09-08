@@ -195,7 +195,7 @@ interface StoreApi {
   threadHistoryHydrated: boolean
   lastSavedAt: number | null
   connection: ConnectionProfile
-  connectToServer: (profile: Pick<ConnectionProfile, 'name' | 'baseUrl' | 'token'>) => Promise<void>
+  connectToServer: (profile: Pick<ConnectionProfile, 'name' | 'baseUrl' | 'token'> & { transientToken?: boolean }) => Promise<void>
   initializeRemoteWorkspace: () => Promise<void>
   workspaceRecoveries: WorkspaceRecovery[]
   restoreWorkspaceRecovery: (id: string) => void
@@ -747,7 +747,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       durableHydratedServiceRef.current = null
       setServices(null)
       const next={ id: `remote-${baseUrl}`, name: profile.name.trim() || baseUrl, mode: 'remote' as const, baseUrl, token: profile.token, allowMockFallback: false }
-      saveSessionConnection(next)
+      saveSessionConnection(next, undefined, profile.transientToken !== true)
       setConnection(next)
     },
     initializeRemoteWorkspace: async () => {

@@ -11,8 +11,8 @@ export function loadSessionConnection(fallback: ConnectionProfile, storage: Stor
   } catch { return fallback }
 }
 
-export function saveSessionConnection(profile: ConnectionProfile, storage: Storage | undefined = typeof sessionStorage === 'undefined' ? undefined : sessionStorage) {
+export function saveSessionConnection(profile: ConnectionProfile, storage: Storage | undefined = typeof sessionStorage === 'undefined' ? undefined : sessionStorage, includeToken = true) {
   if (!storage) return
   if (profile.mode === 'demo') storage.removeItem(KEY)
-  else storage.setItem(KEY, JSON.stringify(profile))
+  else storage.setItem(KEY, JSON.stringify(includeToken ? profile : { ...profile, token: undefined }))
 }
