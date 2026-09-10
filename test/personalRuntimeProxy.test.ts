@@ -82,3 +82,14 @@ test('personal catalog routes retain main-process authority and reject neighbori
  for(const [method,path] of [['GET',root+'/packages'],['POST',root+'/packages'],['POST',root+'/publishers'],['GET',key],['POST',key+'/revoke']] as const)await assert.doesNotReject(proxyPersonalRuntimeRequest(handoff,{...base,method,path,...(method==='POST'?{body:'{}'}:{})},server),'catalog route must reach owner-authorized Core')
  for(const [method,path] of [['PUT',root+'/packages'],['GET',root+'/publishers'],['POST',key],['GET',key+'/revoke'],['POST',root+'/packages/enable'],['GET',root+'/packages?owner=other']] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method,path},server),/path/)
 })
+
+test('TEAM-DESKTOP-1: Team directory settings and consent cross bounded desktop routes',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'}
+ const seen:string[]=[]
+ const server=async(input:URL|string|Request,init?:RequestInit)=>{const req=new Request(input,init);assert.equal(req.headers.get('Authorization'),'Bearer private-token');seen.push(req.method+' '+new URL(req.url).pathname);return Response.json({ok:true})}
+ const routes:[string,string][]=[['GET','/api/v2/team-invitations'],['GET','/api/v2/teams/team'],['POST','/api/v2/teams'],['POST','/api/v2/teams/team/invitations'],['POST','/api/v2/teams/team/accept'],['POST','/api/v2/teams/team/members/person%40example.com/remove'],['GET','/api/v2/teams/team/presentation-projects'],['GET','/api/v2/projects/project/presentation-team'],['POST','/api/v2/projects/project/presentation-team'],['GET','/api/v2/teams/team/settings/presentation'],['PUT','/api/v2/teams/team/settings/presentation']]
+ for(const [method,path] of routes)await assert.doesNotReject(proxyPersonalRuntimeRequest(handoff,{...base,method,path,...(method==='GET'?{}:{body:'{}'})},server),'Team desktop route must be available: '+path)
+ assert.equal(seen.length,routes.length)
+ for(const [method,path] of [['POST','/api/v2/team-invitations'],['PUT','/api/v2/teams/team'],['POST','/api/v2/teams/team/delete'],['GET','/api/v2/teams/team?admin=true'],['POST','/api/v2/teams/team/members/person/remove/extra']])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method,path},server),/path/)
+ assert.equal(seen.length,routes.length)
+})

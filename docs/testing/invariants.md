@@ -966,3 +966,7 @@ The default Team workspace identifies its Team, links settings to that exact
 Team, and lists only effective accepted associations intersected with the
 authorized Project directory. Failed reloads remove stale Team details. Covered
 by `src/features/teams/TeamWorkspaceOverview.test.tsx`.
+
+## TEAM-DESKTOP-1
+
+The adopted desktop permits the explicit Team directory, invitation, membership, Project association, and presentation preference routes used by its UI while retaining main-process authentication and rejecting neighboring methods and paths. test/personalRuntimeProxy.test.ts reproduced the missing invitations route with an assertion before repair. Thirteen proxy tests and the Electron build passed after repair. Real isolated Electron navigation and Team-only preference persistence are recorded in docs/testing/receipts/team-settings-desktop-20260910.json.
