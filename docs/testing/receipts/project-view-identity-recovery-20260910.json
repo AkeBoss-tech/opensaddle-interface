@@ -1,0 +1,24 @@
+{
+  "invariant": "PROJECT-VIEW-SCOPE",
+  "baseline": "299df29fecc5722e10d39c120bd2682a39783434",
+  "overlay": [
+    "src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx"
+  ],
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern=failed package",
+    "src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx"
+  ],
+  "before": {
+    "exit_code": 1,
+    "output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 a failed package does not suppress the same package after Project change (66.00525ms)\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2716 a failed package does not suppress the same package after account change (1202.055791ms)\n\u2716 a failed package does not suppress the same package after connection change (1196.985292ms)\n\u2139 tests 3\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 2\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 2824.143458\n\n\u2716 failing tests:\n\ntest at src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx:1:10923\n\u2716 a failed package does not suppress the same package after account change (1202.055791ms)\n  AssertionError [ERR_ASSERTION]: new scope must mount its selected package independently of prior recovery\n      at until (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-account-scope-f39hggoj/src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx:112:161)\n      at async TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-account-scope-f39hggoj/src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx:122:2)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: false,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n\ntest at src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx:1:10923\n\u2716 a failed package does not suppress the same package after connection change (1196.985292ms)\n  AssertionError [ERR_ASSERTION]: new scope must mount its selected package independently of prior recovery\n      at until (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-account-scope-f39hggoj/src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx:112:161)\n      at async TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-account-scope-f39hggoj/src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx:122:2)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: false,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n"
+  },
+  "after": {
+    "exit_code": 0,
+    "output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 a failed package does not suppress the same package after Project change (63.091875ms)\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 a failed package does not suppress the same package after account change (8.163125ms)\n\u2714 a failed package does not suppress the same package after connection change (7.595458ms)\n\u2139 tests 3\n\u2139 suites 0\n\u2139 pass 3\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 352.113292\n"
+  },
+  "scope": "Mounted workspace with real clients and delayed HTTP response. Project, account and connection transitions share the same test. No browser proof."
+}

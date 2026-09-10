@@ -13,7 +13,9 @@ type WorkspaceProps={projectId:string;services:ReturnType<typeof useStore>['serv
 export function ProjectPerspectiveWorkspace(props:WorkspaceProps){
  // Scope changes discard recovery, drafts and in-flight UI state synchronously.
  // The old mount's cleanup invalidates pending reads before they can publish.
- return <ScopedProjectPerspectiveWorkspace key={props.projectId} {...props}/>
+ const settings=props.services?.presentationSettings
+ const scope=JSON.stringify([props.projectId,settings?.stateScope(),settings?.identity()])
+ return <ScopedProjectPerspectiveWorkspace key={scope} {...props}/>
 }
 function ScopedProjectPerspectiveWorkspace({projectId,services}:WorkspaceProps){
  const [search,setSearch]=useSearchParams()

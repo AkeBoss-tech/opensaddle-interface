@@ -518,3 +518,10 @@ Pending Q authority reads show neither P tasks nor P recovery state, and Q must
 load its own authorized package bytes without rewriting either preference.
 The mounted workspace test uses real clients with a delayed Q HTTP response.
 Baseline assertion and repaired run: `receipts/project-view-scope-recovery-20260910.json`.
+
+PROJECT-VIEW-SCOPE applies equally to account and connection changes. The host
+mount key includes the presentation client's connection/subject scope and current
+identity. A failed package under one principal or Core connection cannot suppress
+the next scope's selected package. The shared three-transition test replaces the
+Project-only case; `receipts/project-view-identity-recovery-20260910.json` records
+real pre-fix failures for account/connection transitions and repaired passes.
