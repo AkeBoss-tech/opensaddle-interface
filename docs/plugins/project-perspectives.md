@@ -398,3 +398,43 @@ credential authority from a settings value. No host capability is advertised yet
 Twelve package/catalog checks and a before/after invalid-default regression pass;
 receipt: Core `docs/testing/receipts/renderer-settings-contract-20260910.json`.
 The actual installer accepts valid signed declarations and rejects tampering.
+
+
+## Persistent Project plugin settings
+
+`renderer_settings_v1` advertises SQLite-backed `project` and `user_project`
+settings only when both storage and the extension catalog are configured. Other
+stores return 501 rather than claiming support. User and Team plugin-setting
+layers are not implemented by this capability.
+
+`GET /api/v2/projects/{project_id}/application-renderers/{application_id}/settings`
+requires `instance_id`, `package_id`, `version` and `manifest_digest` query fields.
+Core resolves that exact currently configured and enabled signed renderer. The
+response includes its settings contract, declared supported layers with revision
+and `can_write`, and effective values/provenance. Resolution is signed defaults,
+shared Project overrides, then the authenticated member's private overrides.
+No other member's private layer is returned.
+
+`PUT` to the same path plus `/{scope}` accepts only `expected_revision` and `values`.
+Each values object is a partial override validated against the signed schema and
+bounded to 8 KiB. An empty object restores inheritance for that layer. A stale
+revision returns 409. Shared writes require current Project owner/admin membership;
+private writes require current membership. There is no caller-controlled owner ID
+or platform-operator bypass of membership. Ordinary role changes apply on every
+read and write. The metadata table is additive and leaves existing settings intact.
+
+Records are keyed by exact package reference, application and instance in addition
+to Project, scope and authenticated owner. Upgrades do not reinterpret old values
+under a different schema; prior records remain retained. Migration is a follow-up.
+Package selection and membership are checked before and after operations, with
+membership and revision checks inside the settings write transaction. A lost or
+revoked package returns unavailable; preferences never execute an action. Catalog
+and settings storage are distinct databases, so the final check can deny a response
+after a preference committed under its old exact-package identity. Such a write
+does not grant current activation or runtime authority.
+
+Thirty-four Core/API checks and the before/after regression pass, including real
+signed-package installation, shared/private inheritance, invalid values, spoofed
+ownership, stale revision/reference, store restart, membership removal and package
+disablement. Receipt: Core `docs/testing/receipts/renderer-settings-api-20260910.json`.
+Generated Interface forms and propagation to renderer frames remain unfinished.
