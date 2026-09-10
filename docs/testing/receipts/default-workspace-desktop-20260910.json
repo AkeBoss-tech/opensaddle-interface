@@ -1,0 +1,25 @@
+{
+  "boundary": "actual commissioned desktop and authenticated personal runtime",
+  "before": "Home showed selected-view recovery warning even though no personal view was selected",
+  "runtime_evidence": {
+    "personal_environment": {
+      "status": 200,
+      "applications": 0
+    },
+    "renderer_candidates": {
+      "status": 501,
+      "detail": "scoped_renderers_unavailable"
+    }
+  },
+  "change": "read scoped environment first; skip catalog when no application is selected",
+  "after": "rebuilt desktop Home displayed manager context and Command Center without scoped recovery warning",
+  "screenshot": "out/screenshots/default-workspace-20260910/home.png",
+  "validation": [
+    "renderer build passed",
+    "current runtime survived desktop restarts"
+  ],
+  "limits": [
+    "Project device assignment walkthrough remains pending",
+    "no access policy submitted"
+  ]
+}

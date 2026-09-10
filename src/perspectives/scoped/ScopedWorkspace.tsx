@@ -16,7 +16,10 @@ export function ScopedWorkspace({client,teamId,children}:{client?:ScopedRenderer
   let active=true;const abort=new AbortController()
   setLoaded(undefined);setError('')
   const scope=teamId?{kind:'team' as const,id:teamId}:{kind:'user' as const,id:identity}
-  void Promise.all([client.environment(scope,abort.signal),client.candidates(scope,abort.signal)]).then(([environment,catalog])=>{
+  void client.environment(scope,abort.signal).then(async environment=>{
+   if(!active)return
+   if(!environment.definition.applications?.length){setLoaded({key:scopeKey,environment});return}
+   const catalog=await client.candidates(scope,abort.signal)
    if(!active)return
    const application=environment.definition.applications?.[0]
    const candidate=catalog.items.find(item=>item.available.available&&item.enablement?.status==='enabled'&&item.enablement.version===item.package_version&&item.application_id===application?.application_id&&item.package_id===application.package_ref?.package_id&&item.package_version===application.package_ref?.version&&item.manifest_digest===application.package_ref?.manifest_digest)
