@@ -1,0 +1,18 @@
+{
+  "invariant": "SCOPED-SDK-TYPES-1",
+  "change": "Standalone declarations and package export for the existing scoped SDK, shared with host owner-device projections.",
+  "checks": [
+    "Public package-name consumer compiles valid user and Team flows.",
+    "Expected TypeScript errors cover Team private device reads, task execution, credentials, Project scope, unvalidated restored state and non-JSON state proposals.",
+    "Both existing SDK protocol tests pass.",
+    "Production TypeScript/Vite build passes with host return types bound to SDK models.",
+    "npm pack --dry-run contains exactly README.md, index.d.ts, index.js and package.json."
+  ],
+  "automation": "Root npm test now includes test:scoped-sdk, which runs protocol and declaration consumer checks. The full root suite was not rerun for this type-only change.",
+  "limitations": [
+    "No runtime authority or transport behavior changed.",
+    "Package remains private and was not published.",
+    "No new visual or provider acceptance claimed.",
+    "New declaration contract; no runtime pre-fix regression claimed."
+  ]
+}

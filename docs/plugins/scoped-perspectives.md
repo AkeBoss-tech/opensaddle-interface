@@ -166,3 +166,13 @@ automatically enable a package. Revoked keys cannot be trusted again by this flo
 The installer UI has component tests and a browser form inspection; a live signed
 installation through Electron remains an acceptance check. The running Core and
 Electron main process must include the personal catalog API/transport changes.
+
+## TypeScript plug-in authors
+
+The local `@opensaddle/scoped-view-sdk` package now exports standalone TypeScript
+declarations. User clients expose owner inventory/activity reads; Team clients
+expose settings, state and disposal. Restored state is `unknown` until the author
+validates it. Typed resource results preserve the observation-only authority
+markers. See `packages/scoped-view-sdk/README.md` for an example and limitations.
+The package remains private; no registry publication or permission expansion is
+implied. Run its `test:types` script to verify public-export consumer compatibility.

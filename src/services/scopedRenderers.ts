@@ -1,3 +1,4 @@
+import type {OwnerDevicePage, OwnerDeviceActivity} from '../../packages/scoped-view-sdk/index.js'
 import {PersonalCatalogClient} from './personalCatalog'
 import {StandalonePluginSettingsClient} from './standalonePluginSettings'
 import {rendererSettingsContract} from './rendererSettings'
@@ -44,14 +45,14 @@ export class ScopedRendererClient {
     if (value.schema_version !== 'opensaddle.scoped-environment.v1' || !revision(value.revision) || !digest(value.definition_digest) || !value.definition || !Array.isArray(value.definition.commands) || !Array.isArray(value.definition.bindings) || !Array.isArray(value.definition.services)) throw Error('Invalid scoped environment')
     return value
   }
-  async ownerDevices(scope:ViewScope, after='') {
+  async ownerDevices(scope:ViewScope, after=''): Promise<OwnerDevicePage> {
     const owner=this.identity()
     if(scope.kind!=='user'||scope.id!==owner||typeof after!=='string'||after.length>512)throw Error('Owner device scope mismatch')
     const page=await new PersonalDevicesClient(this.base,this.user,this.token).list(after)
     if(this.identity()!==owner||scope.id!==owner||scope.kind!=='user')throw Error('Owner device account changed')
     return {schema_version:'opensaddle.owner-device-page.v1',task_authority:'not_evaluated',items:page.items.map(item=>({device_id:item.deviceId,display_name:item.displayName,platform:item.platform,pairing_state:item.pairingState,connection_state:item.connectionState})),next_cursor:page.nextCursor}
   }
-  async ownerDeviceActivity(scope:ViewScope, deviceId:string) {
+  async ownerDeviceActivity(scope:ViewScope, deviceId:string): Promise<OwnerDeviceActivity> {
     const owner=this.identity()
     if(scope.kind!=='user'||scope.id!==owner||!/^device_[A-Za-z0-9_]{1,200}$/.test(deviceId))throw Error('Owner device scope mismatch')
     const activity=await new PersonalDevicesClient(this.base,this.user,this.token).activity(deviceId)

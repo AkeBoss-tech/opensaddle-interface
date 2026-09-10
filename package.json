@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "npm run test:workspace && npm run test:features",
+    "test": "npm run test:workspace && npm run test:features && npm run test:scoped-sdk",
     "test:workspace": "npm exec --prefix packages/control-plane -- tsx --test test/*.test.ts",
     "test:features": "node --import tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'",
     "build": "tsc -b && vite build",
@@ -26,7 +26,8 @@
     "electron:build": "npm run build --prefix electron",
     "electron:dev": "VITE_APP_BASE=./ npm run build && npm run build --prefix electron && npm run start --prefix electron",
     "desktop": "npm run electron:dev",
-    "desktop:package": "node scripts/build-krail-runtime.mjs --required && VITE_APP_BASE=./ npm run build && npm run package:mac --prefix electron"
+    "desktop:package": "node scripts/build-krail-runtime.mjs --required && VITE_APP_BASE=./ npm run build && npm run package:mac --prefix electron",
+    "test:scoped-sdk": "npm test --prefix packages/scoped-view-sdk && npm run test:types --prefix packages/scoped-view-sdk"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

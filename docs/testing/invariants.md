@@ -919,3 +919,18 @@ capability selection and therefore missed the connection lifecycle. The React
 hook journey exercises connected → pending → disconnected → recovered and
 endpoint/account replacement; desktop screenshots cover the actual host layout
 and appearance.
+
+## SCOPED-SDK-TYPES-1 — Public typed scoped SDK
+
+The package export resolves standalone declarations for user/Team initialization,
+JSON state proposals, settings, and bounded owner device/activity observations.
+Team clients cannot call private owner reads through the typed API; state arrives
+as unknown; task execution and credentials are absent. Types are author guidance,
+not authorization. Host device projection return types share these declarations
+so the application build catches shape drift.
+
+The external-style consumer in `packages/scoped-view-sdk/typecheck/consumer.mts`
+imports the public package name and compiles valid user/Team flows while requiring
+errors for unsupported scope, private Team reads, credentials, task execution,
+unvalidated state and non-JSON proposals. Runtime wire tests remain separate.
+This is a new declaration contract, not a runtime bug-fix claim.
