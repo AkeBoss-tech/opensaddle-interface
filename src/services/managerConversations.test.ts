@@ -33,12 +33,29 @@ test('manager task dispatch sends only saved identity and explicit target select
 test('manager child result checks exact binding and downloaded text digest',async()=>{
  const original=globalThis.fetch,id='mgr_'+'d'.repeat(64),text='Native answer'
  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)))).map(value=>value.toString(16).padStart(2,'0')).join('')
- let corrupt=false
- globalThis.fetch=async()=>Response.json({conversation_id:id,message_id:'m',project_id:'P',run_id:'R',artifact_id:'a',digest,text:corrupt?'altered':text,result_kind:'native_task_output',verification:'not_assessed'})
- try{
-  const client=new ManagerConversationsClient('https://core.example',()=> 'owner',undefined,{snapshot:async()=>({projectId:'P',members:[],workers:[]})},true)
+ let corrupt=false,fixed:string|undefined
+ globalThis.fetch=async(input)=>{assert.equal(new URL(String(input)).pathname,fixed?`/api/v2/projects/P/conversations/${id}/messages/m/result`:`/api/v2/manager/conversations/${id}/messages/m/dispatches/P/result`);return Response.json({conversation_id:id,message_id:'m',project_id:'P',run_id:'R',artifact_id:'a',digest,text:corrupt?'altered':text,result_kind:'native_task_output',verification:'not_assessed'})}
+ try{for(fixed of [undefined,'P']){corrupt=false
+  const client=new ManagerConversationsClient('https://core.example',()=> 'owner',undefined,{snapshot:async()=>({projectId:'P',members:[],workers:[]})},true,fixed)
   assert.equal((await client.childResult(id,'m','P','R')).text,text)
   await assert.rejects(client.childResult(id,'m','P','other'),/mismatch/)
   corrupt=true;await assert.rejects(client.childResult(id,'m','P','R'),/integrity changed/)
- }finally{globalThis.fetch=original}
+ }}finally{globalThis.fetch=original}
+})
+
+test('Project conversation client keeps requests, histories and task results in its fixed Project',async t=>{
+ const id='mgr_'+'d'.repeat(64),value={conversation_id:id,project_id:'P',title:'Discussion',version:0,scope:{revision:0,project_ids:['P']},created_at:'now',updated_at:'now',provider_execution:false}
+ let wrong=false,requests=0;const calls:any[]=[]
+ t.mock.method(globalThis,'fetch',async(input:unknown,init?:RequestInit)=>{requests++;const url=new URL(String(input));assert.ok(url.pathname.startsWith('/api/v2/projects/P/conversations'),'Project client must use Project routes');const body=init?.body?JSON.parse(String(init.body)):undefined;calls.push(body);if(url.pathname.endsWith('/messages')){if(body)return Response.json({message:{thread_id:id,content:body.content,role:'user',client_message_id:body.request_id,message_id:'msg_'+body.request_id,payload:{provider_status:'not_started',manager_scope:value.scope}},conversation_version:1,provider_execution:false});return Response.json({items:[{thread_id:id,message_id:'m',sequence:1,role:'user',content:'Saved',payload:{provider_status:'not_started',manager_scope:{revision:0,project_ids:[wrong?'OTHER':'P']}}}],next_cursor:null,conversation_version:0,provider_execution:false})}if(url.pathname.endsWith('/'+id))return Response.json(value);if(body){assert.equal(body.project_ids,undefined);return Response.json(value)}return Response.json({items:[value],next_cursor:null})})
+ const client=new ManagerConversationsClient('http://core',()=> 'owner',undefined,undefined,false,'P')
+ assert.equal((await client.create('Discussion',['P'])).project_id,'P')
+ assert.equal((await client.list())[0].conversation_id,id)
+ assert.equal((await client.open(id)).messages[0].content,'Saved')
+ await client.append(value as any,'Saved')
+ const before=requests
+ await assert.rejects(client.create('Wrong',['OTHER']),/scope mismatch/)
+ await assert.rejects(client.scope(value as any,['P']),/fixed/)
+ await assert.rejects(client.taskOptions('OTHER'),/outside/)
+ assert.equal(requests,before)
+ wrong=true;await assert.rejects(client.open(id),/message scope mismatch/)
 })

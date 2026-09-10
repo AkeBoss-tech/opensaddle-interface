@@ -316,3 +316,14 @@ clears protected content. The mounted workspace uses real clients with transport
 responses injected. Baseline proof covers the existing frame failure callback:
 `receipts/project-view-recovery-20260910.json`. This does not prove detection of
 every post-ready runtime hang/crash.
+
+
+## PROJECT-DIALOGUE
+
+Dialogue must create/read/save anchored Project conversations through Project
+routes only. The client checks current and historical scopes, excludes scope
+edits and rejects cross-Project task operations before sending. UI omits internal
+Project switching, clears revoked content, and uses digest-checked result routes.
+Existing global manager idempotency namespaces remain unchanged. Receipt:
+`receipts/project-dialogue-20260910.json`; mounted/client tests inject only HTTP
+transport, while Core separately verifies durable storage and admission.

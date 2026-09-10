@@ -548,3 +548,20 @@ reuses normal child-Run dispatch and immutable artifact reads. A URL-bound Proje
 conversation cannot be moved by the global manager scope editor. This API is the
 next integration target for Dialogue; the current built-in view remains a task
 list and must not be described as a completed conversation experience.
+
+
+### Dialogue conversation integration
+
+When `project_conversations_v1` is available, Dialogue displays saved private
+Project conversations alongside canonical tasks. Creation and message reads/writes
+use only the fixed Project endpoint. Internal Project selection and scope-edit
+controls are absent; dispatch targets that Project and retains explicit source/agent
+selection. Completed child results use the Project result endpoint and existing
+artifact digest verification. Conversation availability is independent of the
+Project task-feed panel. Older hosts retain the task-list fallback.
+
+Nine mounted/client checks, a Project-route regression and build pass. This adds
+durable user messages and explicit per-message dispatch; it does not yet provide
+provider conversation continuation, streaming assistant turns, or persisted open
+conversation selection across Perspective switches. Current visual acceptance
+and a combined live Project conversation walkthrough remain open.
