@@ -687,3 +687,15 @@ unbounded queries, credential paths and client claim routes. Core enforces owner
 proof and revision requirements. Actual desktop inventory registration must not
 claim pairing, connectivity or Project access. The receipt distinguishes that
 observed journey from transport-only coverage of pairing and consent mutations.
+
+## DESKTOP-SCOPED-VIEWS-1
+
+The adopted desktop transport admits exact user/Team renderer lifecycle requests,
+retains the desktop-owned account credential, and forwards a bounded renderer host
+report token only to scoped observation endpoints. Content requests require all
+seven reference fields without duplicate or extra query parameters. Core remains
+authoritative for membership, enablement, revision and report-session checks.
+Regression: scoped clients work over HTTP while desktop IPC blocks their routes
+or drops the report credential. Covered by `test/scopedDesktopTransport.test.ts`
+and `scripts/prove-scoped-desktop-live.ts` against a disposable real Core.
+These checks do not prove Electron IPC delivery, iframe mounting or visual state.

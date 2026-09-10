@@ -1,0 +1,25 @@
+{
+  "invariant": "DESKTOP-SCOPED-VIEWS-1",
+  "passed": true,
+  "scopes": [
+    "user",
+    "team"
+  ],
+  "checks": [
+    "environment and signed candidates",
+    "enable and select",
+    "content delivery",
+    "host sessions and scoped report token",
+    "stale sequence denied",
+    "disable rejects content and reports"
+  ],
+  "boundary": "real Core HTTP with production client, fetch transport and main proxy; in-process IPC adapter",
+  "visual_or_plugin_execution": false,
+  "baseline": {
+    "revision": "8217d6795e2eb8cab1534b7871ed9e31e7af5a02",
+    "command": "node --import tsx --test test/scopedDesktopTransport.test.ts",
+    "failure": "AssertionError: scoped environment must cross desktop transport; Personal runtime request path is unavailable",
+    "identical_after": "passed"
+  },
+  "adjacent_checks": "14 transport/proxy tests; Electron build; tsc --noEmit passed"
+}
