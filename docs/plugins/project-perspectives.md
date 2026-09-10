@@ -501,3 +501,15 @@ Eight mounted/client checks and baseline proof cover the new scope selector and
 Team write body. Nine Core checks cover real persistence/authority. These controls
 currently use an enabled Project plugin as their schema context; standalone
 personal/Team plugin catalogs and browser acceptance remain open.
+
+
+### Standalone preferences API available
+
+Core now advertises `standalone_plugin_settings_v1` for user/Team access to already
+established preferences. Personal GET/PUT uses `/api/v2/settings/plugins` and
+`/{settings_key}`; Team paths use `/api/v2/teams/{team_id}/settings/plugins`. The
+server filters by existing owner records and current installed/unrevoked package.
+It retains user access after Project membership loss and requires Team manager
+role for shared writes. The personal/Team settings pages still need a client and
+forms for this endpoint. Initial plugin enrollment without a Project is separate
+unfinished work; do not advertise it from this capability.
