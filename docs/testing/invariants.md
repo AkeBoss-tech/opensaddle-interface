@@ -71,3 +71,20 @@ the mounted destination gets prior state only for an identical validated schema
 contract, independent of property order. Undeclared required-field changes and
 tighter destination byte caps refuse transfer. The same mounted assertion fails
 on e3d2d85; receipt: receipts/perspective-compatible-state-20260910.json.
+
+## PROJECT-TASK-FEED-1
+
+The host supplies every Project Perspective with a periodically refreshed,
+Project/account/connection-bound task projection. A settled read schedules the
+next after five seconds; unchanged data preserves object identity. A failed or
+15-second-expired read removes the projection and its rendered children. Late
+responses after a scope change or deadline cannot restore it. Requests never
+overlap within one feed; an unresolved request requires eventual settlement or
+an explicit workspace refresh. Timers are cleared on unmount.
+
+`ProjectTaskFeed.test.tsx` exercises the mounted production feed with the Dispatch
+surface and deferred Journey adapter responses. Timer advancement is deterministic
+fault injection. This adds a live-feed boundary; the older static Perspective
+checks only established navigation identity and did not cover status changes,
+loss of access during polling, or hanging reads. The ten focused Perspective and
+state tests pass. Browser evidence remains pending while the Mac is locked.

@@ -110,3 +110,17 @@ state only when the validated schema contracts are identical. Property/required
 field ordering does not matter; field types, limits, required fields and maximum
 property count do. The destination byte cap still applies. This path does not
 transform data or display a migration notice, and retains the old exact snapshot.
+
+### Host-owned task updates
+
+The Project host now refreshes canonical task data five seconds after the prior
+read settles. Unchanged projections retain their object identity. Read failure
+or a 15-second deadline removes rendered task views until a fresh valid read;
+old Project/account responses are ignored. A hung request is not retried in
+parallel: use Refresh workspace to start a new feed if it never settles.
+
+For the current init-only installed-view protocol, changed task data reloads the
+verified frame with the new projection and its last acknowledged tab-local state.
+Unchanged polls do not reload the frame. Unsaved edits/focus are not preserved
+through that reload; an in-place update protocol remains a follow-up. Browser
+verification of live refresh remains pending (Mac locked on 2026-09-10).
