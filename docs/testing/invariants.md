@@ -904,3 +904,18 @@ an unrevoked trusted key and confirms the exact returned package identity. The
 installer and real HTTP client are covered by
 `src/features/settings/PersonalPackageInstaller.test.tsx`, with HTTP controlled at
 the external boundary. Installation does not select a view.
+
+## PRODUCT-SURFACE-RECOVERY-1 — Stable interface during reconnect
+
+Once a connection/account has negotiated the connected product surface, losing
+its service bundle or receiving a disconnected snapshot must preserve that
+layout. Retaining layout must not retain clients or enable task actions. Changing
+endpoint or account clears the remembered selection. Presentation styles remain
+until that scope changes or current settings resolve again.
+
+Regression: an actual idle desktop interruption switched Settings to the legacy
+dark interface. The existing surface predicate test only checked instantaneous
+capability selection and therefore missed the connection lifecycle. The React
+hook journey exercises connected → pending → disconnected → recovered and
+endpoint/account replacement; desktop screenshots cover the actual host layout
+and appearance.

@@ -1,0 +1,36 @@
+{
+  "supervisor_pid": 26417,
+  "installation_id": "ec6eee40-bc5d-4e0a-9de2-773c09b50c2b",
+  "before_revision": 8,
+  "before_workers": [
+    29589
+  ],
+  "task_ids": [
+    "run_cc3566dbccd8480098c83071422f9133",
+    "run_d3b735b9ac17462299f3f72f8285c533"
+  ],
+  "pause_seconds": 45,
+  "paused_at": 1789072423.025152,
+  "resumed_at": 1789072468.031339,
+  "after_revision": 8,
+  "after_workers": [
+    {
+      "pid": 31952,
+      "state": "ready"
+    }
+  ],
+  "retained_tasks_unchanged": true,
+  "invariant": "PRODUCT-SURFACE-RECOVERY-1",
+  "pre_fix_evidence": "desktop-reconnect-20260910.json shows actual legacy interface replacement. New React hook initially delegated unchanged to usesConnectedProductSurface; the journey failed its same workspace must survive service replacement assertion (Legacy vs Workspace), then passed after retaining the layout decision.",
+  "automated_checks": "4 focused React/predicate/presentation checks passed; production TypeScript/Vite build passed.",
+  "desktop_evidence": "Rebuilt actual Electron desktop stayed on the light connected-product Settings page, displayed Disconnected during idle pause and returned automatically to Connected without reload.",
+  "screenshots": [
+    "out/screenshots/stable-reconnect-20260910/disconnected.png",
+    "out/screenshots/stable-reconnect-20260910/recovered.png"
+  ],
+  "limitations": [
+    "Idle interruption only, not in-flight task recovery.",
+    "Live screenshot run preceded the final additional live-legacy-server negotiation guard, which has focused test coverage.",
+    "The Python regression helper supports pytest; this TypeScript hook regression was executed directly with node --import tsx --test."
+  ]
+}

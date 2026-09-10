@@ -53,7 +53,7 @@ import { ProjectDevicesPage } from './features/devices/ProjectDevicesPage'
 import { PersonalDevicesPage } from './features/devices/PersonalDevicesPage'
 import { ConnectedProjectKnowledgePage, ConnectedProjectPluginsPage } from './features/projects/ConnectedProjectViews'
 import { ConnectedWorkspaceSidebar, ConnectedWorkspaceHome } from './features/shell/ConnectedWorkspace'
-import { usesConnectedProductSurface } from './services'
+import { useProductSurface } from './features/shell/useProductSurface'
 import { SurfaceErrorBoundary } from './ui/SurfaceHost'
 import type { DiscoveredLocalProject, DiscoveredUiPlugin } from './types'
 import './styles/app.css'
@@ -67,7 +67,7 @@ import './features/investigation/components/investigation.css'
 const IconPacksPage = lazy(() => import('./pages/IconPacksPage').then((module) => ({ default: module.IconPacksPage })))
 
 function Shell() {
-  const { data, createChat, importLocalProject, services, runtimeAdoptionPending, setTheme, toast, setActiveProject } = useStore()
+  const { data, createChat, importLocalProject, services, connection, runtimeAdoptionPending, setTheme, toast, setActiveProject } = useStore()
   const [palette, setPalette] = useState(false)
   const [projectModal, setProjectModal] = useState(false)
   const [discoveredProjects, setDiscoveredProjects] = useState<DiscoveredLocalProject[]>([])
@@ -90,7 +90,7 @@ function Shell() {
   const loc = useLocation()
   const settingsFocused = loc.pathname === '/settings'
   const globalStart = loc.pathname === '/start'
-  const connectedLocal = usesConnectedProductSurface(services)
+  const connectedLocal = useProductSurface(services, JSON.stringify([connection.id, connection.mode, connection.baseUrl, data.currentUserId]))
 
   const openArtifactReview = useCallback(async () => {
     if (loc.pathname === '/review' && loc.search) {
