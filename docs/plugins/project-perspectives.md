@@ -98,10 +98,15 @@ state for the same server, user, Project, application instance and package ID.
 The destination's authorized signed descriptor must contain exactly one validated
 `state_migrations` entry from the saved schema version to its new schema version.
 The existing declarative rename/drop/default interpreter validates both schemas
-and the final state/byte limit. Missing or ambiguous migrations, same-schema-version
-package changes, and invalid output start without transferred state.
+and the final state/byte limit. Missing or ambiguous migrations, undeclared schema changes within the same schema version, and invalid output start without transferred state.
 
 The old exact-package snapshot remains available for rollback. The host displays
 a migration notice. Rendering does not overwrite the old snapshot; the new
 package's later valid state message saves its own snapshot. This protocol is
 presentation-only and does not run migration code supplied by a plugin.
+
+Package versions that retain the same schema version may reuse the prior scoped
+state only when the validated schema contracts are identical. Property/required
+field ordering does not matter; field types, limits, required fields and maximum
+property count do. The destination byte cap still applies. This path does not
+transform data or display a migration notice, and retains the old exact snapshot.

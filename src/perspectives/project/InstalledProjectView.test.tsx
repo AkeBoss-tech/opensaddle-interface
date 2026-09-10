@@ -21,6 +21,7 @@ test('installed view opens only projected tasks from its exact initialized frame
  const opened:string[]=[];const client={applicationRenderers:async()=>enabled?[authorizedRenderer]:[],applicationRendererContent:async()=>new Response(fragment,{headers:{'Content-Type':renderer.media_type}})} as unknown as MalleableShellClient
  const model={projectId:'P',tasks:[{id:'R',title:'Task',status:'queued',verified:false,source:'active_run' as const}]}
  let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount())})
  await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={model} connectionKey="C" stateScope="server/user" onOpenTask={id=>opened.push(id)} onNewTask={()=>opened.push('new')}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
  for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
  assert.equal(view.root.findAllByType('iframe').length,1,JSON.stringify(view.toJSON()))
@@ -38,7 +39,7 @@ test('installed view opens only projected tasks from its exact initialized frame
  assert.equal(readProjectViewState('other-server/user','P',renderer),undefined)
  assert.equal(readProjectViewState('server/other-user','P',renderer),undefined)
  assert.equal(readProjectViewState('server/user','Other',renderer),undefined)
- assert.equal(readProjectViewState('server/user','P',{...renderer,package_ref:{...renderer.package_ref,manifest_digest:'f'.repeat(64)}}),undefined)
+ assert.equal(readProjectViewState('server/user','P',{...renderer,state_schema:{...renderer.state_schema,required:['query']},package_ref:{...renderer.package_ref,manifest_digest:'f'.repeat(64)}}),undefined)
  await act(async()=>send({kind:'state',state:{query:'invalid',unexpected:true}}))
  assert.match([...storage.values()][0]!,/retained/)
  await act(async()=>view.unmount())
@@ -47,6 +48,14 @@ test('installed view opens only projected tasks from its exact initialized frame
  for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
  await act(async()=>view.root.findByType('iframe').props.onLoad())
  assert.deepEqual(init.state,{query:'retained'})
+ const compatible={...renderer,package_ref:{...renderer.package_ref,version:'1.0.1',manifest_digest:'3'.repeat(64)},state_schema:{...renderer.state_schema,properties:{pinned:{type:'boolean' as const},query:{maxLength:200,type:'string' as const}}}}
+ authorizedRenderer=compatible
+ await act(async()=>view.unmount());node.dataset={}
+ await act(async()=>{view=create(<InstalledProjectView client={client} renderer={compatible} model={model} connectionKey="C" stateScope="server/user" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
+ for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ assert.deepEqual(init.state,{query:'retained'},'compatible package update must retain state')
+ assert.equal(readProjectViewState('server/user','P',{...compatible,state_max_bytes:1}),undefined)
  const upgraded={...renderer,state_schema_version:2,state_schema:reportAnnotatorV2.state_schema,state_migrations:reportAnnotatorV2.state_migrations,package_ref:{...renderer.package_ref,version:'2.0.0',manifest_digest:'2'.repeat(64)}}
  assert.deepEqual(readProjectViewState('server/user','P',upgraded),{search:'retained',layout:'compact'})
  assert.equal(readProjectViewState('server/user','P',{...upgraded,state_migrations:[]}),undefined)

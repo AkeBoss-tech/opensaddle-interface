@@ -4,6 +4,11 @@ import type {ApplicationRendererDescriptor} from '../../services/contracts'
 // Presentation convenience only. Restored state never grants authority.
 const key=(scope:string,projectId:string,renderer:ApplicationRendererDescriptor)=>JSON.stringify(['opensaddle.project-view-state.v1',scope,projectId,renderer.application_id,renderer.instance_id,renderer.package_ref.package_id,renderer.package_ref.version,renderer.package_ref.manifest_digest,renderer.state_schema_version])
 const priorKey=(scope:string,projectId:string,renderer:ApplicationRendererDescriptor)=>JSON.stringify(['opensaddle.project-view-prior.v1',scope,projectId,renderer.application_id,renderer.instance_id,renderer.package_ref.package_id])
+function schemaIdentity(value:unknown){
+ const schema=validateApplicationStateSchema(value)
+ if(!schema)return
+ return JSON.stringify([schema.maxProperties,[...(schema.required??[])].sort(),Object.entries(schema.properties).sort(([a],[b])=>a.localeCompare(b)).map(([name,p])=>[name,p.type,p.maxLength,p.minimum,p.maximum])])
+}
 export function projectViewState(value:unknown,renderer:ApplicationRendererDescriptor):ApplicationState|undefined{
  const state=validateApplicationState(value,renderer.state_schema)
  if(!state||!Number.isSafeInteger(renderer.state_max_bytes)||renderer.state_max_bytes<0)return
@@ -17,7 +22,12 @@ export function readProjectViewState(scope:string|undefined,projectId:string,ren
   const previous=sessionStorage.getItem(priorKey(scope,projectId,renderer))
   if(!previous||previous.length>32768)return
   const prior=JSON.parse(previous)
-  if(!prior||!Number.isSafeInteger(prior.version)||prior.version<1||prior.version===renderer.state_schema_version||!validateApplicationStateSchema(prior.schema))return
+  if(!prior||!Number.isSafeInteger(prior.version)||prior.version<1||!validateApplicationStateSchema(prior.schema))return
+  if(prior.version===renderer.state_schema_version){
+   const targetSchema=schemaIdentity(renderer.state_schema)
+   if(!targetSchema||schemaIdentity(prior.schema)!==targetSchema)return
+   return projectViewState(prior.state,renderer)
+  }
   const migrations=renderer.state_migrations.filter(item=>item.from_version===prior.version&&item.to_version===renderer.state_schema_version)
   if(migrations.length!==1)return
   const migrated=migrateApplicationState(prior.state,prior.schema,renderer.state_schema,migrations[0])

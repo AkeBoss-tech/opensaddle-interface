@@ -65,3 +65,9 @@ destination-declared schema migration within the same authority/application/pack
 scope. A visible notice accompanies transfer. Prior exact-package data survives
 for rollback; missing migrations and other package IDs cannot import it. Covered
 by InstalledProjectView.test.tsx and the applicationState interpreter suite.
+
+INSTALLED-PROJECT-MIGRATION-1 also covers a same-schema-version package update:
+the mounted destination gets prior state only for an identical validated schema
+contract, independent of property order. Undeclared required-field changes and
+tighter destination byte caps refuse transfer. The same mounted assertion fails
+on e3d2d85; receipt: receipts/perspective-compatible-state-20260910.json.
