@@ -79,3 +79,12 @@
   .app > .sidebar.connected-sidebar.mobile-open { display:flex; }
   .app:has(> .connected-sidebar) > .main { padding-bottom:0; }
 }
+
+body[data-presentation-density="compact"] .connected-navigation a, body[data-presentation-density="compact"] .connected-project-list a { min-height:28px; padding-top:4px; padding-bottom:4px; }
+.connected-local-page .settings-card label { display:flex; align-items:center; gap:12px; margin:12px 0; }
+.connected-local-page .settings-card select { background:var(--bg-secondary);color:inherit;border:1px solid var(--border);padding:8px;border-radius:8px; }
+
+.presentation-editor button { border:1px solid var(--border);border-radius:8px;padding:8px 12px;background:var(--bg-secondary);color:inherit;cursor:pointer;margin:4px 8px 4px 0; }
+.presentation-editor button:disabled { opacity:.5;cursor:default; }
+.presentation-editor fieldset { border:1px solid var(--border);border-radius:10px;padding:16px;min-width:0; }
+.presentation-editor select { min-width:150px; }

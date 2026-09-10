@@ -24,3 +24,7 @@ A project manager reviews another owner’s exact saved audience, sources, adapt
 ## PROJECT-DIRECTORY-UI-1
 
 Directory clients follow complete cursor pages, reject mixed viewer identities and stale local account responses, and do not return silently truncated data. projectDirectory.test.ts covers these transport contracts; browser evidence covers rail and device picker integration. Existing registration discovery does not cover projects without a checkout.
+
+## PRESENTATION-EDITOR-1
+
+PresentationEditor.test.tsx verifies that saving sends the displayed scope revision, preserves unedited Perspective keys, supports inheritance reset and disables further saves after a conflict until reload. Core test_presentation_settings.py owns authorization and persistence. Browser evidence covers effective theme and compact navigation application.

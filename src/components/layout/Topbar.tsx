@@ -93,7 +93,7 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
           {persistenceStatus === 'error' && <span className="system-pill-sync">Save error</span>}
         </Link>
         {window.opensaddleDesktop && onBrowser && <button className="icon-btn" title="Open split browser" onClick={onBrowser}><Icon name="globe" /></button>}
-        <button className="icon-btn" title={`Theme: ${data.settings.theme === 'liquid' ? 'Liquid Glass' : data.settings.theme}. Click to change.`} onClick={cycleTheme}><Icon name="sun" /></button>
+        <button className="icon-btn" title={services?.presentationSettings ? 'Appearance settings' : `Theme: ${data.settings.theme === 'liquid' ? 'Liquid Glass' : data.settings.theme}. Click to change.`} onClick={services?.presentationSettings ? ()=>nav(location.pathname.startsWith('/project/')?`/project/${location.pathname.split('/')[2]}/appearance`:'/settings/appearance') : cycleTheme}><Icon name="sun" /></button>
         {!connectedLocal && <button className="icon-btn" title="Notifications" onClick={() => { setNotifOpen((v) => !v); if (!notifOpen) markNotificationsRead() }} style={{ position: 'relative' }}>
           <Icon name="bell" />
           {unread > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--orange)' }} />}

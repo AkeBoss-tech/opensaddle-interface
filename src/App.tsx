@@ -1,3 +1,5 @@
+import { PresentationPage } from './features/settings/PresentationPages'
+import { PresentationAppearance } from './features/settings/PresentationAppearance'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { StoreProvider, useStore } from './data/store'
@@ -318,7 +320,7 @@ function Shell() {
         />
       )}
       {!settingsFocused && connectedLocal && <ConnectedWorkspaceSidebar onAddProject={() => setProjectModal(true)} />}
-      <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
+      <PresentationAppearance/><main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         <div ref={workspaceRef} className="workspace-split">
         <div className="page-wrap">
@@ -341,10 +343,12 @@ function Shell() {
             <Route path="/project/:projectId/knowledge" element={<ConnectedProjectKnowledgePage />} />
             <Route path="/project/:projectId/plugins" element={<ConnectedProjectPluginsPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
+            <Route path="/project/:projectId/appearance" element={<PresentationPage />} />
             <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/devices" element={<PersonalDevicesPage />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
+            <Route path="/settings/appearance" element={<PresentationPage />} />
             <Route path="*" element={<Navigate to="/start" replace />} />
           </Routes> : <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
@@ -356,6 +360,7 @@ function Shell() {
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />
             <Route path="/collaboration" element={<ConnectedJourneyPage />} />
+            <Route path="/project/:projectId/appearance" element={<PresentationPage />} />
             <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/start" element={<StartPage />} />
