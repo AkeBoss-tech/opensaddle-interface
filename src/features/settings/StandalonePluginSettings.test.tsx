@@ -43,3 +43,38 @@ test('team form uses explicit Team route, respects read-only role and rejects su
  assert.equal(view.root.findAllByType('fieldset').length,0)
  assert.match(JSON.stringify(view.toJSON()),/identity changed/)
 })
+
+for(const teamId of [undefined,'T/1'])
+test(`initial ${teamId?'Team':'personal'} defaults submit one exact reference without Project access`,async t=>{
+ let rows:any[]=[],posts=0,release!:()=>void
+ const pending=new Promise<void>(resolve=>{release=resolve})
+ const scope=teamId?'team':'user',path=teamId?'/api/v2/teams/T%2F1/settings/plugins':'/api/v2/settings/plugins'
+ t.mock.method(globalThis,'fetch',async(input:unknown,init?:RequestInit)=>{
+  assert.equal(new URL(String(input)).pathname,path)
+  if(init?.method==='POST'){
+   posts++;assert.deepEqual(JSON.parse(String(init.body)),{...item.package_ref,application_id:item.application_id,values:{}})
+   await pending;rows=[{...item,layer:{scope,revision:1,can_write:true,values:{}}}]
+  }
+  return Response.json({schema_version:'opensaddle.standalone-plugin-settings.v1',scope,team_id:teamId??null,viewer_subject:'owner',items:rows})
+ })
+ const client=new StandalonePluginSettingsClient('http://core',()=> 'owner');let view!:ReactTestRenderer
+ t.after(async()=>{release();if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(<StandalonePluginSettings client={client} teamId={teamId}/>);await flush()})
+ assert.equal(view.root.findAllByType('form').length,1,'initial plugin defaults must have a host setup form')
+ for(const [label,value] of [['Package ID',item.package_ref.package_id],['Package version','1.0.0'],['Manifest digest',item.package_ref.manifest_digest],['Application ID','board']])await act(async()=>view.root.findByProps({'aria-label':label}).props.onChange({target:{value}}))
+ await act(async()=>{const form=view.root.findByType('form');form.props.onSubmit({preventDefault(){}});form.props.onSubmit({preventDefault(){}});await flush()})
+ assert.equal(posts,1,'duplicate submits must not repeat enrollment')
+ await act(async()=>{release();await flush()})
+ assert.equal(view.root.findByProps({'aria-label':'Maximum cards'}).props.value,'20')
+ assert.equal(view.root.findAllByType('iframe').length,0)
+})
+
+test('enrollment withholds a response after the account changes',async t=>{
+ let user='owner',release!:()=>void
+ const pending=new Promise<void>(resolve=>{release=resolve})
+ t.mock.method(globalThis,'fetch',async()=>{await pending;return Response.json({schema_version:'opensaddle.standalone-plugin-settings.v1',scope:'user',team_id:null,viewer_subject:'owner',items:[{...item,layer:{scope:'user',revision:1,can_write:true,values:{}}}]})})
+ const client=new StandalonePluginSettingsClient('http://core',()=>user)
+ const result=client.enroll({...item.package_ref,application_id:item.application_id})
+ user='other';release()
+ await assert.rejects(result,/identity changed/)
+})

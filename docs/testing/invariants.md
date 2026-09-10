@@ -525,3 +525,15 @@ identity. A failed package under one principal or Core connection cannot suppres
 the next scope's selected package. The shared three-transition test replaces the
 Project-only case; `receipts/project-view-identity-recovery-20260910.json` records
 real pre-fix failures for account/connection transitions and repaired passes.
+
+## STANDALONE-PLUGIN-ENROLLMENT
+
+Personal and Team settings expose an explicit exact-reference setup form without
+Project navigation. The client submits one POST with signed package coordinates,
+application ID and empty presentation overrides; duplicate clicks cannot repeat
+creation. The response must bind the current subject and Team, exact contribution
+and initial revision. Account changes withhold the response. After any failure
+the form requires directory reload rather than blindly retrying creation.
+Mounted real-client evidence and pre-feature missing-form assertions are in
+`receipts/standalone-plugin-setup-form-20260910.json`. Core authority is separately
+covered by its signed-catalog HTTP test. Live combined and browser proof remain open.
