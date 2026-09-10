@@ -1,3 +1,4 @@
+import {readRunOutputPreview} from './runOutputPreview'
 import type {TaskResult} from '../features/runs/TaskResultPanel'
 import type {JourneyAuthority,JourneySnapshot,NativeAdapterId} from '../features/onboarding/ConnectedJourneySurface'
 export interface ManagerScope {revision:number;project_ids:string[]}
@@ -6,6 +7,7 @@ export interface ManagerMessage {message_id:string;thread_id:string;sequence:num
 export interface ManagerConversationView {conversation:ManagerConversation;messages:ManagerMessage[]}
 export interface ManagerChildTask {include_conversation_context?:boolean;project_id:string;run_id:string|null;status:string}
 export interface ManagerConversationsAuthority {
+ watchChildOutput?(conversationId:string,messageId:string,projectId:string,runId:string,onText:(text:string)=>void,onUnavailable:()=>void):()=>void
  readonly conversationContext?:boolean
  readonly fixedProject?:string
  childTasks?:boolean
@@ -43,6 +45,18 @@ export class ManagerConversationsClient implements ManagerConversationsAuthority
  private project(id:string){if(this.fixedProject&&id!==this.fixedProject)throw Error('Project is outside this conversation')}
  private async request(path:string,method='GET',body?:unknown){const user=this.user();const response=await fetch(this.base+(this.fixedProject?'/api/v2/projects/'+encodeURIComponent(this.fixedProject)+'/conversations':'/api/v2/manager/conversations')+path,{method,cache:'no-store',signal:AbortSignal.timeout(15000),headers:{'X-OpenSaddle-User':user,...(this.token?{Authorization:`Bearer ${this.token}`} : {}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(!response.ok){const failure=await response.json().catch(()=>null);if(typeof failure?.detail==='string'&&Object.hasOwn(contextErrors,failure.detail))throw Error(contextErrors[failure.detail]);throw Error(response.status===409?'Conversation changed. Reload it; your draft is preserved.':response.status===403||response.status===404?'Conversation or Project access is unavailable.':'Manager conversation request failed. Your draft is preserved.')}const value=await response.json();if(user!==this.user())throw Error('Manager account changed');return value}
  private async intent(operation:string,payload:unknown){const user=this.user();const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(payload))))).map(value=>value.toString(16).padStart(2,'0')).join('');if(user!==this.user())throw Error('Manager account changed');const key=JSON.stringify(this.fixedProject?['opensaddle.project-intent.v1',this.base,this.fixedProject,user,operation,digest]:['opensaddle.manager-intent.v1',this.base,user,operation,digest]);const storage=typeof sessionStorage==='undefined'?undefined:sessionStorage;let id=storage?storage.getItem(key):this.intents.get(key);if(!id){id=crypto.randomUUID();if(storage){storage.setItem(key,id);if(storage.getItem(key)!==id)throw Error('Conversation intent could not be saved')}else this.intents.set(key,id)}return {id,clear:()=>{if(storage)storage.removeItem(key);else this.intents.delete(key)}}}
+ watchChildOutput(conversationId:string,messageId:string,projectId:string,runId:string,onText:(text:string)=>void,onUnavailable:()=>void){
+  const controller=new AbortController(),user=this.user()
+  const current=()=>!controller.signal.aborted&&user===this.user()
+  void (async()=>{
+   this.project(projectId)
+   const tasks=await this.dispatches(conversationId,messageId)
+   if(!current())return
+   if(!tasks.some(task=>task.project_id===projectId&&task.run_id===runId))throw Error('Preview Run binding mismatch')
+   await readRunOutputPreview({url:this.base+'/api/v2/runs/'+encodeURIComponent(runId)+'/events',headers:{'X-OpenSaddle-User':user,...(this.token?{Authorization:`Bearer ${this.token}`}:{})},signal:controller.signal,runId,current,onText})
+  })().catch(()=>{if(!controller.signal.aborted)onUnavailable()})
+  return ()=>controller.abort()
+ }
  async childResult(conversationId:string,messageId:string,projectId:string,runId:string){
   if(!this.childResults)throw Error('Manager child results unavailable')
   this.project(projectId);const user=this.user(),result=await this.request('/'+encodeURIComponent(conversationId)+'/messages/'+encodeURIComponent(messageId)+(this.fixedProject?'/result':'/dispatches/'+encodeURIComponent(projectId)+'/result'))

@@ -421,3 +421,16 @@ sessions both terminate completed. Retry retains the second Run. This uses real
 HTTP/client/worker/artifact paths, not a provider fixture. Cleanup verifies stopped
 processes, revoked fixture worker credentials and an unchanged empty workspace.
 It is not browser proof, provider-session resume or device-policy requalification.
+
+
+## CONVERSATION-LIVE-PREVIEW
+
+An active saved-message task may render unverified Core output only after its
+conversation/message/Project/Run binding is confirmed. The reader validates Run
+identity, event order, lease/worker identity, chunk order and bounded UTF-8 size.
+Text renders as text. Invalid or ended streams clear previews, account changes
+stop delivery, and closing the message cancels the reader. The final result panel
+continues to use the artifact/digest path. Mounted tests use the real client with
+a Core stream fixture; receipt `receipts/conversation-live-preview-20260910.json`
+records an actual pre-change assertion failure. Real-provider streaming and
+browser visual acceptance are separate remaining gates.
