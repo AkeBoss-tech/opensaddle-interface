@@ -567,3 +567,9 @@ device binding and real lease, mounted inventory showing its exact Run, automati
 refresh after consent withdrawal and unpair, and fresh-client verification.
 Independent database inspection confirms terminal/unassigned work and revoked
 consent/enrollment. No native provider was launched; the fixture server stopped.
+
+DEVICE-ACTIVITY-UI also expires readiness independently of HTTP completion and
+clears a snapshot after 15 seconds without a successful refresh. A stalled read
+cannot retain active task links indefinitely; closing prevents its late response
+from scheduling another poll. Controlled clock/HTTP fault injection and baseline
+assertion proof: `receipts/device-activity-expiry-20260910.json`.

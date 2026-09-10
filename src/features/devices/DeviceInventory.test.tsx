@@ -109,3 +109,27 @@ test('activity client rejects substituted device and owner identities',async t=>
   await assert.rejects(authority.activity('device'),/identity changed/)
  }
 })
+
+test('device activity expires without a render from a stalled refresh and stops when closed',async t=>{
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:10000})
+ let calls=0,release!:()=>void
+ const held=new Promise<void>(resolve=>{release=resolve})
+ const payload=()=>({schema_version:'opensaddle.device-activity.v1',device_id:'device_Laptop',owner_subject:'owner',generated_at:new Date().toISOString(),task_authority:'not_evaluated',visibility:'current_project_memberships',process_termination:'not_observed',readiness:[{worker_id:'worker',project_id:'P',adapter_id:'codex-app-server',reported_ready:true,current:true,unavailable_reason:null,observed_at:new Date(10000).toISOString(),expires_at:new Date(11000).toISOString()}],active_runs:[{run_id:'R',worker_id:'worker',project_id:'P',status:'running'}]})
+ t.mock.method(globalThis,'fetch',async(url:unknown)=>{if(!String(url).endsWith('/activity'))return reply([row('Laptop')]);calls++;if(calls>1)await held;return Response.json(payload())})
+ const authority=new PersonalDevicesClient('http://localhost',()=> 'owner');let view!:ReactTestRenderer
+ t.after(async()=>{release();if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(<DeviceInventory authority={authority} identity="owner"/>);await flush()})
+ const button=(label:string)=>view.root.findAllByType('button').find(node=>node.children.includes(label))!
+ await act(async()=>{button('Show activity').props.onClick();await flush()})
+ assert.match(JSON.stringify(view.toJSON()),/Agent reports ready/)
+ await act(async()=>{t.mock.timers.tick(1001);await flush()})
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/Agent reports ready/,'expired readiness must disappear without a new HTTP response')
+ assert.match(JSON.stringify(view.toJSON()),/Report unavailable or expired/)
+ await act(async()=>{t.mock.timers.tick(14000);await flush()})
+ assert.equal(view.root.findAllByType('a').length,0,'stalled activity must clear the old active task projection')
+ assert.match(JSON.stringify(view.toJSON()),/activity is stale/)
+ await act(async()=>button('Hide activity').props.onClick())
+ await act(async()=>{release();await flush();t.mock.timers.tick(20000);await flush()})
+ assert.equal(calls,2,'closing must stop the delayed read from scheduling another poll')
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/codex-app-server/)
+})
