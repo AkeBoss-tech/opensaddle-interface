@@ -1,3 +1,4 @@
+import type {TaskResult} from '../features/runs/TaskResultPanel'
 import type {JourneyAuthority,JourneySnapshot,NativeAdapterId} from '../features/onboarding/ConnectedJourneySurface'
 export interface ManagerScope {revision:number;project_ids:string[]}
 export interface ManagerConversation {conversation_id:string;title:string;version:number;scope:ManagerScope;created_at:string;updated_at:string;provider_execution:false}
@@ -6,6 +7,8 @@ export interface ManagerConversationView {conversation:ManagerConversation;messa
 export interface ManagerChildTask {project_id:string;run_id:string|null;status:string}
 export interface ManagerConversationsAuthority {
  childTasks?:boolean
+ childResults?:boolean
+ childResult?(conversationId:string,messageId:string,projectId:string,runId:string):Promise<TaskResult>
  taskOptions?(projectId:string):Promise<JourneySnapshot>
  dispatch?(conversation:ManagerConversation,messageId:string,projectId:string,sourceId:string,adapter:NativeAdapterId):Promise<ManagerChildTask>
  dispatches?(conversationId:string,messageId:string):Promise<ManagerChildTask[]>
@@ -23,9 +26,20 @@ export class ManagerConversationsClient implements ManagerConversationsAuthority
  private base:string;private user:()=>string;private token?:string;private intents=new Map<string,string>()
  private journey?:Pick<JourneyAuthority,'snapshot'>
  readonly childTasks:boolean
- constructor(base:string,user:()=>string,token?:string,journey?:Pick<JourneyAuthority,'snapshot'>){this.journey=journey;this.childTasks=Boolean(journey);this.base=base.replace(/\/$/,'');this.user=user;this.token=token}
+ readonly childResults:boolean
+ constructor(base:string,user:()=>string,token?:string,journey?:Pick<JourneyAuthority,'snapshot'>,childResults=false){this.journey=journey;this.childTasks=Boolean(journey);this.childResults=this.childTasks&&childResults;this.base=base.replace(/\/$/,'');this.user=user;this.token=token}
  private async request(path:string,method='GET',body?:unknown){const user=this.user();const response=await fetch(this.base+'/api/v2/manager/conversations'+path,{method,cache:'no-store',signal:AbortSignal.timeout(15000),headers:{'X-OpenSaddle-User':user,...(this.token?{Authorization:`Bearer ${this.token}`} : {}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(!response.ok)throw Error(response.status===409?'Conversation changed. Reload it; your draft is preserved.':response.status===403||response.status===404?'Conversation or Project access is unavailable.':'Manager conversation request failed. Your draft is preserved.');const value=await response.json();if(user!==this.user())throw Error('Manager account changed');return value}
  private async intent(operation:string,payload:unknown){const user=this.user();const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(payload))))).map(value=>value.toString(16).padStart(2,'0')).join('');if(user!==this.user())throw Error('Manager account changed');const key=JSON.stringify(['opensaddle.manager-intent.v1',this.base,user,operation,digest]);const storage=typeof sessionStorage==='undefined'?undefined:sessionStorage;let id=storage?storage.getItem(key):this.intents.get(key);if(!id){id=crypto.randomUUID();if(storage){storage.setItem(key,id);if(storage.getItem(key)!==id)throw Error('Conversation intent could not be saved')}else this.intents.set(key,id)}return {id,clear:()=>{if(storage)storage.removeItem(key);else this.intents.delete(key)}}}
+ async childResult(conversationId:string,messageId:string,projectId:string,runId:string){
+  if(!this.childResults)throw Error('Manager child results unavailable')
+  const user=this.user(),result=await this.request('/'+encodeURIComponent(conversationId)+'/messages/'+encodeURIComponent(messageId)+'/dispatches/'+encodeURIComponent(projectId)+'/result')
+  if(result.conversation_id!==conversationId||result.message_id!==messageId||result.project_id!==projectId||result.run_id!==runId||typeof result.artifact_id!=='string'||!result.artifact_id||typeof result.digest!=='string'||!(/^[a-f0-9]{64}$/).test(result.digest)||typeof result.text!=='string'||result.result_kind!=='native_task_output'||result.verification!=='not_assessed')throw Error('Manager task result mismatch')
+  const bytes=new TextEncoder().encode(result.text)
+  if(bytes.byteLength>262144)throw Error('Manager task result too large')
+  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(value=>value.toString(16).padStart(2,'0')).join('')
+  if(user!==this.user()||digest!==result.digest)throw Error('Manager task result authority or integrity changed')
+  return {runId,resource:{artifact_id:result.artifact_id,digest},text:result.text}
+ }
  async taskOptions(projectId:string){if(!this.journey)throw Error('Manager task dispatch unavailable');const user=this.user(),value=await this.journey.snapshot(projectId);if(user!==this.user()||value.projectId!==projectId)throw Error('Manager task scope changed');return value}
  async dispatch(value:ManagerConversation,messageId:string,projectId:string,sourceId:string,adapter:NativeAdapterId){
   if(!this.childTasks||!value.scope.project_ids.includes(projectId))throw Error('Project is outside this conversation')

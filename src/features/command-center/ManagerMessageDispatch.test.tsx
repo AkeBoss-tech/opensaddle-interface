@@ -35,3 +35,15 @@ test('manager message dispatch requires explicit source and agent and shows the 
   assert.equal(button().props.disabled,true)
  }finally{await act(async()=>view.unmount())}
 })
+
+test('completed manager child output appears under its saved message with exact identity',async()=>{
+ const client={childTasks:true,childResults:true,dispatches:async()=>[{project_id:'P',run_id:'run-complete',status:'completed'}],childResult:async(c:string,m:string,p:string,r:string)=>{assert.deepEqual([c,m,p,r],[conversation.conversation_id,message.message_id,'P','run-complete']);return{runId:r,resource:{artifact_id:'artifact',digest:'a'.repeat(64)},text:'Native reply <img src=x>'}}} as unknown as ManagerConversationsAuthority
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(<MemoryRouter><ManagerMessageDispatch client={client} identity="owner" conversation={conversation} message={message} name={id=>id} disabled={false} onBusy={()=>{}}/></MemoryRouter>)})
+ try{
+  await act(async()=>{view.root.findByType('details').props.onToggle({currentTarget:{open:true}});await flush()})
+  await act(async()=>{await flush()})
+  assert.equal(view.root.findAllByType('pre')[0]?.children.join(''),'Native reply <img src=x>','completed manager task output must appear in the conversation')
+  assert.equal(view.root.findAllByType('img').length,0)
+ }finally{await act(async()=>view.unmount())}
+})

@@ -29,3 +29,16 @@ test('manager task dispatch sends only saved identity and explicit target select
   await assert.rejects(client.dispatch(value,'msg-one','OTHER','src_12345678','codex-app-server'),/outside/)
  }finally{globalThis.fetch=original}
 })
+
+test('manager child result checks exact binding and downloaded text digest',async()=>{
+ const original=globalThis.fetch,id='mgr_'+'d'.repeat(64),text='Native answer'
+ const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)))).map(value=>value.toString(16).padStart(2,'0')).join('')
+ let corrupt=false
+ globalThis.fetch=async()=>Response.json({conversation_id:id,message_id:'m',project_id:'P',run_id:'R',artifact_id:'a',digest,text:corrupt?'altered':text,result_kind:'native_task_output',verification:'not_assessed'})
+ try{
+  const client=new ManagerConversationsClient('https://core.example',()=> 'owner',undefined,{snapshot:async()=>({projectId:'P',members:[],workers:[]})},true)
+  assert.equal((await client.childResult(id,'m','P','R')).text,text)
+  await assert.rejects(client.childResult(id,'m','P','other'),/mismatch/)
+  corrupt=true;await assert.rejects(client.childResult(id,'m','P','R'),/integrity changed/)
+ }finally{globalThis.fetch=original}
+})

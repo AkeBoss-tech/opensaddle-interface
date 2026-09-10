@@ -49,3 +49,29 @@ show authorized existing children. Saving alone starts no work; automatic manage
 replies remain unavailable. Seven mounted/client checks, a renderer build and a
 real Core HTTP response-loss/retry check pass. The disposable admitted task was
 cancelled and fixture stopped. Browser/native manager acceptance remains pending.
+
+
+## Completed child output
+
+Where `manager_conversations_v1.child_results` is advertised, a completed native
+child task exposes its published text through
+`GET .../messages/{message_id}/dispatches/{project_id}/result`. Core resolves the
+Run through the owner-private saved-message binding, checks current and historical
+Project access, and calls the existing authorized artifact content reader. It
+requires the exact completed Run, a native result artifact, at most 256 KiB of
+strict UTF-8, and a matching SHA-256 digest. Access and Run identity are checked
+again after the read. Coding-review results continue through their existing review
+workflow.
+
+Interface verifies the complete conversation/message/Project/Run binding and text
+digest before displaying literal task output beneath the saved message. The shared
+result panel refreshes authorization and clears failed or stale reads. This is a
+linked task artifact marked `not_assessed`, not a stored assistant turn or a human
+acceptance decision. Automatic manager reasoning and cross-Project context dispatch
+remain separate work.
+
+Validation: 49 Core manager/storage/API checks and eight focused Interface checks
+pass; the renderer build passes. Both backend and mounted UI regression assertions
+fail on their previous commits and pass with these changes. The API completion
+fixture is seeded; real native manager dispatch-to-reply and browser acceptance
+remain pending.
