@@ -149,6 +149,7 @@ export function initServices(opts: {
       let resourceCapacityAvailable = false
       let nativeAdaptersAvailable = false
       let authorizedContextAvailable = false
+      let deviceAssignmentsAvailable = false
       let personalDevicePairingAvailable = false
       let personalDevicesAvailable = false
       let personalRuntimeAvailable = false
@@ -255,6 +256,7 @@ export function initServices(opts: {
           if (capabilityResponse.ok) {
             v2CapabilitiesAvailable = true
             const capabilities = await capabilityResponse.json() as {
+              device_assignment_consent_v1?: {available?:boolean}
               device_inventory_v1?: { available?: boolean; scope?: string; pairing_available?: boolean }
               capability_mode?: string
               command_center?: { available?: boolean; path?: string; schema_version?: string }
@@ -280,6 +282,7 @@ export function initServices(opts: {
             nativeSessionResume=continuation?.native_session_resume===true
             const context = capabilities.authorized_context_packets
             authorizedContextAvailable = context?.available === true && context.schema_version === 'krail.authorized-context-packet.v2' && context.selection_field === 'authorized_context_source_ids' && context.inspector_path_template === '/api/v2/runs/{run_id}/authorized-context-packet' && context.worker_path_template === '/api/v2/workers/{worker_id}/runs/{run_id}/authorized-context-packet' && context.reauthorization_schema_version === 'krail.authorized-context-reauthorization.v1' && context.unavailable_reason === 'context_packet_unavailable' && context.sources_path_template === '/api/v2/projects/{project_id}/authorized-context-sources'
+            deviceAssignmentsAvailable = capabilities.device_assignment_consent_v1?.available === true
             personalDevicePairingAvailable = capabilities.device_inventory_v1?.pairing_available === true
             personalDevicesAvailable = capabilities.device_inventory_v1?.available === true && capabilities.device_inventory_v1.scope === 'authenticated_owner'
             const personal=capabilities.personal_runtime
@@ -391,7 +394,7 @@ export function initServices(opts: {
         malleableShell,
         journey,
         personalRuntime,
-        personalDevices: backendAvailable && personalDevicesAvailable ? new PersonalDevicesClient(baseUrl, getUserId, token, personalDevicePairingAvailable) : undefined,
+        personalDevices: backendAvailable && personalDevicesAvailable ? new PersonalDevicesClient(baseUrl, getUserId, token, personalDevicePairingAvailable, deviceAssignmentsAvailable) : undefined,
         codingResults: backendAvailable && codingTasksAvailable ? new CodingResultReviewClient(baseUrl, getUserId, token) : undefined,
         projectKnowledge: backendAvailable && projectKnowledgeAvailable ? new RegisteredProjectKnowledgeClient(baseUrl, getUserId, token) : undefined,
         controlPlane: {

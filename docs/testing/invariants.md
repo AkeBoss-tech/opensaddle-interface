@@ -12,3 +12,7 @@
 - **PERSONAL-DEVICE-INVENTORY-UI-1** — Personal device inventory is negotiated from owner-scoped Core capabilities, remains outside Project navigation, distinguishes metadata/pairing/contact from task permissions, retains exact registration intent across uncertain responses, and hides previous account/connection data on authority replacement. Owning UI/client journeys: `src/features/devices/DeviceInventory.test.tsx`. The HTTP adapter is controlled; the production client parsing and mounted UI remain real. This new surface has no pre-existing UI baseline.
 
 - **PERSONAL-DEVICE-PAIRING-UI-1** — Pairing requires an owner-issued expiring challenge, a separate device claim, and an explicit exact-fingerprint match before confirmation. The consumed code is removed from the view, and unpair uses the displayed enrollment revision after a deliberate confirmation action. Owning mounted client/UI journeys: `src/features/devices/DevicePairing.test.tsx`; Core cryptographic proof is covered separately by its device enrollment and CLI tests.
+
+## PERSONAL-DEVICE-ACCESS-UI-1
+
+Owner policy proposals explicitly name audience, sources and adapters. Proposal does not implicitly accept project access. Acceptance uses the server-authenticated viewer role and the displayed revision. Revocation remains available when project context cannot be read. DeviceAssignments.test.tsx exercises the mounted component and actual transport client; Core test_device_assignments.py owns enforcement. New UI contract; existing pairing tests do not exercise assignment consent.

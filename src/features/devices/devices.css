@@ -24,3 +24,13 @@
 .device-pairing input:not([type=checkbox]) { width:100%; min-width:0; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); }
 .device-fingerprint { display:block; overflow-wrap:anywhere; padding:12px; border:1px solid var(--border); border-radius:8px; }
 .devices-list li > div { min-width:0; flex:1; }
+
+.device-assignments { margin-top: 12px; }
+.device-assignments h4 { margin: 18px 0 8px; }
+.device-assignments label { display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap; }
+.device-assignments select { max-width:100%; padding:8px; border-radius:8px; background:var(--bg-secondary,#252522); color:inherit; border:1px solid var(--border,#444); }
+.device-assignments fieldset { border:1px solid var(--border,#444); border-radius:8px; margin:12px 0; padding:12px; min-width:0; }
+.device-assignments button { margin:4px 8px 4px 0; }
+.device-access-review { border-left:3px solid var(--accent,#b59bff); padding-left:12px; }
+
+.devices-list > li > svg { align-self:flex-start; margin-top:4px; flex-shrink:0; }
