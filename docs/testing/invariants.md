@@ -805,3 +805,17 @@ It preserved unpaired/unknown connection and authority/termination uncertainty.
 The independent outsider device was absent. The Team fixture mounted without
 personal inventory controls. Receipt: `owner-device-sdk-browser-20260910.json`;
 evidence is from an isolated production-component harness, not packaged Electron.
+
+## DESKTOP-READOPTION-1 — pending requests belong to one adoption
+
+A desktop HTTP response may be delivered only while its exact runtime adoption
+is current. Re-adopting another account/runtime and then returning to identical
+identity values must still reject the old response. This closes an A→B→A hole in
+value-based identity comparisons during reconnect/account transitions.
+
+Boundary: `src/services/personalRuntimeTransport.test.ts`, production fetch
+transport with the external Electron IPC response held pending. On pre-fix
+`eabf78f`, the new regression failed with `Missing expected rejection`; the same
+test passes after adoption-reference fencing. Existing tests cover credential
+ownership, a direct identity switch and abort behavior. This is transport evidence,
+not a desktop disconnect walkthrough.

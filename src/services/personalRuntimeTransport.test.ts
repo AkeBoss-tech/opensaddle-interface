@@ -17,3 +17,19 @@ test('presentation identity comes only from the adopted owner on the matching en
   assert.equal(personalRuntimeSubject('http://127.0.0.1:8766'),'new-owner')
  }finally{globalThis.fetch=originalFetch;(globalThis as unknown as{window:unknown}).window=priorWindow}
 })
+
+test('re-adoption fences pending responses even when identity returns to the same values',async()=>{
+ const originalFetch=globalThis.fetch,priorWindow=globalThis.window
+ let resolve!:(value:{status:number;contentType:string;bodyBase64:string})=>void
+ ;(globalThis as unknown as{window:unknown}).window={opensaddle:{personalRuntimeRequest:()=>new Promise(value=>{resolve=value})}}
+ try{
+  const{installPersonalRuntimeTransport}=await import(`./personalRuntimeTransport?readoption=${Date.now()}`)
+  const identity={baseUrl:'http://127.0.0.1:8766',installationId:'A',projectId:'P',ownerSubject:'owner'}
+  installPersonalRuntimeTransport(identity)
+  const pending=fetch(`${identity.baseUrl}/api/v2/personal-runtime`)
+  installPersonalRuntimeTransport({...identity,installationId:'B'})
+  installPersonalRuntimeTransport(identity)
+  resolve({status:200,contentType:'application/json',bodyBase64:'e30='})
+  await assert.rejects(pending,/authority changed/)
+ }finally{globalThis.fetch=originalFetch;(globalThis as unknown as{window:unknown}).window=priorWindow}
+})
