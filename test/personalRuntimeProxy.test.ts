@@ -62,3 +62,15 @@ test('personal device inventory pairing and Project consent routes cross the des
  await proxyPersonalRuntimeRequest(handoff,{...base,method:'PUT',path:'/api/v2/devices/device/assignments/project',body:'{}'},forward)
  for(const path of ['/api/v2/devices?limit=500&after=','/api/v2/devices?limit=50&after=&all=true','/api/v2/devices/device/credentials','/api/v2/device-pairings/pairing_one/claim'])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},forward),/path/)
 })
+
+test('desktop standalone settings routes preserve scope and reject neighboring paths',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'}
+ const key='a'.repeat(64),seen:string[]=[]
+ const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);assert.equal(request.headers.get('Authorization'),'Bearer private-token');assert.equal(request.headers.get('X-OpenSaddle-User'),'owner');seen.push(request.method+' '+new URL(request.url).pathname);return Response.json({items:[]})}
+ for(const root of ['/api/v2/settings/plugins','/api/v2/teams/team-one/settings/plugins']){
+  for(const method of ['GET','POST'] as const)await assert.doesNotReject(proxyPersonalRuntimeRequest(handoff,{...base,path:root,method,...(method==='POST'?{body:'{}'}:{})},server),'supported settings route must reach Core')
+  await proxyPersonalRuntimeRequest(handoff,{...base,path:root+'/'+key,method:'PUT',body:'{"expected_revision":1,"values":{}}'},server)
+  for(const [method,path] of [['PUT',root],['GET',root+'/'+key],['POST',root+'/'+key],['PUT',root+'/invalid-key'],['GET',root+'?scope=other'],['GET',root+'/export']] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,path,method},server),/path/)
+ }
+ assert.equal(seen.length,6)
+})

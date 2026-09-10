@@ -862,3 +862,17 @@ session authorization before and after reading. Settings confer no task authorit
 `scripts/prove-scoped-settings-live.tsx` uses real signed Core packages, persisted
 distinct user/Team overrides, production host/client and simulated external frame
 messages. Both receive their own revision-2 values. No plug-in write API is added.
+
+## DESKTOP-SCOPED-SETTINGS-1 — standalone preferences through Electron transport
+
+Personal/Team plug-in preference GET and POST routes, and PUT to an exact
+64-character settings key, must cross the adopted desktop proxy. Neighboring
+paths, query expansion and wrong methods remain rejected. Core owns membership,
+signed-package validation and revision conflicts; credentials remain in main.
+
+The new public-proxy regression failed on `da06d86` with a supported-route
+`doesNotReject` assertion before the allowlist repair. All 18 proxy/transport
+checks pass after it. `scripts/prove-scoped-settings-desktop-live.ts` separately
+verifies personal and Team enrollment, revision-2 update and scoped value delivery
+through the production client/transport/proxy against real disposable Core. IPC is
+an in-process adapter; this does not claim actual Electron UI acceptance.

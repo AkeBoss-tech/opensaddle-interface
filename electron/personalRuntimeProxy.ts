@@ -6,6 +6,7 @@ const component = "(?:[A-Za-z0-9._~!*'()-]|%[A-Fa-f0-9]{2})"
 const conversationRoot = '/api/v2/(?:manager|projects/[A-Za-z0-9._~-]+)/conversations'
 const conversationId = '[A-Za-z0-9._~-]+'
 const conversationPage = String.raw`\?limit=100(?:&cursor=${component}+)?`
+const standaloneSettingsRoot = '/api/v2/(?:teams/[A-Za-z0-9._~-]+/)?settings/plugins'
 const scopedRoot = '/api/v2/(?:me|teams/[A-Za-z0-9._~-]+)'
 const scopedObservation = new RegExp(`^${scopedRoot}/renderer-host-sessions/[A-Za-z0-9._~-]+/observations$`)
 function scopedContent(path:string):boolean {
@@ -21,6 +22,9 @@ function scopedContent(path:string):boolean {
  })
 }
 const allowed:Array<[PersonalRuntimeProxyRequest['method'],RegExp]>=[
+ ['GET',new RegExp(`^${standaloneSettingsRoot}$`)],
+ ['POST',new RegExp(`^${standaloneSettingsRoot}$`)],
+ ['PUT',new RegExp(`^${standaloneSettingsRoot}/[a-f0-9]{64}$`)],
  ['GET',new RegExp(`^${scopedRoot}/(?:environment|application-renderer-candidates)$`)],
  ['POST',new RegExp(`^${scopedRoot}/(?:environment/selection|application-renderer-candidates/[A-Za-z0-9._~-]+/(?:enable|disable)|renderer-host-sessions)$`)],
  ['POST',scopedObservation],

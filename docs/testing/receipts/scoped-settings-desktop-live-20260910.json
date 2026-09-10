@@ -1,0 +1,34 @@
+{
+  "boundary": "real Core, production client, renderer transport and main proxy; in-process IPC adapter",
+  "results": [
+    {
+      "schema_version": "opensaddle.scoped-view-settings.v1",
+      "scope": {
+        "kind": "user",
+        "id": "owner"
+      },
+      "settings_version": 1,
+      "revision": 2,
+      "values": {
+        "density": "user-desktop"
+      },
+      "authority": "presentation_only"
+    },
+    {
+      "schema_version": "opensaddle.scoped-view-settings.v1",
+      "scope": {
+        "kind": "team",
+        "id": "team_3b7f62611a624014869988da50919d63"
+      },
+      "settings_version": 1,
+      "revision": 2,
+      "values": {
+        "density": "team-desktop"
+      },
+      "authority": "presentation_only"
+    }
+  ],
+  "limits": [
+    "not actual Electron process or visual settings editor"
+  ]
+}
