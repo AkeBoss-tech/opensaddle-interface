@@ -100,8 +100,13 @@ addEventListener('pagehide', () => view.dispose(), {once: true});
 ```
 
 Declare the matching capabilities and state schema in the signed manifest.
-`onInit` is synchronous; returning normally acknowledges ready. Throwing reports
-failure and disposes the helper. Resource methods reject before initialization,
+`onInit` may return a promise. Ready is acknowledged only after initialization
+returns normally or its promise resolves. Throwing or rejecting reports failure
+and disposes the helper; disposal while setup is pending prevents a late ready.
+The host still applies its initialization deadline. Initialize local presentation
+in this callback; start resource reads after it finishes, such as from a user
+action. State saving and resource reads reject until initialization completes.
+Resource methods also reject
 without a declared capability, during another pending read, after disposal, or
 after a timeout (10 seconds by default). Activity still requires an ID previously
 delivered by the host; the host independently enforces this rule. The helper

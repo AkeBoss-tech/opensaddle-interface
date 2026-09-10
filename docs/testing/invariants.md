@@ -850,6 +850,9 @@ mount a real browser frame or establish desktop visual acceptance.
 external parent-message boundary: source/envelope fencing, request correlation,
 capability denial, bounded concurrency, liveness, timeout and disposal. The helper
 must never copy initialization data or credentials into its outgoing envelope.
+Ready is sent only after synchronous or asynchronous initialization succeeds.
+Rejection reports failure; disposal suppresses late completion. Resource reads
+and state proposals are unavailable while initialization is pending.
 This new helper does not replace host-side authorization. Bundled signed-browser
 execution remains separate from this protocol test.
 

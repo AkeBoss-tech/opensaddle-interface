@@ -23,3 +23,25 @@ test('SDK fences parent messages, bounds reads, handles liveness and cleans up',
   const outstanding=sdk.readDevices();sdk.dispose();await assert.rejects(outstanding,/disconnected/);assert.equal(listeners.size,0)
  }finally{sdk.dispose();globalThis.window=prior}
 })
+
+// SCOPED-SDK-1: readiness means initialization completed, including asynchronous setup.
+test('SDK waits for initialization and never reports ready after failure or disposal',async()=>{
+ const prior=globalThis.window,listeners=new Set(),sent=[],parent={postMessage:message=>sent.push(message)}
+ globalThis.window={parent,addEventListener:(_,fn)=>listeners.add(fn),removeEventListener:(_,fn)=>listeners.delete(fn)}
+ const init={protocol:'opensaddle.application.v1',kind:'init',nonce:'nonce',generation:1,instance_id:'main',connection_key:'connection',package_ref:{package_id:'view',version:'1',manifest_digest:'a'.repeat(64)},model:{schema_version:'opensaddle.scoped-view.v1',scope:{kind:'team',id:'team'},capabilities:[]}}
+ const emit=()=>{for(const fn of listeners)fn({source:parent,data:init})}
+ const flush=async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve()}
+ let finish,sdk
+ try{
+  sdk=connectScopedView({scope:'team',onInit:()=>new Promise(resolve=>{finish=resolve})})
+  emit();assert.equal(sent.length,0,'ready must wait for asynchronous initialization')
+  await assert.rejects(sdk.readSettings(),/not connected/)
+  assert.throws(()=>sdk.saveState({}),/not connected/)
+  finish();await flush();assert.deepEqual(sent.map(item=>item.kind),['ready']);sdk.dispose()
+  sent.length=0
+  sdk=connectScopedView({scope:'team',onInit:()=>new Promise(resolve=>{finish=resolve})})
+  emit();sdk.dispose();finish();await flush();assert.deepEqual(sent,[])
+  sdk=connectScopedView({scope:'team',onInit:async()=>{throw Error('view setup failed')}})
+  emit();await flush();assert.deepEqual(sent.map(item=>item.kind),['failure']);assert.equal(listeners.size,0)
+ }finally{sdk?.dispose();globalThis.window=prior}
+})
