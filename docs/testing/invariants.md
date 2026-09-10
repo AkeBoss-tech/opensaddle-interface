@@ -202,3 +202,13 @@ controls/client tests pass, with baseline absence proved in
 receipts/manager-dispatch-ui-20260910.json. Real HTTP response-loss/retry and outsider
 denial are recorded in receipts/manager-dispatch-client-20260910.json. Browser and
 native execution from this manager UI remain pending.
+
+
+## MANAGER-DASHBOARD-INDEPENDENCE
+
+Unavailable, failed or refreshing dashboard projections must not unmount an
+authorized manager conversation or discard its draft. The independent conversation
+capability works without context preview. Disconnect must hide private content and
+fence late projection reads. Verified through reopening and saving a message in
+`CommandCenterPage.mounted.test.tsx`; receipt:
+`receipts/manager-dashboard-independence-20260910.json`.

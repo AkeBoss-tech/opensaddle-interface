@@ -52,7 +52,17 @@ const UNAVAILABLE_REASON: Record<CommandCenterSnapshot['unavailableSections'][nu
   inbox: 'Inbox findings and triage actions do not have an authoritative API yet.',
 }
 
-export function CommandCenterSurface({client,connected,identity,projects,dashboardSettings,dashboardIdentity,managerContext,projectDirectory,managerConversations}:{managerConversations?:ManagerConversationsAuthority;managerContext?:ManagerContextAuthority;projectDirectory?:Pick<ProjectDirectoryClient,'list'>;dashboardSettings?:DashboardSettings;dashboardIdentity?:unknown;client?:CommandCenterClient;connected:boolean;identity:object;projects:Array<{id:string;name:string}>}) {
+type CommandCenterProps = {managerConversations?:ManagerConversationsAuthority;managerContext?:ManagerContextAuthority;projectDirectory?:Pick<ProjectDirectoryClient,'list'>;dashboardSettings?:DashboardSettings;dashboardIdentity?:unknown;client?:CommandCenterClient;connected:boolean;identity:object;projects:Array<{id:string;name:string}>}
+
+export function CommandCenterSurface(props:CommandCenterProps) {
+  const {connected,managerContext,projectDirectory,managerConversations,dashboardIdentity,identity}=props
+  return <main className="content-page cc-page">
+    {connected&&projectDirectory&&(managerContext||managerConversations)&&<ManagerScopePanel conversations={managerConversations} client={managerContext} directory={projectDirectory} identity={dashboardIdentity??identity}/>}
+    <CommandCenterDashboard {...props}/>
+  </main>
+}
+
+function CommandCenterDashboard({client,connected,identity,projects,dashboardSettings,dashboardIdentity}:CommandCenterProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const generation=useRef(0)
 
@@ -79,28 +89,27 @@ export function CommandCenterSurface({client,connected,identity,projects,dashboa
 
   const projectName = (projectId: string) => projects.find((project) => project.id === projectId)?.name ?? projectId
 
-  if(!connected)return <main className="content-page cc-page"><EmptyState title="Command Center unavailable" description="Connect an OpenSaddle control plane to load authoritative priorities, work, and outcomes." action={<Button onClick={() => void load()}>Check again</Button>} /></main>
-  if(!client)return <main className="content-page cc-page"><EmptyState title="Command Center unavailable" description="This control plane does not advertise the command_center_v1 projection." action={<Button onClick={() => void load()}>Check again</Button>} /></main>
-  if((state.kind==='ready'||state.kind==='error'||state.kind==='unavailable')&&(state.identity!==identity||state.client!==client))return <main className="content-page cc-page" aria-busy="true"><p role="status">Loading authoritative Command Center…</p></main>
+  if(!connected)return <section className="cc-dashboard"><EmptyState title="Command Center unavailable" description="Connect an OpenSaddle control plane to load authoritative priorities, work, and outcomes." action={<Button onClick={() => void load()}>Check again</Button>} /></section>
+  if(!client)return <section className="cc-dashboard"><EmptyState title="Command Center unavailable" description="This control plane does not advertise the command_center_v1 projection." action={<Button onClick={() => void load()}>Check again</Button>} /></section>
+  if((state.kind==='ready'||state.kind==='error'||state.kind==='unavailable')&&(state.identity!==identity||state.client!==client))return <section className="cc-dashboard" aria-busy="true"><p role="status">Loading authoritative Command Center…</p></section>
 
   if (state.kind === 'loading') {
-    return <main className="content-page cc-page" aria-busy="true"><p role="status">Loading authoritative Command Center…</p></main>
+    return <section className="cc-dashboard" aria-busy="true"><p role="status">Loading authoritative Command Center…</p></section>
   }
   if (state.kind === 'unavailable') {
-    return <main className="content-page cc-page"><EmptyState title="Command Center unavailable" description={state.reason} action={<Button onClick={() => void load()}>Check again</Button>} /></main>
+    return <section className="cc-dashboard"><EmptyState title="Command Center unavailable" description={state.reason} action={<Button onClick={() => void load()}>Check again</Button>} /></section>
   }
   if (state.kind === 'error') {
-    return <main className="content-page cc-page"><EmptyState role="alert" title="Command Center could not load" description={state.reason} action={<Button onClick={() => void load()}>Retry</Button>} secondaryAction={<Link className="cc-text-link" to="/settings">Connection settings</Link>} /></main>
+    return <section className="cc-dashboard"><EmptyState role="alert" title="Command Center could not load" description={state.reason} action={<Button onClick={() => void load()}>Retry</Button>} secondaryAction={<Link className="cc-text-link" to="/settings">Connection settings</Link>} /></section>
   }
 
   const { snapshot } = state
-  return <main className="content-page cc-page">
+  return <section className="cc-dashboard">
     <header className="cc-header">
       <div><span className="eyebrow">Authoritative workspace view</span><h1>Command Center</h1><p>Decisions first, then active work and outcomes with their evidence status.</p></div>
       <div className="cc-freshness"><span>Snapshot</span><time dateTime={snapshot.generatedAt}>{dateTime(snapshot.generatedAt)}</time><Button variant="secondary" size="sm" onClick={() => void load()}>Refresh</Button></div>
     </header>
 
-    {managerContext&&projectDirectory&&<ManagerScopePanel conversations={managerConversations} client={managerContext} directory={projectDirectory} identity={dashboardIdentity??identity}/>}
     <DashboardLayout client={dashboardSettings} identity={dashboardIdentity??identity} widgets={[
       {id:'objective',title:'Current objective',content:<CurrentObjectivePanel snapshot={snapshot} projectName={projectName} />},
       {id:'attention',title:'Needs your attention',content:<section className="cc-panel cc-attention" aria-labelledby="cc-attention-title">
@@ -144,5 +153,5 @@ export function CommandCenterSurface({client,connected,identity,projects,dashboa
       <div><span className="eyebrow">Capability gaps</span><h2 id="cc-unavailable-title">Unavailable in this snapshot</h2></div>
       <ul>{snapshot.unavailableSections.map((section) => <li key={section}><strong>{section.replaceAll('_', ' ')}</strong><span>{UNAVAILABLE_REASON[section]}</span></li>)}</ul>
     </section>}
-  </main>
+  </section>
 }

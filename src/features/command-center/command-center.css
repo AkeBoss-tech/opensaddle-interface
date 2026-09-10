@@ -1,3 +1,4 @@
+.cc-dashboard { min-width: 0; display: grid; gap: var(--os-space-5); }
 .cc-page { width: 100%; min-width: 0; max-width: 1180px; margin: 0 auto; display: grid; gap: var(--os-space-5); }
 .cc-header, .cc-section-heading, .cc-row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--os-space-4); }
 .cc-header h1, .cc-section-heading h2 { margin: .2rem 0 0; }

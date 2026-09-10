@@ -68,3 +68,34 @@ test('dashboard account replacement hides old layout and ignores late saves',asy
  assert.doesNotMatch(markup(renderer),/plugin.private-view/)
  assert.match(markup(renderer),/Your dashboard is empty/)
 })
+
+// MANAGER-DASHBOARD-INDEPENDENCE: projection availability is not conversation authority.
+test('manager conversation survives missing failed and refreshing dashboard projections',async t=>{
+ const conversation={conversation_id:'manager-one',title:'Independent manager',version:1,scope:{revision:1,project_ids:['p']},created_at:'2026-09-10T00:00:00Z',updated_at:'2026-09-10T00:00:00Z',provider_execution:false as const}
+ const messages:import('../../services/managerConversations').ManagerMessage[]=[]
+ const manager:import('../../services/managerConversations').ManagerConversationsAuthority={list:async()=>[conversation],open:async()=>({conversation,messages:[...messages]}),create:async()=>conversation,scope:async()=>{},append:async(value,content)=>{assert.equal(value.conversation_id,conversation.conversation_id);messages.push({thread_id:value.conversation_id,message_id:'message-one',sequence:1,role:'user',content,payload:{manager_scope:value.scope,provider_status:'not_started'}})}}
+ const directory={list:async()=>[{id:'p',name:'Project P',role:'owner'}]},identity={}
+ const surface=(api?:CommandCenterClient,connected=true)=><MemoryRouter><CommandCenterSurface client={api} connected={connected} identity={identity} projects={[]} managerConversations={manager} projectDirectory={directory}/></MemoryRouter>
+ let renderer!:ReturnType<typeof create>;t.after(async()=>{if(renderer)await act(async()=>renderer.unmount())})
+ await act(async()=>{renderer=create(surface())})
+ assert.match(markup(renderer),/Independent manager/,'saved manager must remain available without dashboard or context-preview capability')
+ const button=(title:string)=>renderer.root.findAllByType('button').find(node=>node.children.join('')===title)!
+ await act(async()=>button('Independent manager').props.onClick())
+ await act(async()=>renderer.root.findByType('textarea').props.onChange({target:{value:'Keep this manager draft'}}))
+ const failed=client(async()=>{throw Error('Projection offline')})
+ await act(async()=>renderer.update(surface(failed)))
+ assert.match(markup(renderer),/Command Center could not load/)
+ assert.equal(renderer.root.findByType('textarea').props.value,'Keep this manager draft')
+ const pending=deferred<CommandCenterSnapshot>();let calls=0;const available=client(()=>++calls===1?Promise.resolve(snapshot('P')):pending.promise)
+ await act(async()=>renderer.update(surface(available)))
+ const refresh=renderer.root.findAllByType('button').find(node=>node.findAllByType('span').some(span=>span.children.join('')==='Refresh'))!
+ await act(async()=>{void refresh.props.onClick()})
+ assert.match(markup(renderer),/Loading authoritative Command Center/)
+ assert.equal(renderer.root.findByType('textarea').props.value,'Keep this manager draft')
+ await act(async()=>button('Save message').props.onClick())
+ assert.equal(messages[0].content,'Keep this manager draft')
+ await act(async()=>renderer.update(surface(available,false)))
+ assert.doesNotMatch(markup(renderer),/Independent manager|Keep this manager draft/)
+ pending.resolve(snapshot('Late private P'));await act(async()=>{await pending.promise})
+ assert.doesNotMatch(markup(renderer),/Late private P/)
+})

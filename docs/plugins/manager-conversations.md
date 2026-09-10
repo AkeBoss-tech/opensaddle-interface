@@ -97,3 +97,17 @@ network deployment, browser rendering or automatic cross-Project manager reasoni
 Device assignment and enrollment were revoked afterward; the worker, fixture Core
 and tunnel stopped. The remote workspace stayed clean. Browser verification was
 retried but the Mac remained locked.
+
+
+## Independent manager availability
+
+Saved manager conversations require their own capability and the current Project
+directory. They no longer require Command Center or context-preview support. A
+dashboard load error, missing capability, or refresh leaves the manager mounted,
+preserving its unsent draft and allowing normal authorized saves. Disconnecting
+still unmounts private manager content; identity changes retain the existing
+account fences. Context preview appears only when its separate client is present.
+
+Thirteen mounted dashboard/manager checks and the renderer build pass. The new
+regression test fails on the previous Interface commit and passes after separation.
+This is component-level evidence; browser acceptance remains pending.
