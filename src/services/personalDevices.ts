@@ -72,6 +72,13 @@ export class PersonalDevicesClient {
     if (!Array.isArray(value.items) || value.items.length > 100) throw Error('Invalid assignments')
     return value.items.map(item => assignment(item, deviceId))
   }
+  async projectAssignments(projectId: string): Promise<DeviceAssignment[]> {
+    const value=record(await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/devices`))
+    if(!Array.isArray(value.items) || value.items.length>100)throw Error('Invalid project assignments')
+    const items=value.items.map(raw=>{const row=record(raw);if(typeof row.device_id!=='string')throw Error('Invalid device identity');return assignment(raw,row.device_id,projectId)})
+    if(new Set(items.map(item=>item.device_id)).size!==items.length)throw Error('Duplicate device assignment')
+    return items
+  }
   async assignmentContext(projectId: string) {
     const path = `/api/v2/projects/${encodeURIComponent(projectId)}`
     const [roster, sources] = await Promise.all([this.request(path+'/members'),this.request(path+'/sources')]).then(values=>values.map(record))
@@ -92,7 +99,7 @@ export class PersonalDevicesClient {
 }
 
 export interface AssignmentPolicy {expected_revision:number;audience:'owner_only'|'selected_members'|'project_members';subjects:string[];source_ids:string[];adapter_ids:string[]}
-export interface DeviceAssignment extends Omit<AssignmentPolicy,'expected_revision'> {device_id:string;project_id:string;revision:number;state:string;owner_subject:string;consent_allows_requester:boolean}
+export interface DeviceAssignment extends Omit<AssignmentPolicy,'expected_revision'> {device_id:string;project_id:string;revision:number;state:string;owner_subject:string;display_name?:string;consent_allows_requester:boolean}
 function assignment(raw:unknown,deviceId:string,projectId?:string):DeviceAssignment {
   const value=record(raw)
   if(value.device_id!==deviceId || typeof value.project_id!=='string' || (projectId && value.project_id!==projectId) || typeof value.owner_subject!=='string' || !Number.isSafeInteger(value.revision) || Number(value.revision)<1 || !['proposed','accepted','removed','revoked'].includes(String(value.state)) || !['owner_only','selected_members','project_members'].includes(String(value.audience)) || typeof value.consent_allows_requester!=='boolean')throw Error('Invalid assignment identity')

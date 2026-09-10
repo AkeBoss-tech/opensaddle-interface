@@ -16,3 +16,7 @@
 ## PERSONAL-DEVICE-ACCESS-UI-1
 
 Owner policy proposals explicitly name audience, sources and adapters. Proposal does not implicitly accept project access. Acceptance uses the server-authenticated viewer role and the displayed revision. Revocation remains available when project context cannot be read. DeviceAssignments.test.tsx exercises the mounted component and actual transport client; Core test_device_assignments.py owns enforcement. New UI contract; existing pairing tests do not exercise assignment consent.
+
+## PROJECT-DEVICE-REVIEW-UI-1
+
+A project manager reviews another owner’s exact saved audience, sources, adapters and revision before accepting or removing project device access. Ordinary members receive no decision controls. Replacing the project invalidates its review and late responses. ProjectDevicesPage.test.tsx exercises the mounted view through the real transport client; Core owns authorization. This new project-side workflow is not covered by the personal owner editor tests.

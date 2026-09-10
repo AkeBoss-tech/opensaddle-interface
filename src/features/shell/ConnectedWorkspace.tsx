@@ -18,7 +18,7 @@ export function ConnectedWorkspaceSidebar({ onAddProject }: { onAddProject: () =
       <NavLink to="/start"><Plus size={17}/>New task</NavLink>
       <NavLink to="/work"><ListTodo size={17}/>Work</NavLink>
     </nav>
-    {selected && <nav aria-label="Project views" className="connected-navigation connected-project-views"><span>Views</span><NavLink end to={`/project/${selected.id}`}>Overview</NavLink><NavLink to={`/project/${selected.id}/collaboration`}>Tasks</NavLink><NavLink to={`/project/${selected.id}/knowledge`}>Knowledge</NavLink><NavLink to={`/project/${selected.id}/onboarding`}>Onboarding</NavLink><NavLink to={`/project/${selected.id}/plugins`}>Plugins</NavLink></nav>}
+    {selected && <nav aria-label="Project views" className="connected-navigation connected-project-views"><span>Views</span><NavLink end to={`/project/${selected.id}`}>Overview</NavLink><NavLink to={`/project/${selected.id}/collaboration`}>Tasks</NavLink><NavLink to={`/project/${selected.id}/knowledge`}>Knowledge</NavLink><NavLink to={`/project/${selected.id}/onboarding`}>Onboarding</NavLink><NavLink to={`/project/${selected.id}/plugins`}>Plugins</NavLink><NavLink to={`/project/${selected.id}/devices`}>Devices</NavLink></nav>}
     {!selectedId && <><div className="connected-project-heading"><span>Projects</span>{services?.localProjects && <button aria-label="Add project" onClick={onAddProject}><Plus size={16}/></button>}</div>
     <nav aria-label="Projects" className="connected-project-list">
       {data.projects.map(project => <NavLink key={project.id} to={`/project/${project.id}`}><Folder size={17}/><span>{project.name}</span></NavLink>)}

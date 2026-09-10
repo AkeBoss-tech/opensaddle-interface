@@ -34,3 +34,8 @@
 .device-access-review { border-left:3px solid var(--accent,#b59bff); padding-left:12px; }
 
 .devices-list > li > svg { align-self:flex-start; margin-top:4px; flex-shrink:0; }
+
+.devices-page dl { display:grid; grid-template-columns:minmax(100px, 140px) minmax(0,1fr); gap:8px 16px; margin:16px 0; }
+.devices-page dt { color:var(--text-secondary,#aaa); }
+.devices-page dd { margin:0; overflow-wrap:anywhere; }
+.devices-page li button { margin:4px 8px 4px 0; }

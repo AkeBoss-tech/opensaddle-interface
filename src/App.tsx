@@ -42,6 +42,7 @@ import { ConnectedLocalProjectPage } from './features/projects/ConnectedLocalPro
 import { ConnectedLocalSettingsPage } from './features/projects/ConnectedLocalSettingsPage'
 import { ConnectedLocalProjectDialog } from './features/onboarding/ConnectedLocalProjectDialog'
 import { ConnectedJourneyPage } from './features/onboarding/ConnectedJourneyPage'
+import { ProjectDevicesPage } from './features/devices/ProjectDevicesPage'
 import { PersonalDevicesPage } from './features/devices/PersonalDevicesPage'
 import { ConnectedProjectKnowledgePage, ConnectedProjectPluginsPage } from './features/projects/ConnectedProjectViews'
 import { ConnectedWorkspaceSidebar, ConnectedWorkspaceHome } from './features/shell/ConnectedWorkspace'
@@ -340,6 +341,7 @@ function Shell() {
             <Route path="/project/:projectId/knowledge" element={<ConnectedProjectKnowledgePage />} />
             <Route path="/project/:projectId/plugins" element={<ConnectedProjectPluginsPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
+            <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/devices" element={<PersonalDevicesPage />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
@@ -354,6 +356,7 @@ function Shell() {
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />
             <Route path="/collaboration" element={<ConnectedJourneyPage />} />
+            <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
