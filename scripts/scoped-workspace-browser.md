@@ -20,3 +20,10 @@ This intentionally unstyled harness exercises production components; it does
 not stand in for full application navigation, styling or Electron verification.
 Stop both disposable services after the walkthrough. Existing personal runtime,
 device records and Project permissions must remain untouched.
+
+For package disable/re-enable acceptance, activate the view and reload to mount
+it in the workspace. Use **Disable package** in the catalog, wait for active
+frames to disappear, and check default content remains. Use **Use view** again,
+then reload and verify the selected scope reports ready. Repeat with `?team=…`;
+keyboard activation should work. The 2026-09-10 browser receipt records both
+scopes reaching enabled revision 3 with their environment selection retained.
