@@ -1,0 +1,35 @@
+{
+  "checked_at": "2026-09-10T11:20:44.311Z",
+  "fixture": {
+    "base_url": "http://127.0.0.1:61801",
+    "device_id": "device_a6700e0b24994aecb9edda060e1b235e",
+    "run_id": "run_2a975e1643fc4ec2a4b1e016d1de4ab8",
+    "project_id": "activity",
+    "assignment_revision": 2,
+    "enrollment_revision": 1,
+    "native_execution": false,
+    "authentication": "loopback trusted-header development fixture"
+  },
+  "checks": [
+    "non-owner denied",
+    "mounted inventory displays current report and exact Run link",
+    "automatic poll removes Run after owner consent withdrawal",
+    "unpair invalidates displayed readiness",
+    "fresh client confirms revoked binding and no active Runs"
+  ],
+  "native_execution": false,
+  "cleanup": {
+    "consent_revoked": true,
+    "device_unpaired": true,
+    "fixture_server_stopped": true
+  },
+  "scope": "Live HTTP/Core and production mounted UI. Signed fixture device/worker and fixture-reported readiness; no native provider or browser visual proof.",
+  "core_head": "c0edbdebb233d1c5c297e7718354b4f9a4f20cf6",
+  "interface_head": "221c2661c2f4b5c634bfdfd5aa0c4d36ef8a3588",
+  "durable_check": {
+    "run_status": "failed",
+    "assigned_worker_id": null,
+    "assignment_state": "revoked",
+    "enrollment_state": "revoked"
+  }
+}

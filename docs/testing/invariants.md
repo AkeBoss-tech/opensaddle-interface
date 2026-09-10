@@ -560,3 +560,10 @@ Closing/unmounting stops polling; access failures clear prior activity. Response
 parsing rejects substituted owner/device identity and invalid, duplicate or
 over-limit rows. Mounted client/UI baseline: `receipts/device-activity-ui-20260910.json`.
 Combined live and browser acceptance remain separate.
+
+DEVICE-ACTIVITY-UI combined evidence is recorded in
+`receipts/device-activity-live-20260910.json`: live Core with a signed disposable
+device binding and real lease, mounted inventory showing its exact Run, automatic
+refresh after consent withdrawal and unpair, and fresh-client verification.
+Independent database inspection confirms terminal/unassigned work and revoked
+consent/enrollment. No native provider was launched; the fixture server stopped.
