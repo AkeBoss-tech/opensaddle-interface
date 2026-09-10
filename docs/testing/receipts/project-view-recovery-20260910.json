@@ -1,0 +1,9 @@
+{
+  "invariant": "PROJECT-VIEW-RECOVERY",
+  "base": "7186dd94493eae752debb45b63dd2931f9211dd2",
+  "overlay": "src/perspectives/project/InstalledProjectView.test.tsx",
+  "expected_assertion": "host must receive installed view failure for safe fallback",
+  "baseline_exit": 1,
+  "baseline_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2716 installed view opens only projected tasks from its exact initialized frame (5335.171833ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 5575.236792\n\n\u2716 failing tests:\n\ntest at src/perspectives/project/InstalledProjectView.test.tsx:1:580\n\u2716 installed view opens only projected tasks from its exact initialized frame (5335.171833ms)\n  AssertionError [ERR_ASSERTION]: host must receive installed view failure for safe fallback\n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-recovery-baseline-6hba342j/src/perspectives/project/InstalledProjectView.test.tsx:78:9)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: false,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n",
+  "current_scope": "frame failure callback plus mounted workspace fallback with fresh task reads, preference preservation, explicit retry and denied Project access"
+}

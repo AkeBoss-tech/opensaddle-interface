@@ -528,3 +528,13 @@ the previous form. Refresh is explicit; no immediate revocation polling is claim
 Seven mounted settings/Team checks and production build pass. Browser visual
 acceptance remains open. Initial personal/Team plugin enrollment still requires
 a Project-originated saved default; the empty state explains that limitation.
+
+
+### Recovery to the built-in view
+
+The workspace now responds to renderer load/authorization/readiness errors by
+rechecking Project settings and task data before showing Dialogue. It preserves
+the installed view preference; Refresh workspace retries the package. Losing
+Project access clears content rather than exposing a cached fallback. Five
+mounted/frame checks, baseline proof and build pass. Dialogue is still a task
+list; full Project conversation and post-ready crash/hang detection remain open.

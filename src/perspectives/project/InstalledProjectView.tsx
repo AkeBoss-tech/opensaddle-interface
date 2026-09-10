@@ -7,7 +7,7 @@ import type {ProjectTaskModel} from './model'
 import {projectViewState,readProjectViewState,writeProjectViewState} from './state'
 void React
 // Installed views receive data and navigation requests, never services or credentials.
-export function InstalledProjectView({client,settingsClient,renderer,model,connectionKey,stateScope,onOpenTask,onNewTask,mount='perspective'}:{settingsClient?:RendererSettingsAuthority;mount?:'perspective'|'widget';client:MalleableShellClient;renderer:ApplicationRendererDescriptor;model:ProjectTaskModel;connectionKey:string;stateScope?:string;onOpenTask:(id:string)=>void;onNewTask:()=>void}){
+export function InstalledProjectView({client,settingsClient,renderer,model,connectionKey,stateScope,onOpenTask,onNewTask,onUnavailable,mount='perspective'}:{onUnavailable?:(reason:string)=>void;settingsClient?:RendererSettingsAuthority;mount?:'perspective'|'widget';client:MalleableShellClient;renderer:ApplicationRendererDescriptor;model:ProjectTaskModel;connectionKey:string;stateScope?:string;onOpenTask:(id:string)=>void;onNewTask:()=>void}){
  const kinds=(renderer.input_schema.properties as {kind?:{enum?:unknown}}|undefined)?.kind?.enum
  const settingsIdentity=settingsClient?.identity()
  const preferences=useRef<unknown>(undefined),settingsRevision=useRef(0),frameReady=useRef(false)
@@ -79,6 +79,7 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
   return()=>{cancelled=true}
  },[live,ready,document,model,renderer,connectionKey])
  publishSettings.current=()=>{if(!frameReady.current||!document||document.generation!==generation.current||!preferences.current)return;frame.current?.contentWindow?.postMessage({protocol:APPLICATION_PROTOCOL,kind:'settings',nonce:document.nonce,generation:document.generation,instance_id:renderer.instance_id,connection_key:connectionKey,package_ref:renderer.package_ref,settings_revision:++settingsRevision.current,settings:preferences.current},'*')}
+ useEffect(()=>{if(error)onUnavailable?.(error)},[error,onUnavailable])
  if(error)return <p role="alert">{error}</p>
  return <section>{stateNotice&&<p role="status">{stateNotice}</p>}{!ready&&<p role="status">Loading installed view…</p>}{document&&<iframe key={document.nonce} title={`Project ${mount}: ${renderer.application_id}`} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={document.html} style={{width:'100%',minHeight:mount==='widget'?280:520,border:0}} onLoad={()=>{if(frame.current?.dataset.loaded){setError('View navigation interrupted. Select another view or refresh.');return}if(frame.current)frame.current.dataset.loaded='true';sentModel.current=model;frame.current?.contentWindow?.postMessage({protocol:APPLICATION_PROTOCOL,kind:'init',nonce:document.nonce,generation:document.generation,instance_id:renderer.instance_id,connection_key:connectionKey,package_ref:renderer.package_ref,projection:{schema:PROJECT_VIEW_CONTRACT,model},state:saved.current,...(preferences.current?{settings:preferences.current,settings_revision:settingsRevision.current}:{})},'*')}} ref={frame}/>}</section>
 }

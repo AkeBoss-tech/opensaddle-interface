@@ -18,11 +18,11 @@ test('installed view opens only projected tasks from its exact initialized frame
  const listeners=new Set<(event:any)=>void>();Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
  let init:any;const source={postMessage:(message:any)=>{init=message}},node={contentWindow:source,dataset:{}}
  let enabled=true,authorizedRenderer=renderer
- const opened:string[]=[];const client={applicationRenderers:async()=>enabled?[authorizedRenderer]:[],applicationRendererContent:async()=>new Response(fragment,{headers:{'Content-Type':renderer.media_type}})} as unknown as MalleableShellClient
+ const failures:string[]=[];const opened:string[]=[];const client={applicationRenderers:async()=>enabled?[authorizedRenderer]:[],applicationRendererContent:async()=>new Response(fragment,{headers:{'Content-Type':renderer.media_type}})} as unknown as MalleableShellClient
  const model={projectId:'P',tasks:[{id:'R',title:'Task',status:'queued',verified:false,source:'active_run' as const}]}
  let view!:ReactTestRenderer
  t.after(async()=>{if(view)await act(async()=>view.unmount())})
- await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={model} connectionKey="C" stateScope="server/user" onOpenTask={id=>opened.push(id)} onNewTask={()=>opened.push('new')}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
+ await act(async()=>{view=create(<InstalledProjectView onUnavailable={reason=>failures.push(reason)} client={client} renderer={renderer} model={model} connectionKey="C" stateScope="server/user" onOpenTask={id=>opened.push(id)} onNewTask={()=>opened.push('new')}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
  for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
  assert.equal(view.root.findAllByType('iframe').length,1,JSON.stringify(view.toJSON()))
  await act(async()=>view.root.findByType('iframe').props.onLoad())
@@ -30,7 +30,7 @@ test('installed view opens only projected tasks from its exact initialized frame
  const send=(data:any,from:any=source)=>{for(const listener of listeners)listener({source:from,data:{...init,...data}})}
  await act(async()=>{send({kind:'request',action:'open_task',task_id:'R'});send({kind:'ready'});send({kind:'request',action:'open_task',task_id:'outside'});send({kind:'request',action:'open_task',task_id:'R'},{});send({kind:'request',action:'open_task',task_id:'R',nonce:'stale'});send({kind:'request',action:'open_task',task_id:'R'})})
  assert.deepEqual(opened,['R'])
- await act(async()=>view.update(<InstalledProjectView client={client} renderer={renderer} model={model} connectionKey="C" stateScope="server/user" onOpenTask={id=>opened.push('updated:'+id)} onNewTask={()=>{}}/>))
+ await act(async()=>view.update(<InstalledProjectView onUnavailable={reason=>failures.push(reason)} client={client} renderer={renderer} model={model} connectionKey="C" stateScope="server/user" onOpenTask={id=>opened.push('updated:'+id)} onNewTask={()=>{}}/>))
  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,5100));send({kind:'request',action:'open_task',task_id:'R'})})
  assert.deepEqual(opened,['R','updated:R'])
  assert.equal(view.root.findAllByType('iframe').length,1)
@@ -44,14 +44,14 @@ test('installed view opens only projected tasks from its exact initialized frame
  assert.match([...storage.values()][0]!,/retained/)
  await act(async()=>view.unmount())
  node.dataset={}
- await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={model} connectionKey="C" stateScope="server/user" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
+ await act(async()=>{view=create(<InstalledProjectView onUnavailable={reason=>failures.push(reason)} client={client} renderer={renderer} model={model} connectionKey="C" stateScope="server/user" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
  for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
  await act(async()=>view.root.findByType('iframe').props.onLoad())
  assert.deepEqual(init.state,{query:'retained'})
  const compatible={...renderer,package_ref:{...renderer.package_ref,version:'1.0.1',manifest_digest:'3'.repeat(64)},state_schema:{...renderer.state_schema,properties:{pinned:{type:'boolean' as const},query:{maxLength:200,type:'string' as const}}}}
  authorizedRenderer=compatible
  await act(async()=>view.unmount());node.dataset={}
- await act(async()=>{view=create(<InstalledProjectView client={client} renderer={compatible} model={model} connectionKey="C" stateScope="server/user" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
+ await act(async()=>{view=create(<InstalledProjectView onUnavailable={reason=>failures.push(reason)} client={client} renderer={compatible} model={model} connectionKey="C" stateScope="server/user" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
  for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
  await act(async()=>view.root.findByType('iframe').props.onLoad())
  assert.deepEqual(init.state,{query:'retained'},'compatible package update must retain state')
@@ -63,7 +63,7 @@ test('installed view opens only projected tasks from its exact initialized frame
  assert.deepEqual(readProjectViewState('server/user','P',renderer),{query:'retained'})
  authorizedRenderer=upgraded
  await act(async()=>view.unmount());node.dataset={}
- await act(async()=>{view=create(<InstalledProjectView client={client} renderer={upgraded} model={model} connectionKey="C" stateScope="server/user" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
+ await act(async()=>{view=create(<InstalledProjectView onUnavailable={reason=>failures.push(reason)} client={client} renderer={upgraded} model={model} connectionKey="C" stateScope="server/user" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
  for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
  await act(async()=>view.root.findByType('iframe').props.onLoad())
  assert.deepEqual(init.state,{search:'retained',layout:'compact'})
@@ -75,6 +75,7 @@ test('installed view opens only projected tasks from its exact initialized frame
  assert.deepEqual(opened,['R','updated:R'])
  assert.equal(view.root.findAllByType('iframe').length,0)
  assert.match(JSON.stringify(view.toJSON()),/lost authorization/)
+ assert.ok(failures.some(reason=>reason.includes('lost authorization')),'host must receive installed view failure for safe fallback')
 
  await act(async()=>view.unmount())
  assert.equal(listeners.size,0)

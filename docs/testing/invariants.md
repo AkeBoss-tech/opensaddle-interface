@@ -305,3 +305,14 @@ is needed. `StandalonePluginSettings.test.tsx` mounts the real form and HTTP
 client with transport responses injected; Core separately verifies the real
 authority/storage API. This is a new UI surface, so missing-module baseline
 failures are not counted as regression evidence.
+
+
+## PROJECT-VIEW-RECOVERY
+
+Reported installed-view failures must notify the host and restore the built-in
+view only after new Project authority/data reads. Recovery does not overwrite
+the saved package preference; explicit refresh retries it. Revoked Project access
+clears protected content. The mounted workspace uses real clients with transport
+responses injected. Baseline proof covers the existing frame failure callback:
+`receipts/project-view-recovery-20260910.json`. This does not prove detection of
+every post-ready runtime hang/crash.
