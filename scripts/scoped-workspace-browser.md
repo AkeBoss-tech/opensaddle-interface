@@ -33,3 +33,14 @@ click **Try the view**, then select v2: its changed heading and migrated count
 must appear. Increment v2 and roll back: v1 retains its original count. Selecting
 v2 again restores its independently saved state. Repeat for Team scope. This is
 SCOPED-VIEW-STATE-1; see `scoped-upgrade-browser-20260910.json` for observations.
+
+For a complete install-before-activation journey, start Core with
+`--pending-install --fragment-directory OUTPUT_DIRECTORY` after building the
+scoped SDK fragments. The catalog and trust store start empty. Choose the
+exported `user-package.json`, enter the public key from `publisher-public.json`,
+inspect and independently compare its SHA-256 fingerprint, trust it explicitly,
+then install. The candidate must still say **Not enabled** until **Use view**.
+Install `team-package.json` through the owner installer, then open the Team URL
+and activate it separately. The user selection must stay unchanged. This mode
+uses a non-running owner manager and never launches a coding worker. See
+`signed-install-browser-20260910.json` for the completed browser evidence.
