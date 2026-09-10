@@ -334,3 +334,24 @@ an unrelated Project. Its disposable server stopped afterward. Core receipts:
 `docs/testing/receipts/project-task-feed-20260910.json` and
 `docs/testing/receipts/project-task-feed-live-20260910.json`. Browser acceptance is
 still pending.
+
+
+## Default Perspective controls
+
+The scoped appearance editor now includes **Default view** beside theme and
+spacing. Personal and Team layers offer the built-in Dialogue and Dispatch views.
+Project and private per-Project layers additionally discover compatible installed
+Project Perspectives from the current catalog. Widget packages are excluded.
+Unavailable stored preferences remain visible and can be preserved or replaced.
+Catalog failure leaves built-in choices available; it does not activate packages.
+
+Selecting **Inherit** removes only the Perspective key, retaining theme and density.
+Saving uses the existing exact scope, expected revision and server `can_write`
+contract. Reset still clears the entire layer explicitly. Choosing a plugin
+preference grants no installation, enablement or execution authority; the Project
+host continues to resolve and reauthorize it independently.
+
+Two mounted editor checks, two Core scope/inheritance checks, the actual baseline
+regression assertion and production build pass. Receipt: Interface
+`docs/testing/receipts/default-perspective-settings-20260910.json`. Browser and
+keyboard acceptance remain pending.

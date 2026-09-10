@@ -23,3 +23,24 @@ test('editor preserves Perspective preference, saves explicit layer, resets inhe
  assert.equal(button('Save preferences'),undefined)
  await act(async()=>view.unmount())
 })
+
+test('shared default view is editable without discarding appearance and can return to inheritance',async t=>{
+ let state={scope:'project',project_id:'P',owner_subject:null,revision:0,can_write:true,values:{theme:'dark',density:'compact'} as Record<string,string>}
+ const {reportAnnotatorV1}=await import('../../applications/fixturePackages')
+ const renderer={...reportAnnotatorV1,application_id:'custom-view',authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:'opensaddle.project-tasks.v1'},descriptor:{ui_contract:{schema_version:'opensaddle.ui-contract.v1',mount_kind:'perspective',scope:'project',host_api_min:1,host_api_max:1,required_capabilities:[]}}} as unknown as import('../../services/contracts').ApplicationRendererDescriptor
+ const catalog={applicationRenderers:async(project:string)=>{assert.equal(project,'P');return [renderer,{...renderer,application_id:'widget',descriptor:{ui_contract:{...(renderer.descriptor!.ui_contract as object),mount_kind:'widget'}}}]}}
+
+ t.mock.method(globalThis,'fetch',async(_url:string,init?:RequestInit)=>{if(init?.method==='PUT'){const body=JSON.parse(String(init.body));assert.equal(body.expected_revision,state.revision);state={...state,revision:state.revision+1,values:body.values}}return Response.json(state)})
+ let view!:ReactTestRenderer;t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(<PresentationEditor catalog={catalog} client={new PresentationSettingsClient('http://core',()=> 'owner')} scope="project" projectId="P"/>);await flush()})
+ const selector=()=>view.root.findAllByType('select').find(node=>node.props['aria-label']==='Default view')
+ assert.ok(selector(),'shared settings must expose a default Perspective selector')
+ assert.deepEqual(selector()!.findAllByType('option').map(option=>option.props.value),['','dialogue','dispatch','plugin.custom-view'])
+ await act(async()=>selector()!.props.onChange({target:{value:'dispatch'}}))
+ const save=()=>view.root.findAllByType('button').find(node=>node.children.includes('Save preferences'))!
+ await act(async()=>save().props.onClick())
+ assert.deepEqual(state.values,{theme:'dark',density:'compact',perspective:'dispatch'})
+ await act(async()=>selector()!.props.onChange({target:{value:''}}))
+ await act(async()=>save().props.onClick())
+ assert.deepEqual(state.values,{theme:'dark',density:'compact'})
+})

@@ -238,3 +238,11 @@ Project task presentation can load under current non-owner membership without
 global or administrative projections. Only the selected Project is returned;
 revocation, account changes and invalid pagination fail closed. Execution status
 does not imply result acceptance. Before/after receipt: `receipts/project-task-feed-20260910.json`.
+
+
+## DEFAULT-PERSPECTIVE-SETTINGS
+
+Scoped editors expose supported default views, exclude widget mounts, preserve
+other appearance keys and remove only the view key when returning to inheritance.
+The public mounted editor regression and `receipts/default-perspective-settings-20260910.json`
+verify selection and persisted request behavior without implying plugin activation.
