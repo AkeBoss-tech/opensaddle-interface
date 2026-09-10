@@ -819,3 +819,13 @@ transport with the external Electron IPC response held pending. On pre-fix
 test passes after adoption-reference fencing. Existing tests cover credential
 ownership, a direct identity switch and abort behavior. This is transport evidence,
 not a desktop disconnect walkthrough.
+
+### DESKTOP-READOPTION-1 — dispatch after asynchronous request bodies
+
+Cancellation or re-adoption while a POST body is being consumed must prevent
+IPC dispatch, not merely reject the eventual response. The public fetch test
+uses a real delayed ReadableStream for both transitions. On `52e43cf`, both
+cases dispatched once instead of zero; the identical cases pass after the
+pre-dispatch check. Abort also races body consumption, and the transport removes
+its abort listener when the request settles. An abort after IPC dispatch still
+does not promise cancellation of an already accepted server-side mutation.

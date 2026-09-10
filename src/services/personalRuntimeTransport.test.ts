@@ -33,3 +33,25 @@ test('re-adoption fences pending responses even when identity returns to the sam
   await assert.rejects(pending,/authority changed/)
  }finally{globalThis.fetch=originalFetch;(globalThis as unknown as{window:unknown}).window=priorWindow}
 })
+
+test('cancelled or superseded writes never dispatch after delayed body consumption',async t=>{
+ for(const transition of ['abort','readopt'] as const)await t.test(transition,async()=>{
+  const originalFetch=globalThis.fetch,priorWindow=globalThis.window
+  let dispatches=0,body!:ReadableStreamDefaultController<Uint8Array>
+  ;(globalThis as unknown as{window:unknown}).window={opensaddle:{personalRuntimeRequest:async()=>{dispatches++;return{status:200,contentType:'application/json',bodyBase64:'e30='}}}}
+  try{
+   const{installPersonalRuntimeTransport}=await import(`./personalRuntimeTransport?body=${transition}-${Date.now()}`)
+   const identity={baseUrl:'http://127.0.0.1:8766',installationId:'A',projectId:'P',ownerSubject:'owner'}
+   installPersonalRuntimeTransport(identity)
+   const controller=new AbortController()
+   const request=new Request(`${identity.baseUrl}/api/v2/runs`,{method:'POST',signal:controller.signal,body:new ReadableStream<Uint8Array>({start(value){body=value}}),duplex:'half'} as RequestInit)
+   const pending=fetch(request)
+   if(transition==='abort')controller.abort();else installPersonalRuntimeTransport(identity)
+   body.enqueue(new TextEncoder().encode('{}'));body.close()
+   const result=await pending.then(()=>null,error=>error)
+   assert.equal(dispatches,0,'a superseded write reached desktop IPC')
+   assert.ok(result instanceof Error)
+   assert.match(result.message,transition==='abort'?/abort/i:/authority changed/)
+  }finally{globalThis.fetch=originalFetch;(globalThis as unknown as{window:unknown}).window=priorWindow}
+ })
+})
