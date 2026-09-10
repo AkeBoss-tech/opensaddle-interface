@@ -678,3 +678,12 @@ Only named routes and bounded page queries are accepted. Core retains scope,
 revision and execution authorization. The receipt records actual desktop
 conversation persistence and dispatch to the real Codex worker. Buffered IPC
 is not evidence of live streaming support.
+
+## DESKTOP-PERSONAL-DEVICES-1
+
+The adopted desktop proxy admits bounded personal inventory, activity, owner
+pairing/confirmation/revocation and Project consent routes, while rejecting
+unbounded queries, credential paths and client claim routes. Core enforces owner,
+proof and revision requirements. Actual desktop inventory registration must not
+claim pairing, connectivity or Project access. The receipt distinguishes that
+observed journey from transport-only coverage of pairing and consent mutations.

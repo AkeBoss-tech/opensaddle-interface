@@ -53,3 +53,12 @@ test('Project workspace and private conversation lifecycle pass the adopted desk
  await proxyPersonalRuntimeRequest(handoff,{...base,method:'PUT',path:'/api/v2/projects/project/settings/presentation/user_project',body:'{}'},forward)
  for(const path of ['/api/v2/projects/project/task-feed?after=&limit=1000','/api/v2/projects/project/conversations?limit=100&admin=1','/api/v2/projects/project/conversations/chat/delete','/api/v2/projects/project/settings/presentation/effective'])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path,body:'{}'},forward),/path/)
 })
+
+test('personal device inventory pairing and Project consent routes cross the desktop proxy',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'}
+ const forward=async()=>Response.json({})
+ for(const path of ['/api/v2/devices?limit=50&after=','/api/v2/devices/device/activity','/api/v2/devices/device/assignments','/api/v2/device-pairings/pairing_one','/api/v2/projects/project/devices','/api/v2/projects/project/sources'])await assert.doesNotReject(proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},forward),'desktop must admit device route '+path)
+ for(const path of ['/api/v2/devices','/api/v2/devices/device/pairing','/api/v2/device-pairings/pairing_one/confirm','/api/v2/devices/device/unpair','/api/v2/devices/device/assignments/project/revoke','/api/v2/projects/project/devices/device/decision'])await assert.doesNotReject(proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path,body:'{}'},forward))
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'PUT',path:'/api/v2/devices/device/assignments/project',body:'{}'},forward)
+ for(const path of ['/api/v2/devices?limit=500&after=','/api/v2/devices?limit=50&after=&all=true','/api/v2/devices/device/credentials','/api/v2/device-pairings/pairing_one/claim'])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},forward),/path/)
+})

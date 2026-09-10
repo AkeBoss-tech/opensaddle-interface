@@ -7,6 +7,16 @@ const conversationRoot = '/api/v2/(?:manager|projects/[A-Za-z0-9._~-]+)/conversa
 const conversationId = '[A-Za-z0-9._~-]+'
 const conversationPage = String.raw`\?limit=100(?:&cursor=${component}+)?`
 const allowed:Array<[PersonalRuntimeProxyRequest['method'],RegExp]>=[
+ ['GET',new RegExp(`^/api/v2/devices\\?limit=50&after=${component}*$`)],
+ ['GET',/^\/api\/v2\/devices\/[A-Za-z0-9._~-]+\/(?:activity|assignments)$/],
+ ['GET',/^\/api\/v2\/device-pairings\/[A-Za-z0-9._~-]+$/],
+ ['GET',/^\/api\/v2\/teams$/],
+ ['GET',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/(?:devices|sources)$/],
+ ['POST',/^\/api\/v2\/devices(?:\/[A-Za-z0-9._~-]+\/(?:pairing|unpair|assignments\/[A-Za-z0-9._~-]+\/revoke))?$/],
+ ['POST',/^\/api\/v2\/device-pairings\/[A-Za-z0-9._~-]+\/confirm$/],
+ ['POST',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/devices\/[A-Za-z0-9._~-]+\/decision$/],
+ ['PUT',/^\/api\/v2\/devices\/[A-Za-z0-9._~-]+\/assignments\/[A-Za-z0-9._~-]+$/],
+
  ['GET',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/(?:commands|environment|command-invocations\?limit=50)$/],
  ['GET',/^\/api\/v2\/command-invocations\/[A-Za-z0-9._~-]+$/],
  ['GET',/^\/api\/v2\/runs\/[A-Za-z0-9._~-]+\/connectors$/],
