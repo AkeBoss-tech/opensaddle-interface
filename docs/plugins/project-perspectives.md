@@ -438,3 +438,20 @@ signed-package installation, shared/private inheritance, invalid values, spoofed
 ownership, stale revision/reference, store restart, membership removal and package
 disablement. Receipt: Core `docs/testing/receipts/renderer-settings-api-20260910.json`.
 Generated Interface forms and propagation to renderer frames remain unfinished.
+
+
+### Generated plugin preference forms
+
+Project Appearance discovers enabled signed renderer settings declarations and
+renders bounded scalar controls in the host. Members can edit private overrides;
+owners/admins can edit shared defaults. Fields can return to inheritance. Saves
+use exact package identity and expected revisions. Conflicts retain drafts until
+discard/reload. The client validates declarations, layers, account identity and
+recomputed effective values. No plugin code runs in the editor.
+
+Five mounted/client and existing appearance checks pass, alongside three Core
+signed-package API/contract checks and the renderer production build. Transport
+responses are injected for UI tests; Core tests install actual signed packages.
+Browser visual acceptance remains pending. Frame propagation, user/Team plugin
+layers and migrations remain open: saving preferences does not yet change an
+embedded renderer. Reload rechecks access; the editor does not poll for revocation.

@@ -246,3 +246,15 @@ Scoped editors expose supported default views, exclude widget mounts, preserve
 other appearance keys and remove only the view key when returning to inheritance.
 The public mounted editor regression and `receipts/default-perspective-settings-20260910.json`
 verify selection and persisted request behavior without implying plugin activation.
+
+
+## RENDERER-SETTINGS-EDITOR
+
+Signed plugin declarations generate host-owned fields. Private overrides must save
+with their exact Project, package and expected revision, inherit shared defaults
+when removed, and retain drafts on conflicts. Shared settings respect read-only
+roles. Unsupported declarations are excluded; invalid values, changed identities,
+package substitutions and inconsistent effective values are rejected.
+`src/features/settings/RendererSettingsEditor.test.tsx` exercises mounted catalog
+forms through the real HTTP client with transport responses injected. This is a
+new feature; no missing-module baseline is represented as regression evidence.

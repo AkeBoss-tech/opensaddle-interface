@@ -88,3 +88,10 @@ body[data-presentation-density="compact"] .connected-navigation a, body[data-pre
 .presentation-editor button:disabled { opacity:.5;cursor:default; }
 .presentation-editor fieldset { border:1px solid var(--border);border-radius:10px;padding:16px;min-width:0; }
 .presentation-editor select { min-width:150px; }
+
+.renderer-settings-editor summary { cursor:pointer; font-size:15px; font-weight:600; padding:4px 0 16px; overflow-wrap:anywhere; }
+.renderer-settings-editor fieldset > div { border-bottom:1px solid var(--border); padding:8px 0 16px; }
+.renderer-settings-editor input:not([type="checkbox"]) { background:var(--bg-secondary); color:inherit; border:1px solid var(--border); border-radius:8px; padding:8px 10px; width:140px; max-width:100%; }
+.renderer-settings-editor input:disabled { opacity:.55; }
+.renderer-settings-editor :is(input,select,button,summary):focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+@media(max-width:600px) { .connected-local-page .renderer-settings-editor label { flex-wrap:wrap; } }

@@ -1,3 +1,4 @@
+import {RendererSettingsClient} from './rendererSettings'
 import {ProjectTaskFeedClient} from './projectTaskFeed'
 import { ManagerConversationsClient } from './managerConversations'
 import { ManagerContextClient } from './managerContext'
@@ -55,6 +56,7 @@ export interface ServiceBundle {
   projectGoals?: ProjectGoalClient
   extensions?: ExtensionCatalogClient
   projectIntelligence?: ProjectIntelligenceClient
+  rendererSettings?: RendererSettingsClient
   projectTaskFeed?: ProjectTaskFeedClient
   commandCenter?: CommandCenterClient
   krailProposals?: KrailProposalClient
@@ -157,6 +159,7 @@ export function initServices(opts: {
       let storage: string | undefined
       let backendCapabilities = new Set<string>()
       let backendContracts: Record<string, string> = {}
+      let rendererSettingsAvailable = false
       let projectTaskFeedAvailable = false
       let commandCenterAvailable = false
       let managedKrailAvailable = false
@@ -290,6 +293,7 @@ export function initServices(opts: {
               device_assignment_consent_v1?: {available?:boolean}
               device_inventory_v1?: { available?: boolean; scope?: string; pairing_available?: boolean }
               capability_mode?: string
+              renderer_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               project_task_feed_v1?: {available?:boolean;scope?:string;schema_version?:string}
               command_center?: { available?: boolean; path?: string; schema_version?: string }
               managed_krail?: boolean
@@ -301,6 +305,7 @@ export function initServices(opts: {
             }
             backendAvailable = true
             backendMode = capabilities.capability_mode ?? backendMode
+            rendererSettingsAvailable = capabilities.renderer_settings_v1?.available===true&&capabilities.renderer_settings_v1.execution_policy===false&&JSON.stringify(capabilities.renderer_settings_v1.scopes)===JSON.stringify(['project','user_project'])
             projectTaskFeedAvailable = capabilities.project_task_feed_v1?.available===true&&capabilities.project_task_feed_v1.scope==='current_memberships'&&capabilities.project_task_feed_v1.schema_version==='opensaddle.project-task-feed.v1'
             commandCenterAvailable = capabilities.command_center?.available === true
               && capabilities.command_center.path === '/api/v2/command-center'
@@ -437,6 +442,7 @@ export function initServices(opts: {
         journey,
         personalRuntime,
         teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token,associationsAvailable) : undefined,
+        rendererSettings: backendAvailable&&rendererSettingsAvailable?new RendererSettingsClient(baseUrl,getUserId,token):undefined,
         projectTaskFeed: backendAvailable&&projectTaskFeedAvailable?new ProjectTaskFeedClient(baseUrl,getUserId,token):undefined,
         managerConversations: backendAvailable && managerConversationsAvailable ? new ManagerConversationsClient(baseUrl,getUserId,token,managerChildTasksAvailable?journey:undefined,managerChildResultsAvailable) : undefined,
         managerContext: backendAvailable && managerContextAvailable ? new ManagerContextClient(baseUrl,getUserId,token) : undefined,
