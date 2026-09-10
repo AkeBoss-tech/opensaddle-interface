@@ -537,3 +537,10 @@ the form requires directory reload rather than blindly retrying creation.
 Mounted real-client evidence and pre-feature missing-form assertions are in
 `receipts/standalone-plugin-setup-form-20260910.json`. Core authority is separately
 covered by its signed-catalog HTTP test. Live combined and browser proof remain open.
+
+STANDALONE-PLUGIN-ENROLLMENT now has live Core HTTP and mounted production
+form evidence in `receipts/standalone-preferences-live-20260910.json`. The
+walkthrough enables overrides, waits for the actual completed editor state,
+checks fresh-client reads, duplicate rejection and member write denial. Separate
+database inspection confirms revision-2 layers and zero package enablements.
+Both disposable servers were stopped. This is not browser visual proof.
