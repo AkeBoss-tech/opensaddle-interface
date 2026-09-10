@@ -6,6 +6,7 @@ export class PresentationSettingsClient {
   constructor(privateBase:string,user:()=>string,token?:string){this.base=privateBase.replace(/\/$/,'');this.user=user;this.token=token}
   private base:string;private user:()=>string;private token?:string
   identity(){return this.user()}
+  stateScope(){return JSON.stringify([this.base,this.identity()])}
   notifyChanged(){this.listeners.forEach(listener=>listener())}
   subscribe(listener:()=>void){this.listeners.add(listener);return()=>{this.listeners.delete(listener)}}
   private path(scope:PresentationScope,projectId?:string){if(scope==='user')return '/api/v2/settings/presentation';if(!projectId)throw Error('Scope required');if(scope==='team')return `/api/v2/teams/${encodeURIComponent(projectId)}/settings/presentation`;return `/api/v2/projects/${encodeURIComponent(projectId)}/settings/presentation/${scope}`}

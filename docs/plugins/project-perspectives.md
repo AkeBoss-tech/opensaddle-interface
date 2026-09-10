@@ -76,3 +76,17 @@ reusable signed loopback fixture. The generated package was visually verified in
 this Interface with filtering and canonical run navigation. Its local screenshot
 is `out/screenshots/starter-20260910/board.png`. The starter does not yet supply
 conversation transcripts, persistent state or automatic signing/trust changes.
+
+### View state within a tab
+
+After `ready`, send the normal fenced envelope with `kind: "state"` and a
+`state` object matching the signed `state_schema` and `state_max_bytes` (host cap
+8 KiB). The host rechecks catalog authority before storing. Subsequent `init`
+messages include optional `state`. Invalid messages leave the saved value alone.
+
+Storage is browser sessionStorage, scoped to server, user, Project, application
+instance and exact package version/digest/schema version. It survives navigation
+and refresh within the tab; it is not synced, durable across closing the tab, or
+transferred to another package version. Do not put credentials or execution
+authority in it. A save failure appears in the host. Storage is a presentation
+convenience and does not replace server authorization.

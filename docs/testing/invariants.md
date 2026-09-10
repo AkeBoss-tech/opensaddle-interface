@@ -48,3 +48,12 @@ TeamProjectReviews requires an explicit publication review before sending the di
 An installed project view receives only the host project projection. Exact renderer bytes and active frame identity gate messages; only projected task IDs can open host task details. InstalledProjectView.test.tsx mounts the real host and integrity reader with a controlled content response and frame adapter. Built-in Perspective tests do not cover executable packages. This is a new protocol, not a prior regression baseline. Signed-package loopback browser evidence proves discovery, rendering and persisted selection; it does not prove native desktop or live revocation behavior.
 
 INSTALLED-PROJECT-VIEW-1 now requires current catalog authorization before honoring navigation. The identical mounted test failed against 4bd8d10 with an extra `updated:R` navigation after disabling the renderer; it passes with the gate. Baseline used an isolated git archive with the current test overlaid and shared dependencies; Core's pytest-only prove_regression.py does not accept this src-based TypeScript test. Browser proof disabled the signed fixture package through Core (201), observed an empty renderer catalog, then observed frame removal without refreshing. Evidence: out/screenshots/view-revocation-20260910/revoked.png. Two focused tests and renderer/Electron builds passed.
+
+## INSTALLED-PROJECT-STATE-1
+
+Installed project view state is schema/size validated and accepted only from the
+ready, currently authorized frame. Tab persistence is scoped by server, principal,
+Project, application instance and exact package/schema version. The mounted
+InstalledProjectView test verifies save/remount restoration, invalid-state
+rejection and scope separation. Storage failure is visible; no upgrade migration
+or cross-device persistence is claimed.
