@@ -1,0 +1,8 @@
+{
+  "boundary": "real in-app browser; production ManagerConversationsPanel and styles; presentation-only authority fixture",
+  "fixture": "scripts/manager-layout-browser.html",
+  "verified": ["saved conversation opened with Enter", "selected state and keyboard focus visible", "discussion and composer alongside saved conversations", "360px outer panel stacks navigation and controls", "312px content scrollWidth equals clientWidth", "no browser error logs"],
+  "checks": "9 existing manager conversation, scope, dispatch and live-preview tests passed; production renderer build passed",
+  "screenshots": ["out/screenshots/manager-layout-20260910/desktop.png", "out/screenshots/manager-layout-20260910/narrow-panel.png"],
+  "limits": ["fixture has no Core connection or persistence", "narrow embedded panel, not mobile device emulation", "current Electron UI not visually verified", "no task dispatched or result accepted"]
+}

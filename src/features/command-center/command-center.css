@@ -76,3 +76,46 @@
 .manager-conversations ol{display:grid;gap:16px;padding-left:24px}
 .manager-conversations li p{white-space:pre-wrap;overflow-wrap:anywhere}
 .manager-conversations small{color:var(--text-secondary)}
+
+/* A compact conversation rail leaves the active discussion room to breathe. */
+.manager-conversations { max-width: none; border-top: 1px solid var(--border); padding-top: 24px; }
+.manager-conversation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.manager-conversation-heading h3 { margin: 0 0 6px; font-size: 18px; }
+.manager-conversation-heading p, .manager-conversation-hint, .manager-conversation-empty p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.manager-conversation-heading > button { flex-shrink: 0; }
+.manager-conversation-layout { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 24px; }
+.manager-conversation-list { min-width: 0; border-right: 1px solid var(--border); padding-right: 16px; }
+.manager-conversation-list ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.manager-conversation-list button { width: 100%; margin: 0; text-align: left; overflow-wrap: anywhere; border-color: transparent; background: transparent; line-height: 1.5; }
+.manager-conversation-list button[aria-pressed="true"] { background: var(--surface); border-color: var(--border); }
+.manager-conversation-content { min-width: 0; }
+.manager-conversation-create { display: flex; align-items: flex-end; gap: 12px; }
+.manager-conversation-create label { flex: 1; min-width: 0; margin: 0; font-size: 12px; color: var(--muted); }
+.manager-conversation-create input { padding: 10px 12px; color: var(--text); background: var(--bg); }
+.manager-conversation-create button { margin: 0; max-width: 210px; min-height: 40px; }
+.manager-conversation-hint { margin-top: 8px; }
+.manager-conversation-empty { padding: 44px 16px; text-align: center; }
+.manager-conversation-empty h4 { margin: 0 0 8px; font-size: 16px; font-weight: 500; }
+.manager-conversations button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); cursor: pointer; }
+.manager-conversations button:disabled { opacity: .5; cursor: default; }
+.manager-conversations button:focus-visible, .manager-conversations input:focus-visible, .manager-conversations textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.manager-conversations textarea { background: var(--bg); }
+.manager-conversations small { color: var(--muted); }
+@media (max-width: 760px) {
+ .manager-conversation-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+ .manager-conversation-list { border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 12px; }
+ .manager-conversation-list ul { grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
+ .manager-conversation-heading, .manager-conversation-create { flex-wrap: wrap; }
+ .manager-conversation-create label { flex-basis: 100%; }
+ .manager-conversation-create button { max-width: 100%; }
+}
+/* Embedded Project views can be narrow even in a wide application window. */
+.manager-conversations { container-type: inline-size; }
+@container (max-width: 760px) {
+ .manager-conversation-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+ .manager-conversation-list { border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 12px; }
+ .manager-conversation-list ul { grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
+ .manager-conversation-heading, .manager-conversation-create { flex-wrap: wrap; }
+ .manager-conversation-create label { flex-basis: 100%; }
+ .manager-conversation-create button { max-width: 100%; }
+}
