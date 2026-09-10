@@ -170,3 +170,12 @@ correctness or acceptance judgment. TaskResultJourney.test.tsx mounts the real
 client and surface with only HTTP substituted. It verifies literal text, corrupt
 bytes and account replacement; the baseline result-display assertion fails. See
 receipts/project-task-result-20260910.json. Browser/native verification is pending.
+
+## PERSPECTIVE-DISPATCH
+
+Bundled Dispatch and the generated independent renderer classify provisioning and
+verification as Working, and paused/approval waits as Needs attention. Finished
+execution remains separate from verification. The mounted builtins suite checks
+canonical task navigation and these lifecycle groups. Core's generated-script
+protocol/signature evidence is recorded in perspective-dispatch-renderer-20260910.json
+in the Core repository. New-column browser/keyboard proof remains pending.

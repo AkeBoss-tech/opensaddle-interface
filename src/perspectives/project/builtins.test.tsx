@@ -25,3 +25,16 @@ test('both registered perspectives open the same canonical task and unknown pref
  assert.equal(Object.isFrozen(model.tasks),true)
  await act(async()=>view.unmount())
 })
+
+// PERSPECTIVE-DISPATCH: controlled execution phases remain distinct from completion.
+test('dispatch shows provisioning and verification as work and approval as attention',async()=>{
+ const model=projectTaskModel({projectId:'P',members:[],workers:[],activeRuns:['provisioning','verifying','awaiting_approval'].map(status=>({runId:status,task:status,status,leaseEpoch:1,requestedBy:'owner',cancellationRequested:false}))},'P')
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(<PerspectiveHost perspective={resolveProjectPerspective('dispatch').perspective} projectId="P" inputs={{model,onOpenTask:()=>{},onNewTask:()=>{}}}/>)})
+ try{
+  const column=(title:string)=>view.root.findAllByType('section').find(section=>section.findAllByType('h3').length===1&&section.findByType('h3').children.join('')===title)!
+  assert.match(JSON.stringify(column('Working').findAllByType('strong').map(n=>n.children)),/provisioning.*verifying/)
+  assert.equal(column('Needs attention').findByType('strong').children.join(''),'awaiting_approval')
+  assert.equal(column('Finished').findAllByType('button').length,0)
+ }finally{await act(async()=>view.unmount())}
+})
