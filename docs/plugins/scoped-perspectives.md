@@ -62,7 +62,7 @@ prevent delivery. Resource contents confer no new authority.
 
 ## Current limits
 
-Team/global summaries and richer settings delivery remain separate work.
+Team/global summaries and published SDK packaging remain separate work.
 A preview browser helper is documented below; published packaging remains pending. The current owner device wire contract is verified with
 production host/client code, signed packages and real Core; its iframe messaging
 has component evidence and a real-browser inventory/activity walkthrough. The
@@ -135,4 +135,6 @@ and declared defaults. It never returns another package's rows or combines Team
 settings with personal overrides. Host-session authorization is checked around
 the read. No settings mutation is exposed to plug-ins; use host settings to edit.
 The production-host/real-Core receipt covers distinct personal and Team values;
-actual browser delivery through the helper remains pending.
+the bundled helper also has real-browser delivery evidence in
+`scoped-settings-browser-20260910.json`. Settings editing through the full desktop
+remains a separate acceptance check.
