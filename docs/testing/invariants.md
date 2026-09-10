@@ -351,3 +351,15 @@ stale data. Mounted tests use the real HTTP client and inject transport only.
 Receipt: `receipts/project-source-sdk-20260910.json`. Task-only tests did not
 cover resource reads, metadata filtering or revocation during this additional
 read boundary. Snapshots are limited to 100 items and do not claim completeness.
+
+## PROJECT-DEVICE-SDK
+
+Installed views with signed `read.project-devices.v1` capability may read only
+the mounted Project's bounded device assignments. Personal inventories, owner
+identities, selected subjects and credentials are never forwarded. Assignment
+consent is copied from Core and must never be represented as task admission or
+machine connectivity. The projection explicitly says `task_admission:
+not_evaluated`, including when consent is true. Malformed, duplicate, oversized,
+cross-Project and contradictory records are rejected. Mounted tests use the real
+HTTP client; existing source SDK tests cover the shared reauthorization/failure
+path. Receipt: `receipts/project-device-sdk-20260910.json`.

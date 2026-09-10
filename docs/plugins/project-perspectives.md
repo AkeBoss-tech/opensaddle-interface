@@ -613,3 +613,31 @@ knowledge access, live subscription or a complete directory. No filesystem paths
 credentials, service handles or other response properties are forwarded. Existing
 task-only packages neither request nor receive this data. Machine and approval
 resources are still outside this SDK slice.
+
+### Project device assignments
+
+Require `read.project-devices.v1` and accept `resources` input to request
+`{kind: 'request', action: 'read_devices', request_id: 'devices-1'}` with the
+initialized identity envelope. This uses the same bounded, single-pending-request
+and pre/post authorization rules as source reads. The response projection is:
+
+```js
+{
+  schema_version: 'opensaddle.project-devices.v1',
+  project_id: 'the-mounted-project',
+  limit: 100,
+  task_admission: 'not_evaluated',
+  items: [{device_id, display_name, revision, state, audience,
+           consent_allows_requester}]
+}
+```
+
+The host reads only Project assignments, never the user's personal machine
+inventory. More than 100 assignments is unavailable rather than silently
+truncated. Owner identities, selected member lists and credentials are omitted.
+`consent_allows_requester` is Core's current assignment-consent result. It does
+not prove connectivity, capacity, source/adapter eligibility or task admission.
+Keep this distinction visible even when consent is true. There is no machine
+mutation or task-dispatch action in this capability; those remain host/Core
+operations. Request a fresh snapshot to update the display. The source and device
+capabilities are independent; declaring one never grants the other.

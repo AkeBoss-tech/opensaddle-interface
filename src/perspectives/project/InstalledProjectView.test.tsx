@@ -242,3 +242,57 @@ test('source SDK reads only the mounted Project through the authenticated host',
  ]){globalThis.fetch=async()=>Response.json(bad);await assert.rejects(client.projectSources('P'),/Invalid Project source/)}
  globalThis.fetch=validFetch
 })
+
+// PROJECT-DEVICE-SDK: assignment consent is not task admission or personal inventory.
+test('device SDK reads Project assignments without implying task admission',async t=>{
+ const {RemoteMalleableShellClient}=await import('../../services/remoteMalleableShell')
+ const fragment='<p>Devices</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT,properties:{kind:{enum:['init','resources']}}},descriptor:{ui_contract:{schema_version:'opensaddle.ui-contract.v1',mount_kind:'perspective',scope:'project',host_api_min:1,host_api_max:1,required_capabilities:['read.project-devices.v1']}},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
+ assert.equal(installedProjectViews([renderer]).length,1,'device-reading Perspectives must be supported by the host')
+ const originalFetch=globalThis.fetch,originalAdd=globalThis.addEventListener,originalRemove=globalThis.removeEventListener
+ const listeners=new Set<(event:any)=>void>(),messages:any[]=[],paths:string[]=[]
+ let user='member'
+ const row={device_id:'D',project_id:'P',display_name:'Shared Mac',revision:2,state:'accepted',audience:'owner_only',consent_allows_requester:false,owner_subject:'private-owner',subjects:['private-member'],credentials:'never deliver'}
+ Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ globalThis.fetch=async(input,options)=>{
+  const url=new URL(String(input));paths.push(url.pathname)
+  assert.equal((options?.headers as Record<string,string>)['X-OpenSaddle-User'],user)
+  assert.equal((options?.headers as Record<string,string>).Authorization,'Bearer host-secret')
+  if(url.pathname.endsWith('/content'))return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})
+  if(url.pathname.endsWith('/application-renderers'))return Response.json({project_id:'P',renderers:[renderer]})
+  assert.equal(url.pathname,'/api/v2/projects/P/devices')
+  return Response.json({items:[row]})
+ }
+ const client=new RemoteMalleableShellClient('http://core',()=>user,'host-secret'),source={postMessage:(message:any)=>messages.push(message)},node={contentWindow:source,dataset:{}}
+ let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount());Object.assign(globalThis,{fetch:originalFetch,addEventListener:originalAdd,removeEventListener:originalRemove})})
+ await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[]}} connectionKey={user} onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node})})
+ for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
+ assert.equal(view.root.findAllByType('iframe').length,1,JSON.stringify(view.toJSON()))
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ const send=async(data:any)=>{const init=messages.find(m=>m.kind==='init');await act(async()=>{for(const listener of listeners)listener({source,data:{...init,...data}})})}
+ await send({kind:'ready'})
+ await send({kind:'request',action:'read_sources',request_id:'undeclared'})
+ assert.equal(messages.filter(m=>m.kind==='resources').length,0,'device capability must not allow undeclared source reads')
+ await send({kind:'request',action:'read_devices',request_id:'devices-1',project_id:'OTHER'})
+ const result=messages.find(m=>m.kind==='resources')
+ assert.ok(result,'device request must receive a framed resource projection')
+ assert.equal(result.projection.items[0].consent_allows_requester,false)
+ assert.equal(result.request_id,'devices-1');assert.equal(result.projection.project_id,'P')
+ assert.equal(result.projection.task_admission,'not_evaluated');assert.equal(result.projection.limit,100)
+ assert.deepEqual(Object.keys(result.projection.items[0]).sort(),['audience','consent_allows_requester','device_id','display_name','revision','state'])
+ assert.doesNotMatch(JSON.stringify(messages),/host-secret|credentials|private-owner|private-member/)
+ row.audience='selected_members';row.consent_allows_requester=true;row.revision++
+ await send({kind:'request',action:'read_devices',request_id:'devices-2'})
+ const refreshed=messages.filter(m=>m.kind==='resources').at(-1)
+ assert.equal(refreshed.projection.items[0].consent_allows_requester,true)
+ assert.equal(refreshed.projection.task_admission,'not_evaluated','consent must not become a scheduling promise')
+ row.state='removed';row.consent_allows_requester=false;row.revision++
+ await send({kind:'request',action:'read_devices',request_id:'devices-3'})
+ assert.equal(messages.filter(m=>m.kind==='resources').at(-1).projection.items[0].state,'removed')
+ assert.ok(paths.every(p=>p.startsWith('/api/v2/projects/P/')),'never read personal inventory')
+ for(const bad of [{items:[{...row,project_id:'OTHER'}]},{items:[row,row]},{items:[{...row,revision:0}]},{items:[{...row,state:'revoked',consent_allows_requester:true}]},{items:Array(101).fill(row)}]){
+  globalThis.fetch=async()=>Response.json(bad);await assert.rejects(client.projectDevices('P'),/Invalid Project device/)
+ }
+ globalThis.fetch=async()=>{user='other';return Response.json({items:[row]})}
+ await assert.rejects(client.projectDevices('P'),/Invalid Project device projection/)
+})

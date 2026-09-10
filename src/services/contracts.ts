@@ -329,7 +329,13 @@ export interface ProjectSourceProjection {
   schema_version:'opensaddle.project-sources.v1'; project_id:string; limit:100; completeness:'bounded_snapshot';
   items:{source_id:string;source_kind:string;revision:string;snapshot_digest:string;display_label:string}[]
 }
+export interface ProjectDeviceProjection {
+  schema_version:'opensaddle.project-devices.v1';project_id:string;limit:100;task_admission:'not_evaluated';
+  items:{device_id:string;display_name:string;revision:number;state:'proposed'|'accepted'|'removed'|'revoked';audience:'owner_only'|'selected_members'|'project_members'|'team_members';consent_allows_requester:boolean}[]
+}
 export interface MalleableShellClient {
+  projectDevices?(projectId:string,signal?:AbortSignal):Promise<ProjectDeviceProjection>
+
   projectSources?(projectId:string,signal?:AbortSignal):Promise<ProjectSourceProjection>
 
   commands(projectId?: string): Promise<ShellCommandDescriptor[]>; artifacts(runId: string, projectId: string): Promise<ExactArtifactRef[]>; invoke(descriptor: ShellCommandDescriptor, resource: ExactArtifactRef, input?: Record<string, unknown>): Promise<ShellCommandResult>; invocations(projectId: string): Promise<ShellCommandResult[]>; invocation(invocationId: string): Promise<ShellCommandResult>

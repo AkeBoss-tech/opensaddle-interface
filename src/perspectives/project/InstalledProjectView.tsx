@@ -14,6 +14,7 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
  const publishSettings=useRef<()=>void>(()=>{})
  const required=(renderer.descriptor?.ui_contract as {required_capabilities?:unknown}|undefined)?.required_capabilities
  const sourceReads=Array.isArray(required)&&required.includes('read.project-sources.v1')
+ const deviceReads=Array.isArray(required)&&required.includes('read.project-devices.v1')
  const live=Array.isArray(kinds)&&kinds.includes('projection')
  const currentModel=useRef(model);currentModel.current=model
  const sentModel=useRef<ProjectTaskModel|undefined>(undefined),projectionRevision=useRef(0)
@@ -45,6 +46,7 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
   const incompatible=projectViewCompatibility(renderer,mount)
   if(renderer.descriptor?.settings_contract&&(!rendererSettingsContract(renderer.descriptor.settings_contract)||!settingsClient||!Array.isArray(kinds)||!kinds.includes('settings'))){setError('This view requires supported settings delivery. Update the package or host.');return}
   if(sourceReads&&(!client.projectSources||!Array.isArray(kinds)||!kinds.includes('resources'))){setError('This view requires supported source delivery. Update the package or host.');return}
+  if(deviceReads&&(!client.projectDevices||!Array.isArray(kinds)||!kinds.includes('resources'))){setError('This view requires supported device delivery. Update the package or host.');return}
   if(incompatible){setError(incompatible);return}
   if(!client.applicationRendererContent){revoke();return}
 
@@ -65,16 +67,17 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
     return
    }
    if(!initialized||message.kind!=='request')return
-   if(message.action==='read_sources'){
-    if(!sourceReads||!client.projectSources||requestPending.current||typeof message.request_id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(message.request_id))return
+   if(message.action==='read_sources'||message.action==='read_devices'){
+    const read=message.action==='read_sources'&&sourceReads?client.projectSources?.bind(client):message.action==='read_devices'&&deviceReads?client.projectDevices?.bind(client):undefined
+    if(!read||requestPending.current||typeof message.request_id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(message.request_id))return
     requestPending.current=true
     const requestId=message.request_id
     void (async()=>{
      if(!await authorize.current()||document.generation!==generation.current)return
-     const projection=await client.projectSources!(model.projectId,AbortSignal.timeout(5000))
+     const projection=await read(model.projectId,AbortSignal.timeout(5000))
      if(!await authorize.current()||document.generation!==generation.current)return
      frame.current?.contentWindow?.postMessage({protocol:APPLICATION_PROTOCOL,kind:'resources',nonce:document.nonce,generation:document.generation,instance_id:renderer.instance_id,connection_key:connectionKey,package_ref:renderer.package_ref,request_id:requestId,projection},'*')
-    })().catch(()=>{if(document.generation===generation.current)setError('Project sources are unavailable. Refresh to recheck access.')}).finally(()=>{if(document.generation===generation.current)requestPending.current=false})
+    })().catch(()=>{if(document.generation===generation.current)setError('Project resources are unavailable. Refresh to recheck access.')}).finally(()=>{if(document.generation===generation.current)requestPending.current=false})
     return
    }
    const taskId=message.task_id
