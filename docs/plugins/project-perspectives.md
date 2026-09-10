@@ -264,3 +264,25 @@ Q, save, render only P's tasks, revoke the frame, reload and retain the unavaila
 placement. Receipt: Interface `docs/testing/receipts/project-widget-dashboard-20260910.json`.
 This is mounted protocol evidence. Actual signed-package server/browser acceptance
 and keyboard verification remain pending.
+
+
+## Signed package and live Core verification — 2026-09-10
+
+The disposable renderer fixture now accepts `--mount widget`. It generates and
+signs a package, installs it through the real catalog, enables it for its Project
+and selects the exact package in the Project environment. Private fixture bearer
+tokens remain in mode-0600 files outside the repository.
+
+A mounted Interface dashboard used the real directory, renderer, Journey and
+dashboard-settings clients over HTTP to discover the widget, save placement and
+reopen it from Core. The host loaded the exact signed fragment and initialized
+only the `renderer-proof` Project projection. Removing the environment selection
+through the ordinary owner API revoked the mounted frame on reauthorization.
+Saved placement remained unchanged, and unauthenticated catalog access returned
+401. The fixture server was stopped and the temporary client script removed.
+
+Receipt: Core `docs/testing/receipts/project-widget-live-20260910.json`. This closes
+the mocked-catalog gap for discovery, persistence, byte loading and revocation.
+Frame messaging was simulated by the mounted test; it does not prove browser
+execution, visuals, keyboard behavior or network isolation. Desktop access was
+retried and the Mac remained locked. Four package-generator checks also passed.
