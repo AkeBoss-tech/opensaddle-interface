@@ -71,3 +71,27 @@ test('changing account hides a pending private settings response',async t=>{
  assert.equal(view.root.findAllByType('fieldset').length,0)
  assert.match(JSON.stringify(view.toJSON()),/unavailable for this account/)
 })
+
+test('user and accepted team defaults edit explicit scopes with the association fence',async t=>{
+ const allContract={...contract,scopes:['user','team','project','user_project']},allRenderer={...renderer,descriptor:{settings_contract:allContract}}
+ let state:any={...response(),contract:allContract,team_context:{team_id:'team-A',association_revision:7},layers:[{scope:'user',revision:2,can_write:true,values:{card_limit:25}},{scope:'team',revision:3,can_write:true,values:{card_limit:30}},{scope:'project',revision:0,can_write:false,values:{}},{scope:'user_project',revision:0,can_write:true,values:{}}],effective:{values:{show_finished:true,card_limit:30},provenance:{show_finished:'default',card_limit:'team'}}}
+ const writes:any[]=[]
+ t.mock.method(globalThis,'fetch',async(input:unknown,init?:RequestInit)=>{if(init?.method==='PUT'){const scope=new URL(String(input)).pathname.split('/').at(-1),body=JSON.parse(String(init.body));writes.push({scope,...body});const layer=state.layers.find((item:any)=>item.scope===scope);assert.equal(body.expected_revision,layer.revision);layer.values=body.values;layer.revision++;const values={...allContract.defaults},provenance:any={show_finished:'default',card_limit:'default'};for(const item of state.layers){Object.assign(values,item.values);for(const key of Object.keys(item.values))provenance[key]=item.scope}state.effective={values,provenance}}return Response.json(state)})
+ const client=new RendererSettingsClient('http://core',()=> 'member'),catalog={applicationRenderers:async()=>[allRenderer]}
+ let view!:ReactTestRenderer;t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(<ProjectRendererSettings client={client} catalog={catalog} projectId="P"/>);await flush()})
+ const selector=()=>view.root.findAllByType('select').find(node=>node.props['aria-label']==='Settings scope')!
+ assert.ok(selector(),'all signed settings scopes must be available in the generated editor')
+ assert.deepEqual(selector().findAllByType('option').map(node=>node.props.value),['user','team','project','user_project'])
+ const field=()=>view.root.findByProps({'aria-label':'Maximum task cards'})
+ const button=(label:string)=>view.root.findAllByType('button').find(node=>node.children.includes(label))!
+ await act(async()=>selector().props.onChange({target:{value:'user'}}))
+ await act(async()=>field().props.onChange({target:{value:'26'}}))
+ await act(async()=>{button('Save plugin settings').props.onClick();await flush()})
+ assert.deepEqual(writes[0],{scope:'user',expected_revision:2,values:{card_limit:26}})
+ await act(async()=>selector().props.onChange({target:{value:'team'}}))
+ await act(async()=>button('Use inherited values').props.onClick())
+ assert.equal(field().props.value,'26','team inheritance starts with this user defaults')
+ await act(async()=>{button('Save plugin settings').props.onClick();await flush()})
+ assert.deepEqual(writes[1],{scope:'team',expected_revision:3,values:{},team_id:'team-A',association_revision:7})
+})

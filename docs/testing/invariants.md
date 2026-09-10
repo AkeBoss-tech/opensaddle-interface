@@ -282,3 +282,15 @@ runs against Core's disposable `dev_project_perspective_fixture`. It removes tha
 fixture's selected environment. No injected HTTP responses or replacement settings
 store are used. A minimal DOM/message adapter is used instead of a browser.
 Receipt: `receipts/renderer-settings-live-20260910.json`.
+
+
+## RENDERER-SETTINGS-SCOPES
+
+Signed plugin user defaults apply across Projects privately; accepted Team defaults
+apply only while two-sided association authority remains current. Resolution is
+signed defaults, user, accepted Team, Project, then private Project overrides.
+Team writes require Team manager membership plus exact Team/association revision;
+stale pages cannot target a replacement association. Cross-Project persistence,
+private isolation, role denial, precedence, detach and CAS are verified through
+the signed-package API and mounted editor. Receipt:
+`receipts/renderer-settings-scopes-20260910.json`.

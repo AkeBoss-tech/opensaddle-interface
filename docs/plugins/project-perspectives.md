@@ -483,3 +483,21 @@ denied. Environment removal revokes the frame. See the reusable
 `scripts/prove-renderer-settings-live.tsx` and its dated receipt. The service was
 stopped after verification. This closes combined live-server/protocol proof,
 while browser visuals and OS sandbox acceptance remain unverified.
+
+
+### User and Team defaults
+
+The starter now declares all four presentation scopes. The generated Project
+settings panel offers My defaults across projects, accepted Team defaults, shared
+Project defaults, and private overrides. Effective values follow that order after
+signed defaults. User/Team records share an exact package/application key across
+Project instances; private/Project records keep instance-specific identity.
+Team writes include the accepted association identity/revision and require Team
+manager authority. No current association means no Team layer. Clearing a value
+returns to the preceding layer. Capability negotiation supports older two-scope
+servers, while unsupported declarations fail closed.
+
+Eight mounted/client checks and baseline proof cover the new scope selector and
+Team write body. Nine Core checks cover real persistence/authority. These controls
+currently use an enabled Project plugin as their schema context; standalone
+personal/Team plugin catalogs and browser acceptance remain open.
