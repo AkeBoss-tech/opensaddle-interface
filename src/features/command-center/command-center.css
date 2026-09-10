@@ -68,3 +68,10 @@
 .manager-scope button{padding:8px 12px;margin:4px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:inherit;cursor:pointer}
 .manager-scope button:disabled{opacity:.5;cursor:default}
 .manager-scope details{margin-top:12px}
+.manager-conversations{margin-top:28px;max-width:900px}
+.manager-conversations label{display:grid;gap:8px;margin:16px 0}
+.manager-conversations input,.manager-conversations textarea{box-sizing:border-box;width:100%;font:inherit;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-secondary);color:inherit}
+.manager-conversations textarea{resize:vertical;min-height:120px}
+.manager-conversations ol{display:grid;gap:16px;padding-left:24px}
+.manager-conversations li p{white-space:pre-wrap;overflow-wrap:anywhere}
+.manager-conversations small{color:var(--text-secondary)}

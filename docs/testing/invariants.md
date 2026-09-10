@@ -122,3 +122,16 @@ authority claims. Truncation and unverified outcomes remain visible, and preview
 starts no tasks. Covered by mounted ManagerScopePanel and ManagerContextClient
 adapter tests. A live disposable Core/Interface-client HTTP check also passes:
 receipts/manager-context-client-20260910.json. Browser verification remains pending.
+
+## MANAGER-CONVERSATION-UI-1
+
+The landing-page manager can create/reopen owner-private conversations, save user
+messages and explicitly apply Project selections to future messages. Failed writes
+retain the draft; changing checkboxes alone does not edit conversation scope.
+Saved messages remain distinct from provider execution. Account changes clear old
+content; client intent creation must not submit after identity changes. Pagination
+has finite limits and refuses repeated cursors. Mounted UI and client checks pass.
+Actual client-to-Core HTTP verification lost one post-commit response deliberately,
+recreated the client and retried without a duplicate, then preserved old/new scope
+revisions and denied another owner. Receipt:
+receipts/manager-conversation-client-20260910.json. Browser checks remain pending.

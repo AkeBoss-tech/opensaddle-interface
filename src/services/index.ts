@@ -1,3 +1,4 @@
+import { ManagerConversationsClient } from './managerConversations'
 import { ManagerContextClient } from './managerContext'
 import { DashboardSettingsClient } from './dashboardSettings'
 import { TeamsClient } from './teams'
@@ -62,6 +63,7 @@ export interface ServiceBundle {
   codingResults?: CodingResultReviewClient
   projectKnowledge?: RegisteredProjectKnowledgeClient
   teams?: TeamsClient
+  managerConversations?: ManagerConversationsClient
   managerContext?: ManagerContextClient
   dashboardSettings?: DashboardSettingsClient
   presentationSettings?: PresentationSettingsClient
@@ -161,6 +163,7 @@ export function initServices(opts: {
       let authorizedContextAvailable = false
       let associationsAvailable = false
       let teamsAvailable = false
+      let managerConversationsAvailable = false
       let managerContextAvailable = false
       let dashboardSettingsAvailable = false
       let presentationSettingsAvailable = false
@@ -274,6 +277,7 @@ export function initServices(opts: {
             const capabilities = await capabilityResponse.json() as {
               project_team_presentation_v1?: {available?:boolean}
               teams_v1?: {available?:boolean}
+              manager_conversations_v1?: {available?:boolean;scope?:string;provider_execution?:boolean;user_messages?:boolean;scope_edits?:boolean}
               manager_context_v1?: {available?:boolean;scope?:string;execution_authority?:boolean}
               dashboard_layout_v1?: {available?:boolean;scope?:string}
               presentation_settings_v1?: {available?:boolean}
@@ -306,6 +310,7 @@ export function initServices(opts: {
             authorizedContextAvailable = context?.available === true && context.schema_version === 'krail.authorized-context-packet.v2' && context.selection_field === 'authorized_context_source_ids' && context.inspector_path_template === '/api/v2/runs/{run_id}/authorized-context-packet' && context.worker_path_template === '/api/v2/workers/{worker_id}/runs/{run_id}/authorized-context-packet' && context.reauthorization_schema_version === 'krail.authorized-context-reauthorization.v1' && context.unavailable_reason === 'context_packet_unavailable' && context.sources_path_template === '/api/v2/projects/{project_id}/authorized-context-sources'
             associationsAvailable = capabilities.project_team_presentation_v1?.available===true
             teamsAvailable = capabilities.teams_v1?.available===true
+            managerConversationsAvailable = capabilities.manager_conversations_v1?.available===true && capabilities.manager_conversations_v1.scope==='authenticated_owner' && capabilities.manager_conversations_v1.provider_execution===false && capabilities.manager_conversations_v1.user_messages===true && capabilities.manager_conversations_v1.scope_edits===true
             managerContextAvailable = capabilities.manager_context_v1?.available===true && capabilities.manager_context_v1.scope==='explicit_current_memberships' && capabilities.manager_context_v1.execution_authority===false
             dashboardSettingsAvailable = capabilities.dashboard_layout_v1?.available===true && capabilities.dashboard_layout_v1.scope==='authenticated_user'
             presentationSettingsAvailable = capabilities.presentation_settings_v1?.available===true
@@ -423,6 +428,7 @@ export function initServices(opts: {
         journey,
         personalRuntime,
         teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token,associationsAvailable) : undefined,
+        managerConversations: backendAvailable && managerConversationsAvailable ? new ManagerConversationsClient(baseUrl,getUserId,token) : undefined,
         managerContext: backendAvailable && managerContextAvailable ? new ManagerContextClient(baseUrl,getUserId,token) : undefined,
         dashboardSettings: backendAvailable && dashboardSettingsAvailable ? new DashboardSettingsClient(baseUrl,getUserId,token) : undefined,
         presentationSettings: backendAvailable && presentationSettingsAvailable ? new PresentationSettingsClient(baseUrl,getUserId,token) : undefined,
