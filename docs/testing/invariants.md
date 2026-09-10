@@ -32,3 +32,5 @@ PresentationEditor.test.tsx verifies that saving sends the displayed scope revis
 ## PROJECT-PERSPECTIVES-1
 
 Registered Dialogue and Dispatch surfaces consume the same immutable project task projection and route task opening through host callbacks. project/perspectives tests render both through PerspectiveHost and check identity, mismatch rejection and unavailable-preference fallback. Browser evidence verifies persisted selection after remount and canonical run navigation. Built-ins are trusted compiled code, not sandboxed third-party plugins.
+
+PROJECT-DEVICE-REVIEW-UI-1 now includes a named-Team policy: the review identifies the Team and explicitly requires Project membership. The saved revision and acceptance/removal protocol stay unchanged. Team selection from a directory is still pending; existing Team policies can be retained or changed to other audience types.

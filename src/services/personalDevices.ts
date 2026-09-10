@@ -98,11 +98,12 @@ export class PersonalDevicesClient {
 
 }
 
-export interface AssignmentPolicy {expected_revision:number;audience:'owner_only'|'selected_members'|'project_members';subjects:string[];source_ids:string[];adapter_ids:string[]}
+export interface AssignmentPolicy {expected_revision:number;audience:'owner_only'|'selected_members'|'project_members'|'team_members';team_id?:string|null;subjects:string[];source_ids:string[];adapter_ids:string[]}
 export interface DeviceAssignment extends Omit<AssignmentPolicy,'expected_revision'> {device_id:string;project_id:string;revision:number;state:string;owner_subject:string;display_name?:string;consent_allows_requester:boolean}
 function assignment(raw:unknown,deviceId:string,projectId?:string):DeviceAssignment {
   const value=record(raw)
-  if(value.device_id!==deviceId || typeof value.project_id!=='string' || (projectId && value.project_id!==projectId) || typeof value.owner_subject!=='string' || !Number.isSafeInteger(value.revision) || Number(value.revision)<1 || !['proposed','accepted','removed','revoked'].includes(String(value.state)) || !['owner_only','selected_members','project_members'].includes(String(value.audience)) || typeof value.consent_allows_requester!=='boolean')throw Error('Invalid assignment identity')
+  if(value.device_id!==deviceId || typeof value.project_id!=='string' || (projectId && value.project_id!==projectId) || typeof value.owner_subject!=='string' || !Number.isSafeInteger(value.revision) || Number(value.revision)<1 || !['proposed','accepted','removed','revoked'].includes(String(value.state)) || !['owner_only','selected_members','project_members','team_members'].includes(String(value.audience)) || typeof value.consent_allows_requester!=='boolean')throw Error('Invalid assignment identity')
+  if(value.audience==='team_members' && (typeof value.team_id!=='string'||!value.team_id))throw Error('Invalid named team policy')
   for(const field of ['subjects','source_ids','adapter_ids'])if(!Array.isArray(value[field]) || !(value[field] as unknown[]).every(item=>typeof item==='string'))throw Error('Invalid assignment policy')
   return value as unknown as DeviceAssignment
 }
