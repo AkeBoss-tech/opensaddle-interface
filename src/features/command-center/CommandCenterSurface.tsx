@@ -2,7 +2,9 @@ import type {ManagerConversationsAuthority} from '../../services/managerConversa
 import {ManagerScopePanel} from './ManagerScopePanel'
 import type {ManagerContextAuthority} from '../../services/managerContext'
 import type {ProjectDirectoryClient} from '../../services/projectDirectory'
-import {DashboardLayout} from './DashboardLayout'
+import {ProjectWidgetDashboard} from './ProjectWidgetDashboard'
+import type {MalleableShellClient} from '../../services/contracts'
+import type {JourneyAuthority} from '../onboarding/ConnectedJourneySurface'
 import type {DashboardSettings} from '../../services/dashboardSettings'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 void React
@@ -52,7 +54,7 @@ const UNAVAILABLE_REASON: Record<CommandCenterSnapshot['unavailableSections'][nu
   inbox: 'Inbox findings and triage actions do not have an authoritative API yet.',
 }
 
-type CommandCenterProps = {managerConversations?:ManagerConversationsAuthority;managerContext?:ManagerContextAuthority;projectDirectory?:Pick<ProjectDirectoryClient,'list'>;dashboardSettings?:DashboardSettings;dashboardIdentity?:unknown;client?:CommandCenterClient;connected:boolean;identity:object;projects:Array<{id:string;name:string}>}
+type CommandCenterProps = {widgetClient?:MalleableShellClient;taskAuthority?:JourneyAuthority;widgetStateScope?:string;managerConversations?:ManagerConversationsAuthority;managerContext?:ManagerContextAuthority;projectDirectory?:Pick<ProjectDirectoryClient,'list'>;dashboardSettings?:DashboardSettings;dashboardIdentity?:unknown;client?:CommandCenterClient;connected:boolean;identity:object;projects:Array<{id:string;name:string}>}
 
 export function CommandCenterSurface(props:CommandCenterProps) {
   const {connected,managerContext,projectDirectory,managerConversations,dashboardIdentity,identity}=props
@@ -62,7 +64,7 @@ export function CommandCenterSurface(props:CommandCenterProps) {
   </main>
 }
 
-function CommandCenterDashboard({client,connected,identity,projects,dashboardSettings,dashboardIdentity}:CommandCenterProps) {
+function CommandCenterDashboard({client,connected,identity,projects,dashboardSettings,dashboardIdentity,projectDirectory,widgetClient,taskAuthority,widgetStateScope}:CommandCenterProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const generation=useRef(0)
 
@@ -110,7 +112,7 @@ function CommandCenterDashboard({client,connected,identity,projects,dashboardSet
       <div className="cc-freshness"><span>Snapshot</span><time dateTime={snapshot.generatedAt}>{dateTime(snapshot.generatedAt)}</time><Button variant="secondary" size="sm" onClick={() => void load()}>Refresh</Button></div>
     </header>
 
-    <DashboardLayout client={dashboardSettings} identity={dashboardIdentity??identity} widgets={[
+    <ProjectWidgetDashboard directory={projectDirectory} shell={widgetClient} journey={taskAuthority} stateScope={widgetStateScope} client={dashboardSettings} identity={dashboardIdentity??identity} widgets={[
       {id:'objective',title:'Current objective',content:<CurrentObjectivePanel snapshot={snapshot} projectName={projectName} />},
       {id:'attention',title:'Needs your attention',content:<section className="cc-panel cc-attention" aria-labelledby="cc-attention-title">
         <div className="cc-section-heading"><div><span className="eyebrow">Human attention</span><h2 id="cc-attention-title">Needs your attention</h2></div><strong className="cc-count">{snapshot.attentionItems.length}</strong></div>

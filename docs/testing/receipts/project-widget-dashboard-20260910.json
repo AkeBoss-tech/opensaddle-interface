@@ -1,0 +1,9 @@
+{
+  "invariant": "PROJECT-WIDGET-DASHBOARD",
+  "baseRevision": "90bd7e978d5ef80dc18c4ec8484db1c214b08db6",
+  "test": "src/features/command-center/CommandCenterPage.mounted.test.tsx",
+  "preFix": "failed",
+  "preFixAssertion": "personal dashboard must expose project widget discovery",
+  "postFix": "passed",
+  "evidence": "Mounted discovery, save, scoped projection, frame revocation and unavailable placement reload; not real browser evidence"
+}

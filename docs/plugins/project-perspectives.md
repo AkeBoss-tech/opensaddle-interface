@@ -227,3 +227,40 @@ A missing or revoked instance remains an unavailable saved preference. The host
 must resolve navigation against current projected task IDs. Personal/global-data
 widgets need a separate owner-scoped catalog; do not simulate it by giving a
 Project package all dashboard data or by inventing a shared pseudo-Project.
+
+
+## Personal dashboard placement of Project widgets
+
+The connected dashboard now includes **Add project widgets**. Select a current
+Project to discover its configured, enabled signed widget instances, then enable
+and order them in **Customize dashboard** and save. Discovery never fetches code.
+Only saved placements mount a renderer. Existing layout revisions, conflict
+handling, hide/reorder controls and authenticated ownership remain authoritative.
+
+A placement ID is `widget.<project-hash>.<instance-hash>` using the first 32 hex
+characters of SHA-256 for each part. The second hash covers the package ID,
+application ID and instance ID. This bounded opaque identifier is a preference,
+not authority. On reload, current membership resolves Project hashes and only
+Projects referenced by saved placements or the explicit picker are queried for
+widgets. Ambiguous identifiers fail discovery. Package version upgrades retain
+placement while exact content/signature and package state rules still apply.
+
+The host accepts signed API-1 mount `widget`, scope `project` packages using
+`opensaddle.project-tasks.v1`. It reuses the Perspective host's exact-byte checks,
+sandbox frame protocol, current catalog reauthorization, task feed freshness and
+host-owned navigation. A widget gets one Project task model; no dashboard-wide
+projection, credentials or execution client is passed to its frame. Widget state
+uses a separate dashboard namespace under the existing account/package state key.
+
+Unavailable or revoked placements remain saved and show a placeholder. Existing
+frames revoke on failed authorization before navigation or projection updates.
+Personal/global-data widgets still need a separate owner-scoped catalog and are
+not supported by this Project widget host. The dashboard still requires its
+Command Center projection; independent dashboard loading remains follow-up work.
+
+Thirteen mounted/client checks and a production build pass. The regression flow
+fails on the prior Interface revision and passes here: discover P without querying
+Q, save, render only P's tasks, revoke the frame, reload and retain the unavailable
+placement. Receipt: Interface `docs/testing/receipts/project-widget-dashboard-20260910.json`.
+This is mounted protocol evidence. Actual signed-package server/browser acceptance
+and keyboard verification remain pending.

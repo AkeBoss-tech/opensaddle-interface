@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState,type ReactNode} from 'react'
 import {DEFAULT_DASHBOARD_WIDGETS,type DashboardSettings,type DashboardLayout as SavedLayout} from '../../services/dashboardSettings'
 void React
 export interface DashboardWidget {id:string;title:string;content:ReactNode}
-export function DashboardLayout({client,identity,widgets}:{client?:DashboardSettings;identity:unknown;widgets:DashboardWidget[]}){
+export function DashboardLayout({client,identity,widgets,onLayoutChange}:{onLayoutChange?:(ids:string[])=>void;client?:DashboardSettings;identity:unknown;widgets:DashboardWidget[]}){
  const [saved,setSaved]=useState<{client:DashboardSettings;identity:unknown;layout:SavedLayout}>(),[draft,setDraft]=useState<string[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0)
  const epoch=useRef(0),locked=useRef(false)
  const current=saved?.client===client&&saved?.identity===identity?saved:undefined
@@ -11,6 +11,7 @@ export function DashboardLayout({client,identity,widgets}:{client?:DashboardSett
   return()=>{epoch.current++}
  },[client,identity,reload])
  async function save(){if(!client||!current||locked.current)return;const generation=epoch.current;locked.current=true;setBusy(true);setError('');try{const layout=await client.replace(current.layout.revision,draft);if(generation===epoch.current){setSaved({client,identity,layout});setDraft(layout.widgets)}}catch(reason){if(generation===epoch.current)setError(reason instanceof Error?reason.message:'Dashboard could not be saved. Your draft is preserved.')}finally{if(generation===epoch.current){locked.current=false;setBusy(false)}}}
+ useEffect(()=>{onLayoutChange?.(current?.layout.widgets??[])},[current,onLayoutChange])
  const title=(id:string)=>widgets.find(widget=>widget.id===id)?.title??`Unavailable widget: ${id}`
  const selected=current?draft:DEFAULT_DASHBOARD_WIDGETS
  const move=(id:string,offset:number)=>setDraft(previous=>{const next=[...previous],index=next.indexOf(id),target=index+offset;if(index>=0&&target>=0&&target<next.length)[next[index],next[target]]=[next[target],next[index]];return next})

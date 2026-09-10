@@ -212,3 +212,13 @@ capability works without context preview. Disconnect must hide private content a
 fence late projection reads. Verified through reopening and saving a message in
 `CommandCenterPage.mounted.test.tsx`; receipt:
 `receipts/manager-dashboard-independence-20260910.json`.
+
+
+## PROJECT-WIDGET-DASHBOARD
+
+Personal widget placement must persist through the existing owner layout API,
+load no code before saving, and resolve only current Project widget catalogs.
+The mounted frame receives only its own Project tasks; revocation prevents further
+navigation and removes the frame. Unavailable placement survives reload. Other
+Projects are not fetched merely because they appear in the directory. See
+`receipts/project-widget-dashboard-20260910.json`.

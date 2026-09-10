@@ -6,7 +6,7 @@ import type {ProjectTaskModel} from './model'
 import {projectViewState,readProjectViewState,writeProjectViewState} from './state'
 void React
 // Installed views receive data and navigation requests, never services or credentials.
-export function InstalledProjectView({client,renderer,model,connectionKey,stateScope,onOpenTask,onNewTask}:{client:MalleableShellClient;renderer:ApplicationRendererDescriptor;model:ProjectTaskModel;connectionKey:string;stateScope?:string;onOpenTask:(id:string)=>void;onNewTask:()=>void}){
+export function InstalledProjectView({client,renderer,model,connectionKey,stateScope,onOpenTask,onNewTask,mount='perspective'}:{mount?:'perspective'|'widget';client:MalleableShellClient;renderer:ApplicationRendererDescriptor;model:ProjectTaskModel;connectionKey:string;stateScope?:string;onOpenTask:(id:string)=>void;onNewTask:()=>void}){
  const kinds=(renderer.input_schema.properties as {kind?:{enum?:unknown}}|undefined)?.kind?.enum
  const live=Array.isArray(kinds)&&kinds.includes('projection')
  const currentModel=useRef(model);currentModel.current=model
@@ -27,21 +27,21 @@ export function InstalledProjectView({client,renderer,model,connectionKey,stateS
    const controller=new AbortController();let timeout:ReturnType<typeof setTimeout>
    const unavailable=new Promise<never>((_,reject)=>{timeout=setTimeout(()=>{controller.abort();reject(Error('Authorization timed out'))},5000)})
    pending=Promise.race([client.applicationRenderers?.(model.projectId,controller.signal)??Promise.reject(Error('Catalog unavailable')),unavailable]).then(rows=>{
-    const found=rows.some(row=>row.authority==='core'&&row.execution_trust==='trusted_signed_publisher'&&row.application_id===renderer.application_id&&row.instance_id===renderer.instance_id&&row.package_ref.package_id===renderer.package_ref.package_id&&row.package_ref.version===renderer.package_ref.version&&row.package_ref.manifest_digest===renderer.package_ref.manifest_digest&&row.content_digest===renderer.content_digest&&row.input_schema.$id===PROJECT_VIEW_CONTRACT&&projectViewCompatibility(row)===undefined)
+    const found=rows.some(row=>row.authority==='core'&&row.execution_trust==='trusted_signed_publisher'&&row.application_id===renderer.application_id&&row.instance_id===renderer.instance_id&&row.package_ref.package_id===renderer.package_ref.package_id&&row.package_ref.version===renderer.package_ref.version&&row.package_ref.manifest_digest===renderer.package_ref.manifest_digest&&row.content_digest===renderer.content_digest&&row.input_schema.$id===PROJECT_VIEW_CONTRACT&&projectViewCompatibility(row,mount)===undefined)
     if(!found)revoke();return found&&!stopped&&epoch===generation.current
    }).catch(()=>{revoke();return false}).finally(()=>{clearTimeout(timeout);pending=undefined})
    return pending
   }
   authorize.current=check;requestPending.current=false
   const pollNext=()=>{poll=setTimeout(()=>{void check().then(ok=>{if(ok)pollNext()})},5000)}
-  const incompatible=projectViewCompatibility(renderer)
+  const incompatible=projectViewCompatibility(renderer,mount)
   if(incompatible){setError(incompatible);return}
   if(!client.applicationRendererContent){revoke();return}
 
   const manifest={...renderer,sandbox_policy:{scripts:true as const,network:false as const,same_origin:false as const,navigation:'host_observed_only' as const}}
   client.applicationRendererContent(model.projectId,renderer,abort.signal).then(response=>readExactRenderer(response,manifest)).then(async fragment=>{if(await check()){saved.current=readProjectViewState(stateScope,model.projectId,renderer,()=>setStateNotice("Saved view state was migrated using this package’s declaration. The previous package’s state is preserved."));pollNext();setDocument({html:sandboxDocument(fragment),nonce:crypto.randomUUID(),generation:epoch})}}).catch(()=>{if(epoch===generation.current&&!abort.signal.aborted)setError('This view could not be loaded. Select another view or refresh.')})
   return()=>{stopped=true;clearTimeout(poll);abort.abort();generation.current++}
- },[client,renderer,lifecycleModel,connectionKey,stateScope])
+ },[client,renderer,lifecycleModel,connectionKey,stateScope,mount])
  useEffect(()=>{if(!document)return;let initialized=false,count=0,windowStart=Date.now();const timeout=setTimeout(()=>{if(!initialized)setError('This view did not become ready. Select another view or refresh.')},5000)
   const listener=(event:MessageEvent)=>{if(document.generation!==generation.current||!acceptsApplicationMessage(event,{source:frame.current?.contentWindow??null,nonce:document.nonce,generation:document.generation,instanceId:renderer.instance_id,connectionKey,packageRef:renderer.package_ref}))return
    if(Date.now()-windowStart>1000){count=0;windowStart=Date.now()}if(++count>32)return
@@ -60,7 +60,7 @@ export function InstalledProjectView({client,renderer,model,connectionKey,stateS
    requestPending.current=true
    void authorize.current().then(ok=>{if(ok&&document.generation===generation.current){if(message.action==='new_task')actions.current.onNewTask();else if(currentModel.current.tasks.some(task=>task.id===taskId))actions.current.onOpenTask(taskId as string)}}).finally(()=>{if(document.generation===generation.current)requestPending.current=false})
   };addEventListener('message',listener);return()=>{clearTimeout(timeout);removeEventListener('message',listener)}
- },[document,renderer,connectionKey,stateScope])
+ },[document,renderer,connectionKey,stateScope,mount])
  useEffect(()=>{
   if(!live||!ready||!document||sentModel.current===model)return
   let cancelled=false
@@ -72,5 +72,5 @@ export function InstalledProjectView({client,renderer,model,connectionKey,stateS
   return()=>{cancelled=true}
  },[live,ready,document,model,renderer,connectionKey])
  if(error)return <p role="alert">{error}</p>
- return <section>{stateNotice&&<p role="status">{stateNotice}</p>}{!ready&&<p role="status">Loading installed view…</p>}{document&&<iframe key={document.nonce} title={`Project view: ${renderer.application_id}`} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={document.html} style={{width:'100%',minHeight:520,border:0}} onLoad={()=>{if(frame.current?.dataset.loaded){setError('View navigation interrupted. Select another view or refresh.');return}if(frame.current)frame.current.dataset.loaded='true';sentModel.current=model;frame.current?.contentWindow?.postMessage({protocol:APPLICATION_PROTOCOL,kind:'init',nonce:document.nonce,generation:document.generation,instance_id:renderer.instance_id,connection_key:connectionKey,package_ref:renderer.package_ref,projection:{schema:PROJECT_VIEW_CONTRACT,model},state:saved.current},'*')}} ref={frame}/>}</section>
+ return <section>{stateNotice&&<p role="status">{stateNotice}</p>}{!ready&&<p role="status">Loading installed view…</p>}{document&&<iframe key={document.nonce} title={`Project ${mount}: ${renderer.application_id}`} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={document.html} style={{width:'100%',minHeight:mount==='widget'?280:520,border:0}} onLoad={()=>{if(frame.current?.dataset.loaded){setError('View navigation interrupted. Select another view or refresh.');return}if(frame.current)frame.current.dataset.loaded='true';sentModel.current=model;frame.current?.contentWindow?.postMessage({protocol:APPLICATION_PROTOCOL,kind:'init',nonce:document.nonce,generation:document.generation,instance_id:renderer.instance_id,connection_key:connectionKey,package_ref:renderer.package_ref,projection:{schema:PROJECT_VIEW_CONTRACT,model},state:saved.current},'*')}} ref={frame}/>}</section>
 }

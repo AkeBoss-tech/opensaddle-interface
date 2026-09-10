@@ -99,3 +99,43 @@ test('manager conversation survives missing failed and refreshing dashboard proj
  pending.resolve(snapshot('Late private P'));await act(async()=>{await pending.promise})
  assert.doesNotMatch(markup(renderer),/Late private P/)
 })
+
+// PROJECT-WIDGET-DASHBOARD: a persisted placement loads only its Project's signed widget.
+test('personal dashboard saves a Project widget and revokes its mounted frame',async t=>{
+ const {createHash}=await import('node:crypto')
+ const {reportAnnotatorV1}=await import('../../applications/fixturePackages')
+ const fragment='<p>Project widget</p>'
+ const renderer={...reportAnnotatorV1,application_id:'task-widget',authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:'opensaddle.project-tasks.v1'},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex'),descriptor:{ui_contract:{schema_version:'opensaddle.ui-contract.v1',mount_kind:'widget',scope:'project',host_api_min:1,host_api_max:1,required_capabilities:['projection.project-runs.v1']}}} as unknown as import('../../services/contracts').ApplicationRendererDescriptor
+ let enabled=true,reads=0
+ const shell={applicationRenderers:async(project:string)=>{assert.equal(project,'P');return enabled?[renderer]:[]},applicationRendererContent:async(project:string)=>{assert.equal(project,'P');reads++;return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})}} as unknown as import('../../services/contracts').MalleableShellClient
+ const journey={snapshot:async(project:string)=>{assert.equal(project,'P');return{projectId:'P',activeRuns:[{runId:'R',task:'Only Project P',status:'running'}],results:[]}}} as unknown as import('../onboarding/ConnectedJourneySurface').JourneyAuthority
+ let stored={schema_version:'opensaddle.dashboard-layout.v1' as const,owner_subject:'one',revision:0,widgets:[] as string[]}
+ const settings={read:async()=>stored,replace:async(revision:number,widgets:string[])=>{assert.equal(revision,stored.revision);return stored={...stored,revision:revision+1,widgets}}}
+ const directory={list:async()=>[{id:'P',name:'Project P',role:'member'},{id:'Q',name:'Unselected Q',role:'member'}]},api=client(async()=>snapshot('Portfolio'))
+ const listeners=new Set<(event:any)=>void>();const originalAdd=globalThis.addEventListener,originalRemove=globalThis.removeEventListener
+ Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ let init:any;const source={postMessage:(value:any)=>{init=value}},node={contentWindow:source,dataset:{}}
+ let view!:ReturnType<typeof create>;t.after(async()=>{if(view)await act(async()=>view.unmount());Object.assign(globalThis,{addEventListener:originalAdd,removeEventListener:originalRemove})})
+ const surface=()=> <MemoryRouter><CommandCenterSurface client={api} connected identity={api} projects={[]} projectDirectory={directory} dashboardSettings={settings} dashboardIdentity="one" widgetClient={shell} taskAuthority={journey}/></MemoryRouter>
+ const settle=async(ready:()=>boolean=()=>true)=>{for(let attempt=0;attempt<50;attempt++){await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))});if(ready())return}}
+ await act(async()=>{view=create(surface(),{createNodeMock:()=>node})});await settle(()=>view.root.findAllByType('select').length>0&&!view.root.findAllByType('select')[0].props.disabled)
+ const picker=view.root.findAllByType('select')[0]
+ assert.ok(picker,'personal dashboard must expose project widget discovery')
+ await act(async()=>picker.props.onChange({target:{value:'P'}}));await settle(()=>view.root.findAllByType('input').some(input=>input.parent?.children.includes('Project P · task-widget')))
+ const choice=view.root.findAllByType('input').find(input=>input.parent?.children.includes('Project P · task-widget'))
+ assert.ok(choice,'compatible widget must appear in customization choices')
+ assert.equal(reads,0,'discovery cannot execute a widget before placement is saved')
+ await act(async()=>choice.props.onChange({target:{checked:true}}))
+ await act(async()=>view.root.findAllByType('button').find(button=>button.children.join('')==='Save dashboard')!.props.onClick());await settle(()=>view.root.findAllByType('iframe').length===1)
+ assert.equal(stored.widgets.length,1);assert.match(stored.widgets[0],/^widget\.[a-f0-9]{32}\.[a-f0-9]{32}$/)
+ assert.equal(view.root.findAllByType('iframe').length,1)
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ assert.equal(init.projection.model.projectId,'P');assert.deepEqual(init.projection.model.tasks.map((task:any)=>task.id),['R'])
+ const send=(data:any)=>listeners.forEach(listener=>listener({source,data:{...init,...data}}))
+ await act(async()=>send({kind:'ready'}));enabled=false
+ await act(async()=>send({kind:'request',action:'open_task',task_id:'R'}))
+ assert.equal(view.root.findAllByType('iframe').length,0,'revoked widget must lose its frame before navigation')
+ await act(async()=>view.unmount());await act(async()=>{view=create(surface(),{createNodeMock:()=>({contentWindow:source,dataset:{}})})});await settle()
+ assert.equal(view.root.findAllByType('iframe').length,0)
+ assert.match(markup(view),/Unavailable widget/);assert.equal(stored.widgets.length,1,'unavailable placements remain saved')
+})
