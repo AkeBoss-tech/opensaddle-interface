@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter, HashRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { StoreProvider, useStore } from './data/store'
 import { Topbar } from './components/layout/Topbar'
 import { ToastStack } from './components/common/ToastStack'
@@ -42,6 +42,8 @@ import { ConnectedLocalProjectPage } from './features/projects/ConnectedLocalPro
 import { ConnectedLocalSettingsPage } from './features/projects/ConnectedLocalSettingsPage'
 import { ConnectedLocalProjectDialog } from './features/onboarding/ConnectedLocalProjectDialog'
 import { ConnectedJourneyPage } from './features/onboarding/ConnectedJourneyPage'
+import { ConnectedProjectKnowledgePage, ConnectedProjectPluginsPage } from './features/projects/ConnectedProjectViews'
+import { ConnectedWorkspaceSidebar, ConnectedWorkspaceHome } from './features/shell/ConnectedWorkspace'
 import { usesConnectedProductSurface } from './services'
 import { SurfaceErrorBoundary } from './ui/SurfaceHost'
 import type { DiscoveredLocalProject, DiscoveredUiPlugin } from './types'
@@ -182,7 +184,7 @@ function Shell() {
     const parts = loc.pathname.split('/').filter(Boolean)
     const routeLabels: Record<string, string> = {
       work: 'Work',
-      home: 'Command Center',
+      home: connectedLocal && !services?.commandCenter ? 'Home' : 'Command Center',
       review: 'Review workspace',
       perspectives: 'Perspectives',
       start: 'Start',
@@ -207,7 +209,7 @@ function Shell() {
       : parts[0] === 'project' ? (project?.name ?? 'Project')
       : routeLabels[parts[0] ?? ''] ?? parts[0] ?? 'Work'
     return <><span>OpenSaddle</span><span>/</span><strong>{label}</strong></>
-  }, [loc.pathname, data.chats, data.projects])
+  }, [loc.pathname, data.chats, data.projects, connectedLocal, services?.commandCenter])
 
   const cycleTheme = useCallback(() => {
     const order = ['dark', 'light', 'liquid', 'hc'] as const
@@ -250,7 +252,7 @@ function Shell() {
   const items: PaletteItem[] = useMemo(() => connectedLocal ? [
     { id: 'cproj', group: 'Create', label: 'Add local project', description: 'Register a local Git project', icon: 'folder', run: () => setProjectModal(true) },
     { id: 'start', group: 'Navigate', label: 'Start', description: 'Open registered projects', icon: 'spark', run: () => nav('/start') },
-    { id: 'home', group: 'Navigate', label: 'Command Center', description: 'Priorities and attention', icon: 'layout', run: () => nav('/home') },
+    { id: 'home', group: 'Navigate', label: 'Home', description: 'Projects and recent work', icon: 'layout', run: () => nav('/home') },
     { id: 'review', group: 'Commands', label: 'Run selected artifact review', description: 'Dispatch the exact selected resource through the shared review command', keywords: ['review selected artifact'], icon: 'review', run: () => void openArtifactReview() },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Governed onboarding runs', icon: 'clock', run: () => nav('/work') },
     { id: 'set', group: 'Navigate', label: 'Settings', description: 'Connection status', icon: 'settings', run: () => nav('/settings') },
@@ -297,7 +299,7 @@ function Shell() {
   return (
     <div
       className={`app ${settingsFocused ? 'settings-focus' : ''} ${globalStart ? 'global-start' : ''}`}
-      style={{ '--sidebar-w': `${connectedLocal ? 220 : globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
+      style={{ '--sidebar-w': `${connectedLocal ? 326 : globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
     >
       {!settingsFocused && !connectedLocal && (
         <ThreadFirstSidebar
@@ -312,7 +314,7 @@ function Shell() {
           }}
         />
       )}
-      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Connected workflow"><NavLink to="/home">Home</NavLink><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to="/operations">Operations</NavLink><NavLink to="/collaboration">People &amp; machines</NavLink>{services?.localProjects&&<button type="button" onClick={() => setProjectModal(true)}>Add project</button>}<NavLink to="/settings">Settings</NavLink></nav></aside>}
+      {!settingsFocused && connectedLocal && <ConnectedWorkspaceSidebar onAddProject={() => setProjectModal(true)} />}
       <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         <div ref={workspaceRef} className="workspace-split">
@@ -320,7 +322,7 @@ function Shell() {
           <SurfaceErrorBoundary key={loc.pathname} onRetry={() => nav(0)}>
           {connectedLocal ? <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
-            <Route path="/home" element={<CommandCenterPage />} />
+            <Route path="/home" element={services?.commandCenter ? <CommandCenterPage /> : <ConnectedWorkspaceHome onAddProject={() => setProjectModal(true)} />} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
             <Route path="/artifact-evidence" element={<ArtifactEvidencePage />} />
             {import.meta.env.DEV&&<Route path="/dev/application-fixture" element={<ExecutableApplicationFixturePage />} />}
@@ -333,6 +335,8 @@ function Shell() {
             <Route path="/work" element={<WorkPage />} />
             <Route path="/local" element={<Navigate to="/start" replace />} />
             <Route path="/project/:projectId" element={<ConnectedLocalProjectPage />} />
+            <Route path="/project/:projectId/knowledge" element={<ConnectedProjectKnowledgePage />} />
+            <Route path="/project/:projectId/plugins" element={<ConnectedProjectPluginsPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />

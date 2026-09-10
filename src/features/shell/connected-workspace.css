@@ -1,0 +1,74 @@
+.connected-sidebar.sidebar { display:flex; flex-direction:column; padding:20px 12px 12px; background:var(--sidebar); border-right:1px solid var(--border); gap:18px; }
+.connected-brand { font-size:17px; font-weight:600; padding:0 10px 6px; }
+.connected-brand span { display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:5px; }
+.connected-navigation, .connected-project-list { display:flex; flex-direction:column; gap:3px; }
+.connected-navigation a, .connected-project-list a, .connected-add-project { display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:8px; color:var(--text); text-decoration:none; font-size:13px; min-width:0; }
+.connected-navigation a:hover, .connected-project-list a:hover, .connected-add-project:hover { background:var(--surface); }
+.connected-navigation a.active, .connected-project-list a.active { background:var(--bg-elevated, #414141); }
+.connected-project-heading { display:flex; align-items:center; justify-content:space-between; padding:4px 11px 0; color:var(--muted); font-size:12px; }
+.connected-project-heading button, .connected-add-project { border:0; background:transparent; color:inherit; cursor:pointer; }
+.connected-project-heading button { padding:5px; display:flex; border-radius:5px; }
+.connected-project-list { min-height:0; flex:1; overflow:auto; }
+.connected-project-list a span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.connected-project-list p { font-size:12px; color:var(--muted); padding:0 12px; line-height:1.6; }
+.connected-bottom { padding-top:10px; border-top:1px solid var(--border); }
+.connected-home { max-width:850px; margin:0 auto; padding:clamp(40px, 9vh, 100px) 36px 40px; }
+.connected-kicker { font-size:10px; letter-spacing:.12em; color:var(--muted); }
+.connected-home h1 { font-size:clamp(24px, 3vw, 32px); font-weight:500; letter-spacing:-.035em; margin:14px 0; }
+.connected-home header p, .connected-project-empty p, .connected-home-setup { color:var(--muted); font-size:14px; line-height:1.7; }
+.connected-home-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:32px 0 40px; }
+.connected-home-actions > *, .connected-home-projects > a { display:flex; align-items:center; gap:15px; color:var(--text); text-decoration:none; text-align:left; border:1px solid var(--border); border-radius:13px; background:var(--bg-elevated, #242424); padding:20px; cursor:pointer; font:inherit; font-size:14px; }
+.connected-home-actions span, .connected-home-projects > a span { flex:1; }
+.connected-home small { display:block; font-size:12px; color:var(--muted); margin-top:6px; }
+.connected-home-projects h2 { font-size:13px; font-weight:500; color:var(--muted); margin:0 0 14px; }
+.connected-home-projects > a { margin-bottom:8px; }
+.connected-project-empty { border:1px dashed var(--border); border-radius:13px; padding:32px; text-align:center; color:var(--muted); }
+.connected-project-empty h3 { color:var(--text); font-size:15px; font-weight:500; }
+.connected-home-setup { margin-top:24px; font-size:12px; }
+.connected-home-setup a { color:var(--text); text-underline-offset:3px; }
+.local-project-dialog .os-dialog__body { display:flex; flex-direction:column; gap:22px; padding:24px; }
+.local-project-dialog .os-dialog__body > p { color:var(--muted); font-size:14px; line-height:1.65; margin:0; }
+.local-project-dialog label { display:flex; flex-direction:column; gap:9px; font-size:13px; }
+.local-project-dialog input, .local-project-dialog select { box-sizing:border-box; width:100%; min-width:0; min-height:42px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg-elevated, #292929); color:var(--text); font:inherit; }
+.local-project-dialog .add-project-folder-picker { display:flex; align-items:center; gap:10px; }
+.local-project-dialog .add-project-folder-picker input { flex:1; }
+.local-project-dialog .add-project-folder-picker button { flex-shrink:0; }
+.local-project-dialog .dialog-actions { display:flex; justify-content:flex-end; gap:10px; padding-top:6px; }
+.connected-sidebar :focus-visible, .connected-home :focus-visible, .local-project-dialog :focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+@media(max-width:700px) { .connected-home { padding:32px 20px; } .connected-home-actions { grid-template-columns:1fr; } .connected-sidebar.sidebar { width:190px; } }
+.connected-settings { max-width:1000px; margin:0 auto; padding:48px 40px; }
+.connected-settings .page-header { margin-bottom:36px; }
+.connected-settings h1 { font-size:28px; font-weight:500; letter-spacing:-.03em; }
+.connected-settings .settings-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; margin-bottom:24px; }
+.connected-settings .settings-card h2 { font-size:16px; font-weight:500; margin:0 0 18px; }
+.connected-settings .settings-card p { color:var(--muted); line-height:1.7; font-size:13px; }
+.connected-settings .settings-card > label, .connected-settings form > label { display:grid; grid-template-columns:minmax(130px,1fr) minmax(160px,1.4fr); align-items:center; gap:24px; padding:16px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.connected-settings input:not([type=radio]), .connected-settings select { width:100%; min-width:0; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font:inherit; }
+.connected-settings dl { display:grid; grid-template-columns:140px minmax(0,1fr); gap:12px 24px; font-size:13px; }
+.connected-settings dt { color:var(--muted); }
+.connected-settings dd { margin:0; overflow-wrap:anywhere; }
+.connected-settings .setting-actions { display:flex; justify-content:flex-end; padding-top:20px; }
+@media(max-width:700px) { .connected-settings { padding:28px 20px; } .connected-settings .settings-card > label, .connected-settings form > label { grid-template-columns:1fr; gap:8px; } }
+.connected-sidebar.sidebar { position:relative; padding-left:72px; }
+.connected-workspace-rail { position:absolute; top:0; left:0; bottom:0; width:58px; background:var(--sidebar-2); border-right:1px solid var(--border); display:flex; align-items:center; flex-direction:column; gap:12px; padding:18px 7px; overflow:auto; }
+.connected-workspace-rail a, .connected-workspace-rail button { display:flex; flex-shrink:0; align-items:center; justify-content:center; width:38px; height:38px; border:1px solid var(--border-strong); border-radius:11px; background:var(--surface); color:var(--text); font-size:12px; font-weight:600; text-decoration:none; cursor:pointer; }
+.connected-workspace-rail .connected-rail-home { background:var(--accent); color:var(--bg); margin-bottom:10px; }
+.connected-workspace-rail .selected { box-shadow:0 0 0 2px var(--accent); }
+.connected-project-views > span { font-size:12px; color:var(--muted); padding:0 12px 6px; }
+.connected-project-views a { padding:8px 12px; }
+.connected-project-view { max-width:1000px; margin:0 auto; padding:40px; }
+.connected-project-view header { margin-bottom:32px; }
+.connected-project-view header > span { font-size:12px; color:var(--muted); }
+.connected-project-view h1 { font-size:28px; letter-spacing:-.03em; font-weight:500; }
+.connected-project-view p { line-height:1.7; color:var(--muted); }
+.connected-project-view .settings-card { padding:24px; border:1px solid var(--border); border-radius:14px; background:var(--card); margin:20px 0; }
+.connected-project-view h2 { font-size:17px; font-weight:500; }
+.connected-view-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.connected-view-grid a { padding:18px; color:var(--text); text-decoration:none; border:1px solid var(--border); border-radius:10px; }
+.connected-view-grid small { display:block; color:var(--muted); margin-top:8px; }
+@media(max-width:700px) { .connected-sidebar.sidebar { width:240px; } .connected-project-view { padding:24px; } .connected-view-grid { grid-template-columns:1fr; } }
+
+.connected-sidebar .connected-bottom { margin-top:auto; }
+
+.connected-workspace-rail .connected-rail-home { background:transparent; border:0; color:var(--text); }
+.connected-workspace-rail .connected-rail-home .icon { width:30px; height:30px; }

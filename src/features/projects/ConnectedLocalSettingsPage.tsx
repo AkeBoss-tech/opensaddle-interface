@@ -25,8 +25,8 @@ export function ConnectedLocalSettingsPage() {
     catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
     finally { setBusy(false) }
   }
-  return <div className="content-page connected-local-page">
-    <header className="page-header"><div><span className="eyebrow">Connection settings</span><h1>OpenSaddle server</h1><p>Connected mode exposes only server-advertised capabilities.</p></div><Button variant="secondary" onClick={() => navigate('/home')}>Open Command Center</Button></header>
+  return <div className="content-page connected-local-page connected-settings">
+    <header className="page-header"><div><span className="eyebrow">Workspace</span><h1>Settings</h1><p>Manage your connection and local coding runtime.</p></div><Button variant="secondary" onClick={() => navigate('/home')}>Back to workspace</Button></header>
     <section className="settings-card"><h2>Current connection</h2><dl><dt>Status</dt><dd>{services?.controlPlane.connected ? 'Connected' : 'Disconnected'}</dd><dt>Mode</dt><dd>{services?.controlPlane.mode ?? 'Unknown'}</dd><dt>URL</dt><dd><code>{connection.baseUrl}</code></dd><dt>Storage</dt><dd>{services?.controlPlane.storage ?? 'Not reported'}</dd><dt>Contracts</dt><dd><code>{services?.controlPlane.contracts?.project_onboarding ?? 'missing'}</code><br /><code>{services?.controlPlane.contracts?.onboarding_run_list ?? 'missing'}</code></dd></dl></section>
     <section className="settings-card"><h2>Reconnect</h2><label>Connection name<input value={name} onChange={(event) => setName(event.target.value)} /></label><label>Server URL<input value={url} onChange={(event) => setUrl(event.target.value)} /></label><label>Bearer token<input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Optional for loopback" /></label>{message && <p role="status">{message}</p>}<div className="setting-actions"><Button disabled={busy || !url.trim()} onClick={() => void connect()}>{busy ? 'Connecting…' : 'Verify connection'}</Button></div></section>
     <PersonalRuntimePanel authority={services?.personalRuntime}/>

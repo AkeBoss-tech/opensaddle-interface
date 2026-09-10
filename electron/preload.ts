@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+window.addEventListener('DOMContentLoaded', () => {
+  if (process.platform === 'darwin') document.documentElement.classList.add('desktop-macos')
+})
+
 contextBridge.exposeInMainWorld('opensaddleDesktop', true)
 contextBridge.exposeInMainWorld('opensaddle', {
   opensaddleUrl: ipcRenderer.sendSync('runtime:opensaddle-url') as string,

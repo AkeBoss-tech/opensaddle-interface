@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
+// Reserve native window chrome before React mounts, including empty workspaces.
+window.addEventListener('DOMContentLoaded', () => {
+  if (process.platform === 'darwin') document.documentElement.classList.add('desktop-macos')
+})
+
 contextBridge.exposeInMainWorld('opensaddleDesktop', true)
 contextBridge.exposeInMainWorld('opensaddle', {
   opensaddleUrl: ipcRenderer.sendSync('runtime:opensaddle-url'),
