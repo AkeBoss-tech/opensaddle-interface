@@ -34,3 +34,15 @@ test('manager conversation UI retains a failed draft and applies scope only expl
  await act(async()=>view.update(render(['B'],'two')))
  assert.doesNotMatch(JSON.stringify(view.toJSON()),/Keep this draft/)
 })
+
+test('saved manager messages expose explicit child-task controls only when supported',async t=>{
+ const id='mgr_'+'b'.repeat(64),scope={project_ids:['P'],revision:0}
+ const conversation:ManagerConversation={conversation_id:id,title:'Dispatch manager',version:1,scope,created_at:'now',updated_at:'now',provider_execution:false}
+ const message:ManagerMessage={message_id:'msg-one',thread_id:id,sequence:1,role:'user',content:'Inspect source',payload:{manager_scope:scope,provider_status:'not_started'}}
+ const client={childTasks:true,list:async()=>[conversation],open:async()=>({conversation,messages:[message]}),dispatches:async()=>[],taskOptions:async()=>({projectId:'P',members:[],workers:[]}),dispatch:async()=>{throw Error('must not dispatch merely by opening')}} as unknown as ManagerConversationsAuthority
+ let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(<ManagerConversationsPanel client={client} identity="owner" projectIds={['P']} name={id=>id}/>);await new Promise(resolve=>setImmediate(resolve))})
+ await act(async()=>{view.root.findAllByType('button').find(node=>node.children.join('')==='Dispatch manager')!.props.onClick();await new Promise(resolve=>setImmediate(resolve))})
+ assert.equal(view.root.findAllByType('summary').some(node=>node.children.join('')==='Run as a project task'),true,'supported manager messages must expose task dispatch')
+})

@@ -188,3 +188,17 @@ checks compatibility. The mounted InstalledProjectView test proves zero byte
 requests for a future API and checks compatible, missing-capability and wrong-scope
 selection. Existing legacy mount tests remain valid. The baseline performs a byte
 request and fails the identical assertion. See receipts/ui-host-contract-20260910.json.
+
+## MANAGER-DISPATCH-UI
+
+Saved manager messages expose child dispatch only when Core advertises it and the
+Journey service is present. Users explicitly select a current-scope Project,
+source and ready native agent. Opening the controls never dispatches. The client
+sends saved message identity and selected arguments, not replacement text or owner
+claims. A pending request blocks repeated submissions and closing its controls.
+Task links preserve canonical Project/Run identity. Status refreshes clear failed
+reads; the existing server retry identity survives client recreation. Mounted
+controls/client tests pass, with baseline absence proved in
+receipts/manager-dispatch-ui-20260910.json. Real HTTP response-loss/retry and outsider
+denial are recorded in receipts/manager-dispatch-client-20260910.json. Browser and
+native execution from this manager UI remain pending.

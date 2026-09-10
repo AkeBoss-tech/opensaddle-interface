@@ -28,7 +28,7 @@ test('manager scope previews exact selection and fences changed scope and accoun
  await act(async()=>calls[1].resolve(context(['B'])))
  assert.match(JSON.stringify(view.toJSON()),/B private objective/)
  assert.match(JSON.stringify(view.toJSON()),/preview is partial/)
- assert.match(JSON.stringify(view.toJSON()),/No tasks have been started/)
+ assert.match(JSON.stringify(view.toJSON()),/Previewing context does not start tasks/)
  await act(async()=>{void button().props.onClick()})
  await act(async()=>view.update(render('two')))
  assert.doesNotMatch(JSON.stringify(view.toJSON()),/B private objective/)
