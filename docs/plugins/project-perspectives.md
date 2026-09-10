@@ -304,3 +304,33 @@ capability removal, followed by successful enforcement of widget revocation. It
 fails on the preceding Interface commit and passes with the change; receipt:
 Interface `docs/testing/receipts/widget-overview-independence-20260910.json`.
 Browser verification remains pending.
+
+
+## Dedicated Project task feed
+
+Core advertises `project_task_feed_v1` only when the store implements the feed.
+`GET /api/v2/projects/{id}/task-feed?after=<run-id>&limit=100` returns Project-local
+Run IDs, task titles, lifecycle statuses and `verification: not_assessed`. It reads
+no global overview, goals, worker roster, invitations or source registry. Current
+Project membership is required even for a platform operator and is rechecked
+after reading. No source paths, policy contents or credentials are projected.
+
+The SQLite implementation pages by stable Run ID, with limits 1–200. Interface
+collects at most 1,000 tasks, rejects duplicate/non-progressing pages and mismatched
+Project/account identity, then rechecks membership before publishing. Oversized
+feeds report unavailable rather than silently showing an incomplete task list.
+Pages are live reads, not an atomic historical snapshot. Verification is explicitly
+unassessed here; detailed result review remains the authority for acceptance.
+
+Perspectives and dashboard widgets use this feed when advertised, retaining the
+existing onboarding feed for older servers. Thus removing Command Center no longer
+breaks the underlying widget data read on supported Core servers. PostgreSQL
+support is not claimed; unsupported stores advertise false and return 501.
+
+Validation: 31 Core/API checks, 16 Interface mounted/client checks, both before/after
+regression proofs and the build pass. A real Interface HTTP client authenticated as
+a non-owner auditor read a Project while Command Center returned 503 and was denied
+an unrelated Project. Its disposable server stopped afterward. Core receipts:
+`docs/testing/receipts/project-task-feed-20260910.json` and
+`docs/testing/receipts/project-task-feed-live-20260910.json`. Browser acceptance is
+still pending.

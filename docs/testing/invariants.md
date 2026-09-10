@@ -230,3 +230,11 @@ A missing, failing or refreshing overview projection must not unmount independen
 authorized Project widgets. Old overview content must clear; widget revocation
 must still remove its frame. The mounted round-trip test and
 `receipts/widget-overview-independence-20260910.json` cover these boundaries.
+
+
+## PROJECT-TASK-FEED
+
+Project task presentation can load under current non-owner membership without
+global or administrative projections. Only the selected Project is returned;
+revocation, account changes and invalid pagination fail closed. Execution status
+does not imply result acceptance. Before/after receipt: `receipts/project-task-feed-20260910.json`.

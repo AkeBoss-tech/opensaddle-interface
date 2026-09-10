@@ -1,0 +1,8 @@
+{
+  "invariant": "PROJECT-TASK-FEED",
+  "baseRevision": "2e0d97d3c34a2919729825342cd9433ebfaaa8bf",
+  "test": "src/perspectives/project/ProjectTaskFeed.test.tsx",
+  "preFix": "failed",
+  "preFixAssertion": "dedicated task feed must render without onboarding or global reads",
+  "postFix": "passed"
+}

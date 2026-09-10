@@ -61,3 +61,13 @@ test('Project/account changes fence late responses and slow reads expire without
   assert.match(JSON.stringify(view.toJSON()), /Rechecking/)
   assert.doesNotMatch(JSON.stringify(view.toJSON()), /completed/)
 })
+
+test('dedicated Project task feed avoids the onboarding snapshot',async t=>{
+ let broadReads=0,view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ const authority={snapshot:async()=>{broadReads++;throw Error('Global overview unavailable')}}
+ const taskFeed={read:async()=>({projectId:'P',tasks:[{id:'R',title:'Member task',status:'running',verified:false,source:'active_run' as const}]})}
+ await act(async()=>{view=create(<ProjectTaskFeed authority={authority} taskFeed={taskFeed} projectId="P" connectionKey="member">{model=><p>{model.tasks[0]?.title}</p>}</ProjectTaskFeed>)})
+ assert.match(JSON.stringify(view.toJSON()),/Member task/,'dedicated task feed must render without onboarding or global reads')
+ assert.equal(broadReads,0)
+})
