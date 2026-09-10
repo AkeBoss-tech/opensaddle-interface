@@ -66,3 +66,13 @@ origins remain rejected. The stable serve-api wrapper already allows that deskto
 origin. Verification used a fixed disposable owner, not production authentication.
 This does not certify a distributed installer, native separate-process project
 rendering, state migration, or actual remote task execution.
+
+## Starter generator
+
+Core now provides `python -m opensaddle.perspective_starter` to generate an unsigned
+board or single-column task-list package. See Core's
+`docs/plugins/project-perspective-starter.md` for the authoring command and a
+reusable signed loopback fixture. The generated package was visually verified in
+this Interface with filtering and canonical run navigation. Its local screenshot
+is `out/screenshots/starter-20260910/board.png`. The starter does not yet supply
+conversation transcripts, persistent state or automatic signing/trust changes.
