@@ -131,6 +131,13 @@ test('incompatible UI contract prevents discovery and renderer byte loading',asy
  assert.match(JSON.stringify(view!.toJSON()),/different host API/)
  const supported={...renderer,descriptor:{ui_contract:{...renderer.descriptor!.ui_contract as Record<string,unknown>,host_api_min:1,host_api_max:1,required_capabilities:['projection.project-runs.v1']}}}
  assert.equal(installedProjectViews([supported]).length,1)
+ const widget={...supported,descriptor:{ui_contract:{...supported.descriptor.ui_contract,mount_kind:'widget'}}}
+ await act(async()=>view!.update(<InstalledProjectView client={client} renderer={widget} model={{projectId:'P',tasks:[]}} connectionKey="C" onOpenTask={()=>{}} onNewTask={()=>{}}/>))
+ assert.equal(reads,0,'a widget package must not execute in the Perspective mount')
+ assert.equal(installedProjectViews([widget]).length,0)
+ assert.equal(view!.root.findAllByType('iframe').length,0)
+ assert.match(JSON.stringify(view!.toJSON()),/does not provide a Project Perspective/)
+
  assert.equal(installedProjectViews([{...supported,descriptor:{ui_contract:{...supported.descriptor.ui_contract,required_capabilities:['future.feature.v1']}}}]).length,0)
  assert.equal(installedProjectViews([{...supported,descriptor:{ui_contract:{...supported.descriptor.ui_contract,scope:'user'}}}]).length,0)
 })

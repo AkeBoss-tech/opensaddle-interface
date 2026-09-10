@@ -196,3 +196,34 @@ features cannot silently degrade. Global widgets and settings mounts are describ
 by the shared schema but are not supported by this Project host. New starter
 packages declare their requirements inside the existing signed descriptor, so
 legacy signature canonicalization is unchanged.
+
+
+## Project-scoped widget packages
+
+The existing generator accepts `--mount widget` (default remains `perspective`):
+
+```sh
+python -m opensaddle.perspective_starter ./task-widget \
+  --package-id org.example.task-widget --publisher-id org.example.publisher \
+  --application-id task-widget --title "Project tasks" --mount widget
+```
+
+This creates an unsigned package declaring mount `widget`, scope `project` and
+the existing `opensaddle.project-tasks.v1` projection. Normal publisher signature,
+package installation, Project enablement and environment configuration still
+apply. Generation neither installs nor enables it. Changing the signed scope
+invalidates the signature. A widget is excluded from Project Perspective selection
+and rejected before executable bytes load in that mount.
+
+Ten generator/catalog checks and three mounted renderer checks pass. The public
+widget CLI assertion fails on the preceding Core revision and passes with this
+change; see `docs/testing/receipts/project-widget-package-20260910.json` in Core.
+This is authoring and mount-boundary support, not dashboard widget execution.
+
+The next host slice must discover authorized Project widget instances, persist
+the user's placement separately from package activation, and render each through
+the existing exact-byte/frame/revocation checks with only its Project projection.
+A missing or revoked instance remains an unavailable saved preference. The host
+must resolve navigation against current projected task IDs. Personal/global-data
+widgets need a separate owner-scoped catalog; do not simulate it by giving a
+Project package all dashboard data or by inventing a shared pseudo-Project.
