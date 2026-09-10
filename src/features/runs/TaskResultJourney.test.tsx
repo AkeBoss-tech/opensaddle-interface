@@ -7,7 +7,7 @@ import {MemoryRouter} from 'react-router-dom'
 import {AuthoritativeRunSurface} from './AuthoritativeRunSurface'
 import {RemoteJourneyClient} from '../../services/remoteJourney'
 ;(globalThis as typeof globalThis & {IS_REACT_ACT_ENVIRONMENT:boolean}).IS_REACT_ACT_ENVIRONMENT=true
-const text='Published answer: 527. <img src=x onerror=alert(1)>'
+const text='**Published answer:** 527. <img src=x onerror=alert(1)> [unsafe](javascript:alert(1))'
 const digest=createHash('sha256').update(text).digest('hex')
 const run={run_id:'run-result',project_id:'P',task:'Calculate',status:'completed',cancellation_requested:false,requested_by:'owner'}
 const flush=()=>new Promise(resolve=>setTimeout(resolve,30))
@@ -26,6 +26,9 @@ test('completed task displays checked artifact bytes and removes them when integ
   await act(async()=>{await flush()})
   assert.equal(view!.root.findAllByType('pre')[0]?.children.join(''),text)
   assert.equal(view!.root.findAllByType('img').length,0)
+  // TASK-RESULT-READING-1: formatted text stays inert; exact source remains inspectable.
+  assert.ok(view!.root.findAllByType('strong').some(node=>node.children.join('')==='Published answer:'))
+  assert.equal(view!.root.findAllByType('a').filter(node=>String(node.props.href).startsWith('javascript:')).length,0)
   assert.match(JSON.stringify(view!.toJSON()),/do not establish correctness or human acceptance/)
   corrupt=true
   await act(async()=>{view!.root.findAllByType('button').find(node=>node.children.join('')==='Reload result')!.props.onClick();await flush()})

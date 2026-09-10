@@ -1,3 +1,4 @@
+import {SafeMarkdown} from '../../ui/SafeMarkdown'
 import React,{useEffect,useState} from 'react'
 void React
 export type TaskResult = {runId:string;resource:{artifact_id:string;digest:string};text:string;codingTask?:boolean}
@@ -22,5 +23,5 @@ export function TaskResultPanel({authority,projectId,runId}:{authority:TaskResul
   void read();return()=>{stopped=true;clearTimeout(next);clearTimeout(deadline)}
  },[authority,projectId,runId,reload])
  const result=state?.authority===authority&&state.projectId===projectId&&state.runId===runId?state.result:undefined
- return <section className="cc-panel" aria-label="Published task result"><h2>Result</h2><p>These are published artifact bytes. Execution ending and matching bytes do not establish correctness or human acceptance.</p><button onClick={()=>setReload(value=>value+1)}>Reload result</button>{error?<p role="alert">{error}</p>:!result?<p role="status">Loading the published result…</p>:<><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:'32rem',overflow:'auto'}}>{result.text}</pre><details><summary>Exact artifact</summary><p>{result.resource.artifact_id}</p><code>{result.resource.digest}</code></details></>}</section>
+ return <section className="cc-panel task-result-panel" aria-label="Published task result"><h2>Result</h2><p>These are published artifact bytes. Execution ending and matching bytes do not establish correctness or human acceptance.</p><button className="secondary-btn" onClick={()=>setReload(value=>value+1)}>Reload result</button>{error?<p role="alert">{error}</p>:!result?<p role="status">Loading the published result…</p>:<><div className="task-result-reading"><SafeMarkdown text={result.text}/></div><details><summary>Original text</summary><pre className="task-result-source">{result.text}</pre></details><details><summary>Exact artifact</summary><p>{result.resource.artifact_id}</p><code>{result.resource.digest}</code></details></>}</section>
 }

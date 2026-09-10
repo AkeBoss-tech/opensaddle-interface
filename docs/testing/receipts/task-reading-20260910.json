@@ -1,0 +1,27 @@
+{
+  "date": "2026-09-10",
+  "invariant": "TASK-RESULT-READING-1",
+  "base": "87e31bf7fbbadb71fbc832c5c73466a1f22a8e82",
+  "regression": {
+    "command": "npx tsx --test src/features/runs/TaskResultJourney.test.tsx",
+    "before": "Exit 1: assertion that strong contains Published answer: failed. Account-change test passed.",
+    "after": "Same test passed after renderer change.",
+    "runner_note": "Core prove_regression.py only supports pytest/JUnit; used the actual TypeScript test command before and after the production edit."
+  },
+  "checks": {
+    "focused_tests": 18,
+    "production_build": "passed; existing bundle-size warning",
+    "desktop": "Rebuilt renderer reloaded on exact real device task route; styled controls and formatted retained content visible in native accessibility tree.",
+    "browser": "Production task surface with presentation-only authority at 360px; scrollWidth equals clientWidth (360); Enter opens Original text; no browser error logs."
+  },
+  "screenshots": [
+    "../../../out/screenshots/task-reading-20260910/desktop.png",
+    "../../../out/screenshots/task-reading-20260910/narrow.png"
+  ],
+  "limits": [
+    "Small Markdown subset, not a full Markdown implementation. Original bytes remain available.",
+    "Narrow capture uses a 360px content container in a desktop browser, not a mobile device.",
+    "Desktop screenshot shows the upper part of the task; result content also checked through native accessibility.",
+    "No new execution, disconnect recovery or human acceptance proved."
+  ]
+}

@@ -119,3 +119,30 @@
  .manager-conversation-create label { flex-basis: 100%; }
  .manager-conversation-create button { max-width: 100%; }
 }
+
+/* Task reading surface shares the host controls, while exact evidence stays inspectable. */
+.task-detail-page { max-width: 1120px; margin-inline: auto; width: 100%; min-width: 0; }
+.task-detail-page .page-header { align-items: flex-start; justify-content: space-between; }
+.task-detail-page .page-header > div { min-width: 0; }
+.task-detail-page .page-header h1 { margin-top: 8px; font-size: clamp(20px, 2.2vw, 28px); line-height: 1.35; overflow-wrap: anywhere; }
+.task-detail-page .page-header > button { flex-shrink: 0; white-space: nowrap; }
+.task-detail-page .secondary-btn { color: var(--text); min-height: 36px; }
+.task-detail-page a { color: var(--text); text-underline-offset: 3px; }
+.task-detail-page .cc-panel { min-width: 0; padding: 24px; }
+.task-detail-page .cc-panel > p { line-height: 1.6; overflow-wrap: anywhere; }
+.task-detail-page details { margin-top: 16px; color: var(--muted); }
+.task-detail-page summary { cursor: pointer; padding-block: 6px; }
+.task-detail-page details p, .task-detail-page details code { overflow-wrap: anywhere; }
+.task-detail-page :is(button, a, summary):focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
+.task-result-reading { margin-top: 24px; font-size: 15px; line-height: 1.7; overflow-wrap: anywhere; }
+.task-result-reading .artifact-report p { margin: 0 0 12px; }
+.task-result-reading .artifact-report code { font-size: .9em; }
+.task-result-reading pre, .task-result-source { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32rem; overflow: auto; font-size: 13px; line-height: 1.6; }
+@media (max-width: 760px) {
+  .task-detail-page .page-header { flex-direction: column; gap: 16px; }
+  .task-detail-page .cc-panel { padding: 18px; }
+}
+@container (max-width: 760px) {
+  .task-detail-page .page-header { flex-direction: column; gap: 16px; }
+  .task-detail-page .cc-panel { padding: 18px; }
+}

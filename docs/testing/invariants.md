@@ -876,3 +876,11 @@ checks pass after it. `scripts/prove-scoped-settings-desktop-live.ts` separately
 verifies personal and Team enrollment, revision-2 update and scoped value delivery
 through the production client/transport/proxy against real disposable Core. IPC is
 an in-process adapter; this does not claim actual Electron UI acceptance.
+
+### TASK-RESULT-READING-1 — Safe formatted results retain exact evidence
+
+A completed task may format the checked artifact text for reading, but must retain
+its exact source and artifact identity. HTML/images and unsafe link schemes remain
+inert. If the next integrity or access check fails, both representations disappear.
+`src/features/runs/TaskResultJourney.test.tsx` exercises the actual remote client
+and task surface, with only the HTTP boundary controlled.
