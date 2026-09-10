@@ -411,3 +411,13 @@ Project task visibility. Default wire requests remain unchanged; opted-in
 requests carry only the flag, not caller-built history. Unsupported/global
 clients reject the mode, and pending dispatches restore and lock their original
 choice. Mounted real-client proof: `receipts/project-context-ui-20260910.json`.
+
+### PROJECT-CONTEXT-UI native execution evidence
+
+`receipts/conversation-context-native-20260910.json` records two real Codex tasks:
+a generated code and its exact recall by the contextual follow-up. Real Core
+admission includes the first output and artifact identity; distinct provider
+sessions both terminate completed. Retry retains the second Run. This uses real
+HTTP/client/worker/artifact paths, not a provider fixture. Cleanup verifies stopped
+processes, revoked fixture worker credentials and an unchanged empty workspace.
+It is not browser proof, provider-session resume or device-policy requalification.
