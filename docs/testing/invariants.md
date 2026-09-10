@@ -88,3 +88,14 @@ fault injection. This adds a live-feed boundary; the older static Perspective
 checks only established navigation identity and did not cover status changes,
 loss of access during polling, or hanging reads. The ten focused Perspective and
 state tests pass. Browser evidence remains pending while the Mac is locked.
+
+## INSTALLED-PROJECT-LIVE-1
+
+An installed package opting into `projection` messages receives changed canonical
+Project data in its initialized frame only after current exact-package authority
+is confirmed. Nonce/generation/package fences remain fixed and each update has
+an increasing positive revision. Removed tasks cannot be opened through old
+frame messages. Revocation removes the frame without delivering new data.
+Legacy init-only packages retain reload behavior. Mounted coverage is in
+InstalledProjectView.test.tsx; baseline 29210a1 fails the no-reload assertion,
+and the same test passes with the repair (receipts/perspective-live-20260910.json).

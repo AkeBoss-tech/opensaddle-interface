@@ -79,3 +79,41 @@ test('installed view opens only projected tasks from its exact initialized frame
  await act(async()=>view.unmount())
  assert.equal(listeners.size,0)
 })
+
+// INSTALLED-PROJECT-LIVE-1: compatible views update within the authorized frame.
+test('live projections retain their frame, reauthorize updates and fence removed tasks', async t => {
+ const fragment='<p>Live tasks</p>'
+ const renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT,properties:{kind:{enum:['init','projection']}}},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
+ const listeners=new Set<(event:any)=>void>(),messages:any[]=[],opened:string[]=[]
+ Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ const source={postMessage:(message:any)=>messages.push(message)},node={contentWindow:source,dataset:{}}
+ let enabled=true,reads=0,checks=0
+ const client={applicationRenderers:async()=>{checks++;return enabled?[renderer]:[]},applicationRendererContent:async()=>{reads++;return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})}} as unknown as MalleableShellClient
+ const initial={projectId:'P',tasks:[{id:'R',title:'Task',status:'queued',verified:false,source:'active_run' as const}]}
+ const render=(model:typeof initial)=><InstalledProjectView client={client} renderer={renderer} model={model} connectionKey="C" onOpenTask={id=>opened.push(id)} onNewTask={()=>{}}/>
+ let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(render(initial),{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
+ for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ const init=messages[0],html=view.root.findByType('iframe').props.srcDoc
+ const send=(message:any)=>{for(const listener of listeners)listener({source,data:{...init,...message}})}
+ await act(async()=>send({kind:'ready'}))
+ const next={...initial,tasks:[{...initial.tasks[0],id:'S',status:'running'}]}
+ await act(async()=>view.update(render(next)))
+ assert.equal(reads,1,'live update must not reload renderer bytes')
+ assert.equal(messages.length,2)
+ assert.equal(messages[1].kind,'projection')
+ assert.equal(messages[1].nonce,init.nonce)
+ assert.equal(messages[1].generation,init.generation)
+ assert.equal(messages[1].projection_revision,1)
+ assert.equal(messages[1].projection.model.tasks[0].id,'S')
+ assert.equal(view.root.findByType('iframe').props.srcDoc,html)
+ assert.equal(checks,2,'projection update must reauthorize the exact renderer')
+ await act(async()=>{send({kind:'request',action:'open_task',task_id:'R'});send({kind:'request',action:'open_task',task_id:'S'})})
+ assert.deepEqual(opened,['S'])
+ enabled=false
+ await act(async()=>view.update(render({...next,tasks:[]})))
+ assert.equal(messages.length,2,'revoked frame must not receive a new projection')
+ assert.equal(view.root.findAllByType('iframe').length,0)
+})

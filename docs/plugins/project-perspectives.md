@@ -119,8 +119,17 @@ or a 15-second deadline removes rendered task views until a fresh valid read;
 old Project/account responses are ignored. A hung request is not retried in
 parallel: use Refresh workspace to start a new feed if it never settles.
 
-For the current init-only installed-view protocol, changed task data reloads the
-verified frame with the new projection and its last acknowledged tab-local state.
-Unchanged polls do not reload the frame. Unsaved edits/focus are not preserved
-through that reload; an in-place update protocol remains a follow-up. Browser
+Legacy init-only packages reload their verified frame when task data changes,
+restoring last acknowledged tab-local state. Packages declaring `projection` in
+the signed input schema kind enum receive in-place updates after exact-package
+reauthorization. Updates carry the original frame fence and a monotonically
+increasing `projection_revision`; they contain no saved-state replacement. The
+host checks task navigation against its latest model, including after asynchronous
+authorization. Unchanged polls do not reload either package type. Browser
 verification of live refresh remains pending (Mac locked on 2026-09-10).
+
+Generated starters accept only updates from their original parent, frame identity,
+package and Project with a newer positive revision. They retain the filter input
+and restore focused task buttons when the same task remains. Host protocol and
+signed-schema tests pass; actual keyboard focus preservation is not yet visually
+verified. A package declaration is compatibility opt-in, not additional authority.
