@@ -179,3 +179,12 @@ execution remains separate from verification. The mounted builtins suite checks
 canonical task navigation and these lifecycle groups. Core's generated-script
 protocol/signature evidence is recorded in perspective-dispatch-renderer-20260910.json
 in the Core repository. New-column browser/keyboard proof remains pending.
+
+## UI-HOST-CONTRACT
+
+An incompatible signed UI declaration is excluded from Project view discovery and
+cannot trigger renderer content loading. Current catalog reauthorization also
+checks compatibility. The mounted InstalledProjectView test proves zero byte
+requests for a future API and checks compatible, missing-capability and wrong-scope
+selection. Existing legacy mount tests remain valid. The baseline performs a byte
+request and fails the identical assertion. See receipts/ui-host-contract-20260910.json.

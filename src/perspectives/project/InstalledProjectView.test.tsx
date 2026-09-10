@@ -117,3 +117,20 @@ test('live projections retain their frame, reauthorize updates and fence removed
  assert.equal(messages.length,2,'revoked frame must not receive a new projection')
  assert.equal(view.root.findAllByType('iframe').length,0)
 })
+
+test('incompatible UI contract prevents discovery and renderer byte loading',async t=>{
+ const fragment='<p>Unsupported view</p>'
+ const renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex'),descriptor:{ui_contract:{schema_version:'opensaddle.ui-contract.v1',mount_kind:'perspective',scope:'project',host_api_min:2,host_api_max:2,required_capabilities:[]}}} as unknown as ApplicationRendererDescriptor
+ let reads=0,view:ReactTestRenderer|undefined
+ Object.assign(globalThis,{addEventListener:()=>{},removeEventListener:()=>{}})
+ const client={applicationRenderers:async()=>[renderer],applicationRendererContent:async()=>{reads++;return new Response(fragment)}} as unknown as MalleableShellClient
+ t.after(async()=>{if(view)await act(async()=>view!.unmount())})
+ await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[]}} connectionKey="C" onOpenTask={()=>{}} onNewTask={()=>{}}/>);await new Promise(resolve=>setImmediate(resolve))})
+ assert.equal(reads,0,'unsupported UI must not load executable bytes')
+ assert.equal(installedProjectViews([renderer]).length,0)
+ assert.match(JSON.stringify(view!.toJSON()),/different host API/)
+ const supported={...renderer,descriptor:{ui_contract:{...renderer.descriptor!.ui_contract as Record<string,unknown>,host_api_min:1,host_api_max:1,required_capabilities:['projection.project-runs.v1']}}}
+ assert.equal(installedProjectViews([supported]).length,1)
+ assert.equal(installedProjectViews([{...supported,descriptor:{ui_contract:{...supported.descriptor.ui_contract,required_capabilities:['future.feature.v1']}}}]).length,0)
+ assert.equal(installedProjectViews([{...supported,descriptor:{ui_contract:{...supported.descriptor.ui_contract,scope:'user'}}}]).length,0)
+})

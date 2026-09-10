@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react'
 import type {ApplicationRendererDescriptor,MalleableShellClient} from '../../services/contracts'
 import {APPLICATION_PROTOCOL,acceptsApplicationMessage,readExactRenderer,sandboxDocument} from '../../applications/executableApplication'
-import {PROJECT_VIEW_CONTRACT} from './installed'
+import {PROJECT_VIEW_CONTRACT,projectViewCompatibility} from './installed'
 import type {ProjectTaskModel} from './model'
 import {projectViewState,readProjectViewState,writeProjectViewState} from './state'
 void React
@@ -27,13 +27,15 @@ export function InstalledProjectView({client,renderer,model,connectionKey,stateS
    const controller=new AbortController();let timeout:ReturnType<typeof setTimeout>
    const unavailable=new Promise<never>((_,reject)=>{timeout=setTimeout(()=>{controller.abort();reject(Error('Authorization timed out'))},5000)})
    pending=Promise.race([client.applicationRenderers?.(model.projectId,controller.signal)??Promise.reject(Error('Catalog unavailable')),unavailable]).then(rows=>{
-    const found=rows.some(row=>row.authority==='core'&&row.execution_trust==='trusted_signed_publisher'&&row.application_id===renderer.application_id&&row.instance_id===renderer.instance_id&&row.package_ref.package_id===renderer.package_ref.package_id&&row.package_ref.version===renderer.package_ref.version&&row.package_ref.manifest_digest===renderer.package_ref.manifest_digest&&row.content_digest===renderer.content_digest&&row.input_schema.$id===PROJECT_VIEW_CONTRACT)
+    const found=rows.some(row=>row.authority==='core'&&row.execution_trust==='trusted_signed_publisher'&&row.application_id===renderer.application_id&&row.instance_id===renderer.instance_id&&row.package_ref.package_id===renderer.package_ref.package_id&&row.package_ref.version===renderer.package_ref.version&&row.package_ref.manifest_digest===renderer.package_ref.manifest_digest&&row.content_digest===renderer.content_digest&&row.input_schema.$id===PROJECT_VIEW_CONTRACT&&projectViewCompatibility(row)===undefined)
     if(!found)revoke();return found&&!stopped&&epoch===generation.current
    }).catch(()=>{revoke();return false}).finally(()=>{clearTimeout(timeout);pending=undefined})
    return pending
   }
   authorize.current=check;requestPending.current=false
   const pollNext=()=>{poll=setTimeout(()=>{void check().then(ok=>{if(ok)pollNext()})},5000)}
+  const incompatible=projectViewCompatibility(renderer)
+  if(incompatible){setError(incompatible);return}
   if(!client.applicationRendererContent){revoke();return}
 
   const manifest={...renderer,sandbox_policy:{scripts:true as const,network:false as const,same_origin:false as const,navigation:'host_observed_only' as const}}
