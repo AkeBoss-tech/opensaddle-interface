@@ -947,3 +947,9 @@ with only the external HTTP server replaced. It verifies read, save, reread,
 conflict handling and route rejection. Before the fix its read assertion fails
 with `Personal runtime request path is unavailable`, matching an actual Electron
 startup trace. Existing proxy path tests had omitted this advertised endpoint.
+# SERVICE-NEGOTIATION-1
+
+Successful v2 capability discovery does not advertise legacy permission or local
+runner APIs. Service initialization must omit those clients when legacy health
+is absent, while retaining v2 services. A legacy server advertising these APIs
+must retain them. Covered by `test/serviceNegotiation.test.ts`.

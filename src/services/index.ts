@@ -365,7 +365,7 @@ export function initServices(opts: {
         }
       }
       let permissions: PermissionClient
-      if (backendAvailable && (backendCapabilities.size === 0 || backendCapabilities.has('permissions'))) {
+      if (backendAvailable && legacyHealthAvailable && (backendCapabilities.size === 0 || backendCapabilities.has('permissions'))) {
         const remote = new RemotePermissionClient(baseUrl, getUserId, token)
         try {
           let serverGrants = await remote.list()
@@ -396,7 +396,7 @@ export function initServices(opts: {
             ? new RemoteThreadClient(baseUrl, getUserId, token)
             : undefined
         : undefined
-      const localProjects = backendAvailable
+      const localProjects = backendAvailable && legacyHealthAvailable
         && backendMode === 'local'
         ? backendCapabilities.has('projects')
           ? new AuthoritativeLocalProjectClient(baseUrl, getUserId, token)

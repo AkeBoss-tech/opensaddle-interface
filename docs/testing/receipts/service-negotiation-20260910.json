@@ -1,0 +1,7 @@
+{
+  "invariant": "SERVICE-NEGOTIATION-1",
+  "boundary": "Production initServices with HTTP adapter responses; no service factory substitution",
+  "before": "Identical test failed: v2-only connection must not expose legacy runner discovery; actual RemoteLocalProjectClient",
+  "after": "15 tests passed across serviceNegotiation, dashboardDesktopTransport and personalRuntimeProxy; npm run build passed",
+  "limitation": "Not a fresh Electron walkthrough. Python regression helper does not execute TypeScript; identical test run directly before and after."
+}
