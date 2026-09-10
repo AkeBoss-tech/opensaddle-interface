@@ -1,9 +1,10 @@
 import {validateApplicationState,validateApplicationStateSchema,type ApplicationState,type ApplicationStateSchema} from '../applications/applicationState'
 import type {ApplicationRendererDescriptor} from './contracts'
+export type RendererSettingsTarget=Pick<ApplicationRendererDescriptor,'application_id'|'instance_id'|'package_ref'|'descriptor'>
 export type RendererSettingsScope='user'|'team'|'project'|'user_project'
 export interface RendererSettingsContract {schema_version:'opensaddle.ui-settings.v1';purpose:'presentation';settings_version:number;scopes:string[];values_schema:ApplicationStateSchema;defaults:ApplicationState;labels:Record<string,string>}
 export interface RendererSettingsSnapshot {team_context?:{team_id:string;association_revision:number}|null;contract:RendererSettingsContract;layers:Array<{scope:RendererSettingsScope;revision:number;can_write:boolean;values:ApplicationState}>;effective:{values:ApplicationState;provenance:Record<string,string>}}
-export interface RendererSettingsAuthority {identity():string;read(project:string,renderer:ApplicationRendererDescriptor):Promise<RendererSettingsSnapshot>;replace(project:string,renderer:ApplicationRendererDescriptor,scope:RendererSettingsScope,revision:number,values:ApplicationState,teamContext?:RendererSettingsSnapshot['team_context']):Promise<RendererSettingsSnapshot>}
+export interface RendererSettingsAuthority {identity():string;read(project:string,renderer:RendererSettingsTarget):Promise<RendererSettingsSnapshot>;replace(project:string,renderer:RendererSettingsTarget,scope:RendererSettingsScope,revision:number,values:ApplicationState,teamContext?:RendererSettingsSnapshot['team_context']):Promise<RendererSettingsSnapshot>}
 const canonical=(value:unknown):string=>JSON.stringify(value&&typeof value==='object'?Array.isArray(value)?value.map(item=>JSON.parse(canonical(item))):Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,JSON.parse(canonical(item))])):value)
 export function rendererSettingsContract(value:unknown):RendererSettingsContract|undefined{
  if(!value||typeof value!=='object'||Array.isArray(value))return
@@ -17,7 +18,7 @@ export class RendererSettingsClient implements RendererSettingsAuthority{
  private base:string;private user:()=>string;private token?:string
  constructor(base:string,user:()=>string,token?:string){this.base=base.replace(/\/$/,'');this.user=user;this.token=token}
  identity(){return this.user()}
- private async request(project:string,renderer:ApplicationRendererDescriptor,scope?:RendererSettingsScope,revision?:number,values?:ApplicationState,teamContext?:RendererSettingsSnapshot['team_context']){
+ private async request(project:string,renderer:RendererSettingsTarget,scope?:RendererSettingsScope,revision?:number,values?:ApplicationState,teamContext?:RendererSettingsSnapshot['team_context']){
   const subject=this.user(),contract=rendererSettingsContract(renderer.descriptor?.settings_contract)
   if(!contract)throw Error('This package has no supported settings declaration.')
   if(scope&&(!contract.scopes.includes(scope)||!Number.isSafeInteger(revision)||revision!<0||!validateApplicationState(values,{...contract.values_schema,required:[]})))throw Error('Invalid settings override.')
@@ -36,6 +37,6 @@ export class RendererSettingsClient implements RendererSettingsAuthority{
   if(scope){const saved=result.layers.find((layer:any)=>layer.scope===scope);if(saved?.revision!==revision!+1||canonical(saved.values)!==canonical(values))throw Error('Settings save could not be confirmed.')}
   return result as RendererSettingsSnapshot
  }
- read(project:string,renderer:ApplicationRendererDescriptor){return this.request(project,renderer)}
- replace(project:string,renderer:ApplicationRendererDescriptor,scope:RendererSettingsScope,revision:number,values:ApplicationState,teamContext?:RendererSettingsSnapshot['team_context']){return this.request(project,renderer,scope,revision,values,teamContext)}
+ read(project:string,renderer:RendererSettingsTarget){return this.request(project,renderer)}
+ replace(project:string,renderer:RendererSettingsTarget,scope:RendererSettingsScope,revision:number,values:ApplicationState,teamContext?:RendererSettingsSnapshot['team_context']){return this.request(project,renderer,scope,revision,values,teamContext)}
 }

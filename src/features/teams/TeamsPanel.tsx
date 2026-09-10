@@ -1,9 +1,11 @@
+import {StandalonePluginSettings} from '../settings/StandalonePluginSettings'
+import type {StandalonePluginSettingsClient} from '../../services/standalonePluginSettings'
 import {TeamProjectReviews} from './ProjectTeamSettings'
 import React,{useEffect,useRef,useState} from 'react'
 import {TeamsClient,type TeamDetail,type TeamSummary} from '../../services/teams'
 import type {PresentationSettingsClient} from '../../services/presentationSettings'
 import {PresentationEditor} from '../settings/PresentationEditor'
-export function TeamsPanel({client,presentation}:{client:TeamsClient;presentation?:PresentationSettingsClient}){
+export function TeamsPanel({client,presentation,pluginSettings}:{pluginSettings?:StandalonePluginSettingsClient;client:TeamsClient;presentation?:PresentationSettingsClient}){
  const [teams,setTeams]=useState<TeamSummary[]>([]),[invitations,setInvitations]=useState<TeamSummary[]>([]),[selected,setSelected]=useState(''),[name,setName]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[revision,setRevision]=useState(0),[review,setReview]=useState<TeamSummary>()
  const generation=useRef(0),locked=useRef(false),identity=client.identity()
  useEffect(()=>{const epoch=++generation.current;setTeams([]);setInvitations([]);setReview(undefined);setError('');setBusy(true);locked.current=true;Promise.all([client.list(),client.invitations()]).then(([teams,invitations])=>{if(epoch===generation.current){setTeams(teams);setInvitations(invitations);setSelected(current=>teams.some(team=>team.team_id===current)?current:'')}}).catch(()=>{if(epoch===generation.current)setError('Could not load your teams.')}).finally(()=>{if(epoch===generation.current){setBusy(false);locked.current=false}});return()=>{generation.current++}},[client,identity,revision])
@@ -12,6 +14,7 @@ export function TeamsPanel({client,presentation}:{client:TeamsClient;presentatio
  {invitations.length>0&&<section className="settings-card presentation-editor"><h2>Invitations</h2>{invitations.map(invitation=><div key={invitation.team_id}><p>{invitation.display_name} · {invitation.role}</p><button disabled={busy} onClick={()=>setReview(invitation)}>Review invitation</button></div>)}{review&&<div><p>Join {review.display_name} as {review.role}? This does not grant project or device access.</p><button disabled={busy} onClick={()=>void run(()=>client.accept(review.team_id,review.revision))}>Accept invitation</button><button disabled={busy} onClick={()=>setReview(undefined)}>Cancel</button></div>}</section>}
  {selected&&!busy&&client.associationsAvailable&&teams.some(team=>team.team_id===selected&&['owner','admin'].includes(team.viewer_role??''))&&<TeamProjectReviews key={'projects:'+selected+revision} client={client} teamId={selected} presentation={presentation}/>}
  {selected&&!busy&&<TeamRoster key={'roster:'+selected+revision} client={client} id={selected} onChanged={()=>setRevision(value=>value+1)} />}{selected&&presentation&&<PresentationEditor key={selected} client={presentation} scope="team" projectId={selected}/>}
+ {selected&&!busy&&pluginSettings&&<StandalonePluginSettings key={selected+identity} client={pluginSettings} teamId={selected}/>}
  </React.Fragment>
 }
 function TeamRoster({client,id,onChanged}:{client:TeamsClient;id:string;onChanged:()=>void}){

@@ -294,3 +294,14 @@ stale pages cannot target a replacement association. Cross-Project persistence,
 private isolation, role denial, precedence, detach and CAS are verified through
 the signed-package API and mounted editor. Receipt:
 `receipts/renderer-settings-scopes-20260910.json`.
+
+
+## STANDALONE-PLUGIN-EDITOR
+
+Personal and Team plugin forms must use standalone routes, preserve revisioned
+drafts on conflicts, hide previous-account data and reject a substituted Team
+directory. Team read-only roles disable edits. No iframe or Project data service
+is needed. `StandalonePluginSettings.test.tsx` mounts the real form and HTTP
+client with transport responses injected; Core separately verifies the real
+authority/storage API. This is a new UI surface, so missing-module baseline
+failures are not counted as regression evidence.

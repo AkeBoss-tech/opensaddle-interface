@@ -513,3 +513,18 @@ It retains user access after Project membership loss and requires Team manager
 role for shared writes. The personal/Team settings pages still need a client and
 forms for this endpoint. Initial plugin enrollment without a Project is separate
 unfinished work; do not advertise it from this capability.
+
+
+### Standalone settings pages
+
+Personal appearance and the selected Team panel now discover and edit previously
+saved plugin defaults through the standalone capability. They do not fetch
+Project data or renderer code. The client validates caller/Team identity, package
+reference, bounded signed schema, scoped layer and save revision before displaying
+results. A shared host form uses a settings-only target type, preserving drafts
+on conflicts and disabling writes for read-only roles. Account/Team changes clear
+the previous form. Refresh is explicit; no immediate revocation polling is claimed.
+
+Seven mounted settings/Team checks and production build pass. Browser visual
+acceptance remains open. Initial personal/Team plugin enrollment still requires
+a Project-originated saved default; the empty state explains that limitation.

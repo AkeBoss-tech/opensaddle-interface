@@ -1,3 +1,4 @@
+import {StandalonePluginSettingsClient} from './standalonePluginSettings'
 import {RendererSettingsClient} from './rendererSettings'
 import {ProjectTaskFeedClient} from './projectTaskFeed'
 import { ManagerConversationsClient } from './managerConversations'
@@ -56,6 +57,7 @@ export interface ServiceBundle {
   projectGoals?: ProjectGoalClient
   extensions?: ExtensionCatalogClient
   projectIntelligence?: ProjectIntelligenceClient
+  standalonePluginSettings?: StandalonePluginSettingsClient
   rendererSettings?: RendererSettingsClient
   projectTaskFeed?: ProjectTaskFeedClient
   commandCenter?: CommandCenterClient
@@ -159,6 +161,7 @@ export function initServices(opts: {
       let storage: string | undefined
       let backendCapabilities = new Set<string>()
       let backendContracts: Record<string, string> = {}
+      let standalonePluginSettingsAvailable = false
       let rendererSettingsAvailable = false
       let projectTaskFeedAvailable = false
       let commandCenterAvailable = false
@@ -293,6 +296,7 @@ export function initServices(opts: {
               device_assignment_consent_v1?: {available?:boolean}
               device_inventory_v1?: { available?: boolean; scope?: string; pairing_available?: boolean }
               capability_mode?: string
+              standalone_plugin_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               renderer_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               project_task_feed_v1?: {available?:boolean;scope?:string;schema_version?:string}
               command_center?: { available?: boolean; path?: string; schema_version?: string }
@@ -305,6 +309,7 @@ export function initServices(opts: {
             }
             backendAvailable = true
             backendMode = capabilities.capability_mode ?? backendMode
+            standalonePluginSettingsAvailable = capabilities.standalone_plugin_settings_v1?.available===true&&capabilities.standalone_plugin_settings_v1.execution_policy===false&&JSON.stringify(capabilities.standalone_plugin_settings_v1.scopes)===JSON.stringify(['user','team'])
             rendererSettingsAvailable = capabilities.renderer_settings_v1?.available===true&&capabilities.renderer_settings_v1.execution_policy===false&&[JSON.stringify(['project','user_project']),JSON.stringify(['user','team','project','user_project'])].includes(JSON.stringify(capabilities.renderer_settings_v1.scopes))
             projectTaskFeedAvailable = capabilities.project_task_feed_v1?.available===true&&capabilities.project_task_feed_v1.scope==='current_memberships'&&capabilities.project_task_feed_v1.schema_version==='opensaddle.project-task-feed.v1'
             commandCenterAvailable = capabilities.command_center?.available === true
@@ -442,6 +447,7 @@ export function initServices(opts: {
         journey,
         personalRuntime,
         teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token,associationsAvailable) : undefined,
+        standalonePluginSettings: backendAvailable&&standalonePluginSettingsAvailable?new StandalonePluginSettingsClient(baseUrl,getUserId,token):undefined,
         rendererSettings: backendAvailable&&rendererSettingsAvailable?new RendererSettingsClient(baseUrl,getUserId,token):undefined,
         projectTaskFeed: backendAvailable&&projectTaskFeedAvailable?new ProjectTaskFeedClient(baseUrl,getUserId,token):undefined,
         managerConversations: backendAvailable && managerConversationsAvailable ? new ManagerConversationsClient(baseUrl,getUserId,token,managerChildTasksAvailable?journey:undefined,managerChildResultsAvailable) : undefined,
