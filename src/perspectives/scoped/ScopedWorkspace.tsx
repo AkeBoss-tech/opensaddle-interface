@@ -40,7 +40,7 @@ export function ScopedWorkspace({client,teamId,children}:{client?:ScopedRenderer
  return <>{(selected||error)&&<div className="scoped-workspace-controls" role="region" aria-label="Workspace view controls">
   <div className="scoped-workspace-summary"><strong>{show?current.candidate?.title:'Default workspace'}</strong><span>{show?'Installed view':selected?'Your installed view is still selected':'Workspace recovery'}</span></div>
   <div className="scoped-workspace-actions">
-  <Link to={teamId?'/teams':'/settings/appearance'}>View settings</Link>
+  <Link to={teamId?`/teams/${encodeURIComponent(teamId)}/settings`:'/settings/appearance'}>View settings</Link>
   {show?<button onClick={()=>setFallback(scopeKey)}>Show default workspace</button>:<button onClick={()=>{setFallback(undefined);setAttempt(value=>value+1)}}>Retry selected view</button>}
   {selected&&<button disabled={busy} onClick={()=>useDefault()}>Restore default workspace</button>}
   </div>

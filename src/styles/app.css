@@ -2011,3 +2011,10 @@ a.nav-item { text-decoration: none; color: inherit; }
 .scoped-workspace-controls { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 24px; border-bottom:1px solid var(--border); }
 .scoped-workspace-controls p { flex-basis:100%; margin:0; }
 .scoped-workspace-view { flex:1; min-width:0; padding:16px 24px; }
+
+.team-workspace-page nav { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 20px; }
+.team-workspace-page a { color:var(--text); text-underline-offset:3px; }
+.team-workspace-page nav a { text-decoration:none; }
+.team-workspace-page :is(a,button):focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+
+.team-workspace-page h1 { color:var(--text); }

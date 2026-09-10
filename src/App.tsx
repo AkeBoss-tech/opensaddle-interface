@@ -358,6 +358,7 @@ function Shell() {
             <Route path="/devices" element={<PersonalDevicesPage />} />
             <Route path="/teams" element={<TeamsPage />} />
             <Route path="/teams/:teamId" element={<TeamWorkspacePage />} />
+            <Route path="/teams/:teamId/settings" element={<TeamWorkspacePage settings />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
             <Route path="/settings/appearance" element={<PresentationPage />} />
             <Route path="*" element={<Navigate to="/start" replace />} />

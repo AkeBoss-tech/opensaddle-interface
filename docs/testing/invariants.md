@@ -960,3 +960,9 @@ Switching to a different server with the same subject must mount that server's
 selected view instead of inheriting the previous fallback. Covered at the React
 workspace boundary with the production scoped client and host in
 `src/perspectives/scoped/ScopedWorkspace.test.tsx`.
+# TEAM-WORKSPACE-1
+
+The default Team workspace identifies its Team, links settings to that exact
+Team, and lists only effective accepted associations intersected with the
+authorized Project directory. Failed reloads remove stale Team details. Covered
+by `src/features/teams/TeamWorkspaceOverview.test.tsx`.

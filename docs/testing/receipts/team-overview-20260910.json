@@ -1,0 +1,7 @@
+{
+  "change": "Named default Team overview, exact Team settings route and installed-view escape link",
+  "tests": "3 focused React boundary checks passed; final overview check passed after styling adjustment",
+  "browser": "CUA real-Core disposable fixture with application styles: Scoped transport Team, 2 active members, exact settings href, empty accessible Project list",
+  "screenshot": "out/screenshots/team-overview-20260910/overview.png",
+  "limits": "Browser fixture does not mount full app routing; settings destination not exercised end-to-end. Populated Project filtering verified through actual clients with HTTP adapter responses. Narrow-window, keyboard, and actual desktop Team acceptance remain pending."
+}
