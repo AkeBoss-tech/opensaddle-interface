@@ -455,3 +455,18 @@ responses are injected for UI tests; Core tests install actual signed packages.
 Browser visual acceptance remains pending. Frame propagation, user/Team plugin
 layers and migrations remain open: saving preferences does not yet change an
 embedded renderer. Reload rechecks access; the editor does not poll for revocation.
+
+
+### Receiving resolved preferences
+
+Installed Perspectives and Project widgets now receive settings in `init` and
+`kind: settings` messages, under the existing exact frame identity. Declare
+`settings` in the input schema's kind enum alongside the signed settings contract.
+The payload is `{schema_version: "opensaddle.resolved-ui-settings.v1",
+settings_version, values}`; settings updates carry a strictly increasing
+`settings_revision` per generation. Reject stale revisions and wrong identity.
+Only effective values are delivered. Packages cannot write preferences through
+the frame. Host polling/navigation/data updates recheck exact-package access and
+settings; failures remove the frame. The starter implements task visibility and
+card limits. Sixteen mounted/client checks and the build pass. Visual acceptance
+and combined live-server/browser proof remain pending.

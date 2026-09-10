@@ -141,3 +141,35 @@ test('incompatible UI contract prevents discovery and renderer byte loading',asy
  assert.equal(installedProjectViews([{...supported,descriptor:{ui_contract:{...supported.descriptor.ui_contract,required_capabilities:['future.feature.v1']}}}]).length,0)
  assert.equal(installedProjectViews([{...supported,descriptor:{ui_contract:{...supported.descriptor.ui_contract,scope:'user'}}}]).length,0)
 })
+
+test('resolved plugin settings initialize, update without reload and revoke with account access',async t=>{
+ const {RendererSettingsClient}=await import('../../services/rendererSettings')
+ const contract={schema_version:'opensaddle.ui-settings.v1',purpose:'presentation',settings_version:1,scopes:['project','user_project'],values_schema:{type:'object',additionalProperties:false,maxProperties:1,properties:{card_limit:{type:'number',minimum:1,maximum:100}}},defaults:{card_limit:20},labels:{card_limit:'Maximum cards'}}
+ const fragment='<p>Settings aware</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',descriptor:{settings_contract:contract},input_schema:{$id:PROJECT_VIEW_CONTRACT,properties:{kind:{enum:['init','projection','settings']}}},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
+ let limit=35,allowed=true,contentReads=0
+ t.mock.method(globalThis,'fetch',async(input:unknown)=>{assert.match(String(input),/projects\/P\/application-renderers/);return allowed?Response.json({schema_version:'opensaddle.renderer-settings.v1',project_id:'P',application_id:renderer.application_id,instance_id:renderer.instance_id,package_ref:renderer.package_ref,settings_version:1,contract,layers:[{scope:'project',revision:0,can_write:false,values:{}},{scope:'user_project',revision:1,can_write:true,values:{card_limit:limit}}],effective:{values:{card_limit:limit},provenance:{card_limit:'user_project'}}}):Response.json({}, {status:403})})
+ const settingsClient=new RendererSettingsClient('http://core',()=> 'member')
+ const listeners=new Set<(event:any)=>void>(),messages:any[]=[]
+ Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ const source={postMessage:(message:any)=>messages.push(message)},node={contentWindow:source,dataset:{}}
+ const client={applicationRenderers:async()=>[renderer],applicationRendererContent:async()=>{contentReads++;return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})}} as unknown as MalleableShellClient
+ const render=(tasks:any[]=[]) => <InstalledProjectView client={client} settingsClient={settingsClient} renderer={renderer} model={{projectId:'P',tasks}} connectionKey="C" onOpenTask={()=>{}} onNewTask={()=>{}}/>
+ let view!:ReactTestRenderer;t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(render(),{createNodeMock:()=>node})})
+ for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ assert.deepEqual(messages[0].settings,{schema_version:'opensaddle.resolved-ui-settings.v1',settings_version:1,values:{card_limit:35}},'init must contain current resolved plugin preferences')
+ const init=messages[0]
+ await act(async()=>{for(const listener of listeners)listener({source,data:{...init,kind:'ready'}})})
+ limit=10
+ await act(async()=>view.update(render()))
+ const settings=messages.filter(message=>message.kind==='settings').at(-1)
+ assert.equal(settings.settings.values.card_limit,10)
+ assert.equal(settings.nonce,init.nonce);assert.ok(settings.settings_revision>0)
+ assert.deepEqual(Object.keys(settings.settings).sort(),['schema_version','settings_version','values'])
+ assert.equal(contentReads,1,'changing settings must preserve the frame')
+ allowed=false
+ await act(async()=>view.update(render()))
+ assert.equal(view.root.findAllByType('iframe').length,0,'settings revocation removes protected frame')
+ assert.equal(messages.filter(message=>message.kind==='settings').at(-1),settings)
+})

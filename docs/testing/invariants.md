@@ -258,3 +258,14 @@ package substitutions and inconsistent effective values are rejected.
 `src/features/settings/RendererSettingsEditor.test.tsx` exercises mounted catalog
 forms through the real HTTP client with transport responses injected. This is a
 new feature; no missing-module baseline is represented as regression evidence.
+
+
+## RENDERER-SETTINGS-DELIVERY
+
+Installed Project views receive current exact-package resolved preferences on
+initialization and sequenced settings messages. Shared/private storage metadata
+and credentials never enter that payload. Authorization loss removes the frame;
+updates preserve it. Generated board/dialogue plugins apply card limits and
+finished-task visibility, ignoring stale or incorrectly framed messages.
+See `receipts/renderer-settings-delivery-20260910.json`; generated JavaScript runs
+against a minimal DOM adapter, not a browser rendering acceptance test.
