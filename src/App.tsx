@@ -1,3 +1,4 @@
+import { ProjectPerspectivePage } from './features/perspectives/ProjectPerspectivePage'
 import { PresentationPage } from './features/settings/PresentationPages'
 import { PresentationAppearance } from './features/settings/PresentationAppearance'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -324,7 +325,7 @@ function Shell() {
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         <div ref={workspaceRef} className="workspace-split">
         <div className="page-wrap">
-          <SurfaceErrorBoundary key={loc.pathname} onRetry={() => nav(0)}>
+          <SurfaceErrorBoundary key={`${loc.pathname}:${connectedLocal}`} onRetry={() => nav(0)}>
           {connectedLocal ? <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/home" element={services?.commandCenter ? <CommandCenterPage /> : <ConnectedWorkspaceHome onAddProject={() => setProjectModal(true)} />} />
@@ -339,7 +340,8 @@ function Shell() {
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/local" element={<Navigate to="/start" replace />} />
-            <Route path="/project/:projectId" element={<ConnectedLocalProjectPage />} />
+            <Route path="/project/:projectId" element={<ProjectPerspectivePage />} />
+            <Route path="/project/:projectId/overview" element={<ConnectedLocalProjectPage />} />
             <Route path="/project/:projectId/knowledge" element={<ConnectedProjectKnowledgePage />} />
             <Route path="/project/:projectId/plugins" element={<ConnectedProjectPluginsPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
