@@ -625,3 +625,14 @@ reads are rejected. `scripts/prove-personal-runtime-launch-live.ts` checks these
 boundaries with isolated temporary state and stops its process group afterward.
 Receipt: `receipts/personal-runtime-launch-live-20260910.json`. This is launch and
 readiness evidence, not task execution or a visual desktop walkthrough.
+
+## DESKTOP-PERSONAL-TASK-1
+
+The optional `--task` mode of `scripts/prove-personal-runtime-launch-live.ts`
+creates a disposable Git repository, commissions the real personal Codex worker,
+submits an explicitly bounded single-file task through `RemoteJourneyClient`,
+and reads its artifact through `CodingResultReviewClient`. Execution and exact
+verification must complete, the patch must contain the expected change, and the
+result remains unapproved. Receipt: `receipts/personal-runtime-task-live-20260910.json`.
+This checks the real protocol/client journey, not visual interaction, streaming
+presentation, native session resumption, or a human approval decision.

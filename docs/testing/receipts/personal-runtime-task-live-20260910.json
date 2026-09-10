@@ -1,0 +1,92 @@
+{
+  "schema": "opensaddle.desktop-launch-proof.v1",
+  "runtimeState": "/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/os-launch-qPXxjM",
+  "ipcDir": "/private/tmp/os-ipc-2kRmhF",
+  "launchMilliseconds": 733,
+  "projectId": "desktop-launch-check",
+  "authenticatedDashboard": true,
+  "unauthenticatedStatus": 401,
+  "adoption": true,
+  "status": {
+    "installationId": "5feb57ee-8fdc-4b58-84f1-18da95827fe4",
+    "ownerSubject": "5feb57ee-8fdc-4b58-84f1-18da95827fe4",
+    "project": {
+      "projectId": "desktop-launch-check",
+      "sourceId": "src_544bc0112cd5462b8e2faaeeb78dcf51",
+      "sourceRevision": "977aa7e06dcb179053d7f56f204efefce1f54072",
+      "sourceDigest": "c9078103c34d665c862642f10e5f42c27f98eb52a51f763ff7ca1be7fc8f6da2"
+    },
+    "lifecycle": "running",
+    "unresolvedAssignments": [],
+    "workers": [
+      {
+        "workerId": "personal-codex-a727d3661018",
+        "adapterId": "codex-app-server",
+        "state": "ready",
+        "readiness": {
+          "ready": true,
+          "observedAt": "2026-09-10T12:30:10.969890Z",
+          "expiresAt": "2026-09-10T12:32:10.969890Z"
+        }
+      }
+    ],
+    "knowledge": {
+      "available": false,
+      "reason": "knowledge_setup_required"
+    },
+    "stateRevision": 0,
+    "updatedAt": "2026-09-10T12:30:11.671432Z"
+  },
+  "taskSubmitted": true,
+  "runId": "run_907e65c1ee4b4965a64a45a8f6c833d6",
+  "runStatus": "completed",
+  "result": {
+    "baseline": {
+      "workspaceDigest": "8e22548b976ef5bb65a23cb713a7996de33884bffe3564f1b6689b6ad6a87db9",
+      "indexDigest": "f88974a2bff8c72879f84aa10bfb45b1536cf57bbd35d59a3dbd821fccd28dfa",
+      "files": [
+        {
+          "path": "message.txt",
+          "digest": "9160d4be34c8695bd172a76c7c7966587ea5a4d991ad22c87b2b91af54aa9ebb"
+        }
+      ]
+    },
+    "verificationBeforeDigest": "f4d6f13938cc13bc07e3b7584a434ce1b623a8bf99b75e66e4832f1bbb4a870f",
+    "verificationAfterDigest": "f4d6f13938cc13bc07e3b7584a434ce1b623a8bf99b75e66e4832f1bbb4a870f",
+    "observationScope": "tracked and unignored files; ignored caches and external effects are not attested",
+    "projectId": "desktop-launch-check",
+    "runId": "run_907e65c1ee4b4965a64a45a8f6c833d6",
+    "artifactId": "art_7dbeaeb236d942ed870f37bb62a669c2",
+    "artifactDigest": "ce9123cf637b4cd4179d051c53fb6c43f13f4d365fcee316726a218f3ce5db34",
+    "allowedPaths": [
+      "message.txt"
+    ],
+    "sourceRevision": "977aa7e06dcb179053d7f56f204efefce1f54072",
+    "taskSpecDigest": "c6effa032eb0c0537efcbfe1d873fe96c3c6032a19c592340123345d93277b53",
+    "executionStatus": "completed",
+    "checksStatus": "passed",
+    "patch": "--- a/message.txt\n+++ b/message.txt\n@@ -1 +1 @@\n-before\n+after\n",
+    "patchDigest": "5dcb19a8c23761790cc019ac1c46630db71e606417009175c6e09ccc1e458d6f",
+    "checks": [
+      {
+        "argv": [
+          "/Users/akashdubey/Documents/CodingProjects/opensaddle/.venv/bin/python",
+          "-c",
+          "from pathlib import Path; assert Path('message.txt').read_text() == 'after\\n'"
+        ],
+        "exit_code": 0,
+        "output_truncated": [],
+        "stderr": "",
+        "stdout": "",
+        "timed_out": false
+      }
+    ],
+    "limitations": [],
+    "review": null
+  },
+  "resultInspected": true,
+  "cleanup": {
+    "exitCode": null,
+    "signal": "SIGTERM"
+  }
+}

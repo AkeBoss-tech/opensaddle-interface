@@ -1,15 +1,26 @@
 /** DESKTOP-PERSONAL-LAUNCH-1: real Core and native worker, isolated runtime state. */
 import assert from 'node:assert/strict'
-import {mkdtempSync,writeFileSync,realpathSync} from 'node:fs'
+import {mkdtempSync,writeFileSync,realpathSync,mkdirSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {createServer} from 'node:net'
 import {once} from 'node:events'
+import {execFileSync} from 'node:child_process'
+import {RemoteJourneyClient} from '../src/services/remoteJourney'
+import {CodingResultReviewClient} from '../src/services/codingResultReview'
 import {commissionPersonalRuntimeProcess,adoptPersonalRuntime,preparePersonalRuntimeStateDir} from '../electron/personalRuntimeCommissioning'
 import {PersonalRuntimeClient} from '../src/services/personalRuntime'
-const [coreRoot,workspace,executable,receiptPath]=process.argv.slice(2)
-assert.ok(coreRoot&&workspace&&executable&&receiptPath,'core, workspace, executable, receipt required')
+const [coreRoot,requestedWorkspace,executable,receiptPath,taskMode]=process.argv.slice(2)
+assert.ok(coreRoot&&requestedWorkspace&&executable&&receiptPath,'core, workspace, executable, receipt required')
 const root=realpathSync(mkdtempSync(path.join(tmpdir(),'os-launch-')))
+let workspace=requestedWorkspace
+if(taskMode==='--task'){
+ workspace=path.join(root,'workspace');mkdirSync(workspace)
+ execFileSync('git',['init','-q',workspace])
+ writeFileSync(path.join(workspace,'message.txt'),'before\n')
+ execFileSync('git',['-C',workspace,'add','message.txt'])
+ execFileSync('git',['-C',workspace,'-c','user.name=OpenSaddle integration','-c','user.email=integration@example.invalid','commit','-qm','Initial fixture'])
+}
 const state=preparePersonalRuntimeStateDir(path.join(root,'state'))
 // macOS UNIX socket paths are limited; use a short, private temporary directory.
 const ipc=realpathSync(mkdtempSync('/tmp/os-ipc-'))
@@ -37,6 +48,25 @@ try {
  }
  receipt={...receipt,authenticatedDashboard:true,unauthenticatedStatus:denied.status,adoption:true,status,taskSubmitted:false}
  assert.ok(status.workers.some(w=>w.readiness.ready),'native worker must become ready')
+ if(taskMode==='--task'){
+  const journey=new RemoteJourneyClient(baseUrl,()=>h.ownerSubject,h.bearerToken)
+  const submitted=await journey.delegate(projectId,status.project.sourceId,'Change message.txt to contain exactly after followed by a newline. Do not modify other files. Do not commit.','codex-app-server',[],{schema_version:'opensaddle.coding-task.v1',allowed_paths:['message.txt'],verification_commands:[[path.join(coreRoot,'.venv/bin/python'),'-c',"from pathlib import Path; assert Path('message.txt').read_text() == 'after\\n'"]]})
+  const runId=String(submitted.run_id);receipt.taskSubmitted=true;receipt.runId=runId
+  console.log('Task submitted; waiting for recorded result.')
+  let run=await journey.run(runId)
+  for(let attempt=0;attempt<180&&!['completed','failed','cancelled','interrupted','unknown'].includes(String(run.status));attempt++){
+   await new Promise(resolve=>setTimeout(resolve,1000));run=await journey.run(runId)
+  }
+  receipt.runStatus=run.status
+  const reviewClient=new CodingResultReviewClient(baseUrl,()=>h.ownerSubject,h.bearerToken)
+  const result=await reviewClient.read(projectId,runId)
+  receipt.result=result
+  assert.equal(result.executionStatus,'completed');assert.equal(result.checksStatus,'passed')
+  assert.match(result.patch,/\+after/);assert.deepEqual(result.allowedPaths,['message.txt'])
+  assert.equal(result.review,null)
+  receipt.resultInspected=true
+ }
+
 } finally {
  const exited=once(launched.process,'exit')
  process.kill(-launched.process.pid!,'SIGTERM')
