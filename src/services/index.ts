@@ -1,3 +1,4 @@
+import { PersonalDevicesClient } from './personalDevices'
 import { personalRuntimeSubject } from './personalRuntimeTransport'
 import { CodingResultReviewClient } from './codingResultReview'
 import { RegisteredProjectKnowledgeClient } from './registeredProjectKnowledge'
@@ -55,6 +56,7 @@ export interface ServiceBundle {
   journey?: JourneyAuthority
   codingResults?: CodingResultReviewClient
   projectKnowledge?: RegisteredProjectKnowledgeClient
+  personalDevices?: PersonalDevicesClient
   personalRuntime?: PersonalRuntimeClient
   controlPlane: {
     connected: boolean
@@ -147,6 +149,7 @@ export function initServices(opts: {
       let resourceCapacityAvailable = false
       let nativeAdaptersAvailable = false
       let authorizedContextAvailable = false
+      let personalDevicesAvailable = false
       let personalRuntimeAvailable = false
       let projectKnowledgeAvailable = false
       let codingTasksAvailable = false
@@ -251,6 +254,7 @@ export function initServices(opts: {
           if (capabilityResponse.ok) {
             v2CapabilitiesAvailable = true
             const capabilities = await capabilityResponse.json() as {
+              device_inventory_v1?: { available?: boolean; scope?: string }
               capability_mode?: string
               command_center?: { available?: boolean; path?: string; schema_version?: string }
               managed_krail?: boolean
@@ -275,6 +279,7 @@ export function initServices(opts: {
             nativeSessionResume=continuation?.native_session_resume===true
             const context = capabilities.authorized_context_packets
             authorizedContextAvailable = context?.available === true && context.schema_version === 'krail.authorized-context-packet.v2' && context.selection_field === 'authorized_context_source_ids' && context.inspector_path_template === '/api/v2/runs/{run_id}/authorized-context-packet' && context.worker_path_template === '/api/v2/workers/{worker_id}/runs/{run_id}/authorized-context-packet' && context.reauthorization_schema_version === 'krail.authorized-context-reauthorization.v1' && context.unavailable_reason === 'context_packet_unavailable' && context.sources_path_template === '/api/v2/projects/{project_id}/authorized-context-sources'
+            personalDevicesAvailable = capabilities.device_inventory_v1?.available === true && capabilities.device_inventory_v1.scope === 'authenticated_owner'
             const personal=capabilities.personal_runtime
             const coding = capabilities.coding_tasks
             codingTasksAvailable = coding?.available === true && coding.selection_field === 'coding_task' && coding.schema_version === 'opensaddle.coding-task.v1' && JSON.stringify(coding.supported_adapter_ids) === JSON.stringify(['codex-app-server']) && coding.result_schema_version === 'opensaddle.coding-result.v1' && coding.review_path_template === '/api/v2/runs/{run_id}/coding-result/review'
@@ -384,6 +389,7 @@ export function initServices(opts: {
         malleableShell,
         journey,
         personalRuntime,
+        personalDevices: backendAvailable && personalDevicesAvailable ? new PersonalDevicesClient(baseUrl, getUserId, token) : undefined,
         codingResults: backendAvailable && codingTasksAvailable ? new CodingResultReviewClient(baseUrl, getUserId, token) : undefined,
         projectKnowledge: backendAvailable && projectKnowledgeAvailable ? new RegisteredProjectKnowledgeClient(baseUrl, getUserId, token) : undefined,
         controlPlane: {

@@ -42,6 +42,7 @@ import { ConnectedLocalProjectPage } from './features/projects/ConnectedLocalPro
 import { ConnectedLocalSettingsPage } from './features/projects/ConnectedLocalSettingsPage'
 import { ConnectedLocalProjectDialog } from './features/onboarding/ConnectedLocalProjectDialog'
 import { ConnectedJourneyPage } from './features/onboarding/ConnectedJourneyPage'
+import { PersonalDevicesPage } from './features/devices/PersonalDevicesPage'
 import { ConnectedProjectKnowledgePage, ConnectedProjectPluginsPage } from './features/projects/ConnectedProjectViews'
 import { ConnectedWorkspaceSidebar, ConnectedWorkspaceHome } from './features/shell/ConnectedWorkspace'
 import { usesConnectedProductSurface } from './services'
@@ -183,6 +184,7 @@ function Shell() {
   const crumbs = useMemo(() => {
     const parts = loc.pathname.split('/').filter(Boolean)
     const routeLabels: Record<string, string> = {
+      devices: 'Devices',
       work: 'Work',
       home: connectedLocal && !services?.commandCenter ? 'Home' : 'Command Center',
       review: 'Review workspace',
@@ -339,6 +341,7 @@ function Shell() {
             <Route path="/project/:projectId/plugins" element={<ConnectedProjectPluginsPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
+            <Route path="/devices" element={<PersonalDevicesPage />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
             <Route path="*" element={<Navigate to="/start" replace />} />
           </Routes> : <Routes>

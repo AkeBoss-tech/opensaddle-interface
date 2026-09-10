@@ -1,4 +1,5 @@
-import { Folder, Home, Plus, Settings, ListTodo, Activity, Users, ArrowUpRight } from 'lucide-react'
+import { useEffect } from 'react'
+import { Folder, Home, Plus, Settings, ListTodo, Activity, Users, ArrowUpRight, Laptop } from 'lucide-react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
@@ -7,6 +8,7 @@ import './connected-workspace.css'
 export function ConnectedWorkspaceSidebar({ onAddProject }: { onAddProject: () => void }) {
   const { data, services } = useStore()
   const location = useLocation()
+  useEffect(() => { document.getElementById('sidebar')?.classList.remove('mobile-open') }, [location.pathname])
   const selectedId = location.pathname.split('/')[1] === 'project' ? decodeURIComponent(location.pathname.split('/')[2] ?? '') : undefined
   const selected = data.projects.find(project => project.id === selectedId)
   return <aside className="sidebar connected-sidebar" id="sidebar">
@@ -26,6 +28,7 @@ export function ConnectedWorkspaceSidebar({ onAddProject }: { onAddProject: () =
     <nav aria-label="Workspace tools" className="connected-navigation connected-bottom">
       <NavLink to="/operations"><Activity size={17}/>Operations</NavLink>
       <NavLink to="/collaboration"><Users size={17}/>People &amp; machines</NavLink>
+      <NavLink to="/devices"><Laptop size={17}/>Devices</NavLink>
       <NavLink to="/settings"><Settings size={17}/>Settings</NavLink>
     </nav>
   </aside>
