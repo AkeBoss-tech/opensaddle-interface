@@ -1,0 +1,21 @@
+{
+  "invariant": "SCOPED-VIEW-STATE-1",
+  "base": "c6f1dfad743e3941ba0bb976f32b32a82ab44e5b",
+  "command": "node --import tsx --test --test-name-pattern=\"declared scoped upgrades\" src/perspectives/scoped/state.test.ts",
+  "before": "AssertionError: signed migration must restore scoped presentation state; actual undefined",
+  "after": "passed",
+  "checks": [
+    "user and Team declared migration",
+    "exact rollback preserves old state",
+    "updated target state preferred",
+    "account and package isolation",
+    "missing compatibility denied",
+    "missing and ambiguous migration denied"
+  ],
+  "boundary": "storage API with candidate metadata fixtures and shared production migration engine",
+  "limits": [
+    "not signed-package verification",
+    "not live browser upgrade"
+  ],
+  "adjacent": "7 scoped-state/executable checks and TypeScript check passed"
+}

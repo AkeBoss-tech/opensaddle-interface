@@ -21,3 +21,23 @@ test('scoped state persists only exact server account scope and package with sig
  assert.equal(readScopedViewState('server/account',scope,item,'main'),undefined)
  assert.equal(writeScopedViewState('server/account',scope,item,'main',{filter:'mine'}),false)
 })
+
+test('declared scoped upgrades migrate state while exact rollback and isolation survive',t=>{
+ const values=new Map<string,string>(), prior=globalThis.localStorage
+ Object.assign(globalThis,{localStorage:{getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>values.set(key,value)}})
+ t.after(()=>Object.assign(globalThis,{localStorage:prior}))
+ const old={package_id:'view',package_version:'1.0.0',manifest_digest:'a'.repeat(64),application_id:'main',state_schema_version:1,state_max_bytes:8192,state_schema:{type:'object',additionalProperties:false,maxProperties:1,properties:{filter:{type:'string',maxLength:20}}},state_migrations:[],state_compatibility:{accepts_from_versions:[1]}} as ApplicationRendererCandidate
+ const next={...old,package_version:'2.0.0',manifest_digest:'b'.repeat(64),state_schema_version:2,state_schema:{type:'object',additionalProperties:false,maxProperties:1,properties:{search:{type:'string',maxLength:20}}},state_migrations:[{from_version:1,to_version:2,operations:[{op:'rename',from:'filter',to:'search'}]}],state_compatibility:{accepts_from_versions:[1,2]}} as ApplicationRendererCandidate
+ for(const scope of [{kind:'user',id:'owner'},{kind:'team',id:'team'}] as const){
+  writeScopedViewState('server/owner',scope,old,'main',{filter:scope.kind})
+  assert.deepEqual(readScopedViewState('server/owner',scope,next,'main'),{search:scope.kind},'signed migration must restore scoped presentation state')
+  assert.equal(readScopedViewState('server/other',scope,next,'main'),undefined)
+  assert.equal(readScopedViewState('server/owner',scope,{...next,package_id:'other'},'main'),undefined)
+  assert.equal(readScopedViewState('server/owner',scope,{...next,state_compatibility:null},'main'),undefined)
+  assert.equal(readScopedViewState('server/owner',scope,{...next,state_migrations:[]},'main'),undefined)
+  assert.equal(readScopedViewState('server/owner',scope,{...next,state_migrations:[...next.state_migrations,...next.state_migrations]},'main'),undefined)
+  writeScopedViewState('server/owner',scope,next,'main',{search:'updated'})
+  assert.deepEqual(readScopedViewState('server/owner',scope,old,'main'),{filter:scope.kind})
+  assert.deepEqual(readScopedViewState('server/owner',scope,next,'main'),{search:'updated'})
+ }
+})

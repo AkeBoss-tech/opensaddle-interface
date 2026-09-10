@@ -752,3 +752,16 @@ Evidence: storage-boundary `src/perspectives/scoped/state.test.ts`; expanded
 real-Core component journey `scripts/prove-scoped-host-live.tsx`; real CUA browser
 reload showing the counter retained in `out/screenshots/scoped-state-20260910`.
 This is a new persistence feature, so no pre-fix regression failure is claimed.
+
+### SCOPED-VIEW-STATE-1 — declared upgrades and rollback
+
+When an exact-package record is absent, the host may restore the prior state
+for the same server/account/scope/package/application/instance only if the new
+candidate declares acceptance of that schema version. Different versions require
+one matching declarative migration through the shared bounded migration engine.
+Equal versions require identical schema declarations. Exact package records take
+precedence, preserving rollback state. Prior metadata is bounded and validated.
+The storage-boundary regression covers both user/Team scopes, declaration denial,
+ambiguous migration denial, account/package isolation and exact rollback. This
+uses candidate metadata fixtures, not a signature-verification or live-upgrade
+proof; signed-package UI upgrade remains separate acceptance work.
