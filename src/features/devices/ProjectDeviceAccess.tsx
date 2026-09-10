@@ -1,3 +1,4 @@
+import { ResourceLimitSummary } from './ResourceLimitSummary'
 import { ConsentDeadline, consentExpired, useConsentClock } from './ConsentDeadline'
 import React, { useEffect, useRef, useState } from 'react'
 import { PersonalDevicesClient, type DeviceAssignment } from '../../services/personalDevices'
@@ -37,5 +38,5 @@ export function ProjectDeviceAccess({authority,projectId}:{authority:PersonalDev
   </>}</React.Fragment>
 }
 function PolicySummary({item,sources}:{item:DeviceAssignment;sources:{id:string;label:string}[]}) {
- return <><ConsentDeadline item={item}/><dl><dt>Who may use it</dt><dd>{item.audience==='owner_only'?`Only the owner (${item.owner_subject})`:item.audience==='project_members'?'All current project members':item.audience==='team_members'?`Current members of team ${item.team_id} who also belong to this project`:item.subjects.join(', ')}</dd><dt>Allowed sources</dt><dd>{item.source_ids.map(id=>sources.find(source=>source.id===id)?.label??id).join(', ')}</dd><dt>Allowed agents</dt><dd>{item.adapter_ids.map(id=>id==='codex-app-server'?'Codex':id==='claude-code-stream-json'?'Claude Code':id).join(', ')}</dd></dl></>
+ return <><ResourceLimitSummary item={item}/><ConsentDeadline item={item}/><dl><dt>Who may use it</dt><dd>{item.audience==='owner_only'?`Only the owner (${item.owner_subject})`:item.audience==='project_members'?'All current project members':item.audience==='team_members'?`Current members of team ${item.team_id} who also belong to this project`:item.subjects.join(', ')}</dd><dt>Allowed sources</dt><dd>{item.source_ids.map(id=>sources.find(source=>source.id===id)?.label??id).join(', ')}</dd><dt>Allowed agents</dt><dd>{item.adapter_ids.map(id=>id==='codex-app-server'?'Codex':id==='claude-code-stream-json'?'Claude Code':id).join(', ')}</dd></dl></>
 }

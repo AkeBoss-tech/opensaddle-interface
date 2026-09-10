@@ -591,3 +591,11 @@ consent cannot retain active wording or submit acceptance from a stale handler.
 Revocation and decline remain available. `ConsentExpiry.test.tsx` exercises both
 mounted production views with the real client and controlled Date/timers.
 Baseline receipt: `receipts/device-consent-idle-expiry-20260910.json`.
+
+## DEVICE-OWNER-RESOURCE-UI
+
+Owners explicitly keep, set or remove assignment resource limits. Saved limits
+appear exactly in Project review; invalid integers disable proposal and omitted
+server confirmation cannot be treated as a successful limit change. Mounted
+owner/manager journeys use the real client with HTTP fixtures. Baseline receipt:
+`receipts/device-owner-resource-ui-20260910.json`.
