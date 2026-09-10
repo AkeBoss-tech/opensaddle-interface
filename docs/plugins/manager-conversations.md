@@ -75,3 +75,25 @@ pass; the renderer build passes. Both backend and mounted UI regression assertio
 fail on their previous commits and pass with these changes. The API completion
 fixture is seeded; real native manager dispatch-to-reply and browser acceptance
 remain pending.
+
+
+## Native manager round trip — 2026-09-10
+
+The actual Interface `ManagerConversationsClient` created a private conversation,
+saved a message and explicitly dispatched it to the disposable Mac mini worker.
+The paired user-owned device had owner-authorized selected-member consent accepted
+by the Project. The real Codex adapter ran `uname -s` and
+`python3 -c "print(43 * 19)"`; its tool transcript records `Darwin` and `817`.
+
+A recreated Interface client reopened the saved conversation, observed its bound
+Run completed, and fetched the exact published result through the manager result
+route. Client-verified artifact and native dispatch digests agree. An unrelated
+owner was denied. No seeded completion or synthetic provider reply was used.
+Core evidence is in `docs/testing/receipts/manager-native-result-20260910.json`.
+
+This used a disposable loopback Core, reverse SSH and fixture requester identity.
+It proves the native manager dispatch-to-result path, not production identity,
+network deployment, browser rendering or automatic cross-Project manager reasoning.
+Device assignment and enrollment were revoked afterward; the worker, fixture Core
+and tunnel stopped. The remote workspace stayed clean. Browser verification was
+retried but the Mac remained locked.
