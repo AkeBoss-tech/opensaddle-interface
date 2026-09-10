@@ -355,3 +355,46 @@ Two mounted editor checks, two Core scope/inheritance checks, the actual baselin
 regression assertion and production build pass. Receipt: Interface
 `docs/testing/receipts/default-perspective-settings-20260910.json`. Browser and
 keyboard acceptance remain pending.
+
+
+## Signed plugin settings declaration
+
+Application renderer packages may include `descriptor.settings_contract`. It is
+separate from temporary `state_schema` view state and is covered by the existing
+manifest signature, preserving canonicalization for packages without it.
+
+```json
+{
+  "schema_version": "opensaddle.ui-settings.v1",
+  "purpose": "presentation",
+  "settings_version": 1,
+  "scopes": ["project", "user_project"],
+  "values_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "maxProperties": 1,
+    "properties": {"show_finished": {"type": "boolean"}}
+  },
+  "defaults": {"show_finished": true},
+  "labels": {"show_finished": "Show finished tasks"}
+}
+```
+
+Fields use the existing bounded closed scalar schema vocabulary: booleans, bounded
+strings, or finite numbers with minimum and maximum; at most 32 properties. Every
+property needs a valid default and a plain-text label of 1–80 characters. Defaults
+are bounded to 8 KiB UTF-8. Unknown contract fields, duplicate scopes, Boolean
+version numbers, control characters in labels and non-presentation purposes fail
+package validation. A changed default or scope requires a new valid signature.
+
+The declaration may name user, team, project and user_project scopes, but this is
+compatibility metadata, not authorization or proof that a host implements a scope.
+No settings persistence, generated form or settings propagation is added by this
+contract slice. Upcoming host storage must derive ownership and management rights,
+apply expected-revision writes, preserve exact package/schema identity and resolve
+defaults separately from executable state. Plugins must never obtain policy or
+credential authority from a settings value. No host capability is advertised yet.
+
+Twelve package/catalog checks and a before/after invalid-default regression pass;
+receipt: Core `docs/testing/receipts/renderer-settings-contract-20260910.json`.
+The actual installer accepts valid signed declarations and rejects tampering.
