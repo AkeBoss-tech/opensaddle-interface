@@ -843,3 +843,12 @@ against a disposable signed user/Team fixture. Both UI actions produce disabled
 revision 2 after enabled revision 1. See the corresponding receipt. This is a new
 control, not a claimed repair of a prior behavioral regression. The test does not
 mount a real browser frame or establish desktop visual acceptance.
+
+## SCOPED-SDK-1 — scoped browser helper wire contract
+
+`packages/scoped-view-sdk/index.test.js` exercises the public helper with an
+external parent-message boundary: source/envelope fencing, request correlation,
+capability denial, bounded concurrency, liveness, timeout and disposal. The helper
+must never copy initialization data or credentials into its outgoing envelope.
+This new helper does not replace host-side authorization. Bundled signed-browser
+execution remains separate from this protocol test.
