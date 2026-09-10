@@ -1,0 +1,38 @@
+{
+  "boundary": "real Core and production client/transport/main proxy; IPC adapter in process",
+  "before": {
+    "schema_version": "opensaddle.dashboard-layout.v1",
+    "owner_subject": "owner",
+    "revision": 0,
+    "widgets": [
+      "objective",
+      "attention",
+      "runs",
+      "projects",
+      "outcomes"
+    ]
+  },
+  "saved": {
+    "schema_version": "opensaddle.dashboard-layout.v1",
+    "owner_subject": "owner",
+    "revision": 1,
+    "widgets": [
+      "projects",
+      "outcomes"
+    ]
+  },
+  "restored": {
+    "schema_version": "opensaddle.dashboard-layout.v1",
+    "owner_subject": "owner",
+    "revision": 2,
+    "widgets": [
+      "objective",
+      "attention",
+      "runs",
+      "projects",
+      "outcomes"
+    ]
+  },
+  "stale_revision_rejected": true,
+  "personal_state_changed": false
+}

@@ -22,6 +22,8 @@ function scopedContent(path:string):boolean {
  })
 }
 const allowed:Array<[PersonalRuntimeProxyRequest['method'],RegExp]>=[
+ ['GET',/^\/api\/v2\/settings\/dashboard$/],
+ ['PUT',/^\/api\/v2\/settings\/dashboard$/],
  ['GET',/^\/api\/v2\/personal-runtime\/catalog\/packages$/],
  ['POST',/^\/api\/v2\/personal-runtime\/catalog\/(?:packages|publishers)$/],
  ['GET',/^\/api\/v2\/personal-runtime\/catalog\/publishers\/[A-Za-z0-9._~-]+\/keys\/[A-Za-z0-9._~-]+$/],

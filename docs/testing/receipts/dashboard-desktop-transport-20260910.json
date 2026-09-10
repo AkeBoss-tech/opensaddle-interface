@@ -1,0 +1,70 @@
+{
+  "invariant": "DESKTOP-DASHBOARD-1",
+  "before": {
+    "assertion": "advertised dashboard read must cross desktop IPC",
+    "result": "failed: Personal runtime request path is unavailable"
+  },
+  "after": {
+    "focused_tests": 13,
+    "electron_build": "passed",
+    "live_api_receipt": "dashboard-desktop-live-20260910.json"
+  },
+  "controlled_electron_runs": [
+    {
+      "quit_duration_ms": 117,
+      "denied_routes": []
+    },
+    {
+      "quit_duration_ms": 115,
+      "denied_routes": [
+        {
+          "denied_method": "GET",
+          "denied_path": "/api/permissions"
+        },
+        {
+          "denied_method": "GET",
+          "denied_path": "/api/permissions"
+        },
+        {
+          "denied_method": "GET",
+          "denied_path": "/api/v2/settings/dashboard"
+        },
+        {
+          "denied_method": "GET",
+          "denied_path": "/api/harness-capabilities"
+        },
+        {
+          "denied_method": "POST",
+          "denied_path": "/api/harness-capabilities/refresh"
+        }
+      ]
+    },
+    {
+      "quit_duration_ms": 105,
+      "denied_routes": [
+        {
+          "denied_method": "GET",
+          "denied_path": "/api/permissions"
+        },
+        {
+          "denied_method": "GET",
+          "denied_path": "/api/permissions"
+        },
+        {
+          "denied_method": "GET",
+          "denied_path": "/api/harness-capabilities"
+        },
+        {
+          "denied_method": "POST",
+          "denied_path": "/api/harness-capabilities/refresh"
+        }
+      ]
+    }
+  ],
+  "interpretation": "Normal app.quit completed in each isolated Electron run. This does not reproduce a shutdown deadlock; prior forced cleanup remains an interaction/termination observation. The dashboard GET denial disappeared after the exact GET/PUT proxy fix.",
+  "remaining": [
+    "Legacy /api/permissions and harness-capabilities requests remain rejected; do not broadly whitelist them.",
+    "Actual dashboard save interaction was not repeated through CUA in this slice."
+  ],
+  "restoration": "Original desktop restarted with the rebuilt main process; independently owned personal runtime was not stopped."
+}

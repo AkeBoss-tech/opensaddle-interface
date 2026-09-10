@@ -934,3 +934,16 @@ imports the public package name and compiles valid user/Team flows while requiri
 errors for unsupported scope, private Team reads, credentials, task execution,
 unvalidated state and non-JSON proposals. Runtime wire tests remain separate.
 This is a new declaration contract, not a runtime bug-fix claim.
+
+## DESKTOP-DASHBOARD-1 — Dashboard customization through adopted desktop
+
+Advertised user dashboard settings must support GET and revision-bound PUT at
+exactly `/api/v2/settings/dashboard` through the renderer transport and adopted
+main-process proxy. Core still derives the owner from authentication. Neighboring
+methods, query overrides and reset paths remain denied.
+
+The public DashboardSettingsClient journey uses production transport and proxy,
+with only the external HTTP server replaced. It verifies read, save, reread,
+conflict handling and route rejection. Before the fix its read assertion fails
+with `Personal runtime request path is unavailable`, matching an actual Electron
+startup trace. Existing proxy path tests had omitted this advertised endpoint.
