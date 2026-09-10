@@ -4,4 +4,4 @@ import './command-center.css'
 
 const EMPTY_IDENTITY={}
 export { CommandCenterSurface } from './CommandCenterSurface'
-export function CommandCenterPage(){const{data,services}=useStore();const identity=services??EMPTY_IDENTITY;return <CommandCenterSurface client={services?.commandCenter} connected={Boolean(services?.controlPlane.connected)} identity={identity} projects={data.projects}/>}
+export function CommandCenterPage(){const{data,services}=useStore();const identity=services??EMPTY_IDENTITY;return <CommandCenterSurface key={data.currentUserId} client={services?.commandCenter} dashboardSettings={services?.dashboardSettings} dashboardIdentity={services?.dashboardSettings?.identity()} connected={Boolean(services?.controlPlane.connected)} identity={identity} projects={data.projects}/>}

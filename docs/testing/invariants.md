@@ -99,3 +99,15 @@ frame messages. Revocation removes the frame without delivering new data.
 Legacy init-only packages retain reload behavior. Mounted coverage is in
 InstalledProjectView.test.tsx; baseline 29210a1 fails the no-reload assertion,
 and the same test passes with the repair (receipts/perspective-live-20260910.json).
+
+## DASHBOARD-EDITOR-1
+
+Saved personal dashboard widget order determines rendered DOM order; hiding a
+widget removes its content without changing permissions. Draft edits apply only
+after a successful revision-checked save. Failed saves retain the draft. Account
+or client replacement hides old layout immediately and fences late saves. Missing
+widget IDs render unavailable placeholders, never executable code. Covered by the
+mounted CommandCenterSurface journey and DashboardSettingsClient adapter tests.
+Baseline 4a334a5 fails the saved-order assertion; the identical test passes with
+the editor. Receipt: receipts/dashboard-editor-20260910.json. Browser keyboard and
+visual checks remain pending while the Mac is locked.

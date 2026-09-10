@@ -55,3 +55,11 @@
 .artifact-evidence-view--compact .cc-panel { padding: var(--os-space-3); }
 @media (max-width: 800px) { .cc-grid, .cc-unavailable { grid-template-columns: 1fr; } .cc-header { display: grid; } .cc-freshness { justify-items: start; } }
 @media (max-width: 520px) { .cc-page { gap: var(--os-space-3); } .cc-priority, .cc-panel, .cc-unavailable { padding: var(--os-space-4); } .cc-unavailable li, .artifact-evidence-view--split .artifact-evidence-primary { grid-template-columns: 1fr; gap: var(--os-space-1); } }
+
+.dashboard-layout,.dashboard-widgets{display:grid;gap:20px}
+.dashboard-layout summary{cursor:pointer;font-weight:600}
+.dashboard-layout ol{display:grid;gap:12px;padding-left:24px}
+.dashboard-layout li label{display:inline-flex;align-items:center;gap:10px;margin-right:16px}
+.dashboard-layout button{margin:4px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;color:inherit;background:var(--bg-secondary);cursor:pointer}
+.dashboard-layout button:disabled{opacity:.5;cursor:default}
+.dashboard-layout button:focus-visible,.dashboard-layout input:focus-visible,.dashboard-layout summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}

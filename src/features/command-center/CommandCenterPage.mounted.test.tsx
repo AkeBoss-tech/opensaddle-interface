@@ -21,3 +21,50 @@ test('overlapping refreshes retain only the latest result or error',async()=>{fo
 test('StrictMode replay and unmount do not publish stale work or disable a reopened surface',async()=>{const stale=deferred<CommandCenterSnapshot>();const api=client(()=>stale.promise);let renderer!:ReturnType<typeof create>;await act(async()=>{renderer=create(<StrictMode>{view(api)}</StrictMode>);await Promise.resolve()});await act(async()=>{renderer.unmount()});stale.resolve(snapshot('Unmounted private'));await act(async()=>{await stale.promise});await act(async()=>{renderer=create(<StrictMode>{view(client(async()=>snapshot('Reopened')))}</StrictMode>);await Promise.resolve()});assert.match(markup(renderer),/Reopened/);assert.doesNotMatch(markup(renderer),/Unmounted private|Loading authoritative/)})
 
 test('render-time client replacement hides a ready old snapshot before effects run',async()=>{const a=client(async()=>snapshot('Visible A')),pending=deferred<CommandCenterSnapshot>(),b=client(()=>pending.promise),sameIdentity={connection:'same wrapper'};let renderer!:ReturnType<typeof create>;await act(async()=>{renderer=create(view(a,true,sameIdentity));await new Promise(resolve=>setTimeout(resolve,0))});assert.match(markup(renderer),/Visible A/);await act(async()=>{renderer.update(view(b,true,sameIdentity));await Promise.resolve()});assert.match(markup(renderer),/Loading authoritative Command Center/);assert.doesNotMatch(markup(renderer),/Visible A/);await act(async()=>{renderer.unmount()});pending.resolve(snapshot('Never mounted'));await pending.promise})
+
+// DASHBOARD-EDITOR-1: saved order controls DOM order; conflicting edits survive.
+test('saved dashboard layout orders visible widgets and preserves a conflicting draft',async t=>{
+ const api=client(async()=>snapshot('Project A'))
+ let stored={schema_version:'opensaddle.dashboard-layout.v1' as const,owner_subject:'one',revision:1,widgets:['outcomes','projects']},conflict=true
+ const settings={read:async()=>stored,replace:async(revision:number,widgets:string[])=>{assert.equal(revision,stored.revision);if(conflict)throw Error('Dashboard changed elsewhere. Your draft is preserved.');return stored={...stored,revision:revision+1,widgets}}}
+ let renderer!:ReturnType<typeof create>
+ t.after(async()=>{if(renderer)await act(async()=>renderer.unmount())})
+ await act(async()=>{renderer=create(<MemoryRouter><CommandCenterSurface client={api} dashboardSettings={settings} dashboardIdentity="one" connected identity={api} projects={[]}/></MemoryRouter>)})
+ const titles=()=>renderer.root.findAllByType('h2').map(node=>node.children.join(''))
+ assert.deepEqual(titles(),['Recent outcomes','Projects'],'saved layout must determine visible dashboard DOM order')
+ const button=(label:string)=>renderer.root.findAllByType('button').find(node=>node.props['aria-label']===label||node.children.join('')===label)!
+ await act(async()=>button('Move Projects up').props.onClick())
+ // Draft order does not change the saved dashboard until Save succeeds.
+ assert.deepEqual(titles(),['Recent outcomes','Projects'])
+ await act(async()=>button('Save dashboard').props.onClick())
+ assert.match(markup(renderer),/draft is preserved/)
+ assert.equal(button('Move Projects up').props.disabled,true,'first draft widget must remain first on conflict')
+ conflict=false
+ await act(async()=>button('Save dashboard').props.onClick())
+ assert.deepEqual(titles(),['Projects','Recent outcomes'])
+ assert.deepEqual(stored.widgets,['projects','outcomes'])
+ const checkbox=renderer.root.findAllByType('input').find(node=>node.parent?.children.some(child=>typeof child==='string'&&child==='Projects'))!
+ await act(async()=>checkbox.props.onChange({target:{checked:false}}))
+ await act(async()=>button('Save dashboard').props.onClick())
+ assert.deepEqual(titles(),['Recent outcomes'])
+})
+
+test('dashboard account replacement hides old layout and ignores late saves',async t=>{
+ const api=client(async()=>snapshot('Shared projection')),pending=deferred<{schema_version:'opensaddle.dashboard-layout.v1';owner_subject:string;revision:number;widgets:string[]}>()
+ const old={read:async()=>({schema_version:'opensaddle.dashboard-layout.v1' as const,owner_subject:'one',revision:1,widgets:['plugin.private-view']}),replace:()=>pending.promise}
+ const fresh={read:async()=>({schema_version:'opensaddle.dashboard-layout.v1' as const,owner_subject:'two',revision:0,widgets:[]}),replace:()=>pending.promise}
+ const surface=(settings:typeof old|typeof fresh,identity:string)=><MemoryRouter><CommandCenterSurface client={api} dashboardSettings={settings} dashboardIdentity={identity} connected identity={api} projects={[]}/></MemoryRouter>
+ let renderer!:ReturnType<typeof create>
+ t.after(async()=>{if(renderer)await act(async()=>renderer.unmount())})
+ await act(async()=>{renderer=create(surface(old,'one'))})
+ assert.match(markup(renderer),/plugin.private-view/)
+ await act(async()=>renderer.root.findAllByType('button').find(node=>node.children.join('')==='Use default layout')!.props.onClick())
+ await act(async()=>{void renderer.root.findAllByType('button').find(node=>node.children.join('')==='Save dashboard')!.props.onClick()})
+ await act(async()=>renderer.update(surface(fresh,'two')))
+ assert.doesNotMatch(markup(renderer),/plugin.private-view/)
+ assert.match(markup(renderer),/Your dashboard is empty/)
+ pending.resolve({schema_version:'opensaddle.dashboard-layout.v1',owner_subject:'one',revision:2,widgets:['plugin.private-view']})
+ await act(async()=>{await pending.promise})
+ assert.doesNotMatch(markup(renderer),/plugin.private-view/)
+ assert.match(markup(renderer),/Your dashboard is empty/)
+})
