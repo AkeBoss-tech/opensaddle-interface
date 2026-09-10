@@ -661,7 +661,13 @@ hosts keep their existing lifecycle behavior.
 Core now exposes the Project-scoped `run_approval_review_v1` capability and
 GET/POST `/api/v2/projects/{project}/runs/{run}/approval-review`. It binds a human
 Run-admission decision to a server-generated review digest and does not mint a
-model-call lease. The host task page still needs to integrate this flow before
-an installed view can offer review navigation. No approval mutation capability
+model-call lease. The host task page integrates this flow through existing task navigation. No approval mutation capability
 is currently granted to plugins. Do not use the gateway approval-consumption
 endpoint as a human review action.
+
+The host Project task page now integrates Run approval review when the connection
+advertises `run_approval_review_v1`. Existing `open_task` navigation can reach it;
+plugins still cannot submit approval decisions. The host displays the exact task,
+source, requester and policy before an explicit approval click, and clears failed
+or stale reviews. Unsupported connections show review as unavailable. This is
+Run admission, not model-call permission or execution/result verification.

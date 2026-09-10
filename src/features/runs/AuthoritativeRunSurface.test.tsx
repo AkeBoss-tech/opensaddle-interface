@@ -68,3 +68,45 @@ test('project task detail rejects a substituted Run identity',async()=>{
   assert.match(JSON.stringify(view.toJSON()),/Task does not belong to this project/)
  } finally { await act(async()=>view.unmount()) }
 })
+
+test('Project task approval displays exact review and submits only the reviewed digest',async t=>{
+ const {RunApprovalReviewClient}=await import('../../services/runApprovalReview')
+ const original=globalThis.fetch;t.after(()=>{globalThis.fetch=original})
+ let status='awaiting_approval',canApprove=true,conflict=false,posts=0,digest='a'.repeat(64),user='approver'
+ const calls:string[]=[]
+ globalThis.fetch=async(input,options)=>{
+  assert.equal(String(input),'http://core/api/v2/projects/P/runs/run-real/approval-review')
+  assert.equal((options?.headers as Record<string,string>)['X-OpenSaddle-User'],user)
+  calls.push(options?.method??'GET')
+  if(options?.method==='POST'){
+   posts++;assert.deepEqual(JSON.parse(options.body as string),{expected_review_digest:digest})
+   if(conflict)return new Response(null,{status:409})
+   status='queued';return Response.json({project_id:'P',run_id:'run-real',review_digest:digest,status,approval_scope:'run_admission',model_call_authorization:'not_granted'})
+  }
+  return Response.json({schema_version:'opensaddle.run-approval-review.v1',project_id:'P',run_id:'run-real',task:'Exact reviewed task',source_ref:'Exact source',requested_by:'requester',policy:{policy_hash:'policy-1',obligations:{network:false}},review_digest:digest,status,can_approve:canApprove,approval_scope:'run_admission',model_call_authorization:'not_granted'})
+ }
+ const client=new RunApprovalReviewClient('http://core',()=>user)
+ const authority:AuthoritativeRunAuthority={runDetail:async()=>({...detail,status,canCancel:false})}
+ let view!:ReactTestRenderer;t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} runId="run-real" projectId="P" approvalReview={client}/></MemoryRouter>);await flush()})
+ assert.ok(button(view,'Review task for approval'),'task page must expose authoritative approval review')
+ assert.equal(button(view,'Approve reviewed task'),undefined);assert.equal(calls.length,0)
+ await act(async()=>{button(view,'Review task for approval').props.onClick();await flush()})
+ assert.match(JSON.stringify(view.toJSON()),/Exact reviewed task/);assert.match(JSON.stringify(view.toJSON()),/Exact source/)
+ assert.match(view.root.findByType('pre').children.join(''),/"network": false/)
+ conflict=true
+ await act(async()=>{button(view,'Approve reviewed task').props.onClick();button(view,'Approve reviewed task').props.onClick();await flush()})
+ assert.equal(posts,1);assert.equal(button(view,'Approve reviewed task'),undefined)
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/Exact reviewed task/)
+ assert.match(JSON.stringify(view.toJSON()),/Reload the review/)
+ conflict=false;canApprove=false;digest='b'.repeat(64)
+ await act(async()=>{button(view,'Review task for approval').props.onClick();await flush()})
+ assert.equal(button(view,'Approve reviewed task'),undefined)
+ canApprove=true
+ await act(async()=>{button(view,'Reload approval review').props.onClick();await flush()})
+ await act(async()=>{button(view,'Approve reviewed task').props.onClick();await flush()})
+ assert.equal(posts,2);assert.equal(status,'queued');assert.equal(button(view,'Approve reviewed task'),undefined)
+ assert.match(JSON.stringify(view.toJSON()),/queued/)
+ globalThis.fetch=async()=>{user='other';return Response.json({project_id:'P',run_id:'run-real',review_digest:digest,status:'queued',approval_scope:'run_admission',model_call_authorization:'not_granted'})}
+ await assert.rejects(client.approve('P','run-real',digest),/identity/)
+})

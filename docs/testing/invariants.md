@@ -375,3 +375,15 @@ are not forwarded. Mounted/VM bridge proof is recorded in
 `receipts/project-runtime-error-20260910.json`. Earlier load/ready failure checks
 could not catch errors after readiness. Frozen loops and OS/browser process
 crashes remain outside this evidence.
+
+## RUN-APPROVAL-UI
+
+The host task page offers review only through the advertised server-bound Run
+admission capability. A user explicitly loads the exact task/source/requester and
+policy before a digest-only approval request. Repeated clicks cannot duplicate
+an in-flight decision; failed/stale reviews are cleared and must be loaded again.
+Current non-approvers have no approval button. Successful approval refreshes
+canonical task status; cross-identity or mismatched responses are rejected.
+Mounted task-page/client evidence: `receipts/run-approval-ui-20260910.json`.
+The baseline includes the new client only to avoid a missing import; it fails at
+the unchanged page's missing review control. Native visual verification is pending.

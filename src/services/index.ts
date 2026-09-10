@@ -1,3 +1,4 @@
+import {RunApprovalReviewClient} from './runApprovalReview'
 import {StandalonePluginSettingsClient} from './standalonePluginSettings'
 import {RendererSettingsClient} from './rendererSettings'
 import {ProjectTaskFeedClient} from './projectTaskFeed'
@@ -59,6 +60,7 @@ export interface ServiceBundle {
   projectIntelligence?: ProjectIntelligenceClient
   standalonePluginSettings?: StandalonePluginSettingsClient
   rendererSettings?: RendererSettingsClient
+  runApprovalReview?: RunApprovalReviewClient
   projectTaskFeed?: ProjectTaskFeedClient
   commandCenter?: CommandCenterClient
   krailProposals?: KrailProposalClient
@@ -164,6 +166,7 @@ export function initServices(opts: {
       let backendContracts: Record<string, string> = {}
       let standalonePluginSettingsAvailable = false
       let rendererSettingsAvailable = false
+      let runApprovalReviewAvailable = false
       let projectTaskFeedAvailable = false
       let commandCenterAvailable = false
       let managedKrailAvailable = false
@@ -303,6 +306,7 @@ export function initServices(opts: {
               capability_mode?: string
               standalone_plugin_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               renderer_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
+              run_approval_review_v1?: {available?:boolean;scope?:string;model_call_authorization?:boolean}
               project_task_feed_v1?: {available?:boolean;scope?:string;schema_version?:string}
               command_center?: { available?: boolean; path?: string; schema_version?: string }
               managed_krail?: boolean
@@ -316,6 +320,7 @@ export function initServices(opts: {
             backendMode = capabilities.capability_mode ?? backendMode
             standalonePluginSettingsAvailable = capabilities.standalone_plugin_settings_v1?.available===true&&capabilities.standalone_plugin_settings_v1.execution_policy===false&&JSON.stringify(capabilities.standalone_plugin_settings_v1.scopes)===JSON.stringify(['user','team'])
             rendererSettingsAvailable = capabilities.renderer_settings_v1?.available===true&&capabilities.renderer_settings_v1.execution_policy===false&&[JSON.stringify(['project','user_project']),JSON.stringify(['user','team','project','user_project'])].includes(JSON.stringify(capabilities.renderer_settings_v1.scopes))
+            runApprovalReviewAvailable = capabilities.run_approval_review_v1?.available===true&&capabilities.run_approval_review_v1.scope==='run_admission'&&capabilities.run_approval_review_v1.model_call_authorization===false
             projectTaskFeedAvailable = capabilities.project_task_feed_v1?.available===true&&capabilities.project_task_feed_v1.scope==='current_memberships'&&capabilities.project_task_feed_v1.schema_version==='opensaddle.project-task-feed.v1'
             commandCenterAvailable = capabilities.command_center?.available === true
               && capabilities.command_center.path === '/api/v2/command-center'
@@ -457,6 +462,7 @@ export function initServices(opts: {
         teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token,associationsAvailable) : undefined,
         standalonePluginSettings: backendAvailable&&standalonePluginSettingsAvailable?new StandalonePluginSettingsClient(baseUrl,getUserId,token):undefined,
         rendererSettings: backendAvailable&&rendererSettingsAvailable?new RendererSettingsClient(baseUrl,getUserId,token):undefined,
+        runApprovalReview: backendAvailable&&runApprovalReviewAvailable?new RunApprovalReviewClient(baseUrl,getUserId,token):undefined,
         projectTaskFeed: backendAvailable&&projectTaskFeedAvailable?new ProjectTaskFeedClient(baseUrl,getUserId,token):undefined,
         projectConversations: backendAvailable&&projectConversationsAvailable?(projectId:string)=>new ManagerConversationsClient(baseUrl,getUserId,token,projectChildTasks?journey:undefined,projectChildResults,projectId):undefined,
         managerConversations: backendAvailable && managerConversationsAvailable ? new ManagerConversationsClient(baseUrl,getUserId,token,managerChildTasksAvailable?journey:undefined,managerChildResultsAvailable) : undefined,
