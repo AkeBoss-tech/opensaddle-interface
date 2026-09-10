@@ -699,3 +699,21 @@ Regression: scoped clients work over HTTP while desktop IPC blocks their routes
 or drops the report credential. Covered by `test/scopedDesktopTransport.test.ts`
 and `scripts/prove-scoped-desktop-live.ts` against a disposable real Core.
 These checks do not prove Electron IPC delivery, iframe mounting or visual state.
+
+## SCOPED-HOST-1
+
+Explicit user/Team selection mounts only exact signed content authorized for the
+current environment. The opaque sandbox receives scoped metadata without tokens
+or fabricated Project context. Source/nonce/generation/package fences gate ready
+messages. Host reports revalidate authority every five seconds; failure or loss
+of selection removes the frame while parent recovery controls remain available.
+Only signed views requiring no additional SDK capabilities are accepted currently.
+`script` capability requirements are not silently treated as implemented.
+
+`scripts/prove-scoped-host-live.tsx` exercises the real settings component and
+scoped client against real Core for both scopes. Only the browser frame messaging
+boundary is simulated. It verifies selection, ready reporting, revocation, default
+recovery and listener cleanup. This new host slice has no prior implementation;
+no baseline assertion is claimed. Actual browser execution, full-page placement,
+state persistence, responsiveness monitoring and owner-device SDK remain separate
+acceptance work.

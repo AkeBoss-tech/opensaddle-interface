@@ -1,0 +1,19 @@
+{
+  "invariant": "SCOPED-HOST-1",
+  "passed": true,
+  "scopes": [
+    "user",
+    "team"
+  ],
+  "checks": [
+    "explicit selection enables exact package",
+    "exact fragment in scripts-only sandbox",
+    "credential-free scoped initialization",
+    "host ready receipt",
+    "disablement removes frame",
+    "restore default clears selection",
+    "listeners removed on unmount"
+  ],
+  "boundary": "React component and production scoped client against real Core; simulated iframe postMessage boundary",
+  "visual_verified": false
+}
