@@ -74,3 +74,11 @@ test('desktop standalone settings routes preserve scope and reject neighboring p
  }
  assert.equal(seen.length,6)
 })
+
+test('personal catalog routes retain main-process authority and reject neighboring mutations',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'}
+ const root='/api/v2/personal-runtime/catalog',key=root+'/publishers/org.example/keys/key'
+ const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);assert.equal(request.headers.get('Authorization'),'Bearer private-token');return Response.json({})}
+ for(const [method,path] of [['GET',root+'/packages'],['POST',root+'/packages'],['POST',root+'/publishers'],['GET',key],['POST',key+'/revoke']] as const)await assert.doesNotReject(proxyPersonalRuntimeRequest(handoff,{...base,method,path,...(method==='POST'?{body:'{}'}:{})},server),'catalog route must reach owner-authorized Core')
+ for(const [method,path] of [['PUT',root+'/packages'],['GET',root+'/publishers'],['POST',key],['GET',key+'/revoke'],['POST',root+'/packages/enable'],['GET',root+'/packages?owner=other']] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method,path},server),/path/)
+})

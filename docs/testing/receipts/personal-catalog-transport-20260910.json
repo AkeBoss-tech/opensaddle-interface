@@ -1,0 +1,20 @@
+{
+  "date": "2026-09-10",
+  "invariant": "PERSONAL-CATALOG-TRANSPORT-1",
+  "before": "New route assertion failed: Personal runtime request path is unavailable.",
+  "after": "19 proxy and renderer transport checks passed; Electron build passed.",
+  "boundary": "Actual main proxy and renderer transport modules, with HTTP controlled at their external boundary.",
+  "allowed": [
+    "GET catalog/packages",
+    "POST catalog/packages",
+    "POST catalog/publishers",
+    "GET catalog/publishers/{publisher_id}/keys/{key_id}",
+    "POST catalog/publishers/{publisher_id}/keys/{key_id}/revoke"
+  ],
+  "limits": [
+    "No desktop installer UI yet.",
+    "Existing request body bound is 262144 bytes, including JSON/base64; larger packages remain unsupported by this transport.",
+    "Current Electron process has not been restarted to load this main-process build.",
+    "No live trust or package state was changed."
+  ]
+}

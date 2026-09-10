@@ -887,3 +887,11 @@ its exact source and artifact identity. HTML/images and unsafe link schemes rema
 inert. If the next integrity or access check fails, both representations disappear.
 `src/features/runs/TaskResultJourney.test.tsx` exercises the actual remote client
 and task surface, with only the HTTP boundary controlled.
+
+### PERSONAL-CATALOG-TRANSPORT-1 — Exact installation-owner catalog routes
+
+The desktop proxy admits only catalog package list/install, publisher trust/read,
+and key revocation methods and paths. It binds them to the adopted runtime and
+supplies its credentials in the main process; neighboring mutations and query
+variants remain rejected. `test/personalRuntimeProxy.test.ts` covers these paths.
+The existing request and response byte limits continue to apply.
