@@ -538,3 +538,13 @@ the installed view preference; Refresh workspace retries the package. Losing
 Project access clears content rather than exposing a cached fallback. Five
 mounted/frame checks, baseline proof and build pass. Dialogue is still a task
 list; full Project conversation and post-ready crash/hang detection remain open.
+
+
+### Project conversation backend available
+
+Core now exposes `project_conversations_v1` with owner-private fixed-Project
+conversations and saved messages under `/api/v2/projects/{id}/conversations`. It
+reuses normal child-Run dispatch and immutable artifact reads. A URL-bound Project
+conversation cannot be moved by the global manager scope editor. This API is the
+next integration target for Dialogue; the current built-in view remains a task
+list and must not be described as a completed conversation experience.
