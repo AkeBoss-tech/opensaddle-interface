@@ -599,3 +599,11 @@ appear exactly in Project review; invalid integers disable proposal and omitted
 server confirmation cannot be treated as a successful limit change. Mounted
 owner/manager journeys use the real client with HTTP fixtures. Baseline receipt:
 `receipts/device-owner-resource-ui-20260910.json`.
+
+## DESKTOP-LOCAL-RECONNECT-1
+
+If initial API discovery fails, the desktop retries local health as well as v2
+capabilities. A late local onboarding server becomes connected and hydrates its
+registered Projects without a reload. An established v2-only connection retains
+its authenticated v2 probe. The mounted store test uses a real loopback server
+and controlled retry timer. Receipt: `receipts/desktop-local-reconnect-20260910.json`.

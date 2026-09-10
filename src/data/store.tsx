@@ -379,8 +379,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           'X-OpenSaddle-User': dataRef.current.currentUserId,
           ...(connection.token ? { Authorization: `Bearer ${connection.token}` } : {}),
         }
-        const legacyRecovery = services.controlPlane.runRecovery.available
-        const response = legacyRecovery ? await fetch(`${connection.baseUrl.replace(/\/$/, '')}/api/health`, {
+        // After startup failure neither API has been negotiated. Probe local
+        // health again so a late onboarding sidecar can become reachable.
+        // An established v2-only runtime still uses its authenticated probe.
+        const probeLocalHealth = services.controlPlane.runRecovery.available
+          || !services.controlPlane.v2Capabilities
+        const response = probeLocalHealth ? await fetch(`${connection.baseUrl.replace(/\/$/, '')}/api/health`, {
           headers,
           signal: AbortSignal.timeout(1_200),
         }) : null

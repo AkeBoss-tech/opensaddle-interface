@@ -1,0 +1,21 @@
+{
+  "invariant": "DESKTOP-LOCAL-RECONNECT-1",
+  "base": "c7f6ceff988c47fe648deecbfcacef0721e07493",
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern=mounted desktop recovers",
+    "src/data/store.localProjects.test.tsx"
+  ],
+  "before": {
+    "exit_code": 1,
+    "output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n(node:89033) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\u2716 mounted desktop recovers local onboarding after the first health failure (670.595625ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 907.059291\n\n\u2716 failing tests:\n\ntest at src/data/store.localProjects.test.tsx:1:6075\n\u2716 mounted desktop recovers local onboarding after the first health failure (670.595625ms)\n  AssertionError [ERR_ASSERTION]: local onboarding must recover without a renderer reload\n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-reconnect-baseline-i8uqzrek/src/data/store.localProjects.test.tsx:158:12)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: '{\"type\":\"p\",\"props\":{},\"children\":[\"false|false|\"]}',\n    expected: /true\\|true\\|recovered-project/,\n    operator: 'match',\n    diff: 'simple'\n  }\n"
+  },
+  "after": {
+    "exit_code": 0,
+    "output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n(node:89036) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.\n(Use `node --trace-warnings ...` to show where the warning was created)\n\u2714 mounted desktop recovers local onboarding after the first health failure (477.052042ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 624.325167\n"
+  },
+  "scope": "Mounted production store and real loopback HTTP server. Controlled retry timer. Desktop visual recovery remains pending because the Mac locked."
+}

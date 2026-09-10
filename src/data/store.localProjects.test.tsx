@@ -118,3 +118,48 @@ test('desktop bootstrap exposes pending adoption before discovery may prompt', a
     await act(async()=>view.unmount())
   }finally{Object.assign(globalThis,prior);globalThis.IS_REACT_ACT_ENVIRONMENT=false}
 })
+
+// DESKTOP-LOCAL-RECONNECT-1: startup failure must not strand a legacy onboarding server.
+test('mounted desktop recovers local onboarding after the first health failure', async () => {
+  const { createServer } = await import('node:http')
+  const server = createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json')
+    if (request.url === '/api/health' && ready) {
+      response.end(JSON.stringify({mode:'local',capabilities:['projects'],contracts:{project_onboarding:'opensaddle.project-onboarding/v1'}}))
+    } else if (request.url === '/api/projects' && ready) {
+      response.end(JSON.stringify({projects:[{project_id:'recovered-project',root:'/tmp/recovered-project',created_at:'2026-09-10T00:00:00Z'}]}))
+    } else { response.statusCode = 404; response.end('{}') }
+  })
+  let ready = false
+  await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve))
+  const address = server.address() as {port:number}
+  const prior = {localStorage:globalThis.localStorage,sessionStorage:globalThis.sessionStorage,window:globalThis.window,document:globalThis.document,React:(globalThis as typeof globalThis & {React?:typeof React}).React}
+  const ticks = new Set<()=>void>()
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  Object.assign(globalThis, {
+    localStorage:new MemoryStorage(),sessionStorage:new MemoryStorage(),React,
+    window:{opensaddleDesktop:true,opensaddle:{opensaddleUrl:`http://127.0.0.1:${address.port}`},addEventListener(){},removeEventListener(){},setTimeout,clearTimeout,
+      setInterval(callback:()=>void){ticks.add(callback);return callback},clearInterval(callback:()=>void){ticks.delete(callback)}},
+    document:{body:{dataset:{},removeAttribute(){},setAttribute(){}}},
+  })
+  function Projection(){const {data,services}=useStore();return React.createElement('p',null,`${services?.controlPlane.connected}|${Boolean(services?.localProjects)}|${data.activeProjectId}`)}
+  let view:ReactTestRenderer|undefined
+  const settle=()=>new Promise(resolve=>setTimeout(resolve,50))
+  try {
+    await act(async()=>{view=create(React.createElement(StoreProvider,null,React.createElement(Projection)));await settle()})
+    await act(settle)
+    assert.match(JSON.stringify(view!.toJSON()),/false\|false/)
+    ready=true
+    for(let attempt=0;attempt<5;attempt++){
+      await act(async()=>{for(const tick of [...ticks])tick();await settle()})
+      await act(settle)
+      if(JSON.stringify(view!.toJSON()).includes("true|true|recovered-project"))break
+    }
+    assert.match(JSON.stringify(view!.toJSON()),/true\|true\|recovered-project/,'local onboarding must recover without a renderer reload')
+  } finally {
+    if(view)await act(async()=>view!.unmount())
+    Object.assign(globalThis,prior);globalThis.IS_REACT_ACT_ENVIRONMENT=false
+    server.closeAllConnections()
+    await new Promise<void>(resolve=>server.close(()=>resolve()))
+  }
+})
