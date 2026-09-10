@@ -31,13 +31,21 @@ export function ScopedViewCatalog({ client, teamId }: { client: ScopedRendererCl
     setReload(value=>value+1)
    } catch {setError('The view could not be changed. Check your access and refresh before retrying.')} finally {setBusy(false)}
   }
+  const disable=async(item:NonNullable<typeof catalog>['items'][number])=>{
+   if(busy||item.enablement?.status!=='enabled')return
+   setBusy(true);setError('')
+   try {
+    await client.disable(scope,item.package_id,item.enablement.revision)
+    setReload(value=>value+1)
+   } catch {setError('The package could not be disabled. Refresh to check its current status and your access.')} finally {setBusy(false)}
+  }
   return <section className="settings-card presentation-editor"><h2>{teamId ? 'Team views' : 'Personal views'}</h2>
     <p>Installed views available for {teamId ? 'this Team' : 'your account'}.</p>
     {error && <p role="alert">{error}</p>}
     {!error && !catalog && <p role="status">Loading views…</p>}
     {catalog && <>{!catalog.activation_supported && <p>Scoped views are in preview. Some plug-in capabilities are not available yet.</p>}
-      {catalog.items.length === 0 ? <p>No views installed for this scope.</p> : <ul>{catalog.items.map(item => <li key={`${item.package_id}:${item.package_version}:${item.application_id}`}><strong>{item.title}</strong> · {item.package_version}<p>{!item.available.available ? 'Unavailable' : item.enablement?.status === 'enabled' && item.enablement.version === item.package_version ? 'Enabled' : 'Not enabled'}</p><button disabled={busy||!item.available.available} onClick={()=>void choose(item)}>Use view</button></li>)}</ul>}</>}
-    {environment&&selected&&<><button disabled={busy} onClick={()=>void choose()}>Restore default workspace</button>{selectedCandidate?<ScopedViewHost client={client} scope={scope} environment={environment} candidate={selectedCandidate}/>:<p role="alert">The selected view is unavailable. Restore the default workspace to recover.</p>}</>}
-    <button onClick={() => setReload(value => value + 1)}>Refresh views</button>
+      {catalog.items.length === 0 ? <p>No views installed for this scope.</p> : <ul>{catalog.items.map(item => <li key={`${item.package_id}:${item.package_version}:${item.application_id}`}><strong>{item.title}</strong> · {item.package_version}<p>{!item.available.available ? 'Unavailable' : item.enablement?.status === 'enabled' && item.enablement.version === item.package_version ? 'Enabled' : 'Not enabled'}</p><button disabled={busy||!item.available.available} onClick={()=>void choose(item)}>Use view</button>{item.enablement?.status==='enabled'&&item.enablement.version===item.package_version&&<><button disabled={busy} onClick={()=>void disable(item)}>Disable package</button><p>Disables all views from this package in this scope. An active workspace falls back to the default; its saved selection is retained.</p></>}</li>)}</ul>}</>}
+    {environment&&selected&&<><button disabled={busy} onClick={()=>void choose()}>Restore default workspace</button>{selectedCandidate&&selectedCandidate.enablement?.status==='enabled'?<ScopedViewHost client={client} scope={scope} environment={environment} candidate={selectedCandidate}/>:<p role="alert">The selected view is unavailable. Restore the default workspace to recover.</p>}</>}
+    <button disabled={busy} onClick={() => setReload(value => value + 1)}>Refresh views</button>
   </section>
 }

@@ -829,3 +829,17 @@ cases dispatched once instead of zero; the identical cases pass after the
 pre-dispatch check. Abort also races body consumption, and the transport removes
 its abort listener when the request settles. An abort after IPC dispatch still
 does not promise cancellation of an already accepted server-side mutation.
+
+## SCOPED-DISABLE-1 — scope-owned package disablement
+
+The personal and Team view catalogs expose package disablement only for the
+enabled version and submit its exact enablement revision to Core. The action
+applies to all package views in that scope, preserves saved selection, and allows
+the host's existing unavailable-view fallback. Refresh and other catalog actions
+are disabled while mutation is pending. Authorization remains server-owned.
+
+`scripts/prove-scoped-disable-live.tsx` mounts the production catalog and client
+against a disposable signed user/Team fixture. Both UI actions produce disabled
+revision 2 after enabled revision 1. See the corresponding receipt. This is a new
+control, not a claimed repair of a prior behavioral regression. The test does not
+mount a real browser frame or establish desktop visual acceptance.
