@@ -63,8 +63,7 @@ prevent delivery. Resource contents confer no new authority.
 ## Current limits
 
 Team/global summaries and richer settings delivery remain separate work.
-A preview browser helper is documented below; published packaging and signed
-browser integration remain pending. The current owner device wire contract is verified with
+A preview browser helper is documented below; published packaging remains pending. The current owner device wire contract is verified with
 production host/client code, signed packages and real Core; its iframe messaging
 has component evidence and a real-browser inventory/activity walkthrough. The
 browser fixture uses empty activity, so it does not prove live worker execution.
@@ -110,7 +109,10 @@ checks parent identity and the complete envelope, correlates resource responses,
 answers liveness probes and cleans up its listener and pending timer on disposal.
 
 State saving is a proposal with no persistence acknowledgement. Resource results
-remain observations, not permission to run tasks. This helper has protocol-boundary
-test coverage; direct execution of the bundled helper in a signed browser fragment
-remains an acceptance check. The earlier browser evidence covers the wire protocol
-using the fixture's own client code.
+remain observations, not permission to run tasks. This helper has protocol-boundary test coverage and a signed browser walkthrough.
+Build the self-contained user and Team fragments with
+`node scripts/build-scoped-sdk-fixture.mjs OUTPUT_DIRECTORY`, then pass that
+directory to Core’s disposable fixture using `--fragment-directory`. The browser
+receipt `scoped-sdk-browser-20260910.json` covers init, state restoration, owner
+inventory and Team liveness. Activity reads with this helper and packaged Electron
+remain separate checks.

@@ -1,0 +1,6 @@
+{
+ "boundary":"real browser, production scoped host, signed esbuild-bundled SDK fragments and disposable Core",
+ "verified":["personal init and ready", "owner device read returned empty inventory with task_authority not_evaluated", "counter state restored as 1 after reload", "Team initialized independently with counter 0", "Team has no owner-device controls", "Team remained ready after 9-second liveness observation", "no browser error logs"],
+ "build":"node scripts/build-scoped-sdk-fixture.mjs OUTPUT_DIRECTORY; Core fixture --fragment-directory OUTPUT_DIRECTORY",
+ "limits":["unstyled browser harness, not packaged Electron", "empty inventory; helper activity reads not exercised here", "no published registry package", "no personal runtime or Project state changed"]
+}
