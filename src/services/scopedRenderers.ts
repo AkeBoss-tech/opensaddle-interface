@@ -18,6 +18,7 @@ export class ScopedRendererClient {
   private base: string; private user: () => string; private token?: string
   constructor(base: string, user: () => string, token?: string) { this.base = base.replace(/\/$/, ''); this.user = user; this.token = token }
   identity() { return this.user() }
+  stateScope() { return JSON.stringify([this.base,this.user()]) }
   private async request(scope: ViewScope, path: string, init: RequestInit = {}) {
     const subject = this.user(), expected = { ...scope }
     if (!subject || !scope.id || !['user', 'team'].includes(scope.kind) || (scope.kind === 'user' && scope.id !== subject)) throw Error('Scoped view account mismatch')

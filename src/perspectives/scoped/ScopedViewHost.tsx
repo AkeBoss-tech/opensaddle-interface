@@ -1,3 +1,4 @@
+import {readScopedViewState,writeScopedViewState} from './state'
 import React,{useEffect,useRef,useState} from 'react'
 import {APPLICATION_PROTOCOL,acceptsApplicationMessage,readExactRenderer,sandboxDocument,type ExecutableRendererManifest} from '../../applications/executableApplication'
 import type {ScopedRendererClient,ScopedEnvironment,ViewScope} from '../../services/scopedRenderers'
@@ -8,10 +9,10 @@ type Candidate=ApplicationRendererCandidate & Pick<ExecutableRendererManifest,'e
 let generation=0
 /** Credential-free scoped fragment host. The parent retains recovery controls. */
 export function ScopedViewHost({client,scope,environment,candidate,onUnavailable,fullPage=false}:{onUnavailable?:()=>void;fullPage?:boolean;client:ScopedRendererClient;scope:ViewScope;environment:ScopedEnvironment;candidate:ApplicationRendererCandidate}) {
- const account=client.identity(), key=[account,scope.kind,scope.id,environment.revision,environment.definition_digest,candidate.manifest_digest,candidate.application_id].join('\0')
+ const account=client.identity(),stateScope=client.stateScope(), key=[stateScope,account,scope.kind,scope.id,environment.revision,environment.definition_digest,candidate.manifest_digest,candidate.application_id].join('\0')
  const frame=useRef<HTMLIFrameElement>(null),[state,setState]=useState<{key:string;document?:string;status:string}>({key,status:'Loading view…'})
  useEffect(()=>{
-  let disposed=false,ready=false,sequence=0,reportTail=Promise.resolve(),poll:ReturnType<typeof setTimeout>|undefined,timeout:ReturnType<typeof setTimeout>|undefined
+  let disposed=false,ready=false,statePending=false,sequence=0,reportTail=Promise.resolve(),poll:ReturnType<typeof setTimeout>|undefined,timeout:ReturnType<typeof setTimeout>|undefined
   const epoch=++generation,nonce=crypto.randomUUID(),abort=new AbortController(),item=candidate as Candidate
   const packageRef={package_id:item.package_id,version:item.package_version,manifest_digest:item.manifest_digest}
   const instance=item.environment_application?.instances[0]?.instance_id
@@ -25,12 +26,17 @@ export function ScopedViewHost({client,scope,environment,candidate,onUnavailable
   const envelope={protocol:APPLICATION_PROTOCOL,nonce,generation:epoch,instance_id:instance,connection_key:key,package_ref:packageRef}
   const listener=(event:MessageEvent)=>{
    if(abort.signal.aborted||!current()||!instance||!acceptsApplicationMessage(event,{source:frame.current?.contentWindow??null,nonce,generation:epoch,instanceId:instance,connectionKey:key,packageRef}))return
+   if(event.data.kind==='state'&&ready&&!statePending){
+    statePending=true
+    const proposed=event.data.state
+    void report('ready').then(()=>{if(current()&&!abort.signal.aborted&&client.stateScope()===stateScope&&instance)writeScopedViewState(stateScope,scope,item,instance,proposed)}).finally(()=>{statePending=false})
+   }
    if(event.data.kind==='failure'){void report('error');fail()}
    if(event.data.kind==='ready'&&!ready){ready=true;clearTimeout(timeout);void report('ready').then(()=>{if(current()&&!abort.signal.aborted)setState(value=>({...value,status:'View ready. Content is not independently verified.'}))})}
   }
   // Parent init is dispatched only to this opaque-origin sandbox. No services,
   // tokens, Project identifiers or automatic cross-scope data are exposed.
-  const initialize=()=>frame.current?.contentWindow?.postMessage({...envelope,kind:'init',model:{schema_version:'opensaddle.scoped-view.v1',scope:{...scope},capabilities:[]}},'*')
+  const initialize=()=>frame.current?.contentWindow?.postMessage({...envelope,kind:'init',state:instance?readScopedViewState(stateScope,scope,item,instance):undefined,model:{schema_version:'opensaddle.scoped-view.v1',scope:{...scope},capabilities:[]}},'*')
   addEventListener('message',listener)
   const check=async()=>{
    const latest=await client.environment(scope,abort.signal)
@@ -59,7 +65,7 @@ export function ScopedViewHost({client,scope,environment,candidate,onUnavailable
   // event from initializing a new account or selection.
   initializeRef.current=initialize
   return()=>{disposed=true;abort.abort();clearTimeout(poll);clearTimeout(timeout);removeEventListener('message',listener);initializeRef.current=()=>{}}
- },[client,key,account,scope.kind,scope.id,environment,candidate,onUnavailable])
+ },[client,key,account,stateScope,scope.kind,scope.id,environment,candidate,onUnavailable])
  const initializeRef=useRef<()=>void>(()=>{})
  const visible=state.key===key?state:{key,status:'Loading view…'}
  return <section aria-label="Selected scoped view"><p role="status">{visible.status}</p>{visible.document&&<iframe ref={frame} title={candidate.title} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={visible.document} onLoad={()=>initializeRef.current()} style={{width:'100%',height:fullPage?'calc(100dvh - 200px)':480,minHeight:320,border:0}}/>}</section>

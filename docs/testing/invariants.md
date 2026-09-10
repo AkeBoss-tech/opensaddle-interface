@@ -737,3 +737,18 @@ selection survived reload, local escape restored defaults and Core disablement
 removed the Team frame. Screenshot/limitation receipt:
 `docs/testing/receipts/scoped-browser-20260910.json`. This unstyled harness is not
 packaged Electron or complete application visual acceptance.
+
+## SCOPED-VIEW-STATE-1
+
+Scoped presentation state is local convenience, not authority. Its key includes
+server/account, scope kind/ID, package version/manifest, application/instance and
+schema version. The host accepts state only from its fenced ready frame and
+revalidates its Core session before writing. Restores and writes validate the
+signed bounded schema and 8192-byte maximum; corrupt/denied storage is tolerated.
+Exact-package state survives remount/reload; automatic cross-version migration
+is not implemented by this slice.
+
+Evidence: storage-boundary `src/perspectives/scoped/state.test.ts`; expanded
+real-Core component journey `scripts/prove-scoped-host-live.tsx`; real CUA browser
+reload showing the counter retained in `out/screenshots/scoped-state-20260910`.
+This is a new persistence feature, so no pre-fix regression failure is claimed.

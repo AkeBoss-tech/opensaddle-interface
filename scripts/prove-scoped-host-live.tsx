@@ -11,6 +11,8 @@ import {ScopedRendererClient} from '../src/services/scopedRenderers'
 const [state,receipt]=process.argv.slice(2),fixture=JSON.parse(readFileSync(join(state,'fixture.json'),'utf8'))
 const client=new ScopedRendererClient(fixture.base_url,()=> 'owner',readFileSync(join(state,'owner.token'),'utf8'))
 ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true
+const storage=new Map<string,string>()
+Object.assign(globalThis,{localStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value)}})
 const listeners=new Set<(event:any)=>void>()
 Object.assign(globalThis,{addEventListener:(name:string,listener:any)=>{if(name==='message')listeners.add(listener)},removeEventListener:(name:string,listener:any)=>{listeners.delete(listener)}})
 for(const teamId of [undefined,fixture.team_id]) {
@@ -32,11 +34,15 @@ for(const teamId of [undefined,fixture.team_id]) {
  assert.equal(JSON.stringify(init).includes('project_id'),false)
  await act(async()=>{for(const listener of listeners)listener({source:peer,data:{...init,kind:'ready'}})})
  await until(()=>JSON.stringify(view.toJSON()).includes('View ready.'))
+ await act(async()=>{for(const listener of listeners)listener({source:peer,data:{...init,kind:'state',state:{filter:'saved-'+(teamId?'team':'user')}}})})
+ await until(()=>[...storage.values()].includes(JSON.stringify({filter:'saved-'+(teamId?'team':'user')})))
  const scope=teamId?{kind:'team' as const,id:teamId}:{kind:'user' as const,id:'owner'}
  const candidate=(await client.candidates(scope)).items[0]
  await act(async()=>view.unmount())
  await act(async()=>{view=create(<MemoryRouter><ScopedWorkspace client={client} teamId={teamId}><p>Default workspace content</p></ScopedWorkspace></MemoryRouter>,{createNodeMock:element=>element.type==='iframe'?{contentWindow:peer}:null})})
  await until(()=>view.root.findAllByType('iframe').length===1)
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ assert.deepEqual(init.state,{filter:'saved-'+(teamId?'team':'user')},'scoped state survives host remount')
  assert.equal(JSON.stringify(view.toJSON()).includes('Default workspace content'),false)
  await act(async()=>button('Show default workspace').props.onClick())
  assert.equal(view.root.findAllByType('iframe').length,0)
@@ -56,5 +62,5 @@ for(const teamId of [undefined,fixture.team_id]) {
  await act(async()=>view.unmount())
  assert.equal(listeners.size,0)
 }
-writeFileSync(receipt,JSON.stringify({invariant:'SCOPED-HOST-1',passed:true,scopes:['user','team'],checks:['explicit selection enables exact package','exact fragment in scripts-only sandbox','credential-free scoped initialization','host ready receipt','disablement removes frame','restore default clears selection','listeners removed on unmount','full workspace selection replaces default content','local escape preserves shared selection','retry remounts selected view','revocation restores default content'],boundary:'React component and production scoped client against real Core; simulated iframe postMessage boundary',visual_verified:false},null,2)+'\n')
+writeFileSync(receipt,JSON.stringify({invariant:'SCOPED-HOST-1',passed:true,scopes:['user','team'],checks:['explicit selection enables exact package','exact fragment in scripts-only sandbox','credential-free scoped initialization','host ready receipt','disablement removes frame','restore default clears selection','listeners removed on unmount','full workspace selection replaces default content','local escape preserves shared selection','authorized renderer state survives remount','retry remounts selected view','revocation restores default content'],boundary:'React component and production scoped client against real Core; simulated iframe postMessage boundary',visual_verified:false},null,2)+'\n')
 console.log('Scoped host selection, readiness, revocation and recovery passed for user and Team.')
