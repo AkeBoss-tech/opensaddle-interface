@@ -111,3 +111,14 @@ mounted CommandCenterSurface journey and DashboardSettingsClient adapter tests.
 Baseline 4a334a5 fails the saved-order assertion; the identical test passes with
 the editor. Receipt: receipts/dashboard-editor-20260910.json. Browser keyboard and
 visual checks remain pending while the Mac is locked.
+
+## MANAGER-SCOPE-UI-1
+
+The manager scope chooser lists current membership-directory entries, begins with
+no selection, and previews only the explicitly selected IDs (up to 32). Selection,
+account or client changes remove old context and fence delayed responses. The
+client rejects broadened scope, extra payload fields, invalid bounds and execution
+authority claims. Truncation and unverified outcomes remain visible, and preview
+starts no tasks. Covered by mounted ManagerScopePanel and ManagerContextClient
+adapter tests. A live disposable Core/Interface-client HTTP check also passes:
+receipts/manager-context-client-20260910.json. Browser verification remains pending.

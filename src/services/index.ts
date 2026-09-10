@@ -1,3 +1,4 @@
+import { ManagerContextClient } from './managerContext'
 import { DashboardSettingsClient } from './dashboardSettings'
 import { TeamsClient } from './teams'
 import { PresentationSettingsClient } from './presentationSettings'
@@ -61,6 +62,7 @@ export interface ServiceBundle {
   codingResults?: CodingResultReviewClient
   projectKnowledge?: RegisteredProjectKnowledgeClient
   teams?: TeamsClient
+  managerContext?: ManagerContextClient
   dashboardSettings?: DashboardSettingsClient
   presentationSettings?: PresentationSettingsClient
   projectDirectory?: ProjectDirectoryClient
@@ -159,6 +161,7 @@ export function initServices(opts: {
       let authorizedContextAvailable = false
       let associationsAvailable = false
       let teamsAvailable = false
+      let managerContextAvailable = false
       let dashboardSettingsAvailable = false
       let presentationSettingsAvailable = false
       let projectDirectoryAvailable = false
@@ -271,6 +274,7 @@ export function initServices(opts: {
             const capabilities = await capabilityResponse.json() as {
               project_team_presentation_v1?: {available?:boolean}
               teams_v1?: {available?:boolean}
+              manager_context_v1?: {available?:boolean;scope?:string;execution_authority?:boolean}
               dashboard_layout_v1?: {available?:boolean;scope?:string}
               presentation_settings_v1?: {available?:boolean}
               project_directory_v1?: {available?:boolean;scope?:string}
@@ -302,6 +306,7 @@ export function initServices(opts: {
             authorizedContextAvailable = context?.available === true && context.schema_version === 'krail.authorized-context-packet.v2' && context.selection_field === 'authorized_context_source_ids' && context.inspector_path_template === '/api/v2/runs/{run_id}/authorized-context-packet' && context.worker_path_template === '/api/v2/workers/{worker_id}/runs/{run_id}/authorized-context-packet' && context.reauthorization_schema_version === 'krail.authorized-context-reauthorization.v1' && context.unavailable_reason === 'context_packet_unavailable' && context.sources_path_template === '/api/v2/projects/{project_id}/authorized-context-sources'
             associationsAvailable = capabilities.project_team_presentation_v1?.available===true
             teamsAvailable = capabilities.teams_v1?.available===true
+            managerContextAvailable = capabilities.manager_context_v1?.available===true && capabilities.manager_context_v1.scope==='explicit_current_memberships' && capabilities.manager_context_v1.execution_authority===false
             dashboardSettingsAvailable = capabilities.dashboard_layout_v1?.available===true && capabilities.dashboard_layout_v1.scope==='authenticated_user'
             presentationSettingsAvailable = capabilities.presentation_settings_v1?.available===true
             projectDirectoryAvailable = capabilities.project_directory_v1?.available===true && capabilities.project_directory_v1.scope==='current_memberships'
@@ -418,6 +423,7 @@ export function initServices(opts: {
         journey,
         personalRuntime,
         teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token,associationsAvailable) : undefined,
+        managerContext: backendAvailable && managerContextAvailable ? new ManagerContextClient(baseUrl,getUserId,token) : undefined,
         dashboardSettings: backendAvailable && dashboardSettingsAvailable ? new DashboardSettingsClient(baseUrl,getUserId,token) : undefined,
         presentationSettings: backendAvailable && presentationSettingsAvailable ? new PresentationSettingsClient(baseUrl,getUserId,token) : undefined,
         projectDirectory: backendAvailable && projectDirectoryAvailable ? new ProjectDirectoryClient(baseUrl,getUserId,token) : undefined,

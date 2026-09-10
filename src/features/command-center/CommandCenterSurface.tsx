@@ -1,3 +1,6 @@
+import {ManagerScopePanel} from './ManagerScopePanel'
+import type {ManagerContextAuthority} from '../../services/managerContext'
+import type {ProjectDirectoryClient} from '../../services/projectDirectory'
 import {DashboardLayout} from './DashboardLayout'
 import type {DashboardSettings} from '../../services/dashboardSettings'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
@@ -48,7 +51,7 @@ const UNAVAILABLE_REASON: Record<CommandCenterSnapshot['unavailableSections'][nu
   inbox: 'Inbox findings and triage actions do not have an authoritative API yet.',
 }
 
-export function CommandCenterSurface({client,connected,identity,projects,dashboardSettings,dashboardIdentity}:{dashboardSettings?:DashboardSettings;dashboardIdentity?:unknown;client?:CommandCenterClient;connected:boolean;identity:object;projects:Array<{id:string;name:string}>}) {
+export function CommandCenterSurface({client,connected,identity,projects,dashboardSettings,dashboardIdentity,managerContext,projectDirectory}:{managerContext?:ManagerContextAuthority;projectDirectory?:Pick<ProjectDirectoryClient,'list'>;dashboardSettings?:DashboardSettings;dashboardIdentity?:unknown;client?:CommandCenterClient;connected:boolean;identity:object;projects:Array<{id:string;name:string}>}) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const generation=useRef(0)
 
@@ -96,6 +99,7 @@ export function CommandCenterSurface({client,connected,identity,projects,dashboa
       <div className="cc-freshness"><span>Snapshot</span><time dateTime={snapshot.generatedAt}>{dateTime(snapshot.generatedAt)}</time><Button variant="secondary" size="sm" onClick={() => void load()}>Refresh</Button></div>
     </header>
 
+    {managerContext&&projectDirectory&&<ManagerScopePanel client={managerContext} directory={projectDirectory} identity={dashboardIdentity??identity}/>}
     <DashboardLayout client={dashboardSettings} identity={dashboardIdentity??identity} widgets={[
       {id:'objective',title:'Current objective',content:<CurrentObjectivePanel snapshot={snapshot} projectName={projectName} />},
       {id:'attention',title:'Needs your attention',content:<section className="cc-panel cc-attention" aria-labelledby="cc-attention-title">
