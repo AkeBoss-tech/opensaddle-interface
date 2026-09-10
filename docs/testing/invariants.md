@@ -970,3 +970,11 @@ by `src/features/teams/TeamWorkspaceOverview.test.tsx`.
 ## TEAM-DESKTOP-1
 
 The adopted desktop permits the explicit Team directory, invitation, membership, Project association, and presentation preference routes used by its UI while retaining main-process authentication and rejecting neighboring methods and paths. test/personalRuntimeProxy.test.ts reproduced the missing invitations route with an assertion before repair. Thirteen proxy tests and the Electron build passed after repair. Real isolated Electron navigation and Team-only preference persistence are recorded in docs/testing/receipts/team-settings-desktop-20260910.json.
+
+## CONNECTION-DEFAULT-1
+
+Mock transport alone does not authorize development fixture data. connectionProfileForRuntime defaults to the local server unless explicit fixture opt-in is provided, and explicit server configuration remains authoritative. test/defaultConnectionProfile.test.ts exercises these public configuration outcomes. Its previous expectation assumed automatic demo mode and was stale after the deliberate explicit-opt-in change. This is a test repair, not a production bug fix.
+
+## PALETTE-SAFE-ACTIONS-1
+
+The default palette renders combobox/listbox/option relationships, a selected active descendant, and safe actions without running them during rendering. src/components/common/CommandPalette.test.tsx renders the actual component and its real default action hook. It replaces the projectMemory source-text assertion requiring removed Danger zone actions. Production code is unchanged; no pre-fix production regression is claimed. Ten related tests and TypeScript passed. Keyboard execution and focus trapping remain separate checks.
