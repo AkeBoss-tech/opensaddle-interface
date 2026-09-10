@@ -1,3 +1,4 @@
+import { useProjectDirectory } from './useProjectDirectory'
 import { useEffect } from 'react'
 import { Folder, Home, Plus, Settings, ListTodo, Activity, Users, ArrowUpRight, Laptop } from 'lucide-react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
@@ -6,13 +7,14 @@ import { useStore } from '../../data/store'
 import './connected-workspace.css'
 
 export function ConnectedWorkspaceSidebar({ onAddProject }: { onAddProject: () => void }) {
-  const { data, services } = useStore()
+  const { services } = useStore()
   const location = useLocation()
+  const {projects,error,loading}=useProjectDirectory(location.pathname)
   useEffect(() => { document.getElementById('sidebar')?.classList.remove('mobile-open') }, [location.pathname])
   const selectedId = location.pathname.split('/')[1] === 'project' ? decodeURIComponent(location.pathname.split('/')[2] ?? '') : undefined
-  const selected = data.projects.find(project => project.id === selectedId)
+  const selected = projects.find(project => project.id === selectedId)
   return <aside className="sidebar connected-sidebar" id="sidebar">
-    <div className="connected-workspace-rail" aria-label="Workspace rail"><Link to="/home" aria-label="OpenSaddle home" className="connected-rail-home"><Icon name="saddle" className="icon sm" /></Link>{data.projects.map(project => <Link key={project.id} to={`/project/${project.id}`} aria-label={project.name} title={project.name} className={project.id === selectedId ? 'selected' : ''}>{project.name.slice(0,2).toUpperCase()}</Link>)}{services?.localProjects && <button onClick={onAddProject} aria-label="Add project to workspace"><Plus size={18}/></button>}</div><div className="connected-brand">{selected?.name ?? 'OpenSaddle'}<span>{selected ? 'Project workspace' : 'Local workspace'}</span></div>
+    <div className="connected-workspace-rail" aria-label="Workspace rail"><Link to="/home" aria-label="OpenSaddle home" className="connected-rail-home"><Icon name="saddle" className="icon sm" /></Link>{projects.map(project => <Link key={project.id} to={`/project/${project.id}`} aria-label={project.name} title={project.name} className={project.id === selectedId ? 'selected' : ''}>{project.name.slice(0,2).toUpperCase()}</Link>)}{services?.localProjects && <button onClick={onAddProject} aria-label="Add project to workspace"><Plus size={18}/></button>}</div><div className="connected-brand">{selected?.name ?? 'OpenSaddle'}<span>{selected ? 'Project workspace' : 'Local workspace'}</span></div>
     <nav aria-label="Connected workflow" className="connected-navigation">
       <NavLink to="/home"><Home size={17}/>Home</NavLink>
       <NavLink to="/start"><Plus size={17}/>New task</NavLink>
@@ -21,8 +23,8 @@ export function ConnectedWorkspaceSidebar({ onAddProject }: { onAddProject: () =
     {selected && <nav aria-label="Project views" className="connected-navigation connected-project-views"><span>Views</span><NavLink end to={`/project/${selected.id}`}>Overview</NavLink><NavLink to={`/project/${selected.id}/collaboration`}>Tasks</NavLink><NavLink to={`/project/${selected.id}/knowledge`}>Knowledge</NavLink><NavLink to={`/project/${selected.id}/onboarding`}>Onboarding</NavLink><NavLink to={`/project/${selected.id}/plugins`}>Plugins</NavLink><NavLink to={`/project/${selected.id}/devices`}>Devices</NavLink></nav>}
     {!selectedId && <><div className="connected-project-heading"><span>Projects</span>{services?.localProjects && <button aria-label="Add project" onClick={onAddProject}><Plus size={16}/></button>}</div>
     <nav aria-label="Projects" className="connected-project-list">
-      {data.projects.map(project => <NavLink key={project.id} to={`/project/${project.id}`}><Folder size={17}/><span>{project.name}</span></NavLink>)}
-      {!data.projects.length && <p>Your projects will appear here.</p>}
+      {projects.map(project => <NavLink key={project.id} to={`/project/${project.id}`}><Folder size={17}/><span>{project.name}</span></NavLink>)}
+      {!projects.length && <p>{loading?'Loading projects…':error||'Your projects will appear here.'}</p>}
       {services?.localProjects && <button className="connected-add-project" onClick={onAddProject}><Plus size={16}/>Add project</button>}
     </nav></>}
     <nav aria-label="Workspace tools" className="connected-navigation connected-bottom">
