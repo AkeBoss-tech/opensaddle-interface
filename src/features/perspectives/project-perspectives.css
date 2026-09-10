@@ -15,3 +15,10 @@
 .project-dispatch-columns > section { min-height:200px;display:flex;flex-direction:column;gap:12px; }
 @media(max-width:900px){.project-dispatch-columns {grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:550px){.project-dispatch-columns {grid-template-columns:1fr;}}
+
+.project-task-composer { max-width: 960px; margin-inline: auto; }
+.project-task-composer .form-row { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+.project-task-composer .form-row > label { display: flex; flex-direction: column; gap: 8px; }
+.project-task-composer textarea { min-height: 160px; width: 100%; resize: vertical; box-sizing: border-box; }
+.project-task-composer select { min-height: 38px; }
+.project-task-composer .primary-btn { align-self: flex-end; }

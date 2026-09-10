@@ -133,3 +133,14 @@ package and Project with a newer positive revision. They retain the filter input
 and restore focused task buttons when the same task remains. Host protocol and
 signed-schema tests pass; actual keyboard focus preservation is not yet visually
 verified. A package declaration is compatibility opt-in, not additional authority.
+
+### Shared task creation
+
+All Project Perspectives now open `/project/:projectId/new-task` for the host
+`onNewTask` action. This focused page uses the existing Journey task-admission
+form and stays bound to the current Project. It exposes source, agent and reviewed
+context choices without Project switching or administrative setup forms. Plugins
+receive no new execution capability. Submission success means the request was
+accepted; users return to their selected Workspace Perspective for task status.
+Mounted checks and production build cover this change; Mac lock prevents current
+browser verification.

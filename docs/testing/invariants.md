@@ -135,3 +135,14 @@ Actual client-to-Core HTTP verification lost one post-commit response deliberate
 recreated the client and retried without a duplicate, then preserved old/new scope
 revisions and denied another owner. Receipt:
 receipts/manager-conversation-client-20260910.json. Browser checks remain pending.
+
+## PROJECT-TASK-COMPOSER
+
+Every Project Perspective's New task host action opens the project-bound task
+composer. The focused surface reuses the existing Journey delegation form and
+source/adapter/context validation without showing invitation, machine enrollment,
+or capacity configuration. Failed submission preserves the draft; successful
+submission clears it and reports submission, not execution completion. Mounted
+ConnectedJourneySurface tests exercise these behaviors. The baseline renders the
+old setup heading; the identical new test passes after the change. See
+receipts/project-task-composer-20260910.json. Native/browser proof is pending.

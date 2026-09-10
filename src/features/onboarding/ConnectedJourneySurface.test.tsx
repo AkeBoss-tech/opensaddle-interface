@@ -87,3 +87,26 @@ test('normal coding task form submits explicit file bounds and literal verificat
   assert.deepEqual(submitted?.[5],{schema_version:'opensaddle.coding-task.v1',allowed_paths:['src/example.py','tests/test_example.py'],verification_commands:[['python','-m','pytest','tests/test_example.py']]})
   await act(async()=>view.unmount())
 })
+
+// PROJECT-TASK-COMPOSER: Perspectives share a project-bound admission form.
+test('focused task composer submits in its project and preserves a failed draft without setup controls', async () => {
+  let attempts=0
+  const calls:unknown[][]=[]
+  const ready={workerId:'machine',adapterId:'codex-app-server' as const,sourceId:'source',revision:'rev',digest:'d'.repeat(64),executableState:'installed' as const,authenticationState:'authenticated' as const,protocolState:'compatible' as const,workspaceState:'configured' as const,ready:true,observedAt:'2026-09-10T00:00:00Z',expiresAt:'2026-09-10T00:02:00Z',reportedAt:'2026-09-10T00:00:01Z'}
+  const authority:JourneyAuthority={snapshot:async()=>({...snap('astra'),canManage:true,sources:[{sourceId:'source',label:'Repository'}],nativeAdaptersAvailable:true,nativeAdapters:[ready]}),invite:async()=>{throw Error('unexpected invitation')},enroll:async()=>{throw Error('unexpected enrollment')},delegate:async(...args)=>{calls.push(args);if(++attempts===1)throw Error('Task request unavailable')}}
+  let view!:ReactTestRenderer
+  await act(async()=>{view=create(<MemoryRouter><ConnectedJourneySurface authority={authority} projectId="astra" mode="task"/></MemoryRouter>);await Promise.resolve()})
+  assert.equal(view.root.findAllByType('h1')[0].children.join(''),'New task')
+  assert.equal(view.root.findAllByType('h2').some(node=>['Invitations','People','Machines','Project capacity'].includes(node.children.join(''))),false)
+  assert.equal(view.root.findAllByType('a').find(node=>node.children.includes('Back to workspace'))?.props.href,'/project/astra')
+  await act(async()=>view.root.findByType('textarea').props.onChange({target:{value:'Review the scheduler'}}))
+  const submit=()=>view.root.findAllByType('button').find(node=>node.children.includes('Delegate task'))!
+  await act(async()=>{submit().props.onClick();await new Promise(resolve=>setImmediate(resolve))})
+  assert.equal(view.root.findByType('textarea').props.value,'Review the scheduler')
+  assert.match(JSON.stringify(view.toJSON()),/Task request unavailable/)
+  await act(async()=>{submit().props.onClick();await new Promise(resolve=>setImmediate(resolve))})
+  assert.deepEqual(calls,[['astra','source','Review the scheduler','codex-app-server',[]],['astra','source','Review the scheduler','codex-app-server',[]]])
+  assert.equal(view.root.findByType('textarea').props.value,'')
+  assert.match(JSON.stringify(view.toJSON()),/Task submitted/)
+  await act(async()=>view.unmount())
+})

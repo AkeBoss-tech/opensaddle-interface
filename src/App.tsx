@@ -349,6 +349,7 @@ function Shell() {
             <Route path="/project/:projectId/appearance" element={<PresentationPage />} />
             <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
+            <Route path="/project/:projectId/new-task" element={<ConnectedJourneyPage mode="task" />} />
             <Route path="/devices" element={<PersonalDevicesPage />} />
             <Route path="/teams" element={<TeamsPage />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
@@ -367,6 +368,7 @@ function Shell() {
             <Route path="/project/:projectId/appearance" element={<PresentationPage />} />
             <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
+            <Route path="/project/:projectId/new-task" element={<ConnectedJourneyPage mode="task" />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/perspectives" element={<PerspectivesPage />} />
