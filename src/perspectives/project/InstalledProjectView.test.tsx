@@ -15,7 +15,8 @@ test('installed view opens only projected tasks from its exact initialized frame
  assert.equal(installedProjectViews([{...renderer,input_schema:{}}]).length,0)
  const listeners=new Set<(event:any)=>void>();Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
  let init:any;const source={postMessage:(message:any)=>{init=message}},node={contentWindow:source,dataset:{}}
- const opened:string[]=[];const client={applicationRendererContent:async()=>new Response(fragment,{headers:{'Content-Type':renderer.media_type}})} as unknown as MalleableShellClient
+ let enabled=true
+ const opened:string[]=[];const client={applicationRenderers:async()=>enabled?[renderer]:[],applicationRendererContent:async()=>new Response(fragment,{headers:{'Content-Type':renderer.media_type}})} as unknown as MalleableShellClient
  const model={projectId:'P',tasks:[{id:'R',title:'Task',status:'queued',verified:false,source:'active_run' as const}]}
  let view!:ReactTestRenderer
  await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={model} connectionKey="C" onOpenTask={id=>opened.push(id)} onNewTask={()=>opened.push('new')}/>,{createNodeMock:()=>node});await new Promise(resolve=>setTimeout(resolve,20))})
@@ -30,6 +31,11 @@ test('installed view opens only projected tasks from its exact initialized frame
  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,5100));send({kind:'request',action:'open_task',task_id:'R'})})
  assert.deepEqual(opened,['R','updated:R'])
  assert.equal(view.root.findAllByType('iframe').length,1)
+ enabled=false
+ await act(async()=>{send({kind:'request',action:'open_task',task_id:'R'});await new Promise(resolve=>setTimeout(resolve,20))})
+ assert.deepEqual(opened,['R','updated:R'])
+ assert.equal(view.root.findAllByType('iframe').length,0)
+ assert.match(JSON.stringify(view.toJSON()),/lost authorization/)
 
  await act(async()=>view.unmount())
  assert.equal(listeners.size,0)
