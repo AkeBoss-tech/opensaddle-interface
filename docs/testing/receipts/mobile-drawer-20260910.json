@@ -1,0 +1,28 @@
+{
+  "interface_revision": "53f511448defe2b1c2b50f0084caf5d877aae869",
+  "environment": "Full Vite application with React plugin, BrowserRouter /opensaddle-interface prefix, disposable Core bearer proxy; no personal runtime changes",
+  "requested_viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "observed_document_width": 433,
+  "observed_scroll_width": 433,
+  "verified": [
+    "Connected sidebar hidden initially",
+    "Open team navigation reveals real connected drawer",
+    "Work link navigates to /opensaddle-interface/work",
+    "Route change hides sidebar; Work content remains visible",
+    "No horizontal overflow on observed Work page"
+  ],
+  "gaps": [
+    "Focus becomes BODY after choosing Work; no explicit destination focus",
+    "Menu button has no aria-expanded state",
+    "Escape dismissal and focus trapping not verified",
+    "Effective viewport differed from requested override; no exact 390px claim"
+  ],
+  "screenshots": [
+    "out/screenshots/mobile-drawer-20260910/open.png",
+    "out/screenshots/mobile-drawer-20260910/work.png"
+  ],
+  "checkpoint": "Mobile assertion remains unresolved until accessibility behavior is repaired; do not count visual navigation alone as complete mobile acceptance"
+}
