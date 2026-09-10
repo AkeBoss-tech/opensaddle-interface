@@ -544,3 +544,9 @@ walkthrough enables overrides, waits for the actual completed editor state,
 checks fresh-client reads, duplicate rejection and member write denial. Separate
 database inspection confirms revision-2 layers and zero package enablements.
 Both disposable servers were stopped. This is not browser visual proof.
+
+PERSONAL-DEVICE-INVENTORY-UI-1 requires every listed or newly registered device
+to match the current account, including a uniformly wrong-owner page. The mounted
+UI must neither display that device nor confirm registration. Real-client fault
+injection and baseline assertions: `receipts/device-owner-response-20260910.json`.
+This client defense does not imply the server returned foreign data in production.

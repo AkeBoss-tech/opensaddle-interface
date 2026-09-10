@@ -42,13 +42,19 @@ export class PersonalDevicesClient {
     return value
   }
   async list(after = ''): Promise<DevicePage> {
+    const owner=this.identity()
     const row = record(await this.request('/api/v2/devices?limit=50&after=' + encodeURIComponent(after)))
     if (!Array.isArray(row.items) || row.items.length > 50 || (row.next_cursor !== null && typeof row.next_cursor !== 'string')) throw Error('Invalid device page')
     const items = row.items.map(device)
     if (new Set(items.map(item => item.deviceId)).size !== items.length || new Set(items.map(item => item.ownerSubject)).size > 1) throw Error('Invalid device inventory')
+    if(owner!==this.identity()||items.some(item=>item.ownerSubject!==owner))throw Error('Device owner identity changed. Refresh your connection.')
     return {items, nextCursor: row.next_cursor as string | null}
   }
-  async register(body: DeviceRegistration) { return device(await this.request('/api/v2/devices', body)) }
+  async register(body: DeviceRegistration) {
+    const owner=this.identity(),created=device(await this.request('/api/v2/devices', body))
+    if(owner!==this.identity()||created.ownerSubject!==owner)throw Error('Device owner identity changed. Refresh your connection.')
+    return created
+  }
   async beginPairing(deviceId: string) {
     const value = record(await this.request('/api/v2/devices/'+encodeURIComponent(deviceId)+'/pairing', {}))
     if (value.protocol !== 'opensaddle.device-pairing.v1' || value.device_id !== deviceId || typeof value.pairing_id !== 'string' || !/^pairing_[A-Za-z0-9_]+$/.test(value.pairing_id) || typeof value.secret !== 'string' || !/^[A-Za-z0-9_-]{40,100}$/.test(value.secret) || typeof value.expires_at !== 'string' || !Number.isFinite(Date.parse(value.expires_at))) throw Error('Invalid pairing challenge')

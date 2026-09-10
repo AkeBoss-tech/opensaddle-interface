@@ -66,3 +66,17 @@ test('client rejects account changes during response parsing and mixed-owner pag
   t.mock.method(globalThis, 'fetch', async () => reply([row('A','one'), row('B','two')]))
   await assert.rejects(authority.list(), /Invalid device inventory/)
 })
+
+for(const action of ['list','register'])
+test(`personal device ${action} withholds a different owner's response`,async t=>{
+ t.mock.method(globalThis,'fetch',async(_url:unknown,init?:RequestInit)=>init?.method==='POST'?Response.json(row('Foreign device','other')):reply(action==='list'?[row('Foreign device','other')]:[]))
+ const authority=new PersonalDevicesClient('http://localhost',()=> 'owner')
+ let view!:ReactTestRenderer;t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(<DeviceInventory authority={authority} identity="owner"/>);await flush()})
+ if(action==='register'){
+  await act(async()=>view.root.findByType('input').props.onChange({target:{value:'My laptop'}}))
+  await act(async()=>{view.root.findByType('form').props.onSubmit({preventDefault(){}});await flush()})
+ }
+ assert.match(JSON.stringify(view.toJSON()),/Device owner identity changed/,'device responses must match the current owner before display or confirmation')
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/Foreign device|Device saved/)
+})
