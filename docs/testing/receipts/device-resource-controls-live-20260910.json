@@ -1,0 +1,32 @@
+{
+  "checked_at": "2026-09-10T11:55:57.399Z",
+  "fixture": {
+    "base_url": "http://127.0.0.1:62575",
+    "device_id": "device_1780a8fdca43403db94858f7449f46b8",
+    "run_id": "run_8ab2a79ff0e34416afbdfb9d1e2c0426",
+    "project_id": "activity",
+    "assignment_revision": 2,
+    "enrollment_revision": 1,
+    "consent_expires_at": null,
+    "native_execution": false,
+    "authentication": "loopback trusted-header development fixture"
+  },
+  "checks": [
+    "owner mounted controls persist exact resource limits",
+    "Project mounted review shows exact values",
+    "Project acceptance preserves values at next revision",
+    "Keep preserves limits after refresh",
+    "Remove persists null and requires fresh acceptance",
+    "fresh client confirms each durable state"
+  ],
+  "scope": "Real loopback HTTP Core and mounted production UI; fixture worker, no native provider dispatch or browser visual proof.",
+  "runtime_heads": {
+    "core": "d53dd4bee05e5d21d0a43f4de2ef5144ad4ff79a",
+    "interface": "1cb743302c8e73cc334c69c7b26c6067819eb19e"
+  },
+  "cleanup": {
+    "consent_revoked": true,
+    "device_unpaired": true
+  },
+  "harness_correction": "First run timed out matching serialized React text split across children after acceptance. Corrected rendered paragraph text comparison, cleaned first fixture, and passed on fresh fixture B."
+}
