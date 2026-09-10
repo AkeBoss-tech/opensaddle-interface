@@ -363,3 +363,15 @@ not_evaluated`, including when consent is true. Malformed, duplicate, oversized,
 cross-Project and contradictory records are rejected. Mounted tests use the real
 HTTP client; existing source SDK tests cover the shared reauthorization/failure
 path. Receipt: `receipts/project-device-sdk-20260910.json`.
+
+## PROJECT-VIEW-RUNTIME-FAILURE
+
+Installed Project frames include a host error bridge before package markup.
+Uncaught error/unhandled rejection events produce one generic failure envelope;
+startup failures wait for initialization identity. Only the exact active frame
+can fail its generation. Failure removes the frame, notifies the workspace for
+fresh-authority fallback, and prevents subsequent navigation. Raw diagnostics
+are not forwarded. Mounted/VM bridge proof is recorded in
+`receipts/project-runtime-error-20260910.json`. Earlier load/ready failure checks
+could not catch errors after readiness. Frozen loops and OS/browser process
+crashes remain outside this evidence.

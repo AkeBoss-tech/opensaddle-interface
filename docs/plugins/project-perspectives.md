@@ -641,3 +641,17 @@ Keep this distinction visible even when consent is true. There is no machine
 mutation or task-dispatch action in this capability; those remain host/Core
 operations. Request a fresh snapshot to update the display. The source and device
 capabilities are independent; declaring one never grants the other.
+
+### Runtime error recovery
+
+The Project host places its error bridge before the signed package fragment.
+An uncaught error or unhandled promise rejection emits one generic `failure`
+envelope using the initialized frame identity. Errors before initialization are
+reported once identity arrives. The host removes the failed generation and uses
+its existing workspace fallback/retry path. Late requests from the failed frame
+cannot navigate. Error messages, stacks and rejection values are not forwarded.
+
+Handle expected failures inside your renderer. This bridge detects reported
+runtime errors; it cannot certify that a view is responsive or recover every
+frozen loop, browser process crash or malicious interference. Other application
+hosts keep their existing lifecycle behavior.

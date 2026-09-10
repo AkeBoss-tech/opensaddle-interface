@@ -296,3 +296,44 @@ test('device SDK reads Project assignments without implying task admission',asyn
  globalThis.fetch=async()=>{user='other';return Response.json({items:[row]})}
  await assert.rejects(client.projectDevices('P'),/Invalid Project device projection/)
 })
+
+// PROJECT-VIEW-RUNTIME-FAILURE: execute the host bridge and observe mounted recovery.
+test('renderer error bridge removes a ready view and fences its later messages',async t=>{
+ const {runInNewContext}=await import('node:vm')
+ const fragment='<p>Crash fixture</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
+ const originalAdd=globalThis.addEventListener,originalRemove=globalThis.removeEventListener
+ const listeners=new Set<(event:any)=>void>(),child=new Map<string,((event:any)=>void)[]>(),failures:string[]=[],opened:string[]=[]
+ Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ let init:any
+ const parent={postMessage:(data:any)=>{for(const listener of listeners)listener({source,data})}}
+ const source={postMessage:(message:any)=>{init=message;for(const handler of child.get('message')??[])handler({source:parent,data:message})}}
+ const node={contentWindow:source,dataset:{}},client={applicationRenderers:async()=>[renderer],applicationRendererContent:async()=>new Response(fragment,{headers:{'Content-Type':renderer.media_type}})} as unknown as MalleableShellClient
+ let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount());Object.assign(globalThis,{addEventListener:originalAdd,removeEventListener:originalRemove})})
+ await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[]}} connectionKey="C" onOpenTask={()=>{}} onNewTask={()=>opened.push('new')} onUnavailable={reason=>failures.push(reason)}/>,{createNodeMock:()=>node})})
+ for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
+ const html=view.root.findByType('iframe').props.srcDoc as string
+ const bridge=html.match(/<script>([\s\S]*?)<\/script>/)?.[1]
+ assert.ok(bridge,'installed renderer document must include the host error bridge')
+ runInNewContext(bridge,{parent,addEventListener:(kind:string,fn:(event:any)=>void)=>child.set(kind,[...(child.get(kind)??[]),fn])})
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ await act(async()=>parent.postMessage({...init,kind:'ready'}))
+ assert.equal(view.root.findAllByType('iframe').length,1)
+ await act(async()=>{for(const listener of listeners)listener({source:{},data:{...init,kind:'failure'}})})
+ assert.equal(view.root.findAllByType('iframe').length,1,'another frame must not report this view failed')
+ await act(async()=>{for(const handler of child.get('unhandledrejection')??[])handler({reason:'private diagnostic'})})
+ assert.equal(view.root.findAllByType('iframe').length,0,'post-ready errors must remove the frame')
+ assert.ok(failures.some(value=>value.includes('renderer error')))
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/private diagnostic/)
+ await act(async()=>parent.postMessage({...init,kind:'request',action:'new_task'}))
+ assert.deepEqual(opened,[],'failed generation must not navigate')
+ const early=new Map<string,((event:any)=>void)[]>(),reports:any[]=[]
+ const earlyParent={postMessage:(data:any)=>reports.push(data)}
+ runInNewContext(bridge,{parent:earlyParent,addEventListener:(kind:string,fn:(event:any)=>void)=>early.set(kind,[...(early.get(kind)??[]),fn])})
+ for(const handler of early.get('error')??[])handler({message:'startup diagnostic'})
+ assert.equal(reports.length,0,'startup failure waits for initialized identity')
+ for(const handler of early.get('message')??[])handler({source:earlyParent,data:init})
+ for(const handler of early.get('error')??[])handler({message:'repeated'})
+ assert.equal(reports.length,1,'one generic failure per frame')
+ assert.equal(reports[0].kind,'failure');assert.doesNotMatch(JSON.stringify(reports),/diagnostic|repeated/)
+})

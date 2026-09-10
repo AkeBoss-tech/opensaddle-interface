@@ -51,11 +51,12 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
   if(!client.applicationRendererContent){revoke();return}
 
   const manifest={...renderer,sandbox_policy:{scripts:true as const,network:false as const,same_origin:false as const,navigation:'host_observed_only' as const}}
-  client.applicationRendererContent(model.projectId,renderer,abort.signal).then(response=>readExactRenderer(response,manifest)).then(async fragment=>{if(await check()){saved.current=readProjectViewState(stateScope,model.projectId,renderer,()=>setStateNotice("Saved view state was migrated using this package’s declaration. The previous package’s state is preserved."));pollNext();setDocument({html:sandboxDocument(fragment),nonce:crypto.randomUUID(),generation:epoch})}}).catch(()=>{if(epoch===generation.current&&!abort.signal.aborted)setError('This view could not be loaded. Select another view or refresh.')})
+  client.applicationRendererContent(model.projectId,renderer,abort.signal).then(response=>readExactRenderer(response,manifest)).then(async fragment=>{if(await check()){saved.current=readProjectViewState(stateScope,model.projectId,renderer,()=>setStateNotice("Saved view state was migrated using this package’s declaration. The previous package’s state is preserved."));pollNext();setDocument({html:sandboxDocument(fragment,true),nonce:crypto.randomUUID(),generation:epoch})}}).catch(()=>{if(epoch===generation.current&&!abort.signal.aborted)setError('This view could not be loaded. Select another view or refresh.')})
   return()=>{stopped=true;clearTimeout(poll);abort.abort();generation.current++}
  },[client,settingsClient,settingsIdentity,renderer,lifecycleModel,connectionKey,stateScope,mount])
  useEffect(()=>{if(!document)return;let initialized=false,count=0,windowStart=Date.now();const timeout=setTimeout(()=>{if(!initialized)setError('This view did not become ready. Select another view or refresh.')},5000)
   const listener=(event:MessageEvent)=>{if(document.generation!==generation.current||!acceptsApplicationMessage(event,{source:frame.current?.contentWindow??null,nonce:document.nonce,generation:document.generation,instanceId:renderer.instance_id,connectionKey,packageRef:renderer.package_ref}))return
+   if(event.data.kind==='failure'){generation.current++;frameReady.current=false;setDocument(undefined);setError('This view stopped after a renderer error. Refresh to retry.');return}
    if(Date.now()-windowStart>1000){count=0;windowStart=Date.now()}if(++count>32)return
    const message=event.data as typeof event.data & {task_id?:unknown}
    if(message.kind==='ready'){initialized=true;frameReady.current=true;publishSettings.current();clearTimeout(timeout);setReady(true);return}
