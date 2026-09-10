@@ -338,3 +338,16 @@ a workspace remount restores saved messages but discards memory-only drafts.
 Conversation work disables the view selector and workspace refresh while pending.
 The mounted workspace regression fails on the previous revision at the missing
 URL assertion. Receipt: `receipts/project-conversation-navigation-20260910.json`.
+
+## PROJECT-SOURCE-SDK
+
+An installed view may explicitly request bounded source metadata only when its
+signed UI contract requires `read.project-sources.v1` and accepts `resources`
+input. The host fixes the Project and checks package authorization before and
+after the read. The existing member-only source endpoint is the authority;
+frames receive only validated IDs, labels, kinds, revisions and snapshot digests.
+A denied/invalid read clears the frame; changing principal or Project rejects
+stale data. Mounted tests use the real HTTP client and inject transport only.
+Receipt: `receipts/project-source-sdk-20260910.json`. Task-only tests did not
+cover resource reads, metadata filtering or revocation during this additional
+read boundary. Snapshots are limited to 100 items and do not claim completeness.

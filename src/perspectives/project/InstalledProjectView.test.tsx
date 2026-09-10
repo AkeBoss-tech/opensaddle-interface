@@ -174,3 +174,71 @@ test('resolved plugin settings initialize, update without reload and revoke with
  assert.equal(view.root.findAllByType('iframe').length,0,'settings revocation removes protected frame')
  assert.equal(messages.filter(message=>message.kind==='settings').at(-1),settings)
 })
+
+// PROJECT-SOURCE-SDK: the mounted host owns scope, bounded reads and revocation.
+test('source SDK reads only the mounted Project through the authenticated host',async t=>{
+ const {RemoteMalleableShellClient}=await import('../../services/remoteMalleableShell')
+ const fragment='<p>Sources</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT,properties:{kind:{enum:['init','resources']}}},descriptor:{ui_contract:{schema_version:'opensaddle.ui-contract.v1',mount_kind:'perspective',scope:'project',host_api_min:1,host_api_max:1,required_capabilities:['read.project-sources.v1']}},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
+ assert.equal(installedProjectViews([renderer]).length,1,'source-reading Perspectives must be supported by the host')
+ const originalFetch=globalThis.fetch,originalAdd=globalThis.addEventListener,originalRemove=globalThis.removeEventListener
+ const listeners=new Set<(event:any)=>void>(),messages:any[]=[],paths:string[]=[]
+ let enabled=true,user='member',mutateIdentity=false,denySources=false,revokeDuringRead=false
+ Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ const row={source_id:'S',source_kind:'git',revision:'abc123',snapshot_digest:'a'.repeat(64),display_label:'Repository',secret_path:'/private/workspace',credentials:'never deliver'}
+ globalThis.fetch=async(input,options)=>{
+  const url=new URL(String(input));paths.push(url.pathname)
+  assert.equal((options?.headers as Record<string,string>)['X-OpenSaddle-User'],user)
+  assert.equal((options?.headers as Record<string,string>).Authorization,'Bearer host-secret')
+  if(url.pathname.endsWith('/content'))return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})
+  if(url.pathname.endsWith('/application-renderers'))return Response.json({project_id:'P',renderers:enabled?[renderer]:[]})
+  assert.equal(url.pathname,'/api/v2/projects/P/sources');assert.equal(url.searchParams.get('limit'),'100')
+  if(mutateIdentity)user='other'
+  if(revokeDuringRead)enabled=false
+  return denySources?new Response(null,{status:403}):Response.json({schema_version:'opensaddle.source-list.v1',project_id:'P',items:[row]})
+ }
+ const client=new RemoteMalleableShellClient('http://core',()=>user,'host-secret'),source={postMessage:(message:any)=>messages.push(message)},node={contentWindow:source,dataset:{}}
+ let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount());Object.assign(globalThis,{fetch:originalFetch,addEventListener:originalAdd,removeEventListener:originalRemove})})
+ const failures:string[]=[]
+ const mount=async()=>{
+  if(view)await act(async()=>view.unmount());node.dataset={};messages.length=0
+  await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[]}} connectionKey={user} onOpenTask={()=>{}} onNewTask={()=>{}} onUnavailable={reason=>failures.push(reason)}/>,{createNodeMock:()=>node})})
+  for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
+  assert.equal(view.root.findAllByType('iframe').length,1,JSON.stringify(view.toJSON()))
+  await act(async()=>view.root.findByType('iframe').props.onLoad())
+ }
+ const send=async(data:any)=>{const init=messages.find(m=>m.kind==='init');await act(async()=>{for(const listener of listeners)listener({source,data:{...init,...data}})})}
+ await mount()
+ assert.equal(paths.filter(p=>p.endsWith('/sources')).length,0,'no source reads before an explicit request')
+ await send({kind:'request',action:'read_sources',request_id:'before-ready'})
+ assert.equal(paths.filter(p=>p.endsWith('/sources')).length,0)
+ await send({kind:'ready'})
+ await send({kind:'request',action:'read_sources',request_id:'stale',nonce:'wrong'})
+ assert.equal(paths.filter(p=>p.endsWith('/sources')).length,0)
+ await send({kind:'request',action:'read_sources',request_id:'sources-1',project_id:'OTHER'})
+ const result=messages.find(m=>m.kind==='resources')
+ assert.ok(result,'source request must receive a framed resource projection')
+ assert.equal(result.request_id,'sources-1');assert.equal(result.projection.project_id,'P')
+ assert.equal(result.projection.completeness,'bounded_snapshot');assert.equal(result.projection.limit,100)
+ assert.deepEqual(Object.keys(result.projection.items[0]).sort(),['display_label','revision','snapshot_digest','source_id','source_kind'])
+ assert.doesNotMatch(JSON.stringify(messages),/host-secret|secret_path|credentials|private\/workspace/)
+ revokeDuringRead=true
+ await send({kind:'request',action:'read_sources',request_id:'revoked'})
+ assert.equal(messages.filter(m=>m.kind==='resources').length,1,'revocation during read must suppress the new projection')
+ assert.equal(view.root.findAllByType('iframe').length,0)
+ assert.ok(failures.length)
+ enabled=true;revokeDuringRead=false;denySources=true
+ await mount();await send({kind:'ready'});await send({kind:'request',action:'read_sources',request_id:'denied'})
+ assert.equal(view.root.findAllByType('iframe').length,0,'source denial must clear previously rendered resources')
+ denySources=false;mutateIdentity=true
+ await assert.rejects(client.projectSources('P'),/Invalid Project source projection/)
+ mutateIdentity=false
+ const validFetch=globalThis.fetch
+ for(const bad of [
+  {schema_version:'opensaddle.source-list.v1',project_id:'OTHER',items:[row]},
+  {schema_version:'opensaddle.source-list.v1',project_id:'P',items:[row,row]},
+  {schema_version:'opensaddle.source-list.v1',project_id:'P',items:[{...row,snapshot_digest:'invalid'}]},
+  {schema_version:'opensaddle.source-list.v1',project_id:'P',items:Array(101).fill(row)},
+ ]){globalThis.fetch=async()=>Response.json(bad);await assert.rejects(client.projectSources('P'),/Invalid Project source/)}
+ globalThis.fetch=validFetch
+})

@@ -576,3 +576,40 @@ messages from the URL, but unsaved text is deliberately memory-only. Drafts are
 scoped to the current client, identity and Project, and are not sent to installed
 views. View switching and workspace refresh pause during conversation operations.
 This does not implement provider continuation or streaming assistant messages.
+
+### Bounded source reads
+
+A signed Project Perspective or widget can require `read.project-sources.v1`
+in `ui_contract.required_capabilities` and add `resources` to its input kind enum.
+After `ready`, send the usual initialized identity envelope with:
+
+```js
+{kind: 'request', action: 'read_sources', request_id: 'sources-1'}
+```
+
+The host ignores any supplied Project ID and reads the mounted Project using
+its authenticated source API. It rechecks the enabled package before and after
+that read. One request may be pending at a time, shared with navigation/state
+operations; callers should await a result before requesting again. Request IDs
+must contain 1–100 letters, digits, underscores or hyphens. A read failure removes
+the view so previously displayed protected data cannot remain visible.
+
+The response carries the same identity fence, `kind: 'resources'`, the echoed
+`request_id`, and `projection`:
+
+```js
+{
+  schema_version: 'opensaddle.project-sources.v1',
+  project_id: 'the-mounted-project',
+  limit: 100,
+  completeness: 'bounded_snapshot',
+  items: [{source_id, source_kind, revision, snapshot_digest, display_label}]
+}
+```
+
+Validate the identity envelope and request ID before rendering. Display labels
+as text. This is a bounded registered-source snapshot, not source-file content,
+knowledge access, live subscription or a complete directory. No filesystem paths,
+credentials, service handles or other response properties are forwarded. Existing
+task-only packages neither request nor receive this data. Machine and approval
+resources are still outside this SDK slice.

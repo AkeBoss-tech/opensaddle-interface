@@ -10,7 +10,7 @@ export function installedProjectViews(renderers:ApplicationRendererDescriptor[])
 }
 
 const HOST_API=1
-const HOST_CAPABILITIES=new Set(['projection.project-runs.v1','projection.live.v1','navigation.task.open.v1','navigation.task.create.v1'])
+const HOST_CAPABILITIES=new Set(['projection.project-runs.v1','projection.live.v1','navigation.task.open.v1','navigation.task.create.v1','read.project-sources.v1'])
 /** Undefined means compatible. Older signed packages keep the v1 schema contract. */
 export function projectViewCompatibility(renderer:ApplicationRendererDescriptor,mount:'perspective'|'widget'='perspective'):string|undefined{
  const contract=renderer.descriptor?.ui_contract

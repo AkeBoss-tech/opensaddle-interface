@@ -325,7 +325,13 @@ export interface ApplicationRendererEnablement{schema_version:'opensaddle.applic
 export interface RendererHostSession{session_id:string;report_token:string;expires_at:string;next_sequence:number;host_identity_authority:'client_asserted'}
 export interface RendererHostObservation{session_id:string;project_id:string;subject:string;host_id:string;application_id:string;instance_id:string;package_ref:ApplicationRendererDescriptor['package_ref'];environment_revision:number;environment_definition_digest:string;generation:number;state:'loading'|'ready'|'error'|'unknown';error_code:string|null;sequence:number;updated_at:string;expires_at:string;reason?:string}
 export interface RendererHostObservationList{schema_version:'opensaddle.renderer-host-observations.v1';project_id:string;generated_at:string;items:RendererHostObservation[];authority:'host_reported';semantic_correctness:'not_verified'}
+export interface ProjectSourceProjection {
+  schema_version:'opensaddle.project-sources.v1'; project_id:string; limit:100; completeness:'bounded_snapshot';
+  items:{source_id:string;source_kind:string;revision:string;snapshot_digest:string;display_label:string}[]
+}
 export interface MalleableShellClient {
+  projectSources?(projectId:string,signal?:AbortSignal):Promise<ProjectSourceProjection>
+
   commands(projectId?: string): Promise<ShellCommandDescriptor[]>; artifacts(runId: string, projectId: string): Promise<ExactArtifactRef[]>; invoke(descriptor: ShellCommandDescriptor, resource: ExactArtifactRef, input?: Record<string, unknown>): Promise<ShellCommandResult>; invocations(projectId: string): Promise<ShellCommandResult[]>; invocation(invocationId: string): Promise<ShellCommandResult>
   content?(resource:ExactArtifactRef):Promise<ArtifactContent>;applicationRenderers?(projectId:string,signal?:AbortSignal):Promise<ApplicationRendererDescriptor[]>;applicationRendererContent?(projectId:string,renderer:ApplicationRendererDescriptor,signal?:AbortSignal):Promise<Response>;applicationRendererCandidates?(projectId:string):Promise<ApplicationRendererCandidate[]>;enableApplicationRendererCandidate?(projectId:string,candidate:ApplicationRendererCandidate):Promise<ApplicationRendererEnablement>
   createRendererHostSession?(projectId:string,input:{host_id:string;application_id:string;instance_id:string;package_ref:ApplicationRendererDescriptor['package_ref'];environment_revision:number;environment_definition_digest:string;generation:number}):Promise<RendererHostSession>;reportRendererHostObservation?(sessionId:string,reportToken:string,input:{sequence:number;state:'loading'|'ready'|'error';error_code?:string}):Promise<RendererHostObservation>;rendererHostObservations?(projectId:string):Promise<RendererHostObservationList>
