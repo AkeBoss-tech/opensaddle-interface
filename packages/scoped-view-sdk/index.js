@@ -26,7 +26,7 @@ export function connectScopedView({onInit, scope, timeoutMs=10000}) {
  }
  function request(action,resource,capability,extra){
   if(disposed||!envelope)return Promise.reject(Error('View is not connected'))
-  if(scope!=='user'||!capabilities.includes(capability))return Promise.reject(Error('Capability unavailable'))
+  if((scope!=='user'&&capability!=='view.settings.read')||!capabilities.includes(capability))return Promise.reject(Error('Capability unavailable'))
   if(pending)return Promise.reject(Error('A resource request is already pending'))
   return new Promise((resolve,reject)=>{
    const id=crypto.randomUUID()
@@ -38,6 +38,7 @@ export function connectScopedView({onInit, scope, timeoutMs=10000}) {
  window.addEventListener('message',listener)
  return {
   saveState(state){if(disposed||!envelope)throw Error('View is not connected');send({kind:'state',state})},
+  readSettings(){return request('read_settings','view_settings','view.settings.read',{})},
   readDevices(after=''){if(typeof after!=='string'||after.length>512)return Promise.reject(Error('Invalid cursor'));return request('read_devices','owner_devices','owner.devices.read',{after})},
   readDeviceActivity(deviceId){if(typeof deviceId!=='string'||!deviceId)return Promise.reject(Error('Invalid device'));return request('read_device_activity','owner_device_activity','owner.device-activity.read',{device_id:deviceId})},
   dispose,

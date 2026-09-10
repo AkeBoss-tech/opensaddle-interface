@@ -1,3 +1,5 @@
+import {StandalonePluginSettingsClient} from './standalonePluginSettings'
+import {rendererSettingsContract} from './rendererSettings'
 import {PersonalDevicesClient} from './personalDevices'
 import type { ApplicationRendererCandidate, EnvironmentRevision } from './contracts'
 
@@ -52,6 +54,17 @@ export class ScopedRendererClient {
     const activity=await new PersonalDevicesClient(this.base,this.user,this.token).activity(deviceId)
     if(this.identity()!==owner||scope.id!==owner||scope.kind!=='user')throw Error('Owner device account changed')
     return {schema_version:'opensaddle.owner-device-activity.v1',device_id:activity.deviceId,generated_at:activity.generatedAt,readiness:activity.readiness,active_runs:activity.activeRuns,task_authority:'not_evaluated',process_termination:'not_observed'}
+  }
+  async viewSettings(scope: ViewScope, ref: RendererReference, declaration: unknown) {
+    const actor=this.identity(),contract=rendererSettingsContract(declaration)
+    if(!contract||!contract.scopes.includes(scope.kind)||(scope.kind==='user'&&scope.id!==actor))throw Error('View settings unavailable')
+    const rows=await new StandalonePluginSettingsClient(this.base,this.user,this.token).list(scope.kind==='team'?scope.id:undefined)
+    if(actor!==this.identity())throw Error('View settings account changed')
+    const matches=rows.filter(row=>row.application_id===ref.application_id&&row.package_ref.package_id===ref.package_id&&row.package_ref.version===ref.version&&row.package_ref.manifest_digest===ref.manifest_digest)
+    const canonical=(value:unknown):string=>JSON.stringify(value&&typeof value==='object'?Array.isArray(value)?value.map(item=>JSON.parse(canonical(item))):Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,JSON.parse(canonical(item))])):value)
+    if(matches.length>1||matches.some(row=>canonical(row.contract)!==canonical(contract)))throw Error('View settings declaration changed')
+    const layer=matches[0]?.layer
+    return {schema_version:'opensaddle.scoped-view-settings.v1',scope:{...scope},settings_version:contract.settings_version,revision:layer?.revision??0,values:{...contract.defaults,...layer?.values},authority:'presentation_only'}
   }
   async environment(scope: ViewScope, signal?: AbortSignal): Promise<ScopedEnvironment> { return this.environmentValue(await this.json(scope, '/environment', { signal })) }
   async candidates(scope: ViewScope, signal?: AbortSignal): Promise<{ scope: ViewScope; activation_supported: boolean; items: ApplicationRendererCandidate[] }> {

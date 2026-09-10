@@ -116,3 +116,23 @@ directory to Core’s disposable fixture using `--fragment-directory`. The brows
 receipt `scoped-sdk-browser-20260910.json` covers init, state restoration, owner
 inventory and Team liveness. Activity reads with this helper and packaged Electron
 remain separate checks.
+
+## Scoped presentation settings
+
+Personal and Team views may declare `view.settings.read` plus a signed
+`settings_contract` whose scopes include their own scope. After ready, call
+`view.readSettings()` or send `kind: request`, `action: read_settings` and a
+request ID. The response resource is `view_settings`:
+
+```json
+{"schema_version":"opensaddle.scoped-view-settings.v1","scope":{"kind":"user","id":"owner"},"settings_version":1,"revision":2,"values":{"density":"compact"},"authority":"presentation_only"}
+```
+
+The host reads the standalone preferences directory, selects only the exact
+package/version/manifest/application, checks the signed contract and resolves its
+defaults with that scope's saved overrides. No saved override means revision 0
+and declared defaults. It never returns another package's rows or combines Team
+settings with personal overrides. Host-session authorization is checked around
+the read. No settings mutation is exposed to plug-ins; use host settings to edit.
+The production-host/real-Core receipt covers distinct personal and Team values;
+actual browser delivery through the helper remains pending.

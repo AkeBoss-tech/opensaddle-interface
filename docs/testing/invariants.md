@@ -852,3 +852,13 @@ capability denial, bounded concurrency, liveness, timeout and disposal. The help
 must never copy initialization data or credentials into its outgoing envelope.
 This new helper does not replace host-side authorization. Bundled signed-browser
 execution remains separate from this protocol test.
+
+## SCOPED-SETTINGS-1 — exact scoped presentation reads
+
+A signed `view.settings.read` capability delivers only settings for the selected
+package/version/manifest/application and its declared user or Team scope. Core
+validates standalone membership; the host validates the declaration and reports
+session authorization before and after reading. Settings confer no task authority.
+`scripts/prove-scoped-settings-live.tsx` uses real signed Core packages, persisted
+distinct user/Team overrides, production host/client and simulated external frame
+messages. Both receive their own revision-2 values. No plug-in write API is added.
