@@ -490,7 +490,7 @@ test('installed command SDK resolves exact descriptors and artifacts through the
   assert.equal(path,'/api/v2/commands/artifact.review/invocations');assert.equal(options?.method,'POST');invoked++
   const body=JSON.parse(String(options?.body));assert.deepEqual(body,{resource:{project_id:'P',run_id:'R',artifact_id:'A',digest:'a'.repeat(64)},input:{format:'brief'},expected_version:1,expected_descriptor_digest:'b'.repeat(64)})
   if(revokeAfterInvoke)revoked=true
-  return Response.json({invocation_id:'inv-'+invoked,project_id:'P',command_id:descriptor.command_id,version:1,descriptor_digest:descriptor.descriptor_digest,resource:body.resource,input:body.input,invoked_by:'private-user',status:'completed',result:{summary:'Exact review'},receipt:{effect:'read',resource_digest:'a'.repeat(64),verified:false}})
+  return Response.json({invocation_id:'inv-'+invoked,project_id:'P',command_id:descriptor.command_id,version:1,descriptor_digest:descriptor.descriptor_digest,resource:body.resource,input:body.input,invoked_by:'private-user',status:'completed',result:{summary:'Exact review'},receipt:{effect:'read',resource_digest:createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(body.resource).sort(([a],[b])=>a.localeCompare(b))))).digest('hex'),verified:false}})
  }
  const client=new RemoteMalleableShellClient('http://core',()=> 'member','secret'),source={postMessage:(m:any)=>messages.push(m)},node={contentWindow:source,dataset:{}}
  let view!:ReactTestRenderer
@@ -506,11 +506,13 @@ test('installed command SDK resolves exact descriptors and artifacts through the
  await send({kind:'request',action:'invoke_command',request_id:'foreign',command:{...command,run_id:'OTHER'}});assert.equal(invoked,0)
  const request={...init,kind:'request',action:'invoke_command',request_id:'invoke',project_id:'OTHER',command}
  await act(async()=>{for(const fn of listeners){fn({source,data:request});fn({source,data:request})}})
- assert.equal(invoked,1);assert.equal(messages.at(-1).projection.invocation_id,'inv-1');assert.equal(messages.at(-1).projection.project_id,'P')
+ for(let i=0;i<100&&view.root.findAllByType('iframe').length&&messages.at(-1)?.projection?.invocation_id!=='inv-1';i++)await act(async()=>{await new Promise(resolve=>setImmediate(resolve))})
+ assert.equal(invoked,1);assert.equal(messages.at(-1).projection.invocation_id,'inv-1','Canonical ResourceRef receipt must be accepted');assert.equal(messages.at(-1).projection.project_id,'P')
  assert.doesNotMatch(JSON.stringify(messages),/private-path|private-user/)
  await assert.rejects(client.invokeProjectCommand('P',{...command,expected_version:2}),/changed or unavailable/);assert.equal(invoked,1)
  const before=messages.length;revokeAfterInvoke=true
  await send({kind:'request',action:'invoke_command',request_id:'revoked',command})
+ for(let i=0;i<100&&view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setImmediate(resolve))})
  assert.equal(invoked,2);assert.equal(messages.length,before,'post-invocation revocation must withhold the receipt')
  assert.equal(view.root.findAllByType('iframe').length,0)
 })

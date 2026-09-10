@@ -19,7 +19,7 @@ const model=await new ProjectTaskFeedClient(m.base_url,()=> 'renderer-member',me
 const listeners=new Set<(event:any)=>void>(),handlers=new Map<string,((event:any)=>void)[]>(),messages:any[]=[]
 const originalAdd=globalThis.addEventListener,originalRemove=globalThis.removeEventListener
 Object.assign(globalThis,{addEventListener:(_:string,fn:any)=>listeners.add(fn),removeEventListener:(_:string,fn:any)=>listeners.delete(fn)})
-const nodes:any={resources:{textContent:''},resync:{},stop:{}}
+const nodes:any={resources:{textContent:''},resync:{},stop:{},commands:{},artifacts:{},invoke:{},'command-result':{textContent:''}}
 const dom={getElementById:(id:string)=>nodes[id]}
 const source={postMessage:(data:any)=>{messages.push(data);for(const fn of handlers.get('message')??[])fn({source:parent,data})}}
 const parent={postMessage:(data:any)=>{for(const fn of listeners)fn({source,data})}},node={contentWindow:source,dataset:{}}
@@ -55,11 +55,26 @@ try{
  const stopped=JSON.stringify(displayed())
  await act(async()=>{await ownerRequest('/api/v2/sources',{project_id:m.project_id,source_kind:'connected_revision',revision:'fixture-v3',snapshot_digest:'c'.repeat(64)});await new Promise(resolve=>setTimeout(resolve,6000))})
  assert.equal(JSON.stringify(displayed()),stopped,'Unsubscribed plugin must not receive further snapshots')
+ await act(async()=>nodes.commands.onclick())
+ await until(()=>nodes['command-result'].textContent==='Review command ready')
+ await act(async()=>nodes.artifacts.onclick())
+ await until(()=>nodes['command-result'].textContent==='Exact artifact ready')
+ await act(async()=>nodes.invoke.onclick())
+ await until(()=>nodes['command-result'].textContent.includes('invocation_id'))
+ const pluginReceipt=JSON.parse(nodes['command-result'].textContent)
+ const descriptor=(await shell.commands(m.project_id)).find(d=>d.command_id===pluginReceipt.command_id)!
+ const builtinReceipt=await shell.invoke(descriptor,pluginReceipt.resource,{})
+ assert.equal(pluginReceipt.descriptor_digest,builtinReceipt.descriptor_digest)
+ assert.deepEqual(pluginReceipt.resource,builtinReceipt.resource)
+ assert.deepEqual(pluginReceipt.receipt,builtinReceipt.receipt)
+ const persisted=await new RemoteMalleableShellClient(m.base_url,()=> 'renderer-member',member).invocation(pluginReceipt.invocation_id)
+ assert.equal(persisted.invocation_id,pluginReceipt.invocation_id);assert.deepEqual(persisted.receipt,pluginReceipt.receipt)
+ console.log('Signed command and built-in client share exact descriptor, resource and receipt semantics.')
  await ownerRequest(`/api/v2/runs/${m.pending_run_id}/cancel`)
  await act(async()=>{await ownerRequest(`/api/v2/projects/${m.project_id}/environment/changes`,{expected_revision:m.environment_revision,definition:{commands:[],bindings:[],services:[],packages:[],applications:[]},reason:'finish disposable resource subscription proof'})})
  await until(()=>view.root.findAllByType('iframe').length===0)
- const resources=messages.filter(v=>v.kind==='resources')
+ const resources=messages.filter(v=>v.kind==='resources'&&v.subscription_id)
  assert.ok(resources.every(v=>v.projection.project_id===m.project_id));assert.doesNotMatch(JSON.stringify(messages),new RegExp(member+'|'+owner))
- writeFileSync(receipt,JSON.stringify({schema_version:'opensaddle.resource-subscriptions-live-proof.v1',package_ref:renderer.package_ref,content_digest:renderer.content_digest,project_id:m.project_id,resource_messages:resources.map(v=>({subscription:v.subscription_id,cursor:v.cursor,items:v.projection.items.length})),checks:['actual signed catalog and immutable renderer bytes','actual plugin JavaScript subscribes to sources devices approvals','real Core approval transition updates queue','new source updates same frame','explicit resync advances all cursors','unsubscribe prevents further source delivery','environment removal revokes frame','fixture pending Run cancelled'],limits:['Empty Project device assignments; no device execution','Mounted React with minimal DOM adapter; not browser visual or sandbox proof'],completed_at:new Date().toISOString()},null,2)+'\n')
+ writeFileSync(receipt,JSON.stringify({schema_version:'opensaddle.resource-subscriptions-live-proof.v1',package_ref:renderer.package_ref,content_digest:renderer.content_digest,command_proof:{plugin:pluginReceipt,builtin_invocation_id:builtinReceipt.invocation_id,persisted_readback:true},project_id:m.project_id,resource_messages:resources.map(v=>({subscription:v.subscription_id,cursor:v.cursor,items:v.projection.items.length})),checks:['actual signed catalog and immutable renderer bytes','actual plugin JavaScript subscribes to sources devices approvals','real Core approval transition updates queue','new source updates same frame','explicit resync advances all cursors','unsubscribe prevents further source delivery','environment removal revokes frame','fixture pending Run cancelled','signed plugin invokes exact artifact command','built-in client uses same descriptor resource and receipt semantics','new client reads durable plugin invocation'],limits:['Empty Project device assignments; no device execution','Mounted React with minimal DOM adapter; not browser visual or sandbox proof'],completed_at:new Date().toISOString()},null,2)+'\n')
  console.log('Signed resource subscription proof passed.')
 }finally{if(view)await act(async()=>view.unmount());Object.assign(globalThis,{addEventListener:originalAdd,removeEventListener:originalRemove})}

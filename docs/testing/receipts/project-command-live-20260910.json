@@ -1,0 +1,106 @@
+{
+  "schema_version": "opensaddle.resource-subscriptions-live-proof.v1",
+  "package_ref": {
+    "package_id": "dev.opensaddle.resource-example",
+    "version": "1.0.0",
+    "manifest_digest": "e43cdd84c316991ed40ac1a5019ad363fbcfce6e6bda7cdb542ba518c931ef92"
+  },
+  "content_digest": "3b139a808c6d4403fe24c99cf4902cd835d675320ae6e6ad3f7e863fdc812dda",
+  "command_proof": {
+    "plugin": {
+      "schema_version": "opensaddle.project-command-receipt.v1",
+      "project_id": "renderer-proof",
+      "invocation_id": "inv_3e3ca0db0d0843b6837f1ba00f3255f9",
+      "command_id": "dev.opensaddle.artifact.review",
+      "descriptor_digest": "94179c2bcfa436a2f159fe7d4c390bfb693706f15305db85d2598f8fa37b9723",
+      "resource": {
+        "project_id": "renderer-proof",
+        "run_id": "run_b8fa4031dfe14424b5026ae7f3085ceb",
+        "artifact_id": "art_242b34f7dde044d69af9c986e730cdf0",
+        "digest": "349b85b42d7c1c3aec2550e9b7429a68d894dafd08b7cf2efad2c12c81eaaa1d"
+      },
+      "status": "completed",
+      "summary": "Reviewed artifact metadata",
+      "receipt": {
+        "effect": "read",
+        "resource_digest": "f3c948103b9bdd3c2fd1cec9ffe9353aa0a5ce6938b6124fefa312d55635533d",
+        "verified": false
+      }
+    },
+    "builtin_invocation_id": "inv_3400c717d153412e8355f6f3c9213b37",
+    "persisted_readback": true
+  },
+  "project_id": "renderer-proof",
+  "resource_messages": [
+    {
+      "subscription": "sources",
+      "cursor": 1,
+      "items": 1
+    },
+    {
+      "subscription": "devices",
+      "cursor": 1,
+      "items": 0
+    },
+    {
+      "subscription": "approvals",
+      "cursor": 1,
+      "items": 1
+    },
+    {
+      "subscription": "approvals",
+      "cursor": 2,
+      "items": 0
+    },
+    {
+      "subscription": "sources",
+      "cursor": 2,
+      "items": 2
+    },
+    {
+      "subscription": "sources",
+      "cursor": 3,
+      "items": 2
+    },
+    {
+      "subscription": "devices",
+      "cursor": 2,
+      "items": 0
+    },
+    {
+      "subscription": "approvals",
+      "cursor": 3,
+      "items": 0
+    }
+  ],
+  "checks": [
+    "actual signed catalog and immutable renderer bytes",
+    "actual plugin JavaScript subscribes to sources devices approvals",
+    "real Core approval transition updates queue",
+    "new source updates same frame",
+    "explicit resync advances all cursors",
+    "unsubscribe prevents further source delivery",
+    "environment removal revokes frame",
+    "fixture pending Run cancelled",
+    "signed plugin invokes exact artifact command",
+    "built-in client uses same descriptor resource and receipt semantics",
+    "new client reads durable plugin invocation"
+  ],
+  "limits": [
+    "Empty Project device assignments; no device execution",
+    "Mounted React with minimal DOM adapter; not browser visual or sandbox proof"
+  ],
+  "completed_at": "2026-09-10T10:48:13.406Z",
+  "cleanup": {
+    "both_fixture_servers_stopped": true,
+    "fixture_runs_terminal": true,
+    "environment_removed": true,
+    "native_workers_registered": 0
+  },
+  "initial_failure": {
+    "invocation_id": "inv_eb157f2a56824af7aab8540a68fff94f",
+    "core_status": "completed",
+    "cause": "SDK compared canonical ResourceRef receipt digest to content digest",
+    "resolution": "Canonical ResourceRef hashing with before/after regression proof; fresh fixture after cleanup"
+  }
+}

@@ -494,3 +494,12 @@ repeat, and post-call package revocation withholds the bounded receipt. Mounted
 client/transport evidence and baseline assertion are recorded in
 `receipts/project-command-sdk-20260910.json`. Actual signed command integration,
 write/execute expansion and browser verification remain separate work.
+
+
+Live PROJECT-COMMAND-SDK evidence:
+`receipts/project-command-live-20260910.json` compares actual signed plugin and
+built-in client commands against real Core and checks durable receipt readback.
+The walkthrough found that receipt.resource_digest hashes canonical ResourceRef
+JSON. `receipts/project-command-resource-digest-20260910.json` proves the repair
+against the prior implementation. Sixteen focused checks/build pass; both fixture
+servers stopped and Runs are terminal. Browser visuals remain unverified.

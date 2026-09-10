@@ -1,0 +1,20 @@
+{
+  "invariant": "PROJECT-COMMAND-SDK",
+  "base": "822d9eb88c796c8b0dcb380a3d504f5317411dfc",
+  "test_overlay": [
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern=installed command SDK",
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "before_exit": 1,
+  "before_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2716 installed command SDK resolves exact descriptors and artifacts through the host (63.587958ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 321.453416\n\n\u2716 failing tests:\n\ntest at src/perspectives/project/InstalledProjectView.test.tsx:1:46000\n\u2716 installed command SDK resolves exact descriptors and artifacts through the host (63.587958ms)\n  AssertionError [ERR_ASSERTION]: Canonical ResourceRef receipt must be accepted\n  + actual - expected\n  \n  + undefined\n  - 'inv-1'\n  \n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-command-digest-b1d3isgx/src/perspectives/project/InstalledProjectView.test.tsx:510:33)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: 'inv-1',\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+  "after_exit": 0,
+  "after_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 installed command SDK resolves exact descriptors and artifacts through the host (59.291917ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 241.885083\n",
+  "trigger": "Live Core receipt hashes canonical ResourceRef, not artifact content digest"
+}

@@ -790,3 +790,10 @@ Only one host operation runs at a time; duplicate in-flight clicks are ignored.
 There is no automatic retry. On an uncertain response, inspect task evidence before
 retrying: a completed read may already have its own durable receipt. Receipt
 verification is not a claim that generated content is semantically correct.
+
+
+Command receipt digest detail: `receipt.resource_digest` is SHA-256 of the complete
+canonical ResourceRef JSON (sorted keys, compact separators, UTF-8). It is distinct
+from `resource.digest`, which identifies the artifact content. The SDK validates
+both identities. The signed live command proof compares this receipt with the
+built-in client and verifies durable invocation readback.
