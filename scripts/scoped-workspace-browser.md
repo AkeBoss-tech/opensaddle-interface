@@ -27,3 +27,9 @@ frames to disappear, and check default content remains. Use **Use view** again,
 then reload and verify the selected scope reports ready. Repeat with `?team=…`;
 keyboard activation should work. The 2026-09-10 browser receipt records both
 scopes reaching enabled revision 3 with their environment selection retained.
+
+For signed upgrade/rollback, start the fixture with `--with-upgrade`. Select v1,
+click **Try the view**, then select v2: its changed heading and migrated count
+must appear. Increment v2 and roll back: v1 retains its original count. Selecting
+v2 again restores its independently saved state. Repeat for Team scope. This is
+SCOPED-VIEW-STATE-1; see `scoped-upgrade-browser-20260910.json` for observations.
