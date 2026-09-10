@@ -65,4 +65,5 @@ prevent delivery. Resource contents confer no new authority.
 Team/global summaries, richer settings delivery and a packaged plug-in helper
 remain separate work. The current owner device wire contract is verified with
 production host/client code, signed packages and real Core; its iframe messaging
-has component evidence and still needs a resource-specific browser walkthrough.
+has component evidence and a real-browser inventory/activity walkthrough. The
+browser fixture uses empty activity, so it does not prove live worker execution.

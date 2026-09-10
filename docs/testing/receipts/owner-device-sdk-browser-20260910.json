@@ -1,0 +1,18 @@
+{
+  "invariant": "OWNER-DEVICE-SDK-1",
+  "boundary": "real CUA browser, production scoped host/services, signed fixture and real Core; disposable loopback proxy injects credential server-side",
+  "checks": [
+    "device information initially unrequested",
+    "explicit refresh returns one owner device and excludes independently registered outsider device",
+    "Enter on selected device requests activity",
+    "unpaired and unknown connection shown",
+    "zero readiness/tasks retain authority and termination uncertainty",
+    "Team fixture mounts without owner inventory controls",
+    "no browser console errors observed"
+  ],
+  "screenshot": "out/screenshots/owner-sdk-20260910/activity.png",
+  "limits": [
+    "unstyled harness, not full packaged desktop",
+    "empty activity fixture, not executing worker evidence"
+  ]
+}

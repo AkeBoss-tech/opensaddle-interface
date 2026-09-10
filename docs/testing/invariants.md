@@ -796,3 +796,12 @@ real signed Core fixtures with owner and outsider inventory. It verifies invento
 isolation, Core denial of outsider activity, no bearer in frame payloads, explicit
 activity selection and cleanup. Only iframe messages are simulated. This is a new
 SDK capability, not a preexisting bug; no baseline failure is claimed.
+
+### OWNER-DEVICE-SDK-1 — browser walkthrough
+
+A signed executable personal view requested inventory only after Refresh devices,
+showed the sole owner device, then requested that device's activity with Enter.
+It preserved unpaired/unknown connection and authority/termination uncertainty.
+The independent outsider device was absent. The Team fixture mounted without
+personal inventory controls. Receipt: `owner-device-sdk-browser-20260910.json`;
+evidence is from an isolated production-component harness, not packaged Electron.
