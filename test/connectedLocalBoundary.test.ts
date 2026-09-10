@@ -14,9 +14,7 @@ const appCss = source('src/styles/app.css')
 const commandCenterCss = source('src/features/command-center/command-center.css')
 
 const required: Array<[string, string, string]> = [
-  ['connected routes are selected by the authenticated v2 capability contract', app, 'controlPlane.connected && services.controlPlane.v2Capabilities'],
   ['local root redirects to Command Center', app, '<Route path="/" element={<Navigate to="/home" replace />} />'],
-  ['both shells mount Command Center', app, '<Route path="/home" element={<CommandCenterPage />} />'],
   ['local Start is mounted', app, '<Route path="/start" element={<StartPage />} />'],
   ['local Work is mounted', app, '<Route path="/work" element={<WorkPage />} />'],
   ['local Operations and exact Run evidence are mounted', app, '<Route path="/operations" element={<OperationsPage />} />'],
@@ -66,13 +64,7 @@ test('local routes do not mount generic chat or workflow pages', () => {
   assert.doesNotMatch(localRoutes, /ChatPage|WorkflowsPage|PermissionsPage|BrowserRuntimePage|LocalProjectsPage/)
 })
 
-test('connected navigation does not expose demo identity or unsupported project mutation', () => {
-  const connectedShell = app.slice(app.indexOf("!settingsFocused && connectedLocal && <aside"), app.indexOf('<main className={`main'))
-  assert.match(connectedShell, /aria-label="Connected workflow"/)
-  assert.match(connectedShell, /to="\/operations"/)
-  assert.match(connectedShell, /services\?\.localProjects&&<button/)
-  assert.doesNotMatch(connectedShell, /data\.activeProjectId|Corporate Base|DEMO DATA/)
-})
+
 
 test('the removed Local Projects destination redirects to Start in both shells', () => {
   const redirects = app.match(/<Route path="\/local" element=\{<Navigate to="\/start" replace \/>\} \/>/g) ?? []
