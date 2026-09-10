@@ -3,6 +3,7 @@ import {Link} from 'react-router-dom'
 import type {ScopedRendererClient,ScopedEnvironment} from '../../services/scopedRenderers'
 import type {ApplicationRendererCandidate} from '../../services/contracts'
 import {ScopedViewHost} from './ScopedViewHost'
+import './scoped-workspace.css'
 void React
 
 /** The host owns navigation and escape controls even when its main view is replaced. */
@@ -38,9 +39,13 @@ export function ScopedWorkspace({client,teamId,children}:{client?:ScopedRenderer
  }
  const show=client&&current?.candidate&&fallback!==scopeKey
  return <>{(selected||error)&&<div className="scoped-workspace-controls" role="region" aria-label="Workspace view controls">
+  <div className="scoped-workspace-summary"><strong>{show?current.candidate?.title:'Default workspace'}</strong><span>{show?'Installed view':selected?'Your installed view is still selected':'Workspace recovery'}</span></div>
+  <div className="scoped-workspace-actions">
   <Link to={teamId?'/teams':'/settings/appearance'}>View settings</Link>
   {show?<button onClick={()=>setFallback(scopeKey)}>Show default workspace</button>:<button onClick={()=>{setFallback(undefined);setAttempt(value=>value+1)}}>Retry selected view</button>}
   {selected&&<button disabled={busy} onClick={()=>useDefault()}>Restore default workspace</button>}
+  </div>
+  {selected&&<p className="scoped-workspace-hint">Showing the default is temporary. Restoring it changes your saved view.</p>}
   {error&&<p role="alert">{error}</p>}
  </div>}{show?<div className="scoped-workspace-view"><ScopedViewHost client={client} scope={teamId?{kind:'team',id:teamId}:{kind:'user',id:identity!}} environment={current.environment} candidate={current.candidate!} onUnavailable={unavailable} fullPage/></div>:children}</>
 }
