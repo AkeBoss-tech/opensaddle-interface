@@ -43,3 +43,13 @@ test('workspace discovery permits bounded Project pages and explicit manager con
  for(const path of ['/api/v2/projects?limit=1000&after=','/api/v2/projects?limit=100&after=&admin=true','/api/v2/projects?limit=100&after=%ZZ','/api/v2/manager/context/execute'])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},server),/path/)
  assert.equal(seen.length,3)
 })
+
+test('Project workspace and private conversation lifecycle pass the adopted desktop boundary',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'}
+ const forward=async()=>Response.json({})
+ const reads=['/api/v2/projects/project/commands','/api/v2/projects/project/environment','/api/v2/projects/project/command-invocations?limit=50','/api/v2/runs/run/connectors','/api/v2/command-invocations/invocation','/api/v2/projects/project/settings/presentation/effective','/api/v2/projects/project/settings/presentation/user_project','/api/v2/projects/project/application-renderers','/api/v2/projects/project/task-feed?after=&limit=100','/api/v2/manager/conversations?limit=100','/api/v2/projects/project/conversations?limit=100&cursor=next%3D','/api/v2/projects/project/conversations/chat/messages?limit=100','/api/v2/projects/project/conversations/chat','/api/v2/projects/project/conversations/chat/messages/msg/result','/api/v2/manager/conversations/chat/messages/msg/dispatches/project/result']
+ for(const path of reads)await assert.doesNotReject(proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},forward),'desktop must admit workspace route '+path)
+ for(const path of ['/api/v2/commands/dev.opensaddle.artifact.review/invocations','/api/v2/manager/conversations','/api/v2/projects/project/conversations','/api/v2/projects/project/conversations/chat/messages','/api/v2/projects/project/conversations/chat/messages/msg/dispatch'])await assert.doesNotReject(proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path,body:'{}'},forward))
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'PUT',path:'/api/v2/projects/project/settings/presentation/user_project',body:'{}'},forward)
+ for(const path of ['/api/v2/projects/project/task-feed?after=&limit=1000','/api/v2/projects/project/conversations?limit=100&admin=1','/api/v2/projects/project/conversations/chat/delete','/api/v2/projects/project/settings/presentation/effective'])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path,body:'{}'},forward),/path/)
+})

@@ -2,7 +2,25 @@ import type { PersonalRuntimeHandoff } from './personalRuntimeCommissioning.js'
 
 export interface PersonalRuntimeProxyRequest { path:string; method:'GET'|'POST'|'PUT'; body?:string; expectedBaseUrl:string; expectedInstallationId:string; expectedProjectId:string }
 export interface PersonalRuntimeProxyResponse { status:number; contentType:string; bodyBase64:string }
+const component = "(?:[A-Za-z0-9._~!*'()-]|%[A-Fa-f0-9]{2})"
+const conversationRoot = '/api/v2/(?:manager|projects/[A-Za-z0-9._~-]+)/conversations'
+const conversationId = '[A-Za-z0-9._~-]+'
+const conversationPage = String.raw`\?limit=100(?:&cursor=${component}+)?`
 const allowed:Array<[PersonalRuntimeProxyRequest['method'],RegExp]>=[
+ ['GET',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/(?:commands|environment|command-invocations\?limit=50)$/],
+ ['GET',/^\/api\/v2\/command-invocations\/[A-Za-z0-9._~-]+$/],
+ ['GET',/^\/api\/v2\/runs\/[A-Za-z0-9._~-]+\/connectors$/],
+ ['POST',/^\/api\/v2\/commands\/[A-Za-z0-9._~-]+\/invocations$/],
+ ['GET',/^\/api\/v2\/settings\/presentation$/],
+ ['PUT',/^\/api\/v2\/settings\/presentation$/],
+ ['GET',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/(?:application-renderers|settings\/presentation\/(?:effective|project|user_project))$/],
+ ['PUT',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/settings\/presentation\/(?:project|user_project)$/],
+ ['GET',new RegExp(`^/api/v2/projects/[A-Za-z0-9._~-]+/task-feed\\?after=${component}*&limit=100$`)],
+ ['GET',new RegExp(`^${conversationRoot}${conversationPage}$`)],
+ ['GET',new RegExp(`^${conversationRoot}/${conversationId}(?:/messages${conversationPage}|/messages/${conversationId}/(?:result|dispatches(?:/${conversationId}/result)?))?$`)],
+ ['POST',new RegExp(`^${conversationRoot}(?:/${conversationId}/messages(?:/${conversationId}/dispatch)?)?$`)],
+ ['PUT',new RegExp(`^/api/v2/manager/conversations/${conversationId}/scope$`)],
+
  ['GET',/^\/api\/v2\/projects\?limit=100&after=(?:[A-Za-z0-9._~!*'()-]|%[A-Fa-f0-9]{2})*$/],
  ['POST',/^\/api\/v2\/manager\/context$/],
  ['GET',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/goal$/],

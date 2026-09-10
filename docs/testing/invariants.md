@@ -668,3 +668,13 @@ parameters, malformed cursor encoding and execution suffixes stay rejected.
 Main-process credentials remain private. The receipt records the actual pre-fix
 assertion, owning tests and an actual desktop restart, adopted directory and
 manager preview. This does not establish complete Project workspace transport.
+
+## DESKTOP-PROJECT-CONVERSATIONS-1
+
+The personal desktop proxy carries Project task-feed pagination, presentation
+preferences, renderer discovery, and private manager/Project conversation
+creation, reads, messages, scope updates and explicit dispatch/result operations.
+Only named routes and bounded page queries are accepted. Core retains scope,
+revision and execution authorization. The receipt records actual desktop
+conversation persistence and dispatch to the real Codex worker. Buffered IPC
+is not evidence of live streaming support.
