@@ -731,9 +731,10 @@ test('blocks discovery refresh for every active review or unapplied commit state
   assert.match(page, /if \(activeRunRefreshBarrier\)/)
 })
 
-test('project creation hands off to governed onboarding and never starts a generic natural-language run', () => {
+test('project creation opens its authoritative overview without starting onboarding or a generic run', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
-  assert.match(app, /\/project\/\$\{projectId\}\/onboarding/)
+  assert.match(app, /nav\(`\/project\/\$\{registered.projectId\}`\)/)
+  assert.doesNotMatch(app, /onboarding\?\$\{new URLSearchParams/ )
   assert.doesNotMatch(app, /krailOnboardingTask/)
   assert.doesNotMatch(app, /KRAIL onboarding started/)
 })

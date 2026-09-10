@@ -29,7 +29,7 @@ export function ConnectedLocalProjectPage() {
   </div>
   if (!project) return <div className="content-page"><div className="empty-state">Project not found.</div></div>
   return <div className="content-page connected-local-page">
-    <header className="page-header"><div><span className="eyebrow">Source-backed local project</span><h1>{project.name}</h1><p>{project.local?.rootPath}</p></div><div className="page-actions">{window.opensaddle?.openPath && project.local && <Button variant="secondary" onClick={() => void window.opensaddle?.openPath(project.local!.rootPath)}>Open folder</Button>}<Button onClick={() => navigate(`/project/${project.id}/onboarding`)}>Governed onboarding</Button></div></header>
+    <header className="page-header"><div><span className="eyebrow">Source-backed local project</span><h1>{project.name}</h1><p>{project.local?.rootPath}</p></div><div className="page-actions">{services?.journey ? <Button onClick={() => navigate(`/project/${encodeURIComponent(project.id)}/collaboration`)}>Tasks and project knowledge</Button> : <Button onClick={() => navigate('/settings?section=connection')}>Set up personal runtime</Button>}{window.opensaddle?.openPath && project.local && <Button variant="secondary" onClick={() => void window.opensaddle?.openPath(project.local!.rootPath)}>Open folder</Button>}<Button onClick={() => navigate(`/project/${project.id}/onboarding`)}>Governed onboarding</Button></div></header>
     {error && <p role="alert" className="error-text">{error}</p>}
     <ProjectGoalEditor projectId={project.id} client={services?.projectGoals} />
     {!state && !error && <div aria-live="polite" className="empty-state">Loading authoritative project profile…</div>}

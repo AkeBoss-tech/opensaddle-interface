@@ -52,3 +52,38 @@ test('paused cancelled or checkpointless Run cannot continue',async()=>{const au
 test('queued response-loss intent remains retryable only for the current manager and exact target',async()=>{const intent={checkpointId:portableCheckpoint.checkpointId,checkpointDigest:portableCheckpoint.checkpointDigest,targetWorkerId:'machine-b',idempotencyKey:'same-key'},seen:PortableContinuationIntent[]=[];const authority:JourneyAuthority={snapshot:async()=>({...snap('P'),currentSubject:'owner',canManage:true,portableContinuationAvailable:true,nativeSessionResume:false,activeRuns:[{runId:'run-queued',task:'Queued continuation',status:'queued',leaseEpoch:2,requestedBy:'owner',cancellationRequested:false,pendingContinuation:intent}]}),invite:async()=>{},enroll:async()=>{},delegate:async()=>{},continuePortable:async(_project,_run,actual)=>{seen.push(actual)}};let view!:ReactTestRenderer;await act(async()=>{view=create(<ConnectedJourneySurface authority={authority} projectId="P"/>);await Promise.resolve()});const button=view.root.findAllByType('button').find(node=>node.children.includes('Retry same continuation'))!;await act(async()=>{button.props.onClick();await new Promise(resolve=>setImmediate(resolve))});assert.deepEqual(seen,[intent]);await act(async()=>view.unmount())})
 
 test('continuation storage failure is rendered and never reaches submit',async()=>{let submits=0;const authority:JourneyAuthority={snapshot:async()=>({...snap('P'),currentSubject:'owner',canManage:true,portableContinuationAvailable:true,nativeSessionResume:false,workers:[{workerId:'machine-b',status:'ready',runtimeKind:'remote_worker'}],activeRuns:[{runId:'run-paused',task:'Continue work',status:'paused',leaseEpoch:2,requestedBy:'owner',cancellationRequested:false,checkpoints:[portableCheckpoint]}]}),invite:async()=>{},enroll:async()=>{},delegate:async()=>{},preparePortableContinuation:()=>{throw Error('Portable continuation intent could not be saved; nothing was submitted')},continuePortable:async()=>{submits++}};let view!:ReactTestRenderer;await act(async()=>{view=create(<ConnectedJourneySurface authority={authority} projectId="P"/>);await Promise.resolve()});const select=view.root.findAllByType('select').find(node=>node.findAllByType('option').some(option=>option.props.value==='machine-b'))!;await act(async()=>select.props.onChange({target:{value:'machine-b'}}));const button=view.root.findAllByType('button').find(node=>node.children.includes('Continue from portable checkpoint'))!;await act(async()=>button.props.onClick());assert.match(JSON.stringify(view.toJSON()),/nothing was submitted/);assert.equal(submits,0);await act(async()=>view.unmount())})
+
+test('old delegation completion cannot erase a replacement Project draft or reload its old authority', async () => {
+  let finish!: () => void, oldLoads = 0
+  const ready = {workerId:'machine',adapterId:'codex-app-server' as const,sourceId:'source',revision:'rev',digest:'d'.repeat(64),executableState:'installed' as const,authenticationState:'authenticated' as const,protocolState:'compatible' as const,workspaceState:'configured' as const,ready:true,observedAt:'2026-09-07T23:00:00Z',expiresAt:'2026-09-07T23:02:00Z',reportedAt:'2026-09-07T23:00:01Z'}
+  const snapshot = (projectId:string) => ({...snap(projectId),sources:[{sourceId:'source',label:'Repository'}],nativeAdaptersAvailable:true,nativeAdapters:[ready]})
+  const old: JourneyAuthority = {snapshot:async()=>{oldLoads++;return snapshot('A')},invite:async()=>{},enroll:async()=>{},delegate:()=>new Promise<void>(resolve=>{finish=resolve})}
+  const fresh: JourneyAuthority = {snapshot:async()=>snapshot('B'),invite:async()=>{},enroll:async()=>{},delegate:async()=>{}}
+  let view!:ReactTestRenderer
+  await act(async()=>{view=create(<ConnectedJourneySurface authority={old} projectId="A"/>);await Promise.resolve()})
+  await act(async()=>view.root.findByType('textarea').props.onChange({target:{value:'Old task'}}))
+  await act(async()=>{view.root.findAllByType('button').find(node=>node.children.includes('Delegate task'))!.props.onClick();await Promise.resolve()})
+  await act(async()=>{view.update(<ConnectedJourneySurface authority={fresh} projectId="B"/>);await Promise.resolve()})
+  await act(async()=>view.root.findByType('textarea').props.onChange({target:{value:'New Project draft'}}))
+  await act(async()=>{finish();await new Promise(resolve=>setImmediate(resolve))})
+  assert.equal(view.root.findByType('textarea').props.value,'New Project draft')
+  assert.equal(oldLoads,1)
+  await act(async()=>view.unmount())
+})
+
+test('normal coding task form submits explicit file bounds and literal verification arguments', async () => {
+  let submitted:unknown[]|undefined
+  const ready={workerId:'machine',adapterId:'codex-app-server' as const,sourceId:'source',revision:'rev',digest:'d'.repeat(64),executableState:'installed' as const,authenticationState:'authenticated' as const,protocolState:'compatible' as const,workspaceState:'configured' as const,ready:true,observedAt:'2026-09-07T23:00:00Z',expiresAt:'2026-09-07T23:02:00Z',reportedAt:'2026-09-07T23:00:01Z'}
+  const authority:JourneyAuthority={snapshot:async()=>({...snap('P'),sources:[{sourceId:'source',label:'Repository'}],nativeAdaptersAvailable:true,nativeAdapters:[ready]}),invite:async()=>{},enroll:async()=>{},delegate:async(...args)=>{submitted=args}}
+  const codingResults={read:async()=>{throw Error('no result yet')},decide:async()=>{throw Error('no acceptance authorized')}}
+  let view!:ReactTestRenderer
+  await act(async()=>{view=create(<ConnectedJourneySurface authority={authority} projectId="P" codingResults={codingResults}/>);await new Promise(resolve=>setImmediate(resolve))})
+  await act(async()=>view.root.findAllByType('input').find(node=>node.props.type==='checkbox')!.props.onChange({target:{checked:true}}))
+  const fields=view.root.findAllByType('textarea')
+  await act(async()=>{fields[0].props.onChange({target:{value:'src/example.py\ntests/test_example.py'}});fields[1].props.onChange({target:{value:'["python","-m","pytest","tests/test_example.py"]'}});fields[2].props.onChange({target:{value:'Fix the bounded bug'}})})
+  const button=view.root.findAllByType('button').find(node=>node.children.includes('Delegate task'))!
+  assert.equal(button.props.disabled,false)
+  await act(async()=>{button.props.onClick();await new Promise(resolve=>setImmediate(resolve))})
+  assert.deepEqual(submitted?.[5],{schema_version:'opensaddle.coding-task.v1',allowed_paths:['src/example.py','tests/test_example.py'],verification_commands:[['python','-m','pytest','tests/test_example.py']]})
+  await act(async()=>view.unmount())
+})

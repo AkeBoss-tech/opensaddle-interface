@@ -1,3 +1,6 @@
+import { personalRuntimeSubject } from './personalRuntimeTransport'
+import { CodingResultReviewClient } from './codingResultReview'
+import { RegisteredProjectKnowledgeClient } from './registeredProjectKnowledge'
 import { detectRuntimeMode, type RuntimeMode } from './capabilities'
 import type { AutonomyPolicySummary, CommandCenterClient, DelegationPolicySummary, ExtensionCatalogClient, FileStore, KrailProposalClient, LocalProjectClient, MalleableShellClient, OperationsSessionClient, ParticipantClient, PermissionClient, ProjectGoalClient, ProjectIntelligenceClient, RuntimeClient, SandboxClient, ThreadClient, ToolClient, WorkflowClient, WorkspaceClient } from './contracts'
 import { createFileStore } from './fileStore'
@@ -50,6 +53,8 @@ export interface ServiceBundle {
   operationsSessions?: OperationsSessionClient
   malleableShell?: MalleableShellClient
   journey?: JourneyAuthority
+  codingResults?: CodingResultReviewClient
+  projectKnowledge?: RegisteredProjectKnowledgeClient
   personalRuntime?: PersonalRuntimeClient
   controlPlane: {
     connected: boolean
@@ -128,7 +133,7 @@ export function initServices(opts: {
       const connection = opts.connection ?? defaultConnectionProfile()
       const baseUrl = connection.baseUrl
       const token = connection.token
-      const getUserId = opts.getCurrentUserId ?? (() => opts.currentUserId)
+      const getUserId = () => personalRuntimeSubject(baseUrl) ?? opts.getCurrentUserId?.() ?? opts.currentUserId
       let backendAvailable = false
       let backendMode: string | undefined
       let modelProvider: string | undefined
@@ -143,6 +148,8 @@ export function initServices(opts: {
       let nativeAdaptersAvailable = false
       let authorizedContextAvailable = false
       let personalRuntimeAvailable = false
+      let projectKnowledgeAvailable = false
+      let codingTasksAvailable = false
       let portableContinuationAvailable = false
       let nativeSessionResume = false
       let legacyHealthAvailable = false
@@ -249,6 +256,8 @@ export function initServices(opts: {
               managed_krail?: boolean
               participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
               resource_capacity?: { available?: boolean; schema_version?: string; project_config_path_template?: string; status_path_template?: string }
+              coding_tasks?: {available?:boolean;selection_field?:string;schema_version?:string;supported_adapter_ids?:unknown;result_schema_version?:string;review_path_template?:string}
+              registered_git_evidence?: { available?: boolean; schema_version?: string; list_path_template?: string; inspection_path_template?: string; setup_path_template?: string; capture_path_template?: string; review_path_template?: string; semantic_authority?: string }
               native_adapters?: { available?: boolean; schema_version?: string; supported_adapter_ids?: unknown; unsupported_adapter_ids?: unknown; readiness_path_template?: string; report_path_template?: string; selection_field?: string; observation_authority?: string; policy_authority?: string }; portable_run_continuations?: { available?: boolean; schema_version?: string; checkpoint_path_template?: string; continuation_path_template?: string; mode?: string; native_session_resume?: boolean }; authorized_context_packets?: { available?: boolean; schema_version?: string; selection_field?: string; inspector_path_template?: string; worker_path_template?: string; reauthorization_schema_version?: string; unavailable_reason?: string; sources_path_template?: string }; personal_runtime?: {available?:boolean;schema_version?:string;status_path?:string;action_path?:string;authority?:string;ui_process_owner?:boolean;recovery_path?:string}
             }
             backendAvailable = true
@@ -267,6 +276,10 @@ export function initServices(opts: {
             const context = capabilities.authorized_context_packets
             authorizedContextAvailable = context?.available === true && context.schema_version === 'krail.authorized-context-packet.v2' && context.selection_field === 'authorized_context_source_ids' && context.inspector_path_template === '/api/v2/runs/{run_id}/authorized-context-packet' && context.worker_path_template === '/api/v2/workers/{worker_id}/runs/{run_id}/authorized-context-packet' && context.reauthorization_schema_version === 'krail.authorized-context-reauthorization.v1' && context.unavailable_reason === 'context_packet_unavailable' && context.sources_path_template === '/api/v2/projects/{project_id}/authorized-context-sources'
             const personal=capabilities.personal_runtime
+            const coding = capabilities.coding_tasks
+            codingTasksAvailable = coding?.available === true && coding.selection_field === 'coding_task' && coding.schema_version === 'opensaddle.coding-task.v1' && JSON.stringify(coding.supported_adapter_ids) === JSON.stringify(['codex-app-server']) && coding.result_schema_version === 'opensaddle.coding-result.v1' && coding.review_path_template === '/api/v2/runs/{run_id}/coding-result/review'
+            const knowledge = capabilities.registered_git_evidence
+            projectKnowledgeAvailable = knowledge?.available === true && knowledge.schema_version === 'opensaddle.registered-git-evidence.v1' && knowledge.list_path_template === '/api/v2/projects/{project_id}/retained-evidence' && knowledge.inspection_path_template === '/api/v2/projects/{project_id}/retained-evidence/captures/{capture_id}/inspection' && knowledge.setup_path_template === '/api/v2/projects/{project_id}/retained-evidence/setup' && knowledge.capture_path_template === '/api/v2/projects/{project_id}/retained-evidence/captures' && knowledge.review_path_template === '/api/v2/projects/{project_id}/retained-evidence/captures/{capture_id}/review' && knowledge.semantic_authority === 'source_document_review'
             personalRuntimeAvailable=personal?.available===true&&personal.schema_version==='opensaddle.personal-runtime.v1'&&personal.status_path==='/api/v2/personal-runtime'&&personal.action_path==='/api/v2/personal-runtime/lifecycle'&&personal.authority==='local_installation_owner'&&personal.ui_process_owner===false&&personal.recovery_path==='/api/v2/personal-runtime/recovery'
           }
         } catch {
@@ -371,6 +384,8 @@ export function initServices(opts: {
         malleableShell,
         journey,
         personalRuntime,
+        codingResults: backendAvailable && codingTasksAvailable ? new CodingResultReviewClient(baseUrl, getUserId, token) : undefined,
+        projectKnowledge: backendAvailable && projectKnowledgeAvailable ? new RegisteredProjectKnowledgeClient(baseUrl, getUserId, token) : undefined,
         controlPlane: {
           connected: backendAvailable,
           mode: backendMode,

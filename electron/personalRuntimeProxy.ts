@@ -3,6 +3,14 @@ import type { PersonalRuntimeHandoff } from './personalRuntimeCommissioning.js'
 export interface PersonalRuntimeProxyRequest { path:string; method:'GET'|'POST'|'PUT'; body?:string; expectedBaseUrl:string; expectedInstallationId:string; expectedProjectId:string }
 export interface PersonalRuntimeProxyResponse { status:number; contentType:string; bodyBase64:string }
 const allowed:Array<[PersonalRuntimeProxyRequest['method'],RegExp]>=[
+ ['GET',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/goal$/],
+ ['POST',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/goal$/],
+ ['PUT',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/goal$/],
+ ['GET',/^\/api\/health$/],
+ ['GET',/^\/api\/v2\/runs\/[A-Za-z0-9._~-]+\/coding-result\/review$/],
+ ['POST',/^\/api\/v2\/runs\/[A-Za-z0-9._~-]+\/coding-result\/review$/],
+ ['GET',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/retained-evidence(?:\/captures\/[A-Za-z0-9._~-]+\/(?:inspection|content|availability))?$/],
+ ['POST',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/retained-evidence\/(?:setup|captures(?:\/[A-Za-z0-9._~-]+\/(?:review|availability))?)$/],
  ['GET',/^\/api\/v2\/(?:capabilities|personal-runtime)$/],['POST',/^\/api\/v2\/personal-runtime\/(?:lifecycle|recovery|supervisor)$/],
  ['GET',/^\/api\/v2\/projects(?:\/[A-Za-z0-9._~-]+(?:\/(?:members|workers|invitations|capacity|native-adapters)|\/(?:sources|participants|authorized-context-sources)\?limit=100)?)?$/],
  ['POST',/^\/api\/v2\/(?:projects|workers|runs)$/],['PUT',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/(?:capacity-limits|members)$/],

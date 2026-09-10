@@ -1,7 +1,25 @@
+import type { AuthoritativeRunDetail } from '../features/runs/AuthoritativeRunSurface'
+import type { CodingTaskSpec } from '../features/onboarding/CodingTaskOptions'
 import { RemoteMalleableShellClient } from './remoteMalleableShell'
 import type { AuthorizedContextHandle, PortableCheckpoint, PortableContinuationIntent } from '../features/onboarding/ConnectedJourneySurface'
 
 type Json = Record<string, unknown>
+const submissionErrorMessages: Record<string, string> = {
+  run_submission_pending: 'The earlier submission is still pending. Retry the same task to reconcile it; a replacement run will not be created.',
+  run_idempotency_conflict: 'This submission key is already bound to different arguments. Refresh the task state before submitting a changed task.',
+  selected_context_budget_exceeded: 'The selected knowledge exceeds the context budget. Select fewer documents or shorten the task so every selected source can be included.',
+  coding_execution_unavailable: 'Workspace changes are unavailable for this runtime or adapter. Select the supported personal Codex workspace-write adapter.',
+  authorized_context_packet_access_denied: 'The selected project knowledge is unavailable or no longer authorized. Refresh source access before retrying.',
+  context_packet_unavailable: 'The admitted context packet is unavailable. Refresh current source access before retrying.',
+}
+function journeyErrorMessage(detail: unknown, status: number): string {
+  if (typeof detail === 'string') return detail.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 512) || `Connected journey request failed (${status})`
+  if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+    const code = (detail as Json).code
+    if (typeof code === 'string' && Object.hasOwn(submissionErrorMessages, code)) return `${submissionErrorMessages[code]} (${code}; HTTP ${status})`
+  }
+  return `Connected journey request failed (${status})`
+}
 class RemoteJourneyRequestError extends Error { readonly status:number;constructor(message:string,status:number){super(message);this.status=status} get definitive(){return [400,401,403,404,409,422].includes(this.status)} }
 
 export class RemoteJourneyClient {
@@ -13,12 +31,13 @@ export class RemoteJourneyClient {
   private readonly authorizedContextAvailable: boolean
   private readonly portableContinuationAvailable: boolean
   private readonly nativeSessionResume: boolean
+  private readonly delegationIntents = new Map<string, string>()
   private readonly storage?: Storage
   constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false, authorizedContextAvailable = false, portableContinuationAvailable = false, nativeSessionResume = false, storage: Storage | undefined = typeof window === 'undefined' ? undefined : window.localStorage) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable; this.authorizedContextAvailable = authorizedContextAvailable; this.portableContinuationAvailable=portableContinuationAvailable;this.nativeSessionResume=nativeSessionResume;this.storage=storage }
 
   private async request(path: string, method: string, body?: unknown): Promise<Json> {
     const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-OpenSaddle-User': this.user(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
-    if (!response.ok) { const value = await response.json().catch(() => null) as { detail?: unknown } | null; throw new RemoteJourneyRequestError(typeof value?.detail === 'string' ? value.detail : `Connected journey request failed (${response.status})`,response.status) }
+    if (!response.ok) { const value = await response.json().catch(() => null) as { detail?: unknown } | null; throw new RemoteJourneyRequestError(journeyErrorMessage(value?.detail, response.status),response.status) }
     return await response.json() as Json
   }
 
@@ -31,8 +50,53 @@ export class RemoteJourneyClient {
   async enroll(projectId: string, workerId: string) { await this.registerWorker({ workerId, organizationId: projectId, projectIds: [projectId], runtimeKind: 'remote_worker' }) }
   registerWorker(input: { workerId: string; organizationId: string; projectIds: string[]; runtimeKind: 'remote_worker' | 'aws_firecracker' | 'gcp_microvm' | 'azure_microvm' }) { return this.request('/api/v2/workers', 'POST', { worker_id: input.workerId, organization_id: input.organizationId, project_ids: input.projectIds, runtime_kind: input.runtimeKind }) }
   createRun(input: { projectId: string; sourceId: string; task: string }) { return this.request('/api/v2/runs', 'POST', { project_id: input.projectId, source_id: input.sourceId, task: input.task }) }
-  delegate(projectId: string, sourceId: string, task: string, nativeAdapterId?: 'codex-app-server'|'claude-code-stream-json', authorizedContextSourceIds: string[] = []) { if (authorizedContextSourceIds.length>32 || new Set(authorizedContextSourceIds).size!==authorizedContextSourceIds.length || authorizedContextSourceIds.some(id=>!id)) throw Error('Authorized context source selection is invalid'); return this.request('/api/v2/runs', 'POST', { project_id: projectId, source_id: sourceId, task, ...(nativeAdapterId ? { native_adapter_id: nativeAdapterId } : {}), ...(authorizedContextSourceIds.length ? { authorized_context_source_ids: authorizedContextSourceIds } : {}) }) }
+  async delegate(projectId: string, sourceId: string, task: string, nativeAdapterId?: 'codex-app-server'|'claude-code-stream-json', authorizedContextSourceIds: string[] = [], codingTask?: CodingTaskSpec) {
+    if (authorizedContextSourceIds.length > 32 || new Set(authorizedContextSourceIds).size !== authorizedContextSourceIds.length || authorizedContextSourceIds.some(id => !id)) throw Error('Authorized context source selection is invalid')
+    const subject = this.user()
+    const body = { project_id: projectId, source_id: sourceId, task, ...(nativeAdapterId ? { native_adapter_id: nativeAdapterId } : {}), ...(authorizedContextSourceIds.length ? { authorized_context_source_ids: [...authorizedContextSourceIds] } : {}), ...(codingTask ? { coding_task: { schema_version: codingTask.schema_version, allowed_paths: [...codingTask.allowed_paths], verification_commands: codingTask.verification_commands.map(argv => [...argv]) } } : {}) }
+    // Persist only a fingerprint and random intent key, never task or knowledge text.
+    const fingerprintBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([this.baseUrl.replace(/\/$/, ''), subject, body])))
+    const fingerprint = Array.from(new Uint8Array(fingerprintBytes), value => value.toString(16).padStart(2, '0')).join('')
+    const storageKey = `opensaddle:delegation-intent:v1:${fingerprint}`
+    let intentKey: string
+    try {
+      const previous = this.storage ? this.storage.getItem(storageKey) : this.delegationIntents.get(storageKey)
+      if (previous && !/^[a-f0-9-]{36}$/.test(previous)) throw Error('Invalid saved intent')
+      intentKey = previous || crypto.randomUUID()
+      if (this.storage) {
+        this.storage.setItem(storageKey, intentKey)
+        if (this.storage.getItem(storageKey) !== intentKey) throw Error('Intent persistence failed')
+      } else {
+        if (typeof window !== 'undefined') throw Error('Intent storage unavailable')
+        this.delegationIntents.set(storageKey, intentKey)
+      }
+    } catch { throw Error('Task submission intent could not be saved; nothing was submitted') }
+    if (this.user() !== subject) throw Error('Task submission authority changed; nothing was submitted')
+    // Unknown responses, including server pending conflicts, retain this exact key.
+    const result = await this.request('/api/v2/runs', 'POST', { ...body, idempotency_key: intentKey })
+    if (result.project_id !== projectId || typeof result.run_id !== 'string' || !result.run_id) throw Error('Task submission response identity is invalid; retry the same task to reconcile it')
+    try {
+      if (this.storage) {
+        if (this.storage.getItem(storageKey) === intentKey) this.storage.removeItem(storageKey)
+      } else if (this.delegationIntents.get(storageKey) === intentKey) this.delegationIntents.delete(storageKey)
+    } catch { throw Error('Task was accepted, but its local submission receipt could not be cleared; retry the same task to reconcile it') }
+    return result
+  }
+
   run(runId: string) { return this.request(`/api/v2/runs/${encodeURIComponent(runId)}`, 'GET') }
+  async runDetail(runId: string): Promise<AuthoritativeRunDetail> {
+    const run = await this.run(runId)
+    if (run.run_id !== runId || typeof run.project_id !== 'string' || !run.project_id || typeof run.task !== 'string' || typeof run.status !== 'string' || typeof run.cancellation_requested !== 'boolean') throw Error('Authoritative Run identity or status is invalid')
+    const projectId = run.project_id, subject = this.user()
+    let manager = false
+    try {
+      const roster = await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/members`, 'GET')
+      if (roster.project_id !== projectId || !Array.isArray(roster.members)) throw Error('Project roster identity mismatch')
+      manager = roster.members.some(raw => { const member = raw as Json; return member.subject === subject && member.status === 'active' && ['owner','admin'].includes(String(member.role)) })
+    } catch { /* No manager controls are inferred when membership cannot be read. */ }
+    if (subject !== this.user()) throw Error('Run authority changed during status read')
+    return { runId, projectId, task: run.task, status: run.status, cancellationRequested: run.cancellation_requested, canCancel: manager || run.requested_by === subject, workerId: typeof run.assigned_worker_id === 'string' ? run.assigned_worker_id : undefined, updatedAt: typeof run.updated_at === 'string' ? run.updated_at : undefined, codingTask: (((run.policy as Json | undefined)?.obligations as Json | undefined)?.coding_task as Json | undefined)?.schema_version === 'opensaddle.coding-task.v1', ...this.authorizedContextSelection(run) }
+  }
   cancel(runId: string) { return this.request(`/api/v2/runs/${encodeURIComponent(runId)}/cancel`, 'POST', {}) }
   private continuationKey(projectId:string,runId:string) { return `opensaddle:portable-continuation:v1:${encodeURIComponent(this.baseUrl)}:${encodeURIComponent(this.user())}:${encodeURIComponent(projectId)}:${encodeURIComponent(runId)}` }
   private pendingContinuations(projectId:string):{items:Array<{runId:string,intent:PortableContinuationIntent}>,error?:string} { const found:Array<{runId:string,intent:PortableContinuationIntent}>=[];try{const prefix=this.continuationKey(projectId,'');if(!this.storage)return{items:found};for(let index=0;index<this.storage.length;index++){const key=this.storage.key(index);if(!key?.startsWith(prefix))continue;let runId:string;try{runId=decodeURIComponent(key.slice(prefix.length))}catch{continue}const intent=this.pendingContinuation(projectId,runId);if(runId&&intent)found.push({runId,intent})}return{items:found}}catch{return{items:found,error:'Local continuation recovery storage is unavailable.'}} }
@@ -49,7 +113,7 @@ export class RemoteJourneyClient {
     const text=(input:unknown,label:string,max=2048)=>{if(typeof input!=='string'||!input||input.length>max)throw Error(`Connected journey authorized context source ${label} is invalid`);return input}
     const digest=(input:unknown)=>{const value=text(input,'digest',71);if(!/^sha256:[a-f0-9]{64}$/.test(value))throw Error('Connected journey authorized context source digest is invalid');return value}
     const ids=new Set<string>()
-    return value.items.map(raw=>{if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Connected journey authorized context source is invalid');const item=raw as Json,ref=item.resource_ref;if(!ref||typeof ref!=='object'||Array.isArray(ref))throw Error('Connected journey authorized context source ResourceRef is invalid');const resource=ref as Json,sourceId=text(item.source_id,'ID',512),version=text(item.source_version,'version',512),classification=text(item.classification,'classification',128),authority=text(resource.authority,'authority',512),resourceType=text(resource.resource_type,'resource type',128),resourceId=text(resource.resource_id,'resource ID'),resourceVersion=text(resource.version,'resource version',512);digest(resource.digest);if(ids.has(sourceId)||item.immutable!==true||item.provider_freshness!=='rechecked_at_packet_create_and_read'||resourceVersion!==version||!['public','internal','confidential','restricted'].includes(classification)||!/^([a-z][a-z0-9+.-]*):[^\s?#]+$/.test(authority)||!/^[a-z][a-z0-9._-]*$/.test(resourceType)||['latest','current','head','working-tree'].includes(version.toLowerCase()))throw Error('Connected journey authorized context source contract is invalid');ids.add(sourceId);return{sourceId,label:resourceId,version,classification}})
+    return value.items.map(raw=>{if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Connected journey authorized context source is invalid');const item=raw as Json,ref=item.resource_ref;if(!ref||typeof ref!=='object'||Array.isArray(ref))throw Error('Connected journey authorized context source ResourceRef is invalid');const resource=ref as Json,sourceId=text(item.source_id,'ID',512),version=text(item.source_version,'version',512),classification=text(item.classification,'classification',128),authority=text(resource.authority,'authority',512),resourceType=text(resource.resource_type,'resource type',128),resourceId=text(resource.resource_id,'resource ID'),resourceVersion=text(resource.version,'resource version',512);digest(resource.digest);if(ids.has(sourceId)||item.immutable!==true||item.provider_freshness!=='rechecked_at_packet_create_and_read'||resourceVersion!==version||!['public','internal','confidential','restricted','private'].includes(classification)||!/^([a-z][a-z0-9+.-]*):[^\s?#]+$/.test(authority)||!/^[a-z][a-z0-9._-]*$/.test(resourceType)||['latest','current','head','working-tree'].includes(version.toLowerCase()))throw Error('Connected journey authorized context source contract is invalid');ids.add(sourceId);return{sourceId,label:resourceId,version,classification}})
   }
   private async checkpoints(projectId:string,runId:string):Promise<PortableCheckpoint[]> {
     if(!this.portableContinuationAvailable)return []
@@ -225,6 +289,6 @@ export class RemoteJourneyClient {
     const artifact = (Array.isArray(listing.artifacts) ? listing.artifacts : [])[0] as Json | undefined; if (!artifact) throw Error('This Run has no reviewable artifact.')
     const resource = { project_id: projectId, run_id: runId, artifact_id: String(artifact.artifact_id), digest: String(artifact.content_digest) }
     const content = await new RemoteMalleableShellClient(this.baseUrl, this.user, this.token).content(resource)
-    return { runId, status: String(run.status), workerId: String(run.assigned_worker_id ?? 'unassigned'), resource, text: content.text }
+    return { runId, status: String(run.status), workerId: String(run.assigned_worker_id ?? 'unassigned'), resource, text: content.text, ...((((run.policy as Json | undefined)?.obligations as Json | undefined)?.coding_task as Json | undefined)?.schema_version === 'opensaddle.coding-task.v1' ? { codingTask: true } : {}) }
   }
 }

@@ -193,6 +193,7 @@ interface StoreApi {
   rescanLocalProject: (projectId: string) => Promise<ProjectArtifactManifest | null>
   runtimeModeLabel: string
   persistenceStatus: 'local' | 'loading' | 'syncing' | 'synced' | 'needs_setup' | 'error'
+  runtimeAdoptionPending?: boolean
   threadHistoryHydrated: boolean
   lastSavedAt: number | null
   connection: ConnectionProfile
@@ -215,6 +216,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [threadHistoryHydrated, setThreadHistoryHydrated] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [connection, setConnection] = useState<ConnectionProfile>(() => loadSessionConnection(defaultConnectionProfile()))
+  const [runtimeAdoptionPending, setRuntimeAdoptionPending] = useState(() => Boolean(window.opensaddleDesktop && window.opensaddle?.adoptPersonalRuntime))
   const connectionRef = useRef(connection)
   connectionRef.current = connection
   useEffect(() => {
@@ -226,8 +228,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       installPersonalRuntimeTransport(handoff)
       const next: ConnectionProfile = { id:`remote-${handoff.baseUrl.replace(/\/$/,'')}`,name:'Personal runtime',mode:'remote',baseUrl:handoff.baseUrl.replace(/\/$/,''),allowMockFallback:false }
       saveSessionConnection(next, undefined, false)
+      setServices(null)
       setConnection(next)
-    }).catch(() => undefined)
+    }).catch(() => undefined).finally(() => { if (live) setRuntimeAdoptionPending(false) })
     return () => { live = false }
   }, [])
   const [harnessCapabilities, setHarnessCapabilities] = useState<HarnessCapability[]>([])
@@ -740,6 +743,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast,
     persistenceStatus,
     threadHistoryHydrated,
+    runtimeAdoptionPending,
     lastSavedAt,
     connection,
     harnessCapabilities,
@@ -1614,7 +1618,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     services,
     runtimeModeLabel: modeLabel(detectRuntimeMode()),
-  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, threadHistoryHydrated, lastSavedAt, connection, harnessCapabilities, refreshHarnessCapabilities, localProjectManifests, rescanLocalProject, threadPayload, reportThreadSyncError, workspaceRecoveries])
+  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, threadHistoryHydrated, runtimeAdoptionPending, lastSavedAt, connection, harnessCapabilities, refreshHarnessCapabilities, localProjectManifests, rescanLocalProject, threadPayload, reportThreadSyncError, workspaceRecoveries])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

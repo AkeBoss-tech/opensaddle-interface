@@ -28,7 +28,7 @@ const required: Array<[string, string, string]> = [
   ['local registration invokes the server project API', app, 'services.localProjects.registerProject(proposedId, root)'],
   ['server-returned project identity is retained', app, 'id: registered.projectId'],
   ['server-returned root derives presentation name', app, 'registered.root.split'],
-  ['local registration navigates to governed onboarding', app, '/onboarding?${new URLSearchParams'],
+  ['local registration opens the authoritative Project overview', app, 'nav(`/project/${registered.projectId}`)'],
   ['local command palette offers adding a project', app, "label: 'Add local project'"],
   ['local shortcut cannot create a generic chat', app, '!connectedLocal && (e.metaKey || e.ctrlKey)'],
   ['v2-only mode cannot instantiate legacy remote workspace', services, "backendAvailable && legacyHealthAvailable && backendMode !== 'local'"],

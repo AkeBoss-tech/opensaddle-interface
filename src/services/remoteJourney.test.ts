@@ -11,7 +11,7 @@ test('capacity transport reads exact Project status and configures limits with c
 test('malformed capacity never becomes invented zero usage',async()=>{const original=globalThis.fetch;globalThis.fetch=async(input)=>{const path=new URL(String(input)).pathname;if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]});if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'member',role:'member',status:'active'}]});if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]});if(path.endsWith('/sources')||path.endsWith('/participants'))return Response.json({project_id:'P',items:[]});if(path.endsWith('/capacity'))return Response.json({schema_version:'opensaddle.resource-capacity.v1',project_id:'P',state:'configured',admission_state:'idle',limits:{},usage:null,available:null,pending_phases:[]});return Response.json({active_runs:[],outcomes:[]})};try{const snapshot=await new RemoteJourneyClient('https://core.example',()=> 'member',undefined,true).snapshot('P');assert.equal(snapshot.capacity,undefined);assert.match(snapshot.capacityError!,/enforcement is invalid/)}finally{globalThis.fetch=original}})
 test('established member reads the Project when invitation administration is denied',async()=>{const original=globalThis.fetch;globalThis.fetch=async(input)=>{const path=new URL(String(input)).pathname;if(path.endsWith('/invitations'))return Response.json({detail:'invitation recipient or project owner required'},{status:403});if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'member',role:'member',status:'active'}]});if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]});if(path.endsWith('/sources')||path.endsWith('/participants'))return Response.json({project_id:'P',items:[]});return Response.json({active_runs:[],outcomes:[]})};try{const snapshot=await new RemoteJourneyClient('https://core.example',()=> 'member').snapshot('P');assert.equal(snapshot.rosterAvailable,true);assert.deepEqual(snapshot.invitations,[]);assert.equal(snapshot.canManage,false)}finally{globalThis.fetch=original}})
 
-test('native readiness is strictly source-bound and selected adapter is sent exactly',async()=>{const original=globalThis.fetch,calls:Array<{path:string;body?:unknown}>=[];globalThis.fetch=async(input,init)=>{const request=new Request(input,init),path=new URL(request.url).pathname;calls.push({path,body:request.method==='POST'?JSON.parse(await request.clone().text()):undefined});if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]});if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'member',role:'member',status:'active'}]});if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]});if(path.endsWith('/sources'))return Response.json({project_id:'P',items:[{source_id:'src_12345678',display_label:'snapshot'}]});if(path.endsWith('/participants'))return Response.json({project_id:'P',items:[]});if(path.endsWith('/native-adapters'))return Response.json({schema_version:'opensaddle.native-adapter-readiness.v1',project_id:'P',generated_at:'2026-09-07T23:00:00Z',items:[{schema_version:'opensaddle.native-adapter-readiness.v1',worker_id:'machine-a',project_id:'P',adapter_id:'codex-app-server',source_id:'src_12345678',revision:'rev-1',digest:'d'.repeat(64),executable_state:'installed',executable_version:'0.147.0',authentication_state:'authenticated',account_mode:'chatgpt',protocol_state:'compatible',protocol_version:'app-server-v1',workspace_state:'configured',ready:true,reason:null,observed_at:'2026-09-07T23:00:00Z',expires_at:'2026-09-07T23:02:00Z',reported_at:'2026-09-07T23:00:01Z'}]});if(path==='/api/v2/runs')return Response.json({run_id:'run-1'},{status:201});return Response.json({active_runs:[],outcomes:[]})};try{const client=new RemoteJourneyClient('https://core.example',()=> 'member','token',false,true),snapshot=await client.snapshot('P');assert.equal(snapshot.nativeAdapters?.[0].ready,true);assert.equal(snapshot.nativeAdapters?.[0].sourceId,'src_12345678');await client.delegate('P','src_12345678','Read fact','codex-app-server');assert.deepEqual(calls.at(-1),{path:'/api/v2/runs',body:{project_id:'P',source_id:'src_12345678',task:'Read fact',native_adapter_id:'codex-app-server'}})}finally{globalThis.fetch=original}})
+test('native readiness is strictly source-bound and selected adapter is sent exactly',async()=>{const original=globalThis.fetch,calls:Array<{path:string;body?:unknown}>=[];globalThis.fetch=async(input,init)=>{const request=new Request(input,init),path=new URL(request.url).pathname;calls.push({path,body:request.method==='POST'?JSON.parse(await request.clone().text()):undefined});if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]});if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'member',role:'member',status:'active'}]});if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]});if(path.endsWith('/sources'))return Response.json({project_id:'P',items:[{source_id:'src_12345678',display_label:'snapshot'}]});if(path.endsWith('/participants'))return Response.json({project_id:'P',items:[]});if(path.endsWith('/native-adapters'))return Response.json({schema_version:'opensaddle.native-adapter-readiness.v1',project_id:'P',generated_at:'2026-09-07T23:00:00Z',items:[{schema_version:'opensaddle.native-adapter-readiness.v1',worker_id:'machine-a',project_id:'P',adapter_id:'codex-app-server',source_id:'src_12345678',revision:'rev-1',digest:'d'.repeat(64),executable_state:'installed',executable_version:'0.147.0',authentication_state:'authenticated',account_mode:'chatgpt',protocol_state:'compatible',protocol_version:'app-server-v1',workspace_state:'configured',ready:true,reason:null,observed_at:'2026-09-07T23:00:00Z',expires_at:'2026-09-07T23:02:00Z',reported_at:'2026-09-07T23:00:01Z'}]});if(path==='/api/v2/runs')return Response.json({run_id:'run-1',project_id:'P'},{status:201});return Response.json({active_runs:[],outcomes:[]})};try{const client=new RemoteJourneyClient('https://core.example',()=> 'member','token',false,true),snapshot=await client.snapshot('P');assert.equal(snapshot.nativeAdapters?.[0].ready,true);assert.equal(snapshot.nativeAdapters?.[0].sourceId,'src_12345678');await client.delegate('P','src_12345678','Read fact','codex-app-server');assert.match(String((calls.at(-1)?.body as Record<string,unknown>).idempotency_key),/^[a-f0-9-]{36}$/);delete (calls.at(-1)?.body as Record<string,unknown>).idempotency_key;assert.deepEqual(calls.at(-1),{path:'/api/v2/runs',body:{project_id:'P',source_id:'src_12345678',task:'Read fact',native_adapter_id:'codex-app-server'}})}finally{globalThis.fetch=original}})
 
 test('malformed native readiness cannot synthesize an available agent',async()=>{const original=globalThis.fetch;globalThis.fetch=async(input)=>{const path=new URL(String(input)).pathname;if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]});if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'member',role:'member',status:'active'}]});if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]});if(path.endsWith('/sources')||path.endsWith('/participants'))return Response.json({project_id:'P',items:[]});if(path.endsWith('/native-adapters'))return Response.json({schema_version:'opensaddle.native-adapter-readiness.v1',project_id:'P',generated_at:'later',items:[{ready:true}]});return Response.json({active_runs:[],outcomes:[]})};try{const snapshot=await new RemoteJourneyClient('https://core.example',()=> 'member',undefined,false,true).snapshot('P');assert.equal(snapshot.nativeAdapters,undefined);assert.match(snapshot.nativeAdaptersError!,/generation time is invalid/)}finally{globalThis.fetch=original}})
 
@@ -20,7 +20,7 @@ test('authorized context Inspector reads an actual Knowledge packet and permitte
 
 test('authorized context Inspector rejects substituted packet and coarse denial',async()=>{const original=globalThis.fetch,d='sha256:'+'d'.repeat(64),r='sha256:'+'e'.repeat(64),c='sha256:'+'c'.repeat(64),handle={packetDigest:d,requestDigest:r,capabilityId:'krail.authorized-context-packet',capabilityVersion:'1.0.0',capabilityDescriptorDigest:c};try{globalThis.fetch=async()=>Response.json({available:false,packet:null,reauthorization:null,reason:'context_packet_unavailable'},{status:409});await assert.rejects(new RemoteJourneyClient('https://core.example',()=> 'member',undefined,false,false,true).authorizedContextPacket('P','run-1',handle),/context_packet_unavailable/);globalThis.fetch=async()=>Response.json({available:true,packet:{},reauthorization:{}});await assert.rejects(new RemoteJourneyClient('https://core.example',()=> 'member',undefined,false,false,true).authorizedContextPacket('P','run-1',handle),/invalid|does not match/)}finally{globalThis.fetch=original}})
 
-test('delegation sends only explicitly selected authorized context sources',async()=>{const original=globalThis.fetch;let body:unknown;globalThis.fetch=async(input,init)=>{assert.equal(new URL(String(input)).pathname,'/api/v2/runs');body=JSON.parse(String(init?.body));return Response.json({run_id:'run-context'},{status:201})};try{await new RemoteJourneyClient('https://core.example',()=> 'member','token',false,false,true).delegate('P','source-main','Use selected context','codex-app-server',['source-main','source-issue']);assert.deepEqual(body,{project_id:'P',source_id:'source-main',task:'Use selected context',native_adapter_id:'codex-app-server',authorized_context_source_ids:['source-main','source-issue']})}finally{globalThis.fetch=original}})
+test('delegation sends only explicitly selected authorized context sources',async()=>{const original=globalThis.fetch;let body:unknown;globalThis.fetch=async(input,init)=>{assert.equal(new URL(String(input)).pathname,'/api/v2/runs');body=JSON.parse(String(init?.body));return Response.json({run_id:'run-context',project_id:'P'},{status:201})};try{await new RemoteJourneyClient('https://core.example',()=> 'member','token',false,false,true).delegate('P','source-main','Use selected context','codex-app-server',['source-main','source-issue']);assert.match(String((body as Record<string,unknown>).idempotency_key),/^[a-f0-9-]{36}$/);delete (body as Record<string,unknown>).idempotency_key;assert.deepEqual(body,{project_id:'P',source_id:'source-main',task:'Use selected context',native_adapter_id:'codex-app-server',authorized_context_source_ids:['source-main','source-issue']})}finally{globalThis.fetch=original}})
 
 test('authorized context Inspector rejects hidden nested refs and wrong Core route binding',async()=>{const original=globalThis.fetch,response=structuredClone(actualAuthorizedContextResponse),packet=response.packet,handle={packetDigest:packet.packet_digest,requestDigest:packet.request_digest,capabilityId:packet.capability_id,capabilityVersion:packet.capability_version,capabilityDescriptorDigest:packet.capability_descriptor_digest};try{response.core_binding.project_id='wrong-project';response.core_binding.run_id='run-1';globalThis.fetch=async()=>Response.json(response);await assert.rejects(new RemoteJourneyClient('https://core.example',()=> 'member',undefined,false,false,true).authorizedContextPacket('P','run-1',handle),/Core Project|does not match/);const substituted=structuredClone(actualAuthorizedContextResponse),ref=structuredClone(substituted.packet.context.repository);ref.resource_id='hidden-resource';ref.digest='sha256:'+'9'.repeat(64);substituted.core_binding.project_id='P';substituted.core_binding.run_id='run-1';substituted.packet.context.freshness.push({source:ref,status:'fresh',basis:'substituted',processing_version:'krail.context-freshness.v1'});globalThis.fetch=async()=>Response.json(substituted);await assert.rejects(new RemoteJourneyClient('https://core.example',()=> 'member',undefined,false,false,true).authorizedContextPacket('P','run-1',handle),/outside admitted evidence/)}finally{globalThis.fetch=original}})
 
@@ -45,3 +45,121 @@ test('preparing again preserves the unresolved exact continuation intent',()=>{c
 test('broken continuation storage enumeration stays local to recovery',async()=>{const original=globalThis.fetch,storage={length:1,clear(){},getItem(){return null},key(){throw new DOMException('blocked','SecurityError')},removeItem(){},setItem(){}} satisfies Storage,client=new RemoteJourneyClient('https://core.example',()=> 'owner',undefined,false,false,false,true,false,storage);globalThis.fetch=async input=>{const path=new URL(String(input)).pathname;if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]});if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'owner',role:'owner',status:'active'}]});if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]});if(path.endsWith('/participants')||path.endsWith('/sources'))return Response.json({project_id:'P',items:[]});return Response.json({active_runs:[],outcomes:[]})};try{const snapshot=await client.snapshot('P');assert.match(snapshot.portableContinuationError!,/storage is unavailable/);assert.deepEqual(snapshot.activeRuns,[])}finally{globalThis.fetch=original}})
 
 test('inaccessible saved continuation does not hide other Runs or submit',async()=>{const original=globalThis.fetch,storage=new TestStorage(),client=new RemoteJourneyClient('https://core.example',()=> 'owner',undefined,false,false,false,true,false,storage),checkpoint={checkpointId:'chk_'+'1'.repeat(32),checkpointDigest:'2'.repeat(64),sourceLeaseEpoch:1,sourceWorkerId:'machine-a',createdAt:'2026-09-08T02:00:00Z'};client.preparePortableContinuation('P','run-denied',checkpoint,'machine-b');globalThis.fetch=async input=>{const path=new URL(String(input)).pathname;if(path.endsWith('/runs/run-denied'))return Response.json({detail:'forbidden'},{status:403});if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]});if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'owner',role:'owner',status:'active'}]});if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]});if(path.endsWith('/participants')||path.endsWith('/sources'))return Response.json({project_id:'P',items:[]});return Response.json({active_runs:[{project_id:'P',run_id:'run-other',task:'Other',status:'queued',lease_epoch:0,requested_by:'owner',cancellation_requested:false}],outcomes:[]})};try{const snapshot=await client.snapshot('P');assert.equal(snapshot.activeRuns?.[0].runId,'run-other');assert.match(snapshot.portableContinuationError!,/forbidden/);assert.equal(storage.length,1)}finally{globalThis.fetch=original}})
+
+function intentStorage(): Storage {
+  const values = new Map<string, string>()
+  return { get length() { return values.size }, clear: () => values.clear(), key: index => [...values.keys()][index] ?? null, getItem: key => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value) }, removeItem: key => { values.delete(key) } }
+}
+
+test('lost accepted delegation response reopens with same exact key and creates one Run', async () => {
+  const original = globalThis.fetch, storage = intentStorage(), runs = new Map<string, string>(), bodies: string[] = []
+  let lost = false
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body)); bodies.push(String(init?.body))
+    if (!runs.has(body.idempotency_key)) runs.set(body.idempotency_key, `run-${runs.size + 1}`)
+    if (!lost) { lost = true; throw Error('accepted response lost') }
+    return Response.json({ project_id: body.project_id, run_id: runs.get(body.idempotency_key) })
+  }
+  const client = () => new RemoteJourneyClient('https://core.example', () => 'owner', undefined, false, false, false, false, false, storage)
+  try {
+    await assert.rejects(client().delegate('P', 'source', 'Fix the real bug', 'codex-app-server', ['doc-v1']), /response lost/)
+    assert.equal(storage.length, 1)
+    const retry = await client().delegate('P', 'source', 'Fix the real bug', 'codex-app-server', ['doc-v1'])
+    assert.equal(retry.run_id, 'run-1'); assert.equal(runs.size, 1); assert.equal(bodies[0], bodies[1]); assert.equal(storage.length, 0)
+    await client().delegate('P', 'source', 'Fix the real bug', 'codex-app-server', ['doc-v1'])
+    assert.equal(runs.size, 2); assert.notEqual(bodies[1], bodies[2])
+  } finally { globalThis.fetch = original }
+})
+
+test('changed task source project provider knowledge or caller never reuses an unknown intent', async () => {
+  const original = globalThis.fetch, storage = intentStorage(), keys: string[] = []
+  let subject = 'owner'
+  globalThis.fetch = async (_url, init) => { keys.push(JSON.parse(String(init?.body)).idempotency_key); throw Error('unknown response') }
+  const client = new RemoteJourneyClient('https://core.example', () => subject, undefined, false, false, false, false, false, storage)
+  try {
+    const submissions: Parameters<RemoteJourneyClient['delegate']>[] = [
+      ['P','source','task','codex-app-server',['doc']], ['P','source','changed','codex-app-server',['doc']],
+      ['P','other','task','codex-app-server',['doc']], ['Q','source','task','codex-app-server',['doc']],
+      ['P','source','task','claude-code-stream-json',['doc']], ['P','source','task','codex-app-server',['other-doc']],
+    ]
+    for (const args of submissions) await assert.rejects(client.delegate(...args), /unknown response/)
+    subject = 'other-owner'; await assert.rejects(client.delegate(...submissions[0]), /unknown response/)
+    assert.equal(new Set(keys).size, 7)
+    subject = 'owner'; await assert.rejects(client.delegate(...submissions[0]), /unknown response/)
+    assert.equal(keys.at(-1), keys[0])
+  } finally { globalThis.fetch = original }
+})
+
+test('pending conflict and substituted response retain the exact delegation intent', async () => {
+  const original = globalThis.fetch, storage = intentStorage(), keys: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    keys.push(JSON.parse(String(init?.body)).idempotency_key)
+    return keys.length === 1 ? Response.json({detail:{code:'run_submission_pending'}},{status:409}) : Response.json({run_id:'run-other',project_id:'other'})
+  }
+  try {
+    const client = new RemoteJourneyClient('https://core.example', () => 'owner', undefined, false, false, false, false, false, storage)
+    await assert.rejects(client.delegate('P','source','task'), /409/)
+    await assert.rejects(client.delegate('P','source','task'), /identity is invalid/)
+    assert.equal(keys[0],keys[1]); assert.equal(storage.length,1)
+  } finally { globalThis.fetch = original }
+})
+
+test('delegation storage failure sends no task', async () => {
+  const original = globalThis.fetch, storage = intentStorage(); let calls = 0
+  storage.setItem = () => { throw Error('storage denied') }
+  globalThis.fetch = async () => { calls++; return Response.json({}) }
+  try {
+    const client = new RemoteJourneyClient('https://core.example', () => 'owner', undefined, false, false, false, false, false, storage)
+    await assert.rejects(client.delegate('P','source','task'), /nothing was submitted/)
+    assert.equal(calls,0)
+  } finally { globalThis.fetch = original }
+})
+
+test('coding task argument changes cannot reuse a lost-response execution intent', async () => {
+  const original = globalThis.fetch, storage = intentStorage(), bodies: Record<string,unknown>[] = []
+  globalThis.fetch = async (_url,init) => { bodies.push(JSON.parse(String(init?.body))); throw Error('unknown response') }
+  const client = new RemoteJourneyClient('https://core.example',()=> 'owner',undefined,false,false,false,false,false,storage)
+  const task = { schema_version:'opensaddle.coding-task.v1' as const,allowed_paths:['file.py'],verification_commands:[['python','-m','pytest']] }
+  try {
+    await assert.rejects(client.delegate('P','source','Fix bug','codex-app-server',['doc'],task))
+    await assert.rejects(client.delegate('P','source','Fix bug','codex-app-server',['doc'],task))
+    await assert.rejects(client.delegate('P','source','Fix bug','codex-app-server',['doc'],{...task,verification_commands:[['python','-m','pytest','-q']]}))
+    assert.deepEqual(bodies[0].coding_task,task)
+    assert.equal(bodies[0].idempotency_key,bodies[1].idempotency_key)
+    assert.notEqual(bodies[0].idempotency_key,bodies[2].idempotency_key)
+  } finally { globalThis.fetch = original }
+})
+
+test('private registered Git source classification remains private in launch discovery',async()=>{const original=globalThis.fetch;globalThis.fetch=async(input)=>{const path=new URL(String(input)).pathname;if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]});if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'member',role:'member',status:'active'}]});if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]});if(path.endsWith('/sources'))return Response.json({project_id:'P',items:[{source_id:'runtime-workspace',display_label:'working tree'}]});if(path.endsWith('/authorized-context-sources'))return Response.json({schema_version:'opensaddle.authorized-context-source-list.v1',project_id:'P',items:[{source_id:'knowledge-version-1',classification:'private',source_version:'commit-abc',resource_ref:{authority:'file:/fixture',resource_type:'document',resource_id:'docs/readme.md',version:'commit-abc',digest:'sha256:'+'1'.repeat(64)},immutable:true,provider_freshness:'rechecked_at_packet_create_and_read'}]});if(path.endsWith('/participants'))return Response.json({project_id:'P',items:[]});return Response.json({active_runs:[],outcomes:[]})};try{const snapshot=await new RemoteJourneyClient('https://core.example',()=> 'member',undefined,false,false,true).snapshot('P');assert.deepEqual(snapshot.sources,[{sourceId:'runtime-workspace',label:'working tree'}]);assert.deepEqual(snapshot.authorizedContextSources,[{sourceId:'knowledge-version-1',label:'docs/readme.md',version:'commit-abc',classification:'private'}]);assert.equal(snapshot.authorizedContextSourcesAvailable,true)}finally{globalThis.fetch=original}})
+
+test('structured admission failures explain recovery without exposing arbitrary details or replacing the retry intent', async () => {
+  const original = globalThis.fetch, storage = intentStorage(), keys: string[] = []
+  const failures = [
+    {code:'run_submission_pending',status:409,expected:/earlier submission is still pending/},
+    {code:'run_idempotency_conflict',status:409,expected:/bound to different arguments/},
+    {code:'selected_context_budget_exceeded',status:422,expected:/Select fewer documents or shorten the task/},
+    {code:'coding_execution_unavailable',status:422,expected:/Workspace changes are unavailable/},
+    {code:'authorized_context_packet_access_denied',status:503,expected:/knowledge is unavailable or no longer authorized/},
+  ]
+  let index = 0
+  globalThis.fetch = async (_url,init) => { keys.push(JSON.parse(String(init?.body)).idempotency_key); const failure=failures[index++]; return Response.json({detail:{code:failure.code,message:'UNTRUSTED-MESSAGE',debug:{credential:'DO-NOT-DISPLAY'}}},{status:failure.status}) }
+  try {
+    const client = new RemoteJourneyClient('https://core.example',()=> 'owner',undefined,false,false,false,false,false,storage)
+    for (const failure of failures) await assert.rejects(client.delegate('P','source','same task'), (error:Error) => { assert.match(error.message,failure.expected); assert.match(error.message,new RegExp(failure.code)); assert.doesNotMatch(error.message,/UNTRUSTED-MESSAGE|DO-NOT-DISPLAY|credential/); return true })
+    assert.equal(new Set(keys).size,1); assert.equal(storage.length,1)
+    globalThis.fetch = async()=>Response.json({detail:{code:'unknown_code',message:'DO-NOT-DISPLAY'}},{status:503})
+    await assert.rejects(client.delegate('P','source','same task'), /^Error: Connected journey request failed \(503\)$/)
+  } finally { globalThis.fetch = original }
+})
+
+test('plain server errors remain readable and bounded',async()=>{
+  const original=globalThis.fetch
+  globalThis.fetch=async()=>Response.json({detail:'Readable denial\n'+'x'.repeat(2000)},{status:403})
+  try{await assert.rejects(new RemoteJourneyClient('https://core.example',()=> 'owner').createProject('P'),(error:Error)=>{assert.match(error.message,/^Readable denial /);assert.equal(error.message.length,512);return true})}finally{globalThis.fetch=original}
+})
+
+test('Run detail uses authoritative status and scoped cancellation authority without legacy runtime calls',async()=>{
+ const original=globalThis.fetch,paths:string[]=[];let subject='owner'
+ globalThis.fetch=async(input)=>{const path=new URL(String(input)).pathname;paths.push(path);return Response.json(path.endsWith('/members')?{project_id:'P',members:[{subject:'owner',role:'owner',status:'active'}]}:{run_id:'run-real',project_id:'P',task:'Actual task',status:'running',requested_by:'requester',cancellation_requested:true,policy:{obligations:{coding_task:{schema_version:'opensaddle.coding-task.v1'}}}})}
+ try{const client=new RemoteJourneyClient('https://core.example',()=>subject);let value=await client.runDetail('run-real');assert.equal(value.canCancel,true);assert.equal(value.cancellationRequested,true);assert.equal(value.status,'running');assert.equal(value.codingTask,true);subject='other';value=await client.runDetail('run-real');assert.equal(value.canCancel,false);assert.ok(paths.every(path=>path.startsWith('/api/v2/')));globalThis.fetch=async()=>Response.json({run_id:'other',project_id:'P'});await assert.rejects(client.runDetail('run-real'),/identity or status/)}finally{globalThis.fetch=original}
+})

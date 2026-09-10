@@ -56,13 +56,15 @@ import './features/investigation/components/investigation.css'
 const IconPacksPage = lazy(() => import('./pages/IconPacksPage').then((module) => ({ default: module.IconPacksPage })))
 
 function Shell() {
-  const { data, createChat, importLocalProject, services, setTheme, toast, setActiveProject } = useStore()
+  const { data, createChat, importLocalProject, services, runtimeAdoptionPending, setTheme, toast, setActiveProject } = useStore()
   const [palette, setPalette] = useState(false)
   const [projectModal, setProjectModal] = useState(false)
   const [discoveredProjects, setDiscoveredProjects] = useState<DiscoveredLocalProject[]>([])
   const [, setDiscoveredUiPlugins] = useState<DiscoveredUiPlugin[]>([])
   const [registeredDiscoveryRoots, setRegisteredDiscoveryRoots] = useState<string[]>([])
   const [discoveryReady, setDiscoveryReady] = useState(false)
+  const [discoveryOwner, setDiscoveryOwner] = useState<typeof services>(null)
+  const [registryConfirmedEmpty, setRegistryConfirmedEmpty] = useState(false)
   const discoveryPrompted = useRef(false)
   const [browserOpen, setBrowserOpen] = useState(false)
   const [browserCollapsed, setBrowserCollapsed] = useState(false)
@@ -103,23 +105,27 @@ function Shell() {
 
   useEffect(() => {
     let cancelled = false
-    if (!window.opensaddle?.discoverProjects) return
+    setDiscoveryReady(false)
+    setRegistryConfirmedEmpty(false)
+    if (!window.opensaddle?.discoverProjects || runtimeAdoptionPending) return
     if (window.opensaddleDesktop && !services) return
     void Promise.all([
       window.opensaddle.discoverProjects(),
-      services?.localProjects?.listProjects?.().catch(() => []) ?? Promise.resolve([]),
+      services?.localProjects?.listProjects?.() ?? Promise.resolve(undefined),
       window.opensaddle.discoverUiPlugins?.().catch(() => []) ?? Promise.resolve([]),
     ]).then(([projects, registered, uiPlugins]) => {
       if (cancelled) return
       setDiscoveredProjects(projects)
-      setRegisteredDiscoveryRoots(registered.map((project) => project.root))
+      setRegisteredDiscoveryRoots(registered?.map((project) => project.root) ?? [])
+      setRegistryConfirmedEmpty(registered?.length === 0)
+      setDiscoveryOwner(services)
       setDiscoveredUiPlugins(uiPlugins)
       setDiscoveryReady(true)
     }).catch(() => {
-      if (!cancelled) { setDiscoveredProjects([]); setRegisteredDiscoveryRoots([]); setDiscoveryReady(true) }
+      if (!cancelled) { setDiscoveredProjects([]); setRegisteredDiscoveryRoots([]); setDiscoveryReady(false) }
     })
     return () => { cancelled = true }
-  }, [services])
+  }, [services, runtimeAdoptionPending])
 
   const availableDiscoveredProjects = useMemo(() => {
     const normalize = (value: string) => value.replaceAll('\\', '/').replace(/\/+$/, '')
@@ -131,10 +137,10 @@ function Shell() {
   }, [data.projects, discoveredProjects, registeredDiscoveryRoots])
 
   useEffect(() => {
-    if (!discoveryReady || !availableDiscoveredProjects.length || discoveryPrompted.current) return
+    if (runtimeAdoptionPending || !services?.controlPlane.connected || !services.localProjects || services.personalRuntime || discoveryOwner !== services || !registryConfirmedEmpty || !discoveryReady || !availableDiscoveredProjects.length || discoveryPrompted.current) return
     discoveryPrompted.current = true
     setProjectModal(true)
-  }, [availableDiscoveredProjects.length, discoveryReady])
+  }, [availableDiscoveredProjects.length, discoveryReady, discoveryOwner, registryConfirmedEmpty, services, runtimeAdoptionPending])
 
   useEffect(() => {
     const open = () => setPalette(true)
@@ -399,7 +405,7 @@ function Shell() {
         importLocalProject({ id: registered.projectId, name, description: `Local code project at ${registered.root}`, local: { rootPath: registered.root, importedFrom: 'folder', importedAt: Date.now(), defaultHarnessId: runner === 'codex_cli' ? 'codex' : 'claude', permissionPreset: 'workspace-write', adminAccess: true, detectedConfigs: [], harnesses: [], skills: [], documents: [] } })
         setActiveProject(registered.projectId)
         toast('Local project registered', name)
-        nav(`/project/${registered.projectId}/onboarding?${new URLSearchParams({ start: '1', runner })}`)
+        nav(`/project/${registered.projectId}`)
       }} /> : null}
     </div>
   )

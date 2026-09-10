@@ -39,10 +39,10 @@ if (process.env.OPENSADDLE_RENDERER_SELF_TEST === '1') app.setPath('userData', m
 const RENDERER_SCHEME = 'opensaddle'
 protocol.registerSchemesAsPrivileged([{
   scheme: RENDERER_SCHEME,
-  // `standard` is what lets module scripts load; deliberately NOT `secure`,
-  // because a secure origin treats the local control plane's plain http://
-  // endpoint as mixed content and blocks every API call.
-  privileges: { standard: true, supportFetchAPI: true, corsEnabled: true },
+  // The bundled first-party application needs a trustworthy origin for native
+  // Web Crypto (UUIDs and artifact digest verification). Keep CORS and browser
+  // security enabled; personal-runtime requests use the authenticated IPC proxy.
+  privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
 }])
 
 function rendererRoot(): string {

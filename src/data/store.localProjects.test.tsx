@@ -96,3 +96,25 @@ test('mounted failed workspace load sends no replacement PUT', async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = false
   }
 })
+
+test('desktop bootstrap exposes pending adoption before discovery may prompt', async () => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  const local = new MemoryStorage(), session = new MemoryStorage()
+  const prior = { localStorage:globalThis.localStorage,sessionStorage:globalThis.sessionStorage,window:globalThis.window,document:globalThis.document,fetch:globalThis.fetch,React:(globalThis as typeof globalThis & {React?:typeof React}).React }
+  let reject!:(reason:Error)=>void
+  Object.assign(globalThis,{
+    localStorage:local,sessionStorage:session,React,
+    window:{setTimeout,clearTimeout,setInterval,clearInterval,addEventListener(){},removeEventListener(){},opensaddleDesktop:true,opensaddle:{adoptPersonalRuntime:()=>new Promise((_resolve,no)=>{reject=no})}},
+    document:{body:{dataset:{},removeAttribute(){},setAttribute(){}}},
+    fetch:async()=>new Response('{}',{status:404}),
+  })
+  function Projection(){const {runtimeAdoptionPending}=useStore();return React.createElement('p',null,runtimeAdoptionPending?'adoption pending':'adoption settled')}
+  let view!:ReactTestRenderer
+  try{
+    await act(async()=>{view=create(React.createElement(StoreProvider,null,React.createElement(Projection)));await new Promise(resolve=>setTimeout(resolve,20))})
+    assert.match(JSON.stringify(view.toJSON()),/adoption pending/)
+    await act(async()=>{reject(Error('no existing runtime'));await new Promise(resolve=>setTimeout(resolve,20))})
+    assert.match(JSON.stringify(view.toJSON()),/adoption settled/)
+    await act(async()=>view.unmount())
+  }finally{Object.assign(globalThis,prior);globalThis.IS_REACT_ACT_ENVIRONMENT=false}
+})
