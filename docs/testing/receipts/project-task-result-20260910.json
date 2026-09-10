@@ -1,0 +1,17 @@
+{
+  "invariant": "PROJECT-TASK-RESULT",
+  "baseline": "97944e3c745b0717c32f70e27e8590a1a09aae8e",
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern=completed task displays checked artifact bytes",
+    "src/features/runs/TaskResultJourney.test.tsx"
+  ],
+  "before_exit": 1,
+  "before_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2716 completed task displays checked artifact bytes and removes them when integrity fails (103.056917ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 416.298125\n\n\u2716 failing tests:\n\ntest at src/features/runs/TaskResultJourney.test.tsx:1:1239\n\u2716 completed task displays checked artifact bytes and removes them when integrity fails (103.056917ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + undefined\n  - 'Published answer: 527. <img src=x onerror=alert(1)>'\n  \n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-result-baseline-ass5u4uy/src/features/runs/TaskResultJourney.test.tsx:27:10)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: 'Published answer: 527. <img src=x onerror=alert(1)>',\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+  "after_exit": 0,
+  "after_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 completed task displays checked artifact bytes and removes them when integrity fails (170.210959ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 430.355958\n",
+  "browser_verified": false
+}

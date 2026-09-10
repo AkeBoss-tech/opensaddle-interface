@@ -157,3 +157,16 @@ cover scope mismatch, identity substitution, normal cancellation, lost access an
 late replacement responses. The identical substituted-identity assertion fails on
 the baseline and passes after the repair; see receipts/project-task-detail-20260910.json.
 Browser/native proof remains pending.
+
+## PROJECT-TASK-RESULT
+
+Completed non-coding tasks show a published text artifact in the shared task page.
+The real Journey/MalleableShell reader bounds UTF-8 bytes and verifies SHA-256;
+the Journey reader checks the same authenticated account and Run/Project after
+content arrives. The panel renders text literally and removes it on failed access
+or integrity checks. Reads are sequential, every five seconds after settlement,
+with a fifteen-second display deadline. This is neither a full transcript nor a
+correctness or acceptance judgment. TaskResultJourney.test.tsx mounts the real
+client and surface with only HTTP substituted. It verifies literal text, corrupt
+bytes and account replacement; the baseline result-display assertion fails. See
+receipts/project-task-result-20260910.json. Browser/native verification is pending.

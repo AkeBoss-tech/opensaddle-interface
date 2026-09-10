@@ -155,3 +155,14 @@ Existing cancellation, launch-context inspection and coding-result review remain
 owned by the same host surface. This adds no plugin permission or independent
 execution path. Non-coding artifact inspection still opens the existing review
 workspace; a full conversational task transcript remains future work.
+
+### Published result text
+
+The shared task page now displays non-coding result artifact text inline, with
+bounded UTF-8 decoding, SHA-256 verification and current Run/account checks through
+the existing host client. Text is never executed as markup. A failed recheck clears
+it; refreshes are sequential, with a display timeout. Exact artifact identity stays
+available in a disclosure, and the existing review workspace link remains for
+further inspection. Coding tasks retain their dedicated patch/check/human-review
+panel. This output is not a reconstructed provider conversation or evidence of
+correctness, human acceptance, or a completed global manager agent.

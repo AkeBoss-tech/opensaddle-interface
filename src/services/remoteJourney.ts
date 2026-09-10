@@ -284,11 +284,14 @@ export class RemoteJourneyClient {
   }
 
   async review(projectId: string, runId: string) {
-    const run = await this.run(runId); if (run.project_id !== projectId) throw Error('Connected journey Run Project mismatch')
+    const subject=this.user()
+    const run = await this.run(runId); if (run.run_id !== runId || run.project_id !== projectId) throw Error('Connected journey Run Project mismatch')
     const listing = await this.request(`/api/v2/runs/${encodeURIComponent(runId)}/artifacts`, 'GET'); if (listing.run_id !== runId) throw Error('Connected journey artifact Run mismatch')
     const artifact = (Array.isArray(listing.artifacts) ? listing.artifacts : [])[0] as Json | undefined; if (!artifact) throw Error('This Run has no reviewable artifact.')
     const resource = { project_id: projectId, run_id: runId, artifact_id: String(artifact.artifact_id), digest: String(artifact.content_digest) }
     const content = await new RemoteMalleableShellClient(this.baseUrl, this.user, this.token).content(resource)
+    const current = await this.run(runId)
+    if(subject!==this.user()||current.run_id!==runId||current.project_id!==projectId)throw Error('Result authority changed during read')
     return { runId, status: String(run.status), workerId: String(run.assigned_worker_id ?? 'unassigned'), resource, text: content.text, ...((((run.policy as Json | undefined)?.obligations as Json | undefined)?.coding_task as Json | undefined)?.schema_version === 'opensaddle.coding-task.v1' ? { codingTask: true } : {}) }
   }
 }

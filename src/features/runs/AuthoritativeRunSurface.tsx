@@ -1,3 +1,4 @@
+import {TaskResultPanel,type TaskResultAuthority} from './TaskResultPanel'
 import React, { useEffect, useRef, useState } from 'react'
 void React
 import { Link } from 'react-router-dom'
@@ -6,6 +7,7 @@ import type { CodingResultAuthority } from '../../services/codingResultReview'
 import { CodingResultPanel } from '../onboarding/CodingResultPanel'
 export type AuthoritativeRunDetail = { runId:string;projectId:string;task:string;status:string;workerId?:string;updatedAt?:string;cancellationRequested:boolean;canCancel:boolean;codingTask:boolean;authorizedContext?:AuthorizedContextHandle }
 export interface AuthoritativeRunAuthority {
+  review?:TaskResultAuthority['review']
   runDetail(runId:string):Promise<AuthoritativeRunDetail>
   cancel?(runId:string):Promise<unknown>
   authorizedContextPacket?(projectId:string,runId:string,handle:AuthorizedContextHandle):Promise<AuthorizedContextPacket>
@@ -44,7 +46,7 @@ export function AuthoritativeRunSurface({authority,runId,codingResults,projectId
         <details><summary>Exact Run</summary><p>{detail.runId}</p><p>{detail.projectId}</p></details>
       </section>
       {detail.authorizedContext&&authority.authorizedContextPacket&&<section className="cc-panel"><button onClick={()=>void inspect()}>Inspect launch context</button>{currentPacket?.value?<><h2>Context used at launch</h2><p>Reauthorized {currentPacket.value.reauthorizedAt}</p><p><code>{currentPacket.value.packetDigest}</code></p>{currentPacket.value.citations.map((citation,index)=><article key={index}><p>{citation.content}</p><small>{citation.resourceId} · {citation.version} · {citation.locator}</small></article>)}</>:currentPacket?.error?<p role="alert">Launch context unavailable: {currentPacket.error}</p>:currentPacket?<p role="status">Checking current source authorization…</p>:null}</section>}
-      {terminal(detail.status)?detail.codingTask?codingResults?<CodingResultPanel authority={codingResults} projectId={detail.projectId} runId={detail.runId}/>:<p>Coding result inspection is unavailable from this connection.</p>:<section className="cc-panel"><p>Execution ended; this does not imply verification or human acceptance.</p><Link to={`/review?${new URLSearchParams({run:detail.runId,project:detail.projectId})}`}>Inspect result artifacts</Link></section>:<p>The task is still active. Result verification and human review appear after execution ends.</p>}
+      {terminal(detail.status)?detail.codingTask?codingResults?<CodingResultPanel authority={codingResults} projectId={detail.projectId} runId={detail.runId}/>:<p>Coding result inspection is unavailable from this connection.</p>:<>{authority.review&&<TaskResultPanel authority={authority as AuthoritativeRunAuthority & TaskResultAuthority} projectId={detail.projectId} runId={detail.runId}/>}<section className="cc-panel"><p>Execution ended; this does not imply verification or human acceptance.</p><Link to={`/review?${new URLSearchParams({run:detail.runId,project:detail.projectId})}`}>Inspect result artifacts</Link></section></>:<p>The task is still active. Result verification and human review appear after execution ends.</p>}
     </>}
   </main>
 }
