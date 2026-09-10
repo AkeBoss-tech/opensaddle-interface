@@ -1,0 +1,45 @@
+{
+  "schema": "opensaddle.desktop-launch-proof.v1",
+  "runtimeState": "/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/os-launch-GejDYR",
+  "ipcDir": "/private/tmp/os-ipc-idLUqR",
+  "launchMilliseconds": 874,
+  "projectId": "desktop-launch-check",
+  "authenticatedDashboard": true,
+  "unauthenticatedStatus": 401,
+  "adoption": true,
+  "status": {
+    "installationId": "fe797fc4-a808-4379-8a05-7d34c49c7f39",
+    "ownerSubject": "fe797fc4-a808-4379-8a05-7d34c49c7f39",
+    "project": {
+      "projectId": "desktop-launch-check",
+      "sourceId": "src_53a7b913cf39482bafeb8e49944be9d6",
+      "sourceRevision": "8c30989eb09d5761dfc3e1ba4a46b7b9212de3fd",
+      "sourceDigest": "c3ab2a2b62c1bc3fd4ffd58500fdaccb5d18e2db551952a275e16ee1ec4fb2e0"
+    },
+    "lifecycle": "running",
+    "unresolvedAssignments": [],
+    "workers": [
+      {
+        "workerId": "personal-codex-3ac4c43e03d7",
+        "adapterId": "codex-app-server",
+        "state": "ready",
+        "readiness": {
+          "ready": true,
+          "observedAt": "2026-09-10T12:28:07.440862Z",
+          "expiresAt": "2026-09-10T12:30:07.440862Z"
+        }
+      }
+    ],
+    "knowledge": {
+      "available": false,
+      "reason": "knowledge_setup_required"
+    },
+    "stateRevision": 0,
+    "updatedAt": "2026-09-10T12:28:08.146949Z"
+  },
+  "taskSubmitted": false,
+  "cleanup": {
+    "exitCode": null,
+    "signal": "SIGTERM"
+  }
+}

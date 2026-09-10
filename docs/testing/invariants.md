@@ -615,3 +615,13 @@ runtime setup, not an ineffective data retry. A disconnected or incompatible
 server offers connection settings. The setup request permits only the current
 personal runtime's supported concurrency of one. Mounted home states and request
 validation are covered by `receipts/desktop-runtime-setup-20260910.json`.
+
+## DESKTOP-PERSONAL-LAUNCH-1
+
+The desktop production commissioning path can launch the real Core personal
+runtime, receive its private handoff, adopt the same identity, read authenticated
+Command Center data and observe a ready native worker. Unauthenticated dashboard
+reads are rejected. `scripts/prove-personal-runtime-launch-live.ts` checks these
+boundaries with isolated temporary state and stops its process group afterward.
+Receipt: `receipts/personal-runtime-launch-live-20260910.json`. This is launch and
+readiness evidence, not task execution or a visual desktop walkthrough.
