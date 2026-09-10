@@ -402,3 +402,12 @@ The settings live proof now executes every script in the generated host document
 in one VM context and retains all event listeners, including the host runtime
 error bridge. `receipts/renderer-settings-live-runtime-bridge-20260910.json`
 records all nine settings checks passing with this current document structure.
+
+
+## PROJECT-CONTEXT-UI
+
+Context must start unchecked and require explicit selection after explaining
+Project task visibility. Default wire requests remain unchanged; opted-in
+requests carry only the flag, not caller-built history. Unsupported/global
+clients reject the mode, and pending dispatches restore and lock their original
+choice. Mounted real-client proof: `receipts/project-context-ui-20260910.json`.

@@ -1,0 +1,33 @@
+{
+  "invariant": "PROJECT-CONTEXT-UI",
+  "base": "618aae97a3ab9185bcadca554cccfabc481bbbb4",
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern",
+    "Project context",
+    "src/features/command-center/ManagerMessageDispatch.test.tsx"
+  ],
+  "baseline_exit_code": 1,
+  "baseline_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2716 Project context is explicitly opted into and sent only through its advertised client (49.751208ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 357.513083\n\n\u2716 failing tests:\n\ntest at src/features/command-center/ManagerMessageDispatch.test.tsx:1:4200\n\u2716 Project context is explicitly opted into and sent only through its advertised client (49.751208ms)\n  AssertionError [ERR_ASSERTION]: Project dispatch must expose the explicit context choice\n  \n  0 !== 1\n  \n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-context-ui-baseline-34epqpij/src/features/command-center/ManagerMessageDispatch.test.tsx:68:9)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 0,\n    expected: 1,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+  "boundary": "Mounted dispatch component with real conversation client; HTTP and readiness transport fixtures",
+  "checks": [
+    "default unchecked and unchanged message-only body",
+    "explicit choice sends only context flag",
+    "Project-visible history explanation",
+    "duplicate click prevention",
+    "reserved choice restored after reload",
+    "unsupported/global clients reject context locally"
+  ],
+  "limits": [
+    "No visual browser proof",
+    "No native provider continuation or streaming"
+  ],
+  "current_validation": {
+    "passed": 10,
+    "failed": 0,
+    "build": "npm run build passed"
+  }
+}

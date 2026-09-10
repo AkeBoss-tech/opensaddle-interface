@@ -47,3 +47,41 @@ test('completed manager child output appears under its saved message with exact 
   assert.equal(view.root.findAllByType('img').length,0)
  }finally{await act(async()=>view.unmount())}
 })
+
+test('Project context is explicitly opted into and sent only through its advertised client',async t=>{
+ const {ManagerConversationsClient}=await import('../../services/managerConversations')
+ const original=globalThis.fetch;t.after(()=>{globalThis.fetch=original})
+ const requests:any[]=[];let pendingContext=false
+ globalThis.fetch=async(input,options)=>{
+  const url=new URL(String(input));assert.ok(url.pathname.startsWith('/api/v2/projects/P/conversations/'))
+  if(url.pathname.endsWith('/dispatches'))return Response.json({conversation_id:conversation.conversation_id,message_id:message.message_id,items:pendingContext?[{project_id:'P',run_id:null,status:'admission_unconfirmed',include_conversation_context:true}]:[]})
+  assert.ok(url.pathname.endsWith('/dispatch'));requests.push(JSON.parse(options?.body as string))
+  return Response.json({conversation_id:conversation.conversation_id,message_id:message.message_id,project_id:'P',run_id:'run-context',status:'queued',manager_reply_available:false})
+ }
+ const options={snapshot:async()=>({projectId:'P',members:[],workers:[],sources:[{sourceId:'src_12345678',label:'Repository'}],nativeAdapters:[{sourceId:'src_12345678',adapterId:'codex-app-server' as const,ready:true}]})}
+ const client=new ManagerConversationsClient('http://core',()=> 'owner',undefined,options,false,'P',true)
+ const fixed={...conversation,project_id:'P'}
+ let view!:ReactTestRenderer;t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ async function mount(){if(view)await act(async()=>view.unmount());await act(async()=>{view=create(<MemoryRouter><ManagerMessageDispatch client={client} identity="owner" conversation={fixed} message={message} name={id=>id} disabled={false} onBusy={()=>{}}/></MemoryRouter>)});await act(async()=>{view.root.findByType('details').props.onToggle({currentTarget:{open:true}});await flush()});await act(async()=>view.root.findAllByType('select')[0].props.onChange({target:{value:'src_12345678'}}));await act(async()=>view.root.findAllByType('select')[1].props.onChange({target:{value:'codex-app-server'}}))}
+ const dispatch=()=>view.root.findAllByType('button').find(node=>node.children.includes('Dispatch saved message'))!
+ await mount()
+ assert.equal(view.root.findAllByType('input').length,1,'Project dispatch must expose the explicit context choice')
+ assert.equal(view.root.findByType('input').props.checked,false)
+ await act(async()=>{dispatch().props.onClick();await flush()})
+ assert.equal(Object.hasOwn(requests[0],'include_conversation_context'),false,'default dispatch must preserve message-only wire format')
+ await mount()
+ await act(async()=>view.root.findByType('input').props.onChange({target:{checked:true}}))
+ assert.match(JSON.stringify(view.toJSON()),/project-visible task/)
+ await act(async()=>{dispatch().props.onClick();dispatch().props.onClick();await flush()})
+ assert.equal(requests.length,2);assert.equal(requests[1].include_conversation_context,true)
+ assert.equal(requests[1].project_id,'P');assert.equal(Object.hasOwn(requests[1],'history'),false,'Core assembles authorized history')
+ assert.equal(view.root.findByType('input').props.disabled,true)
+ pendingContext=true;await mount()
+ assert.equal(view.root.findByType('input').props.checked,true,'reload must restore the reserved context choice')
+ assert.equal(view.root.findByType('input').props.disabled,true)
+ const unsupported=new ManagerConversationsClient('http://core',()=> 'owner',undefined,options,false,'P')
+ await assert.rejects(unsupported.dispatch(fixed,message.message_id,'P','src_12345678','codex-app-server',true),/unavailable/)
+ const global=new ManagerConversationsClient('http://core',()=> 'owner',undefined,options,false,undefined,true)
+ await assert.rejects(global.dispatch(conversation,message.message_id,'P','src_12345678','codex-app-server',true),/unavailable/)
+ assert.equal(requests.length,2)
+})

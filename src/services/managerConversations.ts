@@ -4,14 +4,15 @@ export interface ManagerScope {revision:number;project_ids:string[]}
 export interface ManagerConversation {project_id?:string;conversation_id:string;title:string;version:number;scope:ManagerScope;created_at:string;updated_at:string;provider_execution:false}
 export interface ManagerMessage {message_id:string;thread_id:string;sequence:number;role:'user';content:string;payload:{manager_scope:ManagerScope;provider_status:'not_started'}}
 export interface ManagerConversationView {conversation:ManagerConversation;messages:ManagerMessage[]}
-export interface ManagerChildTask {project_id:string;run_id:string|null;status:string}
+export interface ManagerChildTask {include_conversation_context?:boolean;project_id:string;run_id:string|null;status:string}
 export interface ManagerConversationsAuthority {
+ readonly conversationContext?:boolean
  readonly fixedProject?:string
  childTasks?:boolean
  childResults?:boolean
  childResult?(conversationId:string,messageId:string,projectId:string,runId:string):Promise<TaskResult>
  taskOptions?(projectId:string):Promise<JourneySnapshot>
- dispatch?(conversation:ManagerConversation,messageId:string,projectId:string,sourceId:string,adapter:NativeAdapterId):Promise<ManagerChildTask>
+ dispatch?(conversation:ManagerConversation,messageId:string,projectId:string,sourceId:string,adapter:NativeAdapterId,includeContext?:boolean):Promise<ManagerChildTask>
  dispatches?(conversationId:string,messageId:string):Promise<ManagerChildTask[]>
 
  list():Promise<ManagerConversation[]>
@@ -23,16 +24,24 @@ export interface ManagerConversationsAuthority {
 const integer=(value:unknown)=>Number.isSafeInteger(value)&&Number(value)>=0
 function validScope(value:any):value is ManagerScope{return value&&integer(value.revision)&&Array.isArray(value.project_ids)&&value.project_ids.length>0&&value.project_ids.length<=32&&new Set(value.project_ids).size===value.project_ids.length&&value.project_ids.every((id:unknown)=>typeof id==='string'&&id.trim()&&Array.from(id).length<=200)}
 function conversation(value:any):ManagerConversation{if(!value||typeof value.conversation_id!=='string'||!/^mgr_[a-f0-9]{64}$/.test(value.conversation_id)||typeof value.title!=='string'||Array.from(value.title).length>1000||!integer(value.version)||!validScope(value.scope)||value.provider_execution!==false||typeof value.created_at!=='string'||typeof value.updated_at!=='string')throw Error('Invalid manager conversation');return value}
+const contextErrors:Record<string,string>={
+ conversation_prior_task_still_active:'Wait for earlier tasks in this conversation to finish before including context.',
+ conversation_prior_dispatch_unconfirmed:'Reload earlier task status before including conversation context.',
+ conversation_context_exceeds_32_messages:'This history exceeds 32 messages. Send only this message or start a new conversation.',
+ conversation_context_exceeds_task_limit:'This history exceeds the task size limit. Send only this message or start a new conversation.',
+ manager_child_result_unavailable:'An earlier task result is unavailable for context. Send only this message or inspect that task.',
+}
 export class ManagerConversationsClient implements ManagerConversationsAuthority {
  private base:string;private user:()=>string;private token?:string;private intents=new Map<string,string>()
  private journey?:Pick<JourneyAuthority,'snapshot'>
  readonly fixedProject?:string
  readonly childTasks:boolean
+ readonly conversationContext:boolean
  readonly childResults:boolean
- constructor(base:string,user:()=>string,token?:string,journey?:Pick<JourneyAuthority,'snapshot'>,childResults=false,projectId?:string){this.fixedProject=projectId;this.journey=journey;this.childTasks=Boolean(journey);this.childResults=this.childTasks&&childResults;this.base=base.replace(/\/$/,'');this.user=user;this.token=token}
+ constructor(base:string,user:()=>string,token?:string,journey?:Pick<JourneyAuthority,'snapshot'>,childResults=false,projectId?:string,conversationContext=false){this.conversationContext=Boolean(projectId)&&conversationContext;this.fixedProject=projectId;this.journey=journey;this.childTasks=Boolean(journey);this.childResults=this.childTasks&&childResults;this.base=base.replace(/\/$/,'');this.user=user;this.token=token}
  private checked(value:any){const result=conversation(value);if(this.fixedProject&&(result.project_id!==this.fixedProject||JSON.stringify(result.scope.project_ids)!==JSON.stringify([this.fixedProject])))throw Error('Project conversation scope mismatch');return result}
  private project(id:string){if(this.fixedProject&&id!==this.fixedProject)throw Error('Project is outside this conversation')}
- private async request(path:string,method='GET',body?:unknown){const user=this.user();const response=await fetch(this.base+(this.fixedProject?'/api/v2/projects/'+encodeURIComponent(this.fixedProject)+'/conversations':'/api/v2/manager/conversations')+path,{method,cache:'no-store',signal:AbortSignal.timeout(15000),headers:{'X-OpenSaddle-User':user,...(this.token?{Authorization:`Bearer ${this.token}`} : {}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(!response.ok)throw Error(response.status===409?'Conversation changed. Reload it; your draft is preserved.':response.status===403||response.status===404?'Conversation or Project access is unavailable.':'Manager conversation request failed. Your draft is preserved.');const value=await response.json();if(user!==this.user())throw Error('Manager account changed');return value}
+ private async request(path:string,method='GET',body?:unknown){const user=this.user();const response=await fetch(this.base+(this.fixedProject?'/api/v2/projects/'+encodeURIComponent(this.fixedProject)+'/conversations':'/api/v2/manager/conversations')+path,{method,cache:'no-store',signal:AbortSignal.timeout(15000),headers:{'X-OpenSaddle-User':user,...(this.token?{Authorization:`Bearer ${this.token}`} : {}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(!response.ok){const failure=await response.json().catch(()=>null);if(typeof failure?.detail==='string'&&Object.hasOwn(contextErrors,failure.detail))throw Error(contextErrors[failure.detail]);throw Error(response.status===409?'Conversation changed. Reload it; your draft is preserved.':response.status===403||response.status===404?'Conversation or Project access is unavailable.':'Manager conversation request failed. Your draft is preserved.')}const value=await response.json();if(user!==this.user())throw Error('Manager account changed');return value}
  private async intent(operation:string,payload:unknown){const user=this.user();const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(payload))))).map(value=>value.toString(16).padStart(2,'0')).join('');if(user!==this.user())throw Error('Manager account changed');const key=JSON.stringify(this.fixedProject?['opensaddle.project-intent.v1',this.base,this.fixedProject,user,operation,digest]:['opensaddle.manager-intent.v1',this.base,user,operation,digest]);const storage=typeof sessionStorage==='undefined'?undefined:sessionStorage;let id=storage?storage.getItem(key):this.intents.get(key);if(!id){id=crypto.randomUUID();if(storage){storage.setItem(key,id);if(storage.getItem(key)!==id)throw Error('Conversation intent could not be saved')}else this.intents.set(key,id)}return {id,clear:()=>{if(storage)storage.removeItem(key);else this.intents.delete(key)}}}
  async childResult(conversationId:string,messageId:string,projectId:string,runId:string){
   if(!this.childResults)throw Error('Manager child results unavailable')
@@ -45,17 +54,18 @@ export class ManagerConversationsClient implements ManagerConversationsAuthority
   return {runId,resource:{artifact_id:result.artifact_id,digest},text:result.text}
  }
  async taskOptions(projectId:string){this.project(projectId);if(!this.journey)throw Error('Manager task dispatch unavailable');const user=this.user(),value=await this.journey.snapshot(projectId);if(user!==this.user()||value.projectId!==projectId)throw Error('Manager task scope changed');return value}
- async dispatch(value:ManagerConversation,messageId:string,projectId:string,sourceId:string,adapter:NativeAdapterId){
+ async dispatch(value:ManagerConversation,messageId:string,projectId:string,sourceId:string,adapter:NativeAdapterId,includeContext=false){
+  if(includeContext&&!this.conversationContext)throw Error('Conversation context is unavailable on this connection')
   this.project(projectId);this.checked(value)
   if(!this.childTasks||!value.scope.project_ids.includes(projectId))throw Error('Project is outside this conversation')
-  const result=await this.request('/'+encodeURIComponent(value.conversation_id)+'/messages/'+encodeURIComponent(messageId)+'/dispatch','POST',{expected_version:value.version,expected_scope_revision:value.scope.revision,project_id:projectId,source_id:sourceId,native_adapter_id:adapter})
+  const result=await this.request('/'+encodeURIComponent(value.conversation_id)+'/messages/'+encodeURIComponent(messageId)+'/dispatch','POST',{expected_version:value.version,expected_scope_revision:value.scope.revision,project_id:projectId,source_id:sourceId,native_adapter_id:adapter,...(includeContext?{include_conversation_context:true}:{})})
   if(result.conversation_id!==value.conversation_id||result.message_id!==messageId||result.project_id!==projectId||typeof result.run_id!=='string'||!result.run_id||typeof result.status!=='string'||result.manager_reply_available!==false)throw Error('Manager task receipt mismatch')
-  return {project_id:projectId,run_id:result.run_id,status:result.status}
+  return {project_id:projectId,run_id:result.run_id,status:result.status,...(includeContext?{include_conversation_context:true}:{})}
  }
  async dispatches(conversationId:string,messageId:string){
   if(!this.childTasks)throw Error('Manager task dispatch unavailable')
   const result=await this.request('/'+encodeURIComponent(conversationId)+'/messages/'+encodeURIComponent(messageId)+'/dispatches')
-  if(result.conversation_id!==conversationId||result.message_id!==messageId||!Array.isArray(result.items)||result.items.length>32||new Set(result.items.map((item:any)=>item.project_id)).size!==result.items.length||result.items.some((item:any)=>!item||typeof item.project_id!=='string'||!item.project_id||!(item.run_id===null||typeof item.run_id==='string'&&item.run_id)||typeof item.status!=='string'))throw Error('Invalid manager task listing')
+  if(result.conversation_id!==conversationId||result.message_id!==messageId||!Array.isArray(result.items)||result.items.length>32||new Set(result.items.map((item:any)=>item.project_id)).size!==result.items.length||result.items.some((item:any)=>!item||typeof item.project_id!=='string'||!item.project_id||!(item.run_id===null||typeof item.run_id==='string'&&item.run_id)||typeof item.status!=='string'||(item.include_conversation_context!==undefined&&typeof item.include_conversation_context!=='boolean')))throw Error('Invalid manager task listing')
   if(this.fixedProject&&result.items.some((item:any)=>item.project_id!==this.fixedProject))throw Error('Project task listing mismatch')
   return result.items as ManagerChildTask[]
  }

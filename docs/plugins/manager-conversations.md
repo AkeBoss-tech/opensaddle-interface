@@ -112,13 +112,17 @@ Thirteen mounted dashboard/manager checks and the renderer build pass. The new
 regression test fails on the previous Interface commit and passes after separation.
 This is component-level evidence; browser acceptance remains pending.
 
-## Pending Project context integration
+## Project conversation context
 
-Core Project conversations now accept an explicit `include_conversation_context`
-dispatch option. The default is false, and the current Interface does not send it.
-The host must expose an opt-in choice explaining that prior private messages and
-authorized task results become Project-visible task context. The Core capability
-reports bounds of 32 messages and 100,000 task characters. Active prior tasks,
-unavailable output or changed context block submission. This remains a separately
-admitted task, not a resumed provider session. Implement the host choice before
-advertising contextual follow-up support in the product.
+When Core advertises the bounded opt-in contract, fixed-Project dispatch offers
+an unchecked “Include conversation context” option. Its explanation states that
+prior private messages and authorized task output become Project-visible task
+context. Message-only requests retain the original wire format. Global manager
+conversations and unsupported connections cannot opt in.
+
+The host sends only the boolean choice; Core reads and authorizes history. Active
+prior tasks and size bounds produce actionable messages. An established dispatch
+locks the choice, including after reload when admission is unconfirmed, using
+Core's retained `include_conversation_context` status. The selected source and
+agent still go through normal admission. This is a new contextual task, not a
+resumed provider session or streamed assistant turn.

@@ -179,6 +179,7 @@ export function initServices(opts: {
       let projectConversationsAvailable = false
       let projectChildTasks = false
       let projectChildResults = false
+      let projectConversationContext = false
       let managerConversationsAvailable = false
       let managerChildTasksAvailable = false
       let managerChildResultsAvailable = false
@@ -295,7 +296,7 @@ export function initServices(opts: {
             const capabilities = await capabilityResponse.json() as {
               project_team_presentation_v1?: {available?:boolean}
               teams_v1?: {available?:boolean}
-              project_conversations_v1?: {available?:boolean;scope?:string;provider_execution?:boolean;user_messages?:boolean;child_tasks?:boolean;child_results?:boolean}
+              project_conversations_v1?: {available?:boolean;scope?:string;provider_execution?:boolean;user_messages?:boolean;child_tasks?:boolean;child_results?:boolean;conversation_context?:{available?:boolean;opt_in?:boolean;max_messages?:number;max_task_characters?:number}}
               manager_conversations_v1?: {available?:boolean;scope?:string;provider_execution?:boolean;user_messages?:boolean;scope_edits?:boolean;child_tasks?:boolean;child_results?:boolean}
               manager_context_v1?: {available?:boolean;scope?:string;execution_authority?:boolean}
               dashboard_layout_v1?: {available?:boolean;scope?:string}
@@ -340,6 +341,8 @@ export function initServices(opts: {
             projectConversationsAvailable = capabilities.project_conversations_v1?.available===true&&capabilities.project_conversations_v1.scope==='owner_private_fixed_project'&&capabilities.project_conversations_v1.user_messages===true&&capabilities.project_conversations_v1.provider_execution===false
             projectChildTasks=capabilities.project_conversations_v1?.child_tasks===true
             projectChildResults=capabilities.project_conversations_v1?.child_results===true
+            const conversationContextContract=capabilities.project_conversations_v1?.conversation_context
+            projectConversationContext=conversationContextContract?.available===true&&conversationContextContract.opt_in===true&&conversationContextContract.max_messages===32&&conversationContextContract.max_task_characters===100000
             managerConversationsAvailable = capabilities.manager_conversations_v1?.available===true && capabilities.manager_conversations_v1.scope==='authenticated_owner' && capabilities.manager_conversations_v1.provider_execution===false && capabilities.manager_conversations_v1.user_messages===true && capabilities.manager_conversations_v1.scope_edits===true
             managerChildTasksAvailable = capabilities.manager_conversations_v1?.child_tasks===true
             managerChildResultsAvailable = capabilities.manager_conversations_v1?.child_results===true
@@ -464,7 +467,7 @@ export function initServices(opts: {
         rendererSettings: backendAvailable&&rendererSettingsAvailable?new RendererSettingsClient(baseUrl,getUserId,token):undefined,
         runApprovalReview: backendAvailable&&runApprovalReviewAvailable?new RunApprovalReviewClient(baseUrl,getUserId,token):undefined,
         projectTaskFeed: backendAvailable&&projectTaskFeedAvailable?new ProjectTaskFeedClient(baseUrl,getUserId,token):undefined,
-        projectConversations: backendAvailable&&projectConversationsAvailable?(projectId:string)=>new ManagerConversationsClient(baseUrl,getUserId,token,projectChildTasks?journey:undefined,projectChildResults,projectId):undefined,
+        projectConversations: backendAvailable&&projectConversationsAvailable?(projectId:string)=>new ManagerConversationsClient(baseUrl,getUserId,token,projectChildTasks?journey:undefined,projectChildResults,projectId,projectConversationContext):undefined,
         managerConversations: backendAvailable && managerConversationsAvailable ? new ManagerConversationsClient(baseUrl,getUserId,token,managerChildTasksAvailable?journey:undefined,managerChildResultsAvailable) : undefined,
         managerContext: backendAvailable && managerContextAvailable ? new ManagerContextClient(baseUrl,getUserId,token) : undefined,
         dashboardSettings: backendAvailable && dashboardSettingsAvailable ? new DashboardSettingsClient(baseUrl,getUserId,token) : undefined,
