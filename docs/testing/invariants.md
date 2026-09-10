@@ -765,3 +765,19 @@ The storage-boundary regression covers both user/Team scopes, declaration denial
 ambiguous migration denial, account/package isolation and exact rollback. This
 uses candidate metadata fixtures, not a signature-verification or live-upgrade
 proof; signed-package UI upgrade remains separate acceptance work.
+
+## SCOPED-HOST-LIVENESS-1
+
+After readiness, the scoped host probes its frame every five seconds. A matching
+source/nonce/generation/package envelope and unique request ID must return within
+three seconds. Missing or stale replies remove the view and retain parent recovery
+controls. Probe/deadline timers and listeners are cancelled on failure or unmount.
+Failure reporting may complete after frame removal only for the same authenticated
+account; Core still validates the original scoped session.
+
+`scripts/prove-scoped-liveness-live.tsx` runs the production component against real
+Core with a simulated renderer peer and real timers. It tests a responsive peer,
+then silence with repeated stale pong messages, fallback and the Core error
+receipt. The original implementation failed the silent-frame removal assertion.
+This does not prove recovery when JavaScript blocks the parent/browser event loop;
+process isolation and packaged desktop termination remain separate release checks.
