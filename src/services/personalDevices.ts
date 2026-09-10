@@ -117,7 +117,10 @@ export class PersonalDevicesClient {
     return {members, sources:sources.items.map(raw=>{const item=record(raw);if(typeof item.source_id!=='string' || typeof item.display_label!=='string')throw Error('Invalid source');return {id:item.source_id,label:item.display_label}}), canManage:roster.viewer_can_manage===true && typeof roster.viewer_subject==='string' && members.some(item=>item.subject===roster.viewer_subject && ['owner','admin'].includes(item.role))}
   }
   async proposeAssignment(deviceId: string, projectId: string, policy: AssignmentPolicy) {
-    return assignment(await this.request(`/api/v2/devices/${encodeURIComponent(deviceId)}/assignments/${encodeURIComponent(projectId)}`,policy,'PUT'),deviceId,projectId)
+    if(policy.expires_at!==undefined&&policy.expires_at!==null&&(!Number.isFinite(Date.parse(policy.expires_at))||Date.parse(policy.expires_at)<=Date.now()))throw Error('Choose a future consent deadline.')
+    const value=assignment(await this.request(`/api/v2/devices/${encodeURIComponent(deviceId)}/assignments/${encodeURIComponent(projectId)}`,policy,'PUT'),deviceId,projectId)
+    if(Object.hasOwn(policy,'expires_at')&&(value.expires_at===undefined||(policy.expires_at===null?value.expires_at!==null:Date.parse(value.expires_at??'')!==Date.parse(policy.expires_at!))))throw Error('Consent deadline could not be confirmed. Refresh access.')
+    return value
   }
   async decideAssignment(deviceId: string, projectId: string, revision: number, accept: boolean) {
     return assignment(await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/devices/${encodeURIComponent(deviceId)}/decision`,{expected_revision:revision,accept}),deviceId,projectId)
@@ -128,11 +131,12 @@ export class PersonalDevicesClient {
 
 }
 
-export interface AssignmentPolicy {expected_revision:number;audience:'owner_only'|'selected_members'|'project_members'|'team_members';team_id?:string|null;subjects:string[];source_ids:string[];adapter_ids:string[]}
-export interface DeviceAssignment extends Omit<AssignmentPolicy,'expected_revision'> {device_id:string;project_id:string;revision:number;state:string;owner_subject:string;display_name?:string;consent_allows_requester:boolean}
+export interface AssignmentPolicy {expires_at?:string|null;expected_revision:number;audience:'owner_only'|'selected_members'|'project_members'|'team_members';team_id?:string|null;subjects:string[];source_ids:string[];adapter_ids:string[]}
+export interface DeviceAssignment extends Omit<AssignmentPolicy,'expected_revision'> {device_id:string;project_id:string;revision:number;state:string;owner_subject:string;display_name?:string;expired?:boolean;consent_allows_requester:boolean}
 function assignment(raw:unknown,deviceId:string,projectId?:string):DeviceAssignment {
   const value=record(raw)
   if(value.device_id!==deviceId || typeof value.project_id!=='string' || (projectId && value.project_id!==projectId) || typeof value.owner_subject!=='string' || !Number.isSafeInteger(value.revision) || Number(value.revision)<1 || !['proposed','accepted','removed','revoked'].includes(String(value.state)) || !['owner_only','selected_members','project_members','team_members'].includes(String(value.audience)) || typeof value.consent_allows_requester!=='boolean')throw Error('Invalid assignment identity')
+  if(value.expires_at!==undefined&&(value.expires_at!==null&&(typeof value.expires_at!=='string'||!Number.isFinite(Date.parse(value.expires_at)))||typeof value.expired!=='boolean'))throw Error('Invalid consent deadline')
   if(value.audience==='team_members' && (typeof value.team_id!=='string'||!value.team_id))throw Error('Invalid named team policy')
   for(const field of ['subjects','source_ids','adapter_ids'])if(!Array.isArray(value[field]) || !(value[field] as unknown[]).every(item=>typeof item==='string'))throw Error('Invalid assignment policy')
   return value as unknown as DeviceAssignment

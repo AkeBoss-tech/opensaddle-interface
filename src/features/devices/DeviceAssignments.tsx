@@ -1,3 +1,4 @@
+import { ConsentDeadline } from './ConsentDeadline'
 import React, { useEffect, useRef, useState } from 'react'
 import { PersonalDevicesClient, type AssignmentPolicy, type DeviceAssignment } from '../../services/personalDevices'
 
@@ -21,6 +22,10 @@ function AssignmentEditor({authority,deviceId,projectId,paired,initial,onChanged
   const [current,setCurrent]=useState(initial)
   const [context,setContext]=useState<Awaited<ReturnType<PersonalDevicesClient['assignmentContext']>>>()
   const [audience,setAudience]=useState<AssignmentPolicy['audience']>(initial?.audience??'owner_only')
+  const [deadlineAction,setDeadlineAction]=useState<'keep'|'set'|'none'>('keep')
+  const [deadline,setDeadline]=useState('')
+  const deadlineTime=Date.parse(deadline)
+  const deadlineValid=deadlineAction!=='set'||(Number.isFinite(deadlineTime)&&deadlineTime>Date.now())
   const [teamId,setTeamId]=useState(initial?.team_id??'')
   const [subjects,setSubjects]=useState(initial?.subjects??[])
   const [sources,setSources]=useState(initial?.source_ids??[])
@@ -32,22 +37,26 @@ function AssignmentEditor({authority,deviceId,projectId,paired,initial,onChanged
   async function run(operation:()=>Promise<DeviceAssignment>) {
     if(locked.current)return
     locked.current=true;setBusy(true);setError('')
-    try {const value=await operation();if(live.current){setCurrent(value);onChanged(value);setReview(null)}}catch{if(live.current)setError('Access change failed. Refresh access before trying again; another person may have changed it.')}
+    try {const value=await operation();if(live.current){setCurrent(value);onChanged(value);setReview(null);setDeadlineAction('keep');setDeadline('')}}catch{if(live.current)setError('Access change failed. Refresh access before trying again; another person may have changed it.')}
     finally{if(live.current){locked.current=false;setBusy(false)}}
   }
   const toggle=(values:string[],value:string)=>values.includes(value)?values.filter(item=>item!==value):[...values,value]
-  const dirty=(audience==='team_members'&&teamId!==(current?.team_id??'')) || audience!==(current?.audience??'owner_only') || JSON.stringify([...subjects].sort())!==JSON.stringify([...(current?.subjects??[])].sort()) || JSON.stringify([...sources].sort())!==JSON.stringify([...(current?.source_ids??[])].sort()) || JSON.stringify([...adapters].sort())!==JSON.stringify([...(current?.adapter_ids??[])].sort())
-  return <section className="device-assignment-editor"><p role="status">{current ? `Access policy: ${current.state}` : 'No project access configured'}</p>{current?.state==='accepted' && <p>{current.consent_allows_requester?'Your task-use consent is active.':'This policy does not currently authorize your tasks.'} A connected, configured worker is also required.</p>}{error && <p role="alert">{error}</p>}
+  const dirty=deadlineAction!=='keep' || (audience==='team_members'&&teamId!==(current?.team_id??'')) || audience!==(current?.audience??'owner_only') || JSON.stringify([...subjects].sort())!==JSON.stringify([...(current?.subjects??[])].sort()) || JSON.stringify([...sources].sort())!==JSON.stringify([...(current?.source_ids??[])].sort()) || JSON.stringify([...adapters].sort())!==JSON.stringify([...(current?.adapter_ids??[])].sort())
+  return <section className="device-assignment-editor"><p role="status">{current ? `Access policy: ${current.state}` : 'No project access configured'}</p>{current?.state==='accepted' && <p>{current.consent_allows_requester?'Your task-use consent is active.':'This policy does not currently authorize your tasks.'} A connected, configured worker is also required.</p>}{current&&<ConsentDeadline item={current}/>} {error && <p role="alert">{error}</p>}
     {context && <fieldset disabled={busy || !paired}><legend>Owner’s task-use policy</legend><label>Who may use this device?<select value={audience} onChange={event=>{setAudience(event.target.value as AssignmentPolicy['audience']);setSubjects([]);setReview(null)}}><option value="owner_only">Only me</option>{(teams.length>0||current?.team_id)&&<option value="team_members">Members of a named team</option>}<option value="selected_members">Selected project members</option><option value="project_members">All current project members</option></select></label>
       {audience==='team_members'&&<label>Allowed team<select value={teamId} onChange={event=>{setTeamId(event.target.value);setReview(null)}}><option value="">Choose a team</option>{teams.map(team=><option key={team.id} value={team.id}>{team.name}</option>)}{current?.team_id&&!teams.some(team=>team.id===current.team_id)&&<option value={current.team_id}>{current.team_id} (membership unavailable)</option>}</select></label>}
       {audience==='selected_members' && <fieldset><legend>Allowed people</legend>{context.members.map(member=><label key={member.subject}><input type="checkbox" checked={subjects.includes(member.subject)} onChange={()=>{setSubjects(toggle(subjects,member.subject));setReview(null)}}/>{member.subject}</label>)}</fieldset>}
       <fieldset><legend>Allowed sources</legend>{context.sources.map(source=><label key={source.id}><input type="checkbox" checked={sources.includes(source.id)} onChange={()=>{setSources(toggle(sources,source.id));setReview(null)}}/>{source.label}</label>)}{!context.sources.length && <p>Register a project source before proposing access.</p>}</fieldset>
       <fieldset><legend>Allowed coding agents</legend>{[['codex-app-server','Codex'],['claude-code-stream-json','Claude Code']].map(([id,label])=><label key={id}><input type="checkbox" checked={adapters.includes(id)} onChange={()=>{setAdapters(toggle(adapters,id));setReview(null)}}/>{label}</label>)}</fieldset>
-      <button disabled={!sources.length || !adapters.length || (audience==='selected_members'&&!subjects.length) || (audience==='team_members'&&!teamId)} onClick={()=>void run(()=>authority.proposeAssignment(deviceId,projectId,{expected_revision:current?.revision??0,audience,...(audience==='team_members'?{team_id:teamId}:{}),subjects,source_ids:sources,adapter_ids:adapters}))}>Propose access</button>
+      <label>Consent deadline<select aria-label="Consent deadline" value={deadlineAction} onChange={event=>{setDeadlineAction(event.target.value as 'keep'|'set'|'none');setReview(null)}}><option value="keep">Keep current deadline</option><option value="set">Set an expiry</option><option value="none">No expiry (remove deadline)</option></select></label>
+      {deadlineAction==='set'&&<label>Expires at (your local time)<input aria-label="Consent expires at" type="datetime-local" value={deadline} onChange={event=>{setDeadline(event.target.value);setReview(null)}}/></label>}
+      {deadlineAction==='set'&&!deadlineValid&&<p>Choose a future date and time.</p>}{deadlineAction==='set'&&deadlineValid&&<p>Proposed deadline: {new Date(deadlineTime).toISOString()}</p>}
+      {deadlineAction==='none'&&<p>This removes the time limit. The project must accept the new policy.</p>}
+      <button disabled={!deadlineValid || !sources.length || !adapters.length || (audience==='selected_members'&&!subjects.length) || (audience==='team_members'&&!teamId)} onClick={()=>void run(()=>authority.proposeAssignment(deviceId,projectId,{expected_revision:current?.revision??0,...(deadlineAction==='keep'?{}:{expires_at:deadlineAction==='none'?null:new Date(deadlineTime).toISOString()}),audience,...(audience==='team_members'?{team_id:teamId}:{}),subjects,source_ids:sources,adapter_ids:adapters}))}>Propose access</button>
     </fieldset>}
     {!paired && <p>Pair this device before proposing access.</p>}
     {current?.state==='proposed' && context?.canManage && !dirty && <button disabled={busy} onClick={()=>setReview('accept')}>Review project acceptance</button>}
     {current && !['revoked','removed'].includes(current.state) && <button disabled={busy} onClick={()=>setReview('revoke')}>Revoke project access</button>}
-    {review && current && <div className="device-access-review"><p>{review==='accept'?'Accept the saved owner policy for this project?':'Revoke task-use consent for this project?'} This does not change access for other projects.</p><button disabled={busy} onClick={()=>void run(()=>review==='accept'?authority.decideAssignment(deviceId,projectId,current.revision,true):authority.revokeAssignment(deviceId,projectId,current.revision))}>{review==='accept'?'Accept policy':'Confirm revocation'}</button><button disabled={busy} onClick={()=>setReview(null)}>Cancel</button></div>}
+    {review && current && <div className="device-access-review"><ConsentDeadline item={current}/><p>{review==='accept'?'Accept the saved owner policy for this project?':'Revoke task-use consent for this project?'} This does not change access for other projects.</p><button disabled={busy} onClick={()=>void run(()=>review==='accept'?authority.decideAssignment(deviceId,projectId,current.revision,true):authority.revokeAssignment(deviceId,projectId,current.revision))}>{review==='accept'?'Accept policy':'Confirm revocation'}</button><button disabled={busy} onClick={()=>setReview(null)}>Cancel</button></div>}
   </section>
 }

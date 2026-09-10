@@ -9,7 +9,7 @@ const flush=()=>new Promise(resolve=>setImmediate(resolve))
 const item={device_id:'D',project_id:'P',display_name:'Owner laptop',owner_subject:'device-owner',revision:3,state:'proposed',audience:'team_members',team_id:'team-research',subjects:[],source_ids:['S'],adapter_ids:['codex-app-server'],consent_allows_requester:false}
 // PROJECT-DEVICE-REVIEW-UI-1: a manager accepts the displayed owner's policy and exact revision.
 test('manager reviews another owner policy, accepts exact revision, then removes only project access',async t=>{
- let state={...item};const mutations:any[]=[]
+ let state={...item,expires_at:'2099-08-01T12:00:00+00:00',expired:false};const mutations:any[]=[]
  t.mock.method(globalThis,'fetch',async(url:string,init?:RequestInit)=>{
   if(url.endsWith('/decision')){const body=JSON.parse(String(init?.body));mutations.push(body);state={...state,revision:state.revision+1,state:body.accept?'accepted':'removed'};return Response.json(state)}
   if(url.endsWith('/devices'))return Response.json({items:[state]})
@@ -21,6 +21,7 @@ test('manager reviews another owner policy, accepts exact revision, then removes
  const button=(name:string)=>view.root.findAllByType('button').find(node=>node.children.includes(name))!
  await act(async()=>button('Review acceptance').props.onClick())
  assert.equal(mutations.length,0)
+ assert.match(JSON.stringify(view.toJSON()),/2099-08-01T12:00:00/, 'Project review must show the exact consent deadline')
  assert.match(JSON.stringify(view.toJSON()),/device-owner/)
  assert.match(JSON.stringify(view.toJSON()),/Current members of team team-research who also belong to this project/)
  await act(async()=>{button('Accept policy').props.onClick();await flush();await flush()})

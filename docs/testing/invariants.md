@@ -573,3 +573,12 @@ clears a snapshot after 15 seconds without a successful refresh. A stalled read
 cannot retain active task links indefinitely; closing prevents its late response
 from scheduling another poll. Controlled clock/HTTP fault injection and baseline
 assertion proof: `receipts/device-activity-expiry-20260910.json`.
+
+## DEVICE-CONSENT-EXPIRY-UI
+
+Owner controls distinguish keeping, setting and explicitly removing a consent
+deadline. Keep omits the field; setting serializes local input to exact UTC;
+removal sends null. The server response must confirm that deadline. Both owner
+and Project review show the saved timestamp, never interpreting an older server's
+missing field as indefinite consent. Mounted baseline assertions and repaired
+checks: `receipts/device-consent-expiry-ui-20260910.json`.
