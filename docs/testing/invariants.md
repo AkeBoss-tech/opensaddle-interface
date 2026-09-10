@@ -42,3 +42,7 @@ Recipients must review and explicitly accept the displayed invitation revision b
 ## PROJECT-TEAM-UI-1
 
 TeamProjectReviews requires an explicit publication review before sending the displayed association revision. A conflict removes decision controls until reload. ProjectTeamSettings.test.tsx mounts the real client and UI with HTTP controlled at the external boundary. Standalone Team invitation tests do not cover project publication. New UI contract, no prior regression baseline. Browser verification on disposable Core data covered project proposal, Team acceptance, inherited light theme with Team provenance, and detach restoring default theme. Renderer and Electron builds passed; this is local browser/API evidence, not production or remote task proof.
+
+## INSTALLED-PROJECT-VIEW-1
+
+An installed project view receives only the host project projection. Exact renderer bytes and active frame identity gate messages; only projected task IDs can open host task details. InstalledProjectView.test.tsx mounts the real host and integrity reader with a controlled content response and frame adapter. Built-in Perspective tests do not cover executable packages. This is a new protocol, not a prior regression baseline. Signed-package loopback browser evidence proves discovery, rendering and persisted selection; it does not prove native desktop or live revocation behavior.
