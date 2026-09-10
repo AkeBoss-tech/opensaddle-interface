@@ -503,3 +503,9 @@ The walkthrough found that receipt.resource_digest hashes canonical ResourceRef
 JSON. `receipts/project-command-resource-digest-20260910.json` proves the repair
 against the prior implementation. Sixteen focused checks/build pass; both fixture
 servers stopped and Runs are terminal. Browser visuals remain unverified.
+
+PROJECT-VIEW-RECOVERY also restores focus to the fallback notice when frame
+removal leaves the document body active. It must not steal focus from another
+host control. Mounted DOM-adapter baseline evidence is recorded in
+`receipts/project-view-focus-recovery-20260910.json`; browser keyboard acceptance
+remains separate.
