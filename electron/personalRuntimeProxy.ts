@@ -3,6 +3,8 @@ import type { PersonalRuntimeHandoff } from './personalRuntimeCommissioning.js'
 export interface PersonalRuntimeProxyRequest { path:string; method:'GET'|'POST'|'PUT'; body?:string; expectedBaseUrl:string; expectedInstallationId:string; expectedProjectId:string }
 export interface PersonalRuntimeProxyResponse { status:number; contentType:string; bodyBase64:string }
 const allowed:Array<[PersonalRuntimeProxyRequest['method'],RegExp]>=[
+ ['GET',/^\/api\/v2\/projects\?limit=100&after=(?:[A-Za-z0-9._~!*'()-]|%[A-Fa-f0-9]{2})*$/],
+ ['POST',/^\/api\/v2\/manager\/context$/],
  ['GET',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/goal$/],
  ['POST',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/goal$/],
  ['PUT',/^\/api\/v2\/projects\/[A-Za-z0-9._~-]+\/goal$/],

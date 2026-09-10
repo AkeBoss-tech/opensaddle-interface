@@ -1,0 +1,21 @@
+{
+  "invariant": "DESKTOP-WORKSPACE-DISCOVERY-1",
+  "base_commit": "bae98acbd7c77cf06f8947e4843555fa0bc33de6",
+  "command": "node --import tsx --test --test-name-pattern='workspace discovery permits' test/personalRuntimeProxy.test.ts",
+  "baseline": {
+    "exit_code": 1,
+    "output": "\u2716 workspace discovery permits bounded Project pages and explicit manager context through the desktop proxy (2.735167ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 182.135041\n\n\u2716 failing tests:\n\ntest at test/personalRuntimeProxy.test.ts:1:6596\n\u2716 workspace discovery permits bounded Project pages and explicit manager context through the desktop proxy (2.735167ms)\n  AssertionError [ERR_ASSERTION]: Got unwanted rejection: desktop must admit the production Project directory URL\n  Actual message: \"Personal runtime request path is unavailable\"\n      at async TestContext.<anonymous> (/Users/akashdubey/Documents/CodingProjects/opensaddle-interface/test/personalRuntimeProxy.test.ts:39:2)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: Error: Personal runtime request path is unavailable\n        at validateRequest (/Users/akashdubey/Documents/CodingProjects/opensaddle-interface/electron/personalRuntimeProxy.ts:22:1205)\n        at proxyPersonalRuntimeRequest (/Users/akashdubey/Documents/CodingProjects/opensaddle-interface/electron/personalRuntimeProxy.ts:24:178)\n        at TestContext.<anonymous> (/Users/akashdubey/Documents/CodingProjects/opensaddle-interface/test/personalRuntimeProxy.test.ts:39:29)\n        at Test.runInAsyncScope (node:async_hooks:226:14)\n        at Test.run (node:internal/test_runner/test:1201:25)\n        at Test.start (node:internal/test_runner/test:1096:17)\n        at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17),\n    expected: undefined,\n    operator: 'doesNotReject',\n    diff: 'simple'\n  }\n"
+  },
+  "after": {
+    "exit_code": 0,
+    "output": "\u2714 workspace discovery permits bounded Project pages and explicit manager context through the desktop proxy (32.802833ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 221.744583\n"
+  },
+  "owning_checks": "11 proxy/transport checks and Electron build passed",
+  "desktop_evidence": {
+    "commissioning": "Actual desktop commissioned personal Codex runtime for opensaddle on loopback 49301",
+    "restart": "Runtime PID 98094 survived desktop restart; new desktop adopted it without entering credentials",
+    "project_directory": "Sidebar displayed opensaddle after restart with proxy fix",
+    "manager_context": "Selected opensaddle and clicked Preview context; UI showed snapshot 2026-09-10T14:18:03.482735+00:00",
+    "remaining": "Project Workspace and saved manager conversations still encounter unsupported proxy routes; full task and result walkthrough unfinished"
+  }
+}

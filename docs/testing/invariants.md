@@ -659,3 +659,12 @@ loopback transport test delays discovery and fails one scan; the before/after
 receipt records nine simultaneous requests reduced to one, duplicate read
 coalescing, and continuation after failure. This is admission evidence, not an
 OS resource cap or a claim that all provider probes finish within that deadline.
+
+## DESKTOP-WORKSPACE-DISCOVERY-1
+
+The adopted-runtime proxy permits the production Project directory's bounded
+100-item cursor query and explicit manager context preview. Arbitrary extra query
+parameters, malformed cursor encoding and execution suffixes stay rejected.
+Main-process credentials remain private. The receipt records the actual pre-fix
+assertion, owning tests and an actual desktop restart, adopted directory and
+manager preview. This does not establish complete Project workspace transport.

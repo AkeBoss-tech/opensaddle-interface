@@ -31,3 +31,15 @@ test('advertised project objective read create and exact revision update pass on
  for(const method of ['GET','POST','PUT'] as const)await proxyPersonalRuntimeRequest(handoff,{...base,method,...(method==='GET'?{}:{body:'{}'})},async()=>Response.json({}))
  await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path:base.path+'/start',body:'{}'},async()=>Response.json({})),/path/)
 })
+
+test('workspace discovery permits bounded Project pages and explicit manager context through the desktop proxy',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'}
+ const seen:string[]=[]
+ const server=async(input:URL|string|Request,init?:RequestInit)=>{const request=new Request(input,init);seen.push(request.url);assert.equal(request.headers.get('Authorization'),'Bearer private-token');return Response.json({})}
+ await assert.doesNotReject(proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path:'/api/v2/projects?limit=100&after='},server),'desktop must admit the production Project directory URL')
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path:'/api/v2/projects?limit=100&after=project%2Fone'},server)
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path:'/api/v2/manager/context',body:JSON.stringify({project_ids:['project']})},server)
+ assert.equal(seen.length,3)
+ for(const path of ['/api/v2/projects?limit=1000&after=','/api/v2/projects?limit=100&after=&admin=true','/api/v2/projects?limit=100&after=%ZZ','/api/v2/manager/context/execute'])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},server),/path/)
+ assert.equal(seen.length,3)
+})
