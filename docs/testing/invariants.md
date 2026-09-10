@@ -327,3 +327,14 @@ Project switching, clears revoked content, and uses digest-checked result routes
 Existing global manager idempotency namespaces remain unchanged. Receipt:
 `receipts/project-dialogue-20260910.json`; mounted/client tests inject only HTTP
 transport, while Core separately verifies durable storage and admission.
+
+
+## PROJECT-CONVERSATION-NAVIGATION
+
+Selecting or creating a Project conversation stores its ID in the Project URL.
+Dialogue restores it only after the authorized conversation directory confirms
+the ID. Switching Perspectives preserves selection and host-owned unsaved text;
+a workspace remount restores saved messages but discards memory-only drafts.
+Conversation work disables the view selector and workspace refresh while pending.
+The mounted workspace regression fails on the previous revision at the missing
+URL assertion. Receipt: `receipts/project-conversation-navigation-20260910.json`.

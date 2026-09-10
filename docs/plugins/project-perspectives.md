@@ -565,3 +565,14 @@ durable user messages and explicit per-message dispatch; it does not yet provide
 provider conversation continuation, streaming assistant turns, or persisted open
 conversation selection across Perspective switches. Current visual acceptance
 and a combined live Project conversation walkthrough remain open.
+
+
+### Conversation navigation
+
+The host owns the `conversation` Project query parameter and unsaved message
+drafts. Switching views retains both; returning to Dialogue rechecks the saved
+conversation directory before opening it. A page reload can restore saved
+messages from the URL, but unsaved text is deliberately memory-only. Drafts are
+scoped to the current client, identity and Project, and are not sent to installed
+views. View switching and workspace refresh pause during conversation operations.
+This does not implement provider continuation or streaming assistant messages.
