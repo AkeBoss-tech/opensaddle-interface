@@ -387,3 +387,18 @@ canonical task status; cross-identity or mismatched responses are rejected.
 Mounted task-page/client evidence: `receipts/run-approval-ui-20260910.json`.
 The baseline includes the new client only to avoid a missing import; it fails at
 the unchanged page's missing review control. Native visual verification is pending.
+
+### RUN-APPROVAL-UI live transport evidence
+
+`receipts/run-approval-live-20260910.json` records the mounted task host and real
+approval/journey clients against isolated Core over HTTP. A reader cannot grant,
+a reviewer admits one task, a recreated client sees durable state, and demotion
+after displaying a second review denies its submission and removes the control.
+Fresh repository inspection finds exactly one review decision and no model-call
+leases. `scripts/prove-run-approval-live.tsx` uses the separately started Core
+`dev_run_approval_fixture`; it never installs workers. This is not browser proof.
+
+The settings live proof now executes every script in the generated host document
+in one VM context and retains all event listeners, including the host runtime
+error bridge. `receipts/renderer-settings-live-runtime-bridge-20260910.json`
+records all nine settings checks passing with this current document structure.

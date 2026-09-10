@@ -30,7 +30,7 @@ const model=await new ProjectTaskFeedClient(base,()=> 'renderer-member',memberTo
 assert.ok(model.tasks.some(task=>task.status==='completed'))
 const listeners=new Set<(event:any)=>void>(),messages:any[]=[]
 Object.assign(globalThis,{addEventListener:(_:string,callback:any)=>listeners.add(callback),removeEventListener:(_:string,callback:any)=>listeners.delete(callback)})
-let pluginHandler:(event:any)=>void
+const pluginHandlers=new Map<string,((event:any)=>void)[]>()
 class Element {
  children:Element[]=[];dataset:Record<string,string>={};value='';className='';textContent='';disabled=false
  constructor(public tag:string){}
@@ -41,7 +41,7 @@ class Element {
 const nodes=Object.fromEntries(['tasks','filter','project','empty','new'].map(id=>[id,new Element(id==='filter'?'input':'div')]))
 nodes.tasks.className='board'
 const dom={activeElement:null as Element|null,getElementById:(id:string)=>nodes[id],createElement:(tag:string)=>new Element(tag)}
-const source={postMessage:(message:any)=>{messages.push(message);pluginHandler({source:parent,data:message})}}
+const source={postMessage:(message:any)=>{messages.push(message);for(const handler of pluginHandlers.get('message')??[])handler({source:parent,data:message})}}
 const parent={postMessage:(message:any)=>{for(const listener of listeners)listener({source,data:message})}}
 const node={contentWindow:source,dataset:{}}
 const walk=(node:Element):Element[]=>[node,...node.children.flatMap(walk)]
@@ -52,7 +52,8 @@ try {
  await act(async()=>{view=create(<InstalledProjectView client={shell} settingsClient={member} renderer={renderer} model={model} connectionKey="live-member" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node})})
  await until(()=>Boolean(view!.root.findAllByType('iframe').length))
  const html=view!.root.findByType('iframe').props.srcDoc
- vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],{document:dom,parent,addEventListener:(_:string,callback:any)=>{pluginHandler=callback},setTimeout,clearTimeout})
+ const context=vm.createContext({document:dom,parent,addEventListener:(kind:string,callback:any)=>pluginHandlers.set(kind,[...(pluginHandlers.get(kind)??[]),callback]),setTimeout,clearTimeout})
+ for(const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g))vm.runInContext(script[1],context)
  await act(async()=>view!.root.findByType('iframe').props.onLoad())
  assert.equal(cards().length,model.tasks.length)
  const initialNonce=messages[0].nonce
