@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Laptop, Plus, RefreshCw } from 'lucide-react'
 import { PersonalDevicesClient, type DevicePage, type DeviceRegistration, type PersonalDevice } from '../../services/personalDevices'
 
-export function DeviceInventory({ authority, identity, projects = [] }: { authority: PersonalDevicesClient; identity: string; projects?:{id:string;name:string}[] }) {
+export function DeviceInventory({ authority, identity, projects = [], teams = [] }: { authority: PersonalDevicesClient; identity: string; projects?:{id:string;name:string}[];teams?:{id:string;name:string}[] }) {
   const [snapshot, setSnapshot] = useState<{ authority: PersonalDevicesClient; identity: string; page: DevicePage }>()
   const [name, setName] = useState('')
   const [platform, setPlatform] = useState<PersonalDevice['platform']>('macos')
@@ -54,7 +54,7 @@ export function DeviceInventory({ authority, identity, projects = [] }: { author
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {busy && !page && <p role="status">Loading your devices…</p>}
     {page && !page.items.length && <div className="devices-empty"><Laptop/><h3>No devices yet</h3><p>Add a device to your personal inventory. It does not need to belong to a project.</p></div>}
-    <ul className="devices-list">{page?.items.map(item => <li key={item.deviceId}><Laptop size={24}/><div><h3>{item.displayName}</h3><p>{item.platform === 'macos' ? 'macOS' : item.platform} · Owner: {item.ownerSubject}</p><p>{item.pairingState === 'paired' ? 'Paired' : item.pairingState === 'revoked' ? 'Pairing revoked' : 'Not paired'} · {item.connectionState === 'connected' ? 'Recent contact' : 'Connection not verified'}</p><DevicePairing authority={authority} device={item} onChanged={()=>void load()}/><DeviceAssignments authority={authority} deviceId={item.deviceId} paired={item.pairingState==='paired'} projects={projects}/></div></li>)}</ul>
+    <ul className="devices-list">{page?.items.map(item => <li key={item.deviceId}><Laptop size={24}/><div><h3>{item.displayName}</h3><p>{item.platform === 'macos' ? 'macOS' : item.platform} · Owner: {item.ownerSubject}</p><p>{item.pairingState === 'paired' ? 'Paired' : item.pairingState === 'revoked' ? 'Pairing revoked' : 'Not paired'} · {item.connectionState === 'connected' ? 'Recent contact' : 'Connection not verified'}</p><DevicePairing authority={authority} device={item} onChanged={()=>void load()}/><DeviceAssignments authority={authority} deviceId={item.deviceId} paired={item.pairingState==='paired'} projects={projects} teams={teams}/></div></li>)}</ul>
     {page?.nextCursor && <button disabled={busy} onClick={() => void load(true)}>Load more devices</button>}
     <p className="devices-footnote">Adding or pairing a device does not grant project access. Task use requires an accepted access policy and a configured worker.</p>
   </React.Fragment>

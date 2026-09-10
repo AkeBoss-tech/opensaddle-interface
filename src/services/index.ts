@@ -1,3 +1,4 @@
+import { TeamsClient } from './teams'
 import { PresentationSettingsClient } from './presentationSettings'
 import { ProjectDirectoryClient } from './projectDirectory'
 import { PersonalDevicesClient } from './personalDevices'
@@ -58,6 +59,7 @@ export interface ServiceBundle {
   journey?: JourneyAuthority
   codingResults?: CodingResultReviewClient
   projectKnowledge?: RegisteredProjectKnowledgeClient
+  teams?: TeamsClient
   presentationSettings?: PresentationSettingsClient
   projectDirectory?: ProjectDirectoryClient
   personalDevices?: PersonalDevicesClient
@@ -153,6 +155,7 @@ export function initServices(opts: {
       let resourceCapacityAvailable = false
       let nativeAdaptersAvailable = false
       let authorizedContextAvailable = false
+      let teamsAvailable = false
       let presentationSettingsAvailable = false
       let projectDirectoryAvailable = false
       let deviceAssignmentsAvailable = false
@@ -262,6 +265,7 @@ export function initServices(opts: {
           if (capabilityResponse.ok) {
             v2CapabilitiesAvailable = true
             const capabilities = await capabilityResponse.json() as {
+              teams_v1?: {available?:boolean}
               presentation_settings_v1?: {available?:boolean}
               project_directory_v1?: {available?:boolean;scope?:string}
               device_assignment_consent_v1?: {available?:boolean}
@@ -290,6 +294,7 @@ export function initServices(opts: {
             nativeSessionResume=continuation?.native_session_resume===true
             const context = capabilities.authorized_context_packets
             authorizedContextAvailable = context?.available === true && context.schema_version === 'krail.authorized-context-packet.v2' && context.selection_field === 'authorized_context_source_ids' && context.inspector_path_template === '/api/v2/runs/{run_id}/authorized-context-packet' && context.worker_path_template === '/api/v2/workers/{worker_id}/runs/{run_id}/authorized-context-packet' && context.reauthorization_schema_version === 'krail.authorized-context-reauthorization.v1' && context.unavailable_reason === 'context_packet_unavailable' && context.sources_path_template === '/api/v2/projects/{project_id}/authorized-context-sources'
+            teamsAvailable = capabilities.teams_v1?.available===true
             presentationSettingsAvailable = capabilities.presentation_settings_v1?.available===true
             projectDirectoryAvailable = capabilities.project_directory_v1?.available===true && capabilities.project_directory_v1.scope==='current_memberships'
             deviceAssignmentsAvailable = capabilities.device_assignment_consent_v1?.available === true
@@ -404,6 +409,7 @@ export function initServices(opts: {
         malleableShell,
         journey,
         personalRuntime,
+        teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token) : undefined,
         presentationSettings: backendAvailable && presentationSettingsAvailable ? new PresentationSettingsClient(baseUrl,getUserId,token) : undefined,
         projectDirectory: backendAvailable && projectDirectoryAvailable ? new ProjectDirectoryClient(baseUrl,getUserId,token) : undefined,
         personalDevices: backendAvailable && personalDevicesAvailable ? new PersonalDevicesClient(baseUrl, getUserId, token, personalDevicePairingAvailable, deviceAssignmentsAvailable) : undefined,

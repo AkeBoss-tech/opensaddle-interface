@@ -1,3 +1,4 @@
+import { TeamsPage } from './features/teams/TeamsPage'
 import { ProjectPerspectivePage } from './features/perspectives/ProjectPerspectivePage'
 import { PresentationPage } from './features/settings/PresentationPages'
 import { PresentationAppearance } from './features/settings/PresentationAppearance'
@@ -349,6 +350,7 @@ function Shell() {
             <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/devices" element={<PersonalDevicesPage />} />
+            <Route path="/teams" element={<TeamsPage />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
             <Route path="/settings/appearance" element={<PresentationPage />} />
             <Route path="*" element={<Navigate to="/start" replace />} />

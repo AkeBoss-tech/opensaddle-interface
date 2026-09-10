@@ -2,11 +2,11 @@ import React, { useEffect, useRef, useState } from 'react'
 import { PersonalDevicesClient, type AssignmentPolicy, type DeviceAssignment } from '../../services/personalDevices'
 
 type Project = {id:string;name:string}
-export function DeviceAssignments({authority,deviceId,paired,projects}:{authority:PersonalDevicesClient;deviceId:string;paired:boolean;projects:Project[]}) {
+export function DeviceAssignments({authority,deviceId,paired,projects,teams=[]}:{authority:PersonalDevicesClient;deviceId:string;paired:boolean;projects:Project[];teams?:Project[]}) {
   const [open,setOpen]=useState(false)
-  return authority.assignmentsAvailable ? <div className="device-assignments"><button onClick={()=>setOpen(!open)} aria-expanded={open}>Project access</button>{open && <AssignmentList key={authority.identity()} authority={authority} deviceId={deviceId} paired={paired} projects={projects}/>}</div> : null
+  return authority.assignmentsAvailable ? <div className="device-assignments"><button onClick={()=>setOpen(!open)} aria-expanded={open}>Project access</button>{open && <AssignmentList key={authority.identity()} authority={authority} deviceId={deviceId} paired={paired} projects={projects} teams={teams}/>}</div> : null
 }
-function AssignmentList({authority,deviceId,paired,projects}:{authority:PersonalDevicesClient;deviceId:string;paired:boolean;projects:Project[]}) {
+function AssignmentList({authority,deviceId,paired,projects,teams=[]}:{authority:PersonalDevicesClient;deviceId:string;paired:boolean;projects:Project[];teams?:Project[]}) {
   const [items,setItems]=useState<DeviceAssignment[]>()
   const [error,setError]=useState('')
   const [selected,setSelected]=useState('')
@@ -14,13 +14,14 @@ function AssignmentList({authority,deviceId,paired,projects}:{authority:Personal
   useEffect(()=>{let active=true;setItems(undefined);setError('');authority.assignments(deviceId).then(value=>{if(active)setItems(value)}).catch(()=>{if(active)setError('Could not load project access. Refresh to try again.')});return()=>{active=false}},[authority,deviceId,refresh])
   const choices=[...projects,...(items??[]).filter(item=>!projects.some(p=>p.id===item.project_id)).map(item=>({id:item.project_id,name:item.project_id}))]
   return <div><h4>Project access</h4><p>Choose a project to propose task access. A project owner or admin must accept each policy change.</p>{error && <p role="alert">{error}</p>}{!items && !error && <p role="status">Loading access…</p>}<button onClick={()=>{setSelected('');setRefresh(value=>value+1)}}>Refresh access</button>
-    {items && <React.Fragment><label>Project for this device<select value={selected} onChange={event=>setSelected(event.target.value)}><option value="">Choose a project</option>{choices.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}</select></label>{!choices.length && <p>Add a project to configure task access.</p>}{selected && <AssignmentEditor key={selected} authority={authority} deviceId={deviceId} projectId={selected} paired={paired} initial={items.find(item=>item.project_id===selected)} onChanged={value=>setItems(previous=>[...(previous??[]).filter(item=>item.project_id!==value.project_id),value])}/>}</React.Fragment>}
+    {items && <React.Fragment><label>Project for this device<select value={selected} onChange={event=>setSelected(event.target.value)}><option value="">Choose a project</option>{choices.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}</select></label>{!choices.length && <p>Add a project to configure task access.</p>}{selected && <AssignmentEditor key={selected} authority={authority} deviceId={deviceId} projectId={selected} paired={paired} teams={teams} initial={items.find(item=>item.project_id===selected)} onChanged={value=>setItems(previous=>[...(previous??[]).filter(item=>item.project_id!==value.project_id),value])}/>}</React.Fragment>}
   </div>
 }
-function AssignmentEditor({authority,deviceId,projectId,paired,initial,onChanged}:{authority:PersonalDevicesClient;deviceId:string;projectId:string;paired:boolean;initial?:DeviceAssignment;onChanged:(value:DeviceAssignment)=>void}) {
+function AssignmentEditor({authority,deviceId,projectId,paired,initial,onChanged,teams=[]}:{authority:PersonalDevicesClient;deviceId:string;projectId:string;paired:boolean;teams?:Project[];initial?:DeviceAssignment;onChanged:(value:DeviceAssignment)=>void}) {
   const [current,setCurrent]=useState(initial)
   const [context,setContext]=useState<Awaited<ReturnType<PersonalDevicesClient['assignmentContext']>>>()
   const [audience,setAudience]=useState<AssignmentPolicy['audience']>(initial?.audience??'owner_only')
+  const [teamId,setTeamId]=useState(initial?.team_id??'')
   const [subjects,setSubjects]=useState(initial?.subjects??[])
   const [sources,setSources]=useState(initial?.source_ids??[])
   const [adapters,setAdapters]=useState(initial?.adapter_ids??[])
@@ -35,13 +36,14 @@ function AssignmentEditor({authority,deviceId,projectId,paired,initial,onChanged
     finally{if(live.current){locked.current=false;setBusy(false)}}
   }
   const toggle=(values:string[],value:string)=>values.includes(value)?values.filter(item=>item!==value):[...values,value]
-  const dirty=audience!==(current?.audience??'owner_only') || JSON.stringify([...subjects].sort())!==JSON.stringify([...(current?.subjects??[])].sort()) || JSON.stringify([...sources].sort())!==JSON.stringify([...(current?.source_ids??[])].sort()) || JSON.stringify([...adapters].sort())!==JSON.stringify([...(current?.adapter_ids??[])].sort())
+  const dirty=(audience==='team_members'&&teamId!==(current?.team_id??'')) || audience!==(current?.audience??'owner_only') || JSON.stringify([...subjects].sort())!==JSON.stringify([...(current?.subjects??[])].sort()) || JSON.stringify([...sources].sort())!==JSON.stringify([...(current?.source_ids??[])].sort()) || JSON.stringify([...adapters].sort())!==JSON.stringify([...(current?.adapter_ids??[])].sort())
   return <section className="device-assignment-editor"><p role="status">{current ? `Access policy: ${current.state}` : 'No project access configured'}</p>{current?.state==='accepted' && <p>{current.consent_allows_requester?'Your task-use consent is active.':'This policy does not currently authorize your tasks.'} A connected, configured worker is also required.</p>}{error && <p role="alert">{error}</p>}
-    {context && <fieldset disabled={busy || !paired}><legend>Owner’s task-use policy</legend><label>Who may use this device?<select value={audience} onChange={event=>{setAudience(event.target.value as AssignmentPolicy['audience']);setSubjects([]);setReview(null)}}><option value="owner_only">Only me</option>{current?.team_id&&<option value="team_members">Members of team {current.team_id}</option>}<option value="selected_members">Selected project members</option><option value="project_members">All current project members</option></select></label>
+    {context && <fieldset disabled={busy || !paired}><legend>Owner’s task-use policy</legend><label>Who may use this device?<select value={audience} onChange={event=>{setAudience(event.target.value as AssignmentPolicy['audience']);setSubjects([]);setReview(null)}}><option value="owner_only">Only me</option>{(teams.length>0||current?.team_id)&&<option value="team_members">Members of a named team</option>}<option value="selected_members">Selected project members</option><option value="project_members">All current project members</option></select></label>
+      {audience==='team_members'&&<label>Allowed team<select value={teamId} onChange={event=>{setTeamId(event.target.value);setReview(null)}}><option value="">Choose a team</option>{teams.map(team=><option key={team.id} value={team.id}>{team.name}</option>)}{current?.team_id&&!teams.some(team=>team.id===current.team_id)&&<option value={current.team_id}>{current.team_id} (membership unavailable)</option>}</select></label>}
       {audience==='selected_members' && <fieldset><legend>Allowed people</legend>{context.members.map(member=><label key={member.subject}><input type="checkbox" checked={subjects.includes(member.subject)} onChange={()=>{setSubjects(toggle(subjects,member.subject));setReview(null)}}/>{member.subject}</label>)}</fieldset>}
       <fieldset><legend>Allowed sources</legend>{context.sources.map(source=><label key={source.id}><input type="checkbox" checked={sources.includes(source.id)} onChange={()=>{setSources(toggle(sources,source.id));setReview(null)}}/>{source.label}</label>)}{!context.sources.length && <p>Register a project source before proposing access.</p>}</fieldset>
       <fieldset><legend>Allowed coding agents</legend>{[['codex-app-server','Codex'],['claude-code-stream-json','Claude Code']].map(([id,label])=><label key={id}><input type="checkbox" checked={adapters.includes(id)} onChange={()=>{setAdapters(toggle(adapters,id));setReview(null)}}/>{label}</label>)}</fieldset>
-      <button disabled={!sources.length || !adapters.length || (audience==='selected_members'&&!subjects.length)} onClick={()=>void run(()=>authority.proposeAssignment(deviceId,projectId,{expected_revision:current?.revision??0,audience,...(audience==='team_members'?{team_id:current?.team_id}:{}),subjects,source_ids:sources,adapter_ids:adapters}))}>Propose access</button>
+      <button disabled={!sources.length || !adapters.length || (audience==='selected_members'&&!subjects.length) || (audience==='team_members'&&!teamId)} onClick={()=>void run(()=>authority.proposeAssignment(deviceId,projectId,{expected_revision:current?.revision??0,audience,...(audience==='team_members'?{team_id:teamId}:{}),subjects,source_ids:sources,adapter_ids:adapters}))}>Propose access</button>
     </fieldset>}
     {!paired && <p>Pair this device before proposing access.</p>}
     {current?.state==='proposed' && context?.canManage && !dirty && <button disabled={busy} onClick={()=>setReview('accept')}>Review project acceptance</button>}

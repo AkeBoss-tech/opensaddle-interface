@@ -30,6 +30,7 @@ export function ConnectedWorkspaceSidebar({ onAddProject }: { onAddProject: () =
     <nav aria-label="Workspace tools" className="connected-navigation connected-bottom">
       <NavLink to="/operations"><Activity size={17}/>Operations</NavLink>
       <NavLink to="/collaboration"><Users size={17}/>People &amp; machines</NavLink>
+      <NavLink to="/teams"><Users size={17}/>Teams</NavLink>
       <NavLink to="/devices"><Laptop size={17}/>Devices</NavLink>
       <NavLink to="/settings"><Settings size={17}/>Settings</NavLink>
     </nav>
