@@ -582,3 +582,12 @@ removal sends null. The server response must confirm that deadline. Both owner
 and Project review show the saved timestamp, never interpreting an older server's
 missing field as indefinite consent. Mounted baseline assertions and repaired
 checks: `receipts/device-consent-expiry-ui-20260910.json`.
+
+## DEVICE-CONSENT-IDLE-EXPIRY
+
+An open owner policy and Project acceptance review must update when the saved
+consent deadline passes without user interaction or an HTTP response. Expired
+consent cannot retain active wording or submit acceptance from a stale handler.
+Revocation and decline remain available. `ConsentExpiry.test.tsx` exercises both
+mounted production views with the real client and controlled Date/timers.
+Baseline receipt: `receipts/device-consent-idle-expiry-20260910.json`.

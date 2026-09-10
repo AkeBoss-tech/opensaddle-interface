@@ -1,4 +1,4 @@
-import { ConsentDeadline } from './ConsentDeadline'
+import { ConsentDeadline, consentExpired, useConsentClock } from './ConsentDeadline'
 import React, { useEffect, useRef, useState } from 'react'
 import { PersonalDevicesClient, type DeviceAssignment } from '../../services/personalDevices'
 
@@ -10,6 +10,7 @@ export function ProjectDeviceAccess({authority,projectId}:{authority:PersonalDev
   const [refresh,setRefresh]=useState(0)
   const generation=useRef(0),locked=useRef(false)
   const current=snapshot?.authority===authority && snapshot.identity===identity && snapshot.projectId===projectId?snapshot:undefined
+  useConsentClock([...(current?.items??[]),review?.item])
   useEffect(()=>{
     const version=++generation.current
     locked.current=true;setBusy(true);setSnapshot(undefined);setReview(undefined);setError('')
@@ -17,7 +18,7 @@ export function ProjectDeviceAccess({authority,projectId}:{authority:PersonalDev
     return()=>{generation.current++}
   },[authority,identity,projectId,refresh])
   async function decide() {
-    if(!review || !current?.context.canManage || locked.current)return
+    if(!review || !current?.context.canManage || locked.current || (review.accept&&consentExpired(review.item)))return
     const version=generation.current
     locked.current=true;setBusy(true);setError('')
     try {
@@ -30,8 +31,8 @@ export function ProjectDeviceAccess({authority,projectId}:{authority:PersonalDev
   return <React.Fragment><button disabled={busy} onClick={()=>setRefresh(value=>value+1)}>Refresh project devices</button>{error && <p role="alert">{error}</p>}{busy && !current && <p role="status">Loading project devices…</p>}{current && <>
     {!current.context.canManage && <p>Only project owners and admins can accept or remove device access.</p>}
     {!current.items.length && <p>No device owners have proposed access to this project.</p>}
-    <ul className="devices-list">{current.items.map(item=><li key={item.device_id}><div><h3>{typeof item.display_name==='string'?item.display_name:item.device_id}</h3><p>Owner: {item.owner_subject}</p><p>Access policy: {item.state}</p><PolicySummary item={item} sources={current.context.sources}/>{current.context.canManage && <div>{item.state==='proposed' && <button disabled={busy} onClick={()=>setReview({item,accept:true})}>Review acceptance</button>}{['proposed','accepted'].includes(item.state) && <button disabled={busy} onClick={()=>setReview({item,accept:false})}>{item.state==='proposed'?'Decline proposal':'Remove project access'}</button>}</div>}</div></li>)}</ul>
-    {review && <section className="device-access-review" aria-label="Review device policy"><h2>{review.accept?'Accept device policy':'Remove device access'}</h2><p>Project: {projectId}</p><p>{review.item.owner_subject} · {review.item.device_id} · Revision {review.item.revision}</p><PolicySummary item={review.item} sources={current.context.sources}/><p>{review.accept?'Accept exactly this owner-proposed scope for this project. A configured worker is still required to run tasks.':'Remove this project’s acceptance. The device remains owned by its owner and other project assignments stay unchanged.'}</p><button disabled={busy} onClick={()=>void decide()}>{review.accept?'Accept policy':'Confirm removal'}</button><button disabled={busy} onClick={()=>setReview(undefined)}>Cancel</button></section>}
+    <ul className="devices-list">{current.items.map(item=><li key={item.device_id}><div><h3>{typeof item.display_name==='string'?item.display_name:item.device_id}</h3><p>Owner: {item.owner_subject}</p><p>Access policy: {item.state}</p><PolicySummary item={item} sources={current.context.sources}/>{current.context.canManage && <div>{item.state==='proposed' && <button disabled={busy||consentExpired(item)} onClick={()=>{if(!consentExpired(item))setReview({item,accept:true})}}>Review acceptance</button>}{['proposed','accepted'].includes(item.state) && <button disabled={busy} onClick={()=>setReview({item,accept:false})}>{item.state==='proposed'?'Decline proposal':'Remove project access'}</button>}</div>}</div></li>)}</ul>
+    {review && <section className="device-access-review" aria-label="Review device policy"><h2>{review.accept?'Accept device policy':'Remove device access'}</h2><p>Project: {projectId}</p><p>{review.item.owner_subject} · {review.item.device_id} · Revision {review.item.revision}</p><PolicySummary item={review.item} sources={current.context.sources}/><p>{review.accept?'Accept exactly this owner-proposed scope for this project. A configured worker is still required to run tasks.':'Remove this project’s acceptance. The device remains owned by its owner and other project assignments stay unchanged.'}</p><button disabled={busy||(review.accept&&consentExpired(review.item))} onClick={()=>void decide()}>{review.accept?'Accept policy':'Confirm removal'}</button><button disabled={busy} onClick={()=>setReview(undefined)}>Cancel</button></section>}
     <p>Device ownership and pairing stay with the owner. Project acceptance cannot expand the owner’s policy.</p>
   </>}</React.Fragment>
 }
