@@ -222,3 +222,11 @@ The mounted frame receives only its own Project tasks; revocation prevents furth
 navigation and removes the frame. Unavailable placement survives reload. Other
 Projects are not fetched merely because they appear in the directory. See
 `receipts/project-widget-dashboard-20260910.json`.
+
+
+## WIDGET-OVERVIEW-INDEPENDENCE
+
+A missing, failing or refreshing overview projection must not unmount independently
+authorized Project widgets. Old overview content must clear; widget revocation
+must still remove its frame. The mounted round-trip test and
+`receipts/widget-overview-independence-20260910.json` cover these boundaries.

@@ -255,8 +255,8 @@ uses a separate dashboard namespace under the existing account/package state key
 Unavailable or revoked placements remain saved and show a placeholder. Existing
 frames revoke on failed authorization before navigation or projection updates.
 Personal/global-data widgets still need a separate owner-scoped catalog and are
-not supported by this Project widget host. The dashboard still requires its
-Command Center projection; independent dashboard loading remains follow-up work.
+not supported by this Project widget host. Dashboard placement and widget loading
+are independent of the Command Center overview projection.
 
 Thirteen mounted/client checks and a production build pass. The regression flow
 fails on the prior Interface revision and passes here: discover P without querying
@@ -286,3 +286,21 @@ the mocked-catalog gap for discovery, persistence, byte loading and revocation.
 Frame messaging was simulated by the mounted test; it does not prove browser
 execution, visuals, keyboard behavior or network isolation. Desktop access was
 retried and the Mac remained locked. Four package-generator checks also passed.
+
+
+## Overview-independent widget hosting
+
+The dashboard layout and Project widget host now remain mounted while the Command
+Center projection loads, fails or is not advertised. Built-in overview widgets
+show unavailable content without retaining stale protected snapshots. Project
+widgets continue using their independent current catalog and task-feed authority.
+Disconnect still removes the dashboard, and account changes preserve the existing
+identity fences. This separation prevents an unrelated overview refresh from
+destroying a widget frame or interrupting layout editing.
+
+Nine mounted dashboard checks and the production build pass. The widget round-trip
+regression now additionally proves same-frame retention after overview failure and
+capability removal, followed by successful enforcement of widget revocation. It
+fails on the preceding Interface commit and passes with the change; receipt:
+Interface `docs/testing/receipts/widget-overview-independence-20260910.json`.
+Browser verification remains pending.

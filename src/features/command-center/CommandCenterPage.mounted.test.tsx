@@ -116,7 +116,7 @@ test('personal dashboard saves a Project widget and revokes its mounted frame',a
  Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
  let init:any;const source={postMessage:(value:any)=>{init=value}},node={contentWindow:source,dataset:{}}
  let view!:ReturnType<typeof create>;t.after(async()=>{if(view)await act(async()=>view.unmount());Object.assign(globalThis,{addEventListener:originalAdd,removeEventListener:originalRemove})})
- const surface=()=> <MemoryRouter><CommandCenterSurface client={api} connected identity={api} projects={[]} projectDirectory={directory} dashboardSettings={settings} dashboardIdentity="one" widgetClient={shell} taskAuthority={journey}/></MemoryRouter>
+ const surface=(projection:CommandCenterClient|undefined=api)=> <MemoryRouter><CommandCenterSurface client={projection} connected identity={api} projects={[]} projectDirectory={directory} dashboardSettings={settings} dashboardIdentity="one" widgetClient={shell} taskAuthority={journey}/></MemoryRouter>
  const settle=async(ready:()=>boolean=()=>true)=>{for(let attempt=0;attempt<50;attempt++){await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))});if(ready())return}}
  await act(async()=>{view=create(surface(),{createNodeMock:()=>node})});await settle(()=>view.root.findAllByType('select').length>0&&!view.root.findAllByType('select')[0].props.disabled)
  const picker=view.root.findAllByType('select')[0]
@@ -131,6 +131,16 @@ test('personal dashboard saves a Project widget and revokes its mounted frame',a
  assert.equal(view.root.findAllByType('iframe').length,1)
  await act(async()=>view.root.findByType('iframe').props.onLoad())
  assert.equal(init.projection.model.projectId,'P');assert.deepEqual(init.projection.model.tasks.map((task:any)=>task.id),['R'])
+ const originalFrame=view.root.findByType('iframe').props.srcDoc
+ const broken=client(async()=>{throw Error('Overview unavailable')})
+ await act(async()=>view.update(surface(broken)))
+ assert.equal(view.root.findAllByType('iframe').length,1,'project widgets must remain mounted when overview fails')
+ assert.equal(view.root.findByType('iframe').props.srcDoc,originalFrame)
+ assert.match(markup(view),/Command Center could not load/)
+ // Remove only the projection capability; dashboard settings and widget authority remain.
+ await act(async()=>view.update(<MemoryRouter><CommandCenterSurface connected identity={api} projects={[]} projectDirectory={directory} dashboardSettings={settings} dashboardIdentity="one" widgetClient={shell} taskAuthority={journey}/></MemoryRouter>))
+ assert.equal(view.root.findAllByType('iframe').length,1,'project widgets do not require overview capability')
+
  const send=(data:any)=>listeners.forEach(listener=>listener({source,data:{...init,...data}}))
  await act(async()=>send({kind:'ready'}));enabled=false
  await act(async()=>send({kind:'request',action:'open_task',task_id:'R'}))

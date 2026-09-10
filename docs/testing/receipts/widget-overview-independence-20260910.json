@@ -1,0 +1,9 @@
+{
+  "invariant": "WIDGET-OVERVIEW-INDEPENDENCE",
+  "baseRevision": "aecbf808333389add1e9b322e09a5d35ef26d695",
+  "test": "src/features/command-center/CommandCenterPage.mounted.test.tsx",
+  "preFix": "failed",
+  "preFixAssertion": "project widgets must remain mounted when overview fails",
+  "postFix": "passed",
+  "evidence": "Mounted same-frame retention through overview failure and capability removal; widget revocation still enforced. Not browser proof."
+}

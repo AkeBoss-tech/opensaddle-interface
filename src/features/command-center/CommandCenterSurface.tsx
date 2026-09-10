@@ -92,27 +92,20 @@ function CommandCenterDashboard({client,connected,identity,projects,dashboardSet
   const projectName = (projectId: string) => projects.find((project) => project.id === projectId)?.name ?? projectId
 
   if(!connected)return <section className="cc-dashboard"><EmptyState title="Command Center unavailable" description="Connect an OpenSaddle control plane to load authoritative priorities, work, and outcomes." action={<Button onClick={() => void load()}>Check again</Button>} /></section>
-  if(!client)return <section className="cc-dashboard"><EmptyState title="Command Center unavailable" description="This control plane does not advertise the command_center_v1 projection." action={<Button onClick={() => void load()}>Check again</Button>} /></section>
-  if((state.kind==='ready'||state.kind==='error'||state.kind==='unavailable')&&(state.identity!==identity||state.client!==client))return <section className="cc-dashboard" aria-busy="true"><p role="status">Loading authoritative Command Center…</p></section>
-
-  if (state.kind === 'loading') {
-    return <section className="cc-dashboard" aria-busy="true"><p role="status">Loading authoritative Command Center…</p></section>
-  }
-  if (state.kind === 'unavailable') {
-    return <section className="cc-dashboard"><EmptyState title="Command Center unavailable" description={state.reason} action={<Button onClick={() => void load()}>Check again</Button>} /></section>
-  }
-  if (state.kind === 'error') {
-    return <section className="cc-dashboard"><EmptyState role="alert" title="Command Center could not load" description={state.reason} action={<Button onClick={() => void load()}>Retry</Button>} secondaryAction={<Link className="cc-text-link" to="/settings">Connection settings</Link>} /></section>
-  }
-
-  const { snapshot } = state
+  const current=state.kind!=='loading'&&state.identity===identity&&state.client===client
+  const snapshot=current&&state.kind==='ready'?state.snapshot:undefined
+  const notice=!client?<EmptyState title="Command Center unavailable" description="This control plane does not advertise the command_center_v1 projection." action={<Button onClick={() => void load()}>Check again</Button>}/>
+    :!current?<p role="status">Loading authoritative Command Center…</p>
+    :state.kind==='error'?<EmptyState role="alert" title="Command Center could not load" description={state.reason} action={<Button onClick={() => void load()}>Retry</Button>} secondaryAction={<Link className="cc-text-link" to="/settings">Connection settings</Link>}/>
+    :state.kind==='unavailable'?<EmptyState title="Command Center unavailable" description={state.reason} action={<Button onClick={() => void load()}>Check again</Button>}/>:null
   return <section className="cc-dashboard">
-    <header className="cc-header">
+    {notice}
+    {snapshot&&<header className="cc-header">
       <div><span className="eyebrow">Authoritative workspace view</span><h1>Command Center</h1><p>Decisions first, then active work and outcomes with their evidence status.</p></div>
       <div className="cc-freshness"><span>Snapshot</span><time dateTime={snapshot.generatedAt}>{dateTime(snapshot.generatedAt)}</time><Button variant="secondary" size="sm" onClick={() => void load()}>Refresh</Button></div>
-    </header>
+    </header>}
 
-    <ProjectWidgetDashboard directory={projectDirectory} shell={widgetClient} journey={taskAuthority} stateScope={widgetStateScope} client={dashboardSettings} identity={dashboardIdentity??identity} widgets={[
+    <ProjectWidgetDashboard directory={projectDirectory} shell={widgetClient} journey={taskAuthority} stateScope={widgetStateScope} client={dashboardSettings} identity={dashboardIdentity??identity} widgets={snapshot?[
       {id:'objective',title:'Current objective',content:<CurrentObjectivePanel snapshot={snapshot} projectName={projectName} />},
       {id:'attention',title:'Needs your attention',content:<section className="cc-panel cc-attention" aria-labelledby="cc-attention-title">
         <div className="cc-section-heading"><div><span className="eyebrow">Human attention</span><h2 id="cc-attention-title">Needs your attention</h2></div><strong className="cc-count">{snapshot.attentionItems.length}</strong></div>
@@ -149,9 +142,9 @@ function CommandCenterDashboard({client,connected,identity,projects,dashboardSet
         <div className="cc-row-meta"><span>{projectName(outcome.projectId)}</span><time dateTime={outcome.completedAt}>{dateTime(outcome.completedAt)}</time></div>
       </Link>)}</div> : <SectionEmpty>No completed outcomes have authoritative verification yet.</SectionEmpty>}
     </section>},
-    ]}/>
+    ]:[['objective','Current objective'],['attention','Needs your attention'],['runs','Agents working'],['projects','Projects'],['outcomes','Recent outcomes']].map(([id,title])=>({id,title,content:<section className="cc-panel"><h2>{title}</h2><p>This overview is currently unavailable.</p></section>}))}/>
 
-    {snapshot.unavailableSections.length > 0 && <section className="cc-unavailable" aria-labelledby="cc-unavailable-title">
+    {snapshot&&snapshot.unavailableSections.length > 0 && <section className="cc-unavailable" aria-labelledby="cc-unavailable-title">
       <div><span className="eyebrow">Capability gaps</span><h2 id="cc-unavailable-title">Unavailable in this snapshot</h2></div>
       <ul>{snapshot.unavailableSections.map((section) => <li key={section}><strong>{section.replaceAll('_', ' ')}</strong><span>{UNAVAILABLE_REASON[section]}</span></li>)}</ul>
     </section>}
