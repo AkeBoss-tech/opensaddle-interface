@@ -176,3 +176,10 @@ validates it. Typed resource results preserve the observation-only authority
 markers. See `packages/scoped-view-sdk/README.md` for an example and limitations.
 The package remains private; no registry publication or permission expansion is
 implied. Run its `test:types` script to verify public-export consumer compatibility.
+
+The development Electron installation walkthrough is now recorded in
+`signed-install-electron-20260910.json`: native file picker, explicit trust and
+installation crossed the production IPC proxy, the user view reached ready, read
+owner inventory and restored saved state on Home. Default-workspace escape also
+worked. This used an isolated profile and disposable Core, not personal package
+state. Team Electron installation and distributed-app qualification remain open.
