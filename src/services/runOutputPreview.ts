@@ -4,13 +4,13 @@ export async function readRunOutputPreview({url,headers,signal,runId,current,onT
  if(!response.ok||!response.body)throw Error('Live preview unavailable')
  const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true})
  const cancel=()=>{void reader.cancel().catch(()=>{})};signal.addEventListener('abort',cancel,{once:true})
- let worker='',buffer='',text='',eventSequence=0,epoch=0,outputSequence=0,bytes=0
+ let worker='',buffer='',text='',eventSequence=-1,epoch=0,outputSequence=0,bytes=0
  function frame(value:string){
   const data=value.split('\n').filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n')
   if(!data)return
   if(signal.aborted||!current())throw Error('Preview account changed')
   const event=JSON.parse(data)
-  if(event.run_id!==runId||!Number.isSafeInteger(event.sequence)||event.sequence<=eventSequence||typeof event.type!=='string')throw Error('Invalid Run preview event')
+  if(event.run_id!==runId||!Number.isSafeInteger(event.sequence)||event.sequence<0||event.sequence<=eventSequence||typeof event.type!=='string')throw Error('Invalid Run preview event')
   eventSequence=event.sequence
   if(event.type!=='worker.output.delta')return
   const chunk=event.payload

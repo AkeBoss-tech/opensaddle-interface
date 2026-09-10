@@ -434,3 +434,13 @@ continues to use the artifact/digest path. Mounted tests use the real client wit
 a Core stream fixture; receipt `receipts/conversation-live-preview-20260910.json`
 records an actual pre-change assertion failure. Real-provider streaming and
 browser visual acceptance are separate remaining gates.
+
+
+Native follow-up for CONVERSATION-LIVE-PREVIEW: Core starts durable SSE events at
+sequence zero. The reader must accept this metadata event before output chunks.
+`receipts/conversation-preview-zero-sequence-20260910.json` reproduces the actual
+native-run failure against the prior Interface head and verifies the repair.
+`receipts/conversation-stream-native-20260910.json` verifies real Codex/Core SSE
+through the mounted host: 99 rendered updates while running, 621 ordered chunks
+before final publication, matching digest-checked output, and explicit cleanup.
+This is not a browser visual or keyboard acceptance result.

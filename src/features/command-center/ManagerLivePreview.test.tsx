@@ -16,7 +16,7 @@ function fixture(){
  const original=globalThis.fetch
  globalThis.fetch=async(input,init)=>{
   const path=String(input)
-  if(path.endsWith('/events')){requests++;assert.equal(init?.cache,'no-store');return new Response(new ReadableStream({start(c){stream=c},cancel(){cancelled++}}))}
+  if(path.endsWith('/events')){requests++;assert.equal(init?.cache,'no-store');return new Response(new ReadableStream({start(c){stream=c;c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({run_id:'run-live',sequence:0,type:'run.requested',payload:{}})+'\n\n'))},cancel(){cancelled++}}))}
   if(path.endsWith('/dispatches'))return Response.json({conversation_id:conversation.conversation_id,message_id:message.message_id,items:[{project_id:'P',run_id:'run-live',status:'running'}]})
   throw Error('Unexpected request '+path)
  }
@@ -29,7 +29,9 @@ test('mounted conversation renders fenced live text and clears it after stream f
  try{
   await act(async()=>{view.root.findByType('details').props.onToggle({currentTarget:{open:true}});await flush();await flush()})
   assert.equal(f.requests(),1,'active conversation task must subscribe to Core output')
+  assert.equal(f.cancelled(),0,'Core zero-based event history must allow live output to render')
   await act(async()=>{const part=wire(1,'Hello <img src=x>');f.send(part.slice(0,17));f.send(part.slice(17));await flush()})
+  assert.equal(view.root.findAllByType('pre').length,1,'Core zero-based event history must allow live output to render')
   assert.equal(view.root.findByType('pre').children.join(''),'Hello <img src=x>')
   assert.equal(view.root.findAllByType('img').length,0)
   await act(async()=>{f.send(wire(2,' world'));await flush()})
