@@ -1,0 +1,20 @@
+{
+  "invariant": "PROJECT-VIEW-RESPONSIVENESS",
+  "base": "516883471940424b94c5a2d0dc8579a16889d0d6",
+  "test_overlay": [
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern=host bridge responds",
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "before_exit": 1,
+  "before_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2716 host bridge responds to challenges and missing responses recover the view (46.902667ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 305.54425\n\n\u2716 failing tests:\n\ntest at src/perspectives/project/InstalledProjectView.test.tsx:1:37208\n\u2716 host bridge responds to challenges and missing responses recover the view (46.902667ms)\n  AssertionError [ERR_ASSERTION]: ready installed view must receive a host responsiveness challenge\n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-watchdog-ss9vb9z3/src/perspectives/project/InstalledProjectView.test.tsx:407:9)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n",
+  "after_exit": 0,
+  "after_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 host bridge responds to challenges and missing responses recover the view (46.736625ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 274.624042\n",
+  "scope": "Mounted host, executed injected bridge, deterministic timer/message omission; not process freeze or browser visual proof"
+}

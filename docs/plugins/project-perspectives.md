@@ -700,3 +700,19 @@ projection. The host loads its current exact approval review and owns the grant.
 A newly discovered task may require a task-projection refresh before navigation.
 No policy body, approval lease, credential, or grant operation is delivered.
 Tool/model-call approvals and live approval cursors are not part of this v1 read.
+
+
+### Host responsiveness checks
+
+The host-injected bridge responds to fenced `ping` messages with a `pong` carrying
+the current random `request_id`. Packages do not need to implement this protocol.
+Once ready, a visible view is checked every five seconds. An outstanding challenge
+without a response for ten seconds removes the frame and invokes host recovery.
+Only the exact current frame/generation/challenge can acknowledge it. Hidden
+windows and long host scheduling gaps reset the check. Existing authorization
+checks remain independent; a pong grants no authority.
+
+This can recover a nonresponding frame while the host event loop still runs. It
+cannot guarantee recovery from an infinite loop that also blocks the host process,
+or from a crashed browser/desktop process. Process isolation and current browser
+failure testing remain separate requirements.

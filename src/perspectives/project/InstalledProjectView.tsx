@@ -22,6 +22,7 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
  const lifecycleModel=live?model.projectId:model
  const actions=useRef({onOpenTask,onNewTask});actions.current={onOpenTask,onNewTask}
  const authorize=useRef<()=>Promise<boolean>>(async()=>false),requestPending=useRef(false)
+ const heartbeat=useRef<{id:string;sentAt:number}|undefined>(undefined)
  const frame=useRef<HTMLIFrameElement>(null),generation=useRef(0)
  const saved=useRef<ReturnType<typeof projectViewState>>(undefined)
  const [stateNotice,setStateNotice]=useState('')
@@ -58,6 +59,7 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
  },[client,settingsClient,settingsIdentity,renderer,lifecycleModel,connectionKey,stateScope,mount])
  useEffect(()=>{if(!document)return;let initialized=false,count=0,windowStart=Date.now();const timeout=setTimeout(()=>{if(!initialized)setError('This view did not become ready. Select another view or refresh.')},5000)
   const listener=(event:MessageEvent)=>{if(document.generation!==generation.current||!acceptsApplicationMessage(event,{source:frame.current?.contentWindow??null,nonce:document.nonce,generation:document.generation,instanceId:renderer.instance_id,connectionKey,packageRef:renderer.package_ref}))return
+   if(event.data.kind==='pong'){if(event.data.request_id===heartbeat.current?.id)heartbeat.current=undefined;return}
    if(event.data.kind==='failure'){generation.current++;frameReady.current=false;setDocument(undefined);setError('This view stopped after a renderer error. Refresh to retry.');return}
    if(Date.now()-windowStart>1000){count=0;windowStart=Date.now()}if(++count>32)return
    const message=event.data as typeof event.data & {task_id?:unknown}
@@ -99,6 +101,23 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
   })
   return()=>{cancelled=true}
  },[live,ready,document,model,renderer,connectionKey])
+ useEffect(()=>{
+  if(!ready||!document)return
+  heartbeat.current=undefined
+  let lastTick=Date.now()
+  const timer=setInterval(()=>{
+   if(document.generation!==generation.current)return
+   const now=Date.now(),suspended=now-lastTick>15000;lastTick=now
+   if(globalThis.document?.visibilityState==='hidden'||suspended){heartbeat.current=undefined;return}
+   if(heartbeat.current){
+    if(now-heartbeat.current.sentAt>=10000){generation.current++;frameReady.current=false;heartbeat.current=undefined;setDocument(undefined);setError('This view stopped responding. Refresh to retry.')}
+    return
+   }
+   const id=crypto.randomUUID();heartbeat.current={id,sentAt:now}
+   frame.current?.contentWindow?.postMessage({protocol:APPLICATION_PROTOCOL,kind:'ping',nonce:document.nonce,generation:document.generation,instance_id:renderer.instance_id,connection_key:connectionKey,package_ref:renderer.package_ref,request_id:id},'*')
+  },5000)
+  return()=>{clearInterval(timer);heartbeat.current=undefined}
+ },[ready,document,renderer,connectionKey])
  publishSettings.current=()=>{if(!frameReady.current||!document||document.generation!==generation.current||!preferences.current)return;frame.current?.contentWindow?.postMessage({protocol:APPLICATION_PROTOCOL,kind:'settings',nonce:document.nonce,generation:document.generation,instance_id:renderer.instance_id,connection_key:connectionKey,package_ref:renderer.package_ref,settings_revision:++settingsRevision.current,settings:preferences.current},'*')}
  useEffect(()=>{if(error)onUnavailable?.(error)},[error,onUnavailable])
  if(error)return <p role="alert">{error}</p>

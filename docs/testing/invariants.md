@@ -456,3 +456,12 @@ field filtering, foreign Project rejection by host binding, unsupported grant
 requests and package revocation during read. Receipt:
 `receipts/project-approval-sdk-20260910.json`. This is bounded discovery, not live
 approval cursors or tool/model-call approval support.
+
+
+## PROJECT-VIEW-RESPONSIVENESS
+
+A ready installed frame must respond to current fenced host challenges. Missing
+responses trigger removal/recovery; stale and late responses cannot keep or revive
+the frame. Hidden windows suspend this check. Mounted tests execute the injected
+bridge, control timers and deliberately omit message delivery; they do not freeze
+a real browser process. Receipt: `receipts/project-view-responsiveness-20260910.json`.

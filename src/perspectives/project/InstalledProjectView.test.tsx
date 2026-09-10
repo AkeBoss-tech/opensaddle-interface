@@ -379,3 +379,43 @@ test('approval SDK discovers only pending Project Runs and cannot grant approval
  assert.equal(messages.filter(m=>m.kind==='resources').length,1,'revoked package must not receive the new queue')
  assert.equal(view.root.findAllByType('iframe').length,0)
 })
+
+// PROJECT-VIEW-RESPONSIVENESS: host watchdog fences missing/old acknowledgments.
+test('host bridge responds to challenges and missing responses recover the view',async t=>{
+ const {runInNewContext}=await import('node:vm')
+ const fragment='<p>Responsive view</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
+ const originalAdd=globalThis.addEventListener,originalRemove=globalThis.removeEventListener,originalDocument=globalThis.document
+ const listeners=new Set<(event:any)=>void>(),child=new Map<string,((event:any)=>void)[]>(),messages:any[]=[],failures:string[]=[]
+ const visibility={visibilityState:'visible'};let responsive=true
+ Object.assign(globalThis,{document:visibility,addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ const parent={postMessage:(data:any)=>{for(const listener of listeners)listener({source,data})}}
+ const source={postMessage:(message:any)=>{messages.push(message);if(responsive)for(const handler of child.get('message')??[])handler({source:parent,data:message})}}
+ const node={contentWindow:source,dataset:{}},client={applicationRenderers:async()=>[renderer],applicationRendererContent:async()=>new Response(fragment,{headers:{'Content-Type':renderer.media_type}})} as unknown as MalleableShellClient
+ t.mock.timers.enable({apis:['setTimeout','setInterval','Date'],now:1000})
+ let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount());t.mock.timers.reset();Object.assign(globalThis,{document:originalDocument,addEventListener:originalAdd,removeEventListener:originalRemove})})
+ await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[]}} connectionKey="C" onOpenTask={()=>{}} onNewTask={()=>{}} onUnavailable={reason=>failures.push(reason)}/>,{createNodeMock:()=>node})})
+ assert.equal(view.root.findAllByType('iframe').length,1)
+ const bridge=(view.root.findByType('iframe').props.srcDoc as string).match(/<script>([\s\S]*?)<\/script>/)![1]
+ runInNewContext(bridge,{parent,addEventListener:(kind:string,fn:(event:any)=>void)=>child.set(kind,[...(child.get(kind)??[]),fn])})
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ const init=messages.find(m=>m.kind==='init')
+ await act(async()=>parent.postMessage({...init,kind:'ready'}))
+ const tick=()=>act(async()=>{t.mock.timers.tick(5000)})
+ await tick()
+ const first=messages.find(m=>m.kind==='ping')
+ assert.ok(first,'ready installed view must receive a host responsiveness challenge')
+ assert.equal(view.root.findAllByType('iframe').length,1)
+ // Hidden windows may throttle frame execution; do not infer failure there.
+ responsive=false;visibility.visibilityState='hidden'
+ await tick();await tick();await tick()
+ assert.equal(view.root.findAllByType('iframe').length,1)
+ visibility.visibilityState='visible';await tick()
+ const current=messages.filter(m=>m.kind==='ping').at(-1);assert.notEqual(current.request_id,first.request_id)
+ await act(async()=>{parent.postMessage({...init,kind:'pong',request_id:first.request_id});parent.postMessage({...init,kind:'pong',request_id:current.request_id,nonce:'stale'})})
+ await tick();await tick()
+ assert.equal(view.root.findAllByType('iframe').length,0,'missing current response must remove the unresponsive view')
+ assert.ok(failures.some(value=>value.includes('stopped responding')))
+ await act(async()=>parent.postMessage({...init,kind:'pong',request_id:current.request_id}))
+ assert.equal(view.root.findAllByType('iframe').length,0,'late response cannot restore a failed generation')
+})
