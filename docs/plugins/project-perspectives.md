@@ -50,3 +50,19 @@ requires host refresh; revocation never silently reinstates a view. These are
 browser timer intervals, not a wall-clock guarantee while the browser is suspended.
 Already-disclosed task text cannot be recalled; execution APIs retain their own
 current authorization checks.
+
+## Desktop verification (2026-09-10)
+
+The built Electron application was exercised with an isolated user-data directory,
+first against a Vite origin and then with the production renderer bundle served by
+opensaddle://bundle. A disposable signed package loaded its project task projection;
+its New task button navigated to the host delegation page, and returning restored
+the installed view. Disabling the package through Core removed the idle frame in
+both paths. Local images are in out/screenshots/desktop-perspective-20260910.
+
+Direct Core servers must explicitly configure allowed_origins with
+opensaddle://bundle (CLI --allowed-origin opensaddle://bundle); other custom
+origins remain rejected. The stable serve-api wrapper already allows that desktop
+origin. Verification used a fixed disposable owner, not production authentication.
+This does not certify a distributed installer, native separate-process project
+rendering, state migration, or actual remote task execution.
