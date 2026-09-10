@@ -80,3 +80,32 @@ test(`personal device ${action} withholds a different owner's response`,async t=
  assert.match(JSON.stringify(view.toJSON()),/Device owner identity changed/,'device responses must match the current owner before display or confirmation')
  assert.doesNotMatch(JSON.stringify(view.toJSON()),/Foreign device|Device saved/)
 })
+
+test('owner opens bounded device activity, distinguishes stale reports and clears failed refreshes',async t=>{
+ let denied=false
+ const payload={schema_version:'opensaddle.device-activity.v1',device_id:'device_Laptop',owner_subject:'owner',generated_at:new Date().toISOString(),task_authority:'not_evaluated',visibility:'current_project_memberships',process_termination:'not_observed',readiness:[{worker_id:'worker',project_id:'P',adapter_id:'codex-app-server',reported_ready:true,current:false,unavailable_reason:'report_expired',observed_at:'2020-01-01T00:00:00Z',expires_at:'2020-01-01T00:01:00Z'}],active_runs:[{run_id:'R',worker_id:'worker',project_id:'P',status:'running'}]}
+ t.mock.method(globalThis,'fetch',async(url:unknown)=>String(url).endsWith('/activity')?(denied?Response.json({}, {status:403}):Response.json({...payload,private_path:'/must-not-render'})):reply([row('Laptop')]))
+ const authority=new PersonalDevicesClient('http://localhost',()=> 'owner');let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(<DeviceInventory authority={authority} identity="owner" projects={[{id:'P',name:'Astra'}]}/>);await flush()})
+ const button=(label:string)=>view.root.findAllByType('button').find(node=>node.children.includes(label))
+ assert.ok(button('Show activity'),'personal inventory must expose owner activity')
+ await act(async()=>{button('Show activity')!.props.onClick();await flush()})
+ assert.match(JSON.stringify(view.toJSON()),/Report unavailable or expired/)
+ assert.match(JSON.stringify(view.toJSON()),/does not grant permission/)
+ assert.equal(view.root.findByType('a').props.href,'/project/P/tasks/R')
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/must-not-render/)
+ denied=true
+ await act(async()=>{button('Refresh activity')!.props.onClick();await flush()})
+ assert.equal(view.root.findAllByType('a').length,0)
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/codex-app-server/)
+ assert.match(JSON.stringify(view.toJSON()),/Device activity is unavailable/)
+})
+
+test('activity client rejects substituted device and owner identities',async t=>{
+ const authority=new PersonalDevicesClient('http://localhost',()=> 'owner')
+ for(const wrong of [{device_id:'other',owner_subject:'owner'},{device_id:'device',owner_subject:'other'}]){
+  t.mock.method(globalThis,'fetch',async()=>Response.json({...wrong,schema_version:'opensaddle.device-activity.v1',task_authority:'not_evaluated',visibility:'current_project_memberships',process_termination:'not_observed'}))
+  await assert.rejects(authority.activity('device'),/identity changed/)
+ }
+})

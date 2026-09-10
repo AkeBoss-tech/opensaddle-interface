@@ -550,3 +550,13 @@ to match the current account, including a uniformly wrong-owner page. The mounte
 UI must neither display that device nor confirm registration. Real-client fault
 injection and baseline assertions: `receipts/device-owner-response-20260910.json`.
 This client defense does not imply the server returned foreign data in production.
+
+## DEVICE-ACTIVITY-UI
+
+Personal inventory explicitly opens bounded owner-bound activity. Agent reports
+distinguish expired/current observations from task permission. Active Core Run
+links preserve exact Project and Run identity without claiming process liveness.
+Closing/unmounting stops polling; access failures clear prior activity. Response
+parsing rejects substituted owner/device identity and invalid, duplicate or
+over-limit rows. Mounted client/UI baseline: `receipts/device-activity-ui-20260910.json`.
+Combined live and browser acceptance remain separate.

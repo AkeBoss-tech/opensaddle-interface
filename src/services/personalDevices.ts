@@ -7,6 +7,11 @@ export interface PersonalDevice {
   connectionState: 'connected' | 'unknown'
   enrollmentRevision?: number
 }
+export interface DeviceActivity {
+ deviceId:string;ownerSubject:string;generatedAt:string
+ readiness:{worker_id:string;project_id:string;adapter_id:string;reported_ready:boolean;current:boolean;unavailable_reason:string|null;observed_at:string;expires_at:string}[]
+ activeRuns:{run_id:string;project_id:string;worker_id:string;status:'provisioning'|'running'}[]
+}
 export interface DevicePage { items: PersonalDevice[]; nextCursor: string | null }
 export interface DeviceRegistration { registration_key: string; display_name: string; platform: PersonalDevice['platform'] }
 const record = (value: unknown): Record<string, unknown> => {
@@ -54,6 +59,25 @@ export class PersonalDevicesClient {
     const owner=this.identity(),created=device(await this.request('/api/v2/devices', body))
     if(owner!==this.identity()||created.ownerSubject!==owner)throw Error('Device owner identity changed. Refresh your connection.')
     return created
+  }
+  async activity(deviceId:string):Promise<DeviceActivity>{
+    const owner=this.identity(),value=record(await this.request('/api/v2/devices/'+encodeURIComponent(deviceId)+'/activity'))
+    if(owner!==this.identity()||value.owner_subject!==owner||value.device_id!==deviceId||value.schema_version!=='opensaddle.device-activity.v1'||value.task_authority!=='not_evaluated'||value.visibility!=='current_project_memberships'||value.process_termination!=='not_observed')throw Error('Device activity identity changed.')
+    const stamp=(value:unknown)=>typeof value==='string'&&Number.isFinite(Date.parse(value))
+    const id=(value:unknown)=>typeof value==='string'&&value.length>0&&value.length<=512
+    if(!stamp(value.generated_at)||!Array.isArray(value.readiness)||value.readiness.length>200||!Array.isArray(value.active_runs)||value.active_runs.length>200)throw Error('Invalid device activity.')
+    const readiness=value.readiness.map(entry=>{
+      const r=record(entry)
+      if(!id(r.worker_id)||!id(r.project_id)||!id(r.adapter_id)||typeof r.reported_ready!=='boolean'||typeof r.current!=='boolean'||!stamp(r.observed_at)||!stamp(r.expires_at)||![null,'device_not_bound','report_expired','worker_offline','worker_scope_removed','source_changed'].includes(r.unavailable_reason as null)||r.current!==(r.unavailable_reason===null))throw Error('Invalid device readiness.')
+      return {worker_id:r.worker_id as string,project_id:r.project_id as string,adapter_id:r.adapter_id as string,reported_ready:r.reported_ready,current:r.current,unavailable_reason:r.unavailable_reason as string|null,observed_at:r.observed_at as string,expires_at:r.expires_at as string}
+    })
+    const activeRuns=value.active_runs.map(entry=>{
+      const r=record(entry)
+      if(!id(r.run_id)||!id(r.project_id)||!id(r.worker_id)||!['provisioning','running'].includes(String(r.status)))throw Error('Invalid device Run observation.')
+      return {run_id:r.run_id as string,project_id:r.project_id as string,worker_id:r.worker_id as string,status:r.status as 'provisioning'|'running'}
+    })
+    if(new Set(activeRuns.map(r=>r.run_id)).size!==activeRuns.length||new Set(readiness.map(r=>JSON.stringify([r.worker_id,r.project_id,r.adapter_id]))).size!==readiness.length)throw Error('Duplicate device activity.')
+    return {deviceId,ownerSubject:owner,generatedAt:value.generated_at as string,readiness,activeRuns}
   }
   async beginPairing(deviceId: string) {
     const value = record(await this.request('/api/v2/devices/'+encodeURIComponent(deviceId)+'/pairing', {}))

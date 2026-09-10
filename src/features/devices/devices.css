@@ -39,3 +39,6 @@
 .devices-page dt { color:var(--text-secondary,#aaa); }
 .devices-page dd { margin:0; overflow-wrap:anywhere; }
 .devices-page li button { margin:4px 8px 4px 0; }
+
+.device-activity { margin-top:14px; overflow-wrap:anywhere; }
+.device-activity h4 { margin:16px 0 8px; }
