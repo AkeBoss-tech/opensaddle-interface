@@ -81,4 +81,3 @@ All paths below are actual browser captures. Preferred references are first. Scr
 Start with the host boundary and one shared fixture dataset. Demonstrate the same task in Dialogue, Observatory and Dispatch, preserving its selection, run history, artifacts and permissions while switching packages. Then add Home continuation and an unassigned device. Verify one denied action, one host approval, one disconnected state and one crashed-Perspective fallback. This proves the defining interaction contract before investing in polish.
 
 Deliverables are local research and generated imagery only. No repository implementation, deployed experience or authenticated product validation is claimed.
-
