@@ -38,6 +38,13 @@ function statusTone(status: ThreadStatus) {
 
 export function ProjectWorkspacePage() {
   const { projectId } = useParams()
+  const { data } = useStore()
+  const project = data.projects.find(item => item.id === projectId)
+  if (!project) return <section className="content-page"><h1>Project unavailable</h1><p role="status">This project has not been loaded for this connection.</p></section>
+  return <ProjectWorkspaceContent key={project.id} project={project} />
+}
+
+function ProjectWorkspaceContent({project}:{project:ReturnType<typeof useStore>['data']['projects'][number]}) {
   const { data, createChat, setActiveChat, setActiveProject, services: serviceBundle, harnessCapabilities, toast } = useStore()
   const navigate = useNavigate()
   const showGoalError = useCallback((message: string) => toast('Self-driving mode', message), [toast])
@@ -47,9 +54,6 @@ export function ProjectWorkspacePage() {
   const [prompt, setPrompt] = useState('')
   const [selectedAgentId, setSelectedAgentId] = useState('auto')
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
-  const project = data.projects.find((item) => item.id === projectId)
-    ?? data.projects.find((item) => item.id === data.activeProjectId)
-    ?? data.projects[0]
 
   useEffect(() => {
     if (project.id !== data.activeProjectId) setActiveProject(project.id)
