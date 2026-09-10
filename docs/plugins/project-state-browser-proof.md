@@ -27,3 +27,12 @@ The renderer production build passed after the fix.
 This is desktop browser/sessionStorage proof. It does not establish cross-device
 state sync, state persistence after closing the tab, package upgrade migration,
 or native desktop/mobile verification of the new state protocol.
+
+## Upgrade follow-up (2026-09-10)
+
+Core now provides `scripts/dev_project_perspective_upgrade_fixture.py` and
+`docs/plugins/project-perspective-upgrade-proof.md`. Its real enablement and
+environment APIs accepted versions 1.0.0, 1.0.1, 2.0.0, then rollback to 1.0.0.
+The existing mounted-frame/state suite passed all seven tests. Computer use
+reported the Mac locked before this follow-up could open a browser, so these
+results do not extend the visual evidence above to package upgrades yet.
