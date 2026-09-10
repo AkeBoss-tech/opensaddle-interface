@@ -84,3 +84,36 @@ test('Dialogue mounts saved Project conversations without internal Project switc
  await until(()=>JSON.stringify(view.toJSON()).includes('Saved conversations could not be loaded'))
  assert.doesNotMatch(JSON.stringify(view.toJSON()),/Investigate this Project change/)
 })
+
+// PROJECT-VIEW-SCOPE: recovery and in-flight state belong to one Project mount.
+test('a failed package in one Project does not suppress the same package in another',async t=>{
+ const fragment='<p>Project board</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:'opensaddle.project-tasks.v1'},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')}
+ const packageChoice='plugin.'+renderer.application_id
+ const contentProjects:string[]=[];let releaseQ!:()=>void
+ const qGate=new Promise<void>(resolve=>{releaseQ=resolve})
+ t.mock.method(globalThis,'fetch',async(input:unknown,init?:RequestInit)=>{
+  const url=new URL(String(input)),project=url.pathname.split('/projects/')[1]?.split('/')[0]
+  assert.ok(project==='P'||project==='Q');assert.notEqual(init?.method,'PUT','scope switching must not rewrite preferences')
+  if(project==='Q'&&url.pathname.endsWith('/effective'))await qGate
+  if(url.pathname.endsWith('/effective'))return Response.json({project_id:project,values:{perspective:packageChoice},provenance:{perspective:'user_project'}})
+  if(url.pathname.endsWith('/user_project'))return Response.json({scope:'user_project',project_id:project,owner_subject:'member',revision:4,can_write:true,values:{perspective:packageChoice}})
+  if(url.pathname.endsWith('/application-renderers'))return Response.json({project_id:project,renderers:[renderer]})
+  if(url.pathname.endsWith('/content')){contentProjects.push(project!);return new Response(project==='P'?'bad bytes':fragment,{headers:{'Content-Type':renderer.media_type}})}
+  if(url.pathname.endsWith('/task-feed'))return Response.json({schema_version:'opensaddle.project-task-feed.v1',project_id:project,items:[{id:project+'-run',title:project+' private task',status:'queued',verification:'not_assessed'}],next_cursor:null})
+  throw Error('Unexpected endpoint '+url.pathname)
+ })
+ Object.assign(globalThis,{addEventListener:()=>{},removeEventListener:()=>{}})
+ const services={journey:{},presentationSettings:new PresentationSettingsClient('http://core',()=> 'member'),malleableShell:new RemoteMalleableShellClient('http://core',()=> 'member'),projectTaskFeed:new ProjectTaskFeedClient('http://core',()=> 'member')} as any
+ let view!:ReactTestRenderer;t.after(async()=>{releaseQ();if(view)await act(async()=>view.unmount())})
+ const until=async(predicate:()=>boolean)=>{for(let i=0;i<100&&!predicate();i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))});assert.ok(predicate(),'new Project must mount its selected package independently of prior recovery')}
+ const render=(project:string)=><MemoryRouter><ProjectPerspectiveWorkspace projectId={project} services={services}/></MemoryRouter>
+ await act(async()=>{view=create(render('P'),{createNodeMock:()=>({contentWindow:{postMessage:()=>{}},dataset:{}})})})
+ await until(()=>JSON.stringify(view.toJSON()).includes('P private task'))
+ assert.match(JSON.stringify(view.toJSON()),/Showing Dialogue/)
+ await act(async()=>view.update(render('Q')))
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/P private task|Showing Dialogue/,'pending Project scope must clear prior recovery and content')
+ await act(async()=>releaseQ())
+ await until(()=>view.root.findAllByType('iframe').length===1)
+ assert.deepEqual(contentProjects,['P','Q'],'new Project must load and authorize its own package bytes')
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/P private task|Showing Dialogue/)
+})

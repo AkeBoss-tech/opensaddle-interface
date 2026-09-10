@@ -509,3 +509,12 @@ removal leaves the document body active. It must not steal focus from another
 host control. Mounted DOM-adapter baseline evidence is recorded in
 `receipts/project-view-focus-recovery-20260910.json`; browser keyboard acceptance
 remains separate.
+
+## PROJECT-VIEW-SCOPE
+
+Project changes remount the workspace state boundary. Recovery of a failed
+package in Project P must not suppress the same package selected in Project Q.
+Pending Q authority reads show neither P tasks nor P recovery state, and Q must
+load its own authorized package bytes without rewriting either preference.
+The mounted workspace test uses real clients with a delayed Q HTTP response.
+Baseline assertion and repaired run: `receipts/project-view-scope-recovery-20260910.json`.

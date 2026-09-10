@@ -9,7 +9,13 @@ import {PROJECT_PERSPECTIVES,resolveProjectPerspective} from '../../perspectives
 import {ProjectTaskFeed} from '../../perspectives/project/ProjectTaskFeed'
 import type {PresentationLayer} from '../../services/presentationSettings'
 void React
-export function ProjectPerspectiveWorkspace({projectId,services}:{projectId:string;services:ReturnType<typeof useStore>['services']}){
+type WorkspaceProps={projectId:string;services:ReturnType<typeof useStore>['services']}
+export function ProjectPerspectiveWorkspace(props:WorkspaceProps){
+ // Scope changes discard recovery, drafts and in-flight UI state synchronously.
+ // The old mount's cleanup invalidates pending reads before they can publish.
+ return <ScopedProjectPerspectiveWorkspace key={props.projectId} {...props}/>
+}
+function ScopedProjectPerspectiveWorkspace({projectId,services}:WorkspaceProps){
  const [search,setSearch]=useSearchParams()
  const conversations=useMemo(()=>services?.projectConversations?.(projectId),[services,projectId])
  const [conversationBusy,setConversationBusy]=useState(false)
