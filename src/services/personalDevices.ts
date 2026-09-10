@@ -5,6 +5,7 @@ export interface PersonalDevice {
   platform: 'macos' | 'linux' | 'windows' | 'other'
   pairingState: 'unpaired' | 'paired' | 'revoked'
   connectionState: 'connected' | 'unknown'
+  enrollmentRevision?: number
 }
 export interface DevicePage { items: PersonalDevice[]; nextCursor: string | null }
 export interface DeviceRegistration { registration_key: string; display_name: string; platform: PersonalDevice['platform'] }
@@ -16,15 +17,17 @@ function device(value: unknown): PersonalDevice {
   const row = record(value)
   for (const key of ['device_id', 'owner_subject', 'display_name']) if (typeof row[key] !== 'string' || !row[key]) throw Error('Invalid device identity')
   if (!['macos','linux','windows','other'].includes(String(row.platform)) || !['unpaired','paired','revoked'].includes(String(row.pairing_state)) || !['connected','unknown'].includes(String(row.connection_state))) throw Error('Invalid device status')
-  return { deviceId: row.device_id as string, ownerSubject: row.owner_subject as string, displayName: row.display_name as string, platform: row.platform as PersonalDevice['platform'], pairingState: row.pairing_state as PersonalDevice['pairingState'], connectionState: row.connection_state as PersonalDevice['connectionState'] }
+  if (row.enrollment_revision != null && (!Number.isSafeInteger(row.enrollment_revision) || Number(row.enrollment_revision) < 1)) throw Error('Invalid device enrollment revision')
+  return { enrollmentRevision: row.enrollment_revision == null ? undefined : Number(row.enrollment_revision), deviceId: row.device_id as string, ownerSubject: row.owner_subject as string, displayName: row.display_name as string, platform: row.platform as PersonalDevice['platform'], pairingState: row.pairing_state as PersonalDevice['pairingState'], connectionState: row.connection_state as PersonalDevice['connectionState'] }
 }
 export class PersonalDevicesClient {
   private baseUrl: string
   private getUser: () => string
   private token?: string
-  constructor(baseUrl: string, getUser: () => string, token?: string) { this.baseUrl = baseUrl; this.getUser = getUser; this.token = token }
+  readonly pairingAvailable: boolean
+  constructor(baseUrl: string, getUser: () => string, token?: string, pairingAvailable = false) { this.baseUrl = baseUrl; this.getUser = getUser; this.token = token; this.pairingAvailable = pairingAvailable }
   identity() { return this.getUser() }
-  private async request(path: string, body?: DeviceRegistration) {
+  private async request(path: string, body?: unknown) {
     const identity = this.identity()
     const response = await fetch(this.baseUrl.replace(/\/$/, '') + path, {
       method: body ? 'POST' : 'GET', cache: 'no-store', signal: AbortSignal.timeout(15000),
@@ -45,4 +48,22 @@ export class PersonalDevicesClient {
     return {items, nextCursor: row.next_cursor as string | null}
   }
   async register(body: DeviceRegistration) { return device(await this.request('/api/v2/devices', body)) }
+  async beginPairing(deviceId: string) {
+    const value = record(await this.request('/api/v2/devices/'+encodeURIComponent(deviceId)+'/pairing', {}))
+    if (value.protocol !== 'opensaddle.device-pairing.v1' || value.device_id !== deviceId || typeof value.pairing_id !== 'string' || !/^pairing_[A-Za-z0-9_]+$/.test(value.pairing_id) || typeof value.secret !== 'string' || !/^[A-Za-z0-9_-]{40,100}$/.test(value.secret) || typeof value.expires_at !== 'string' || !Number.isFinite(Date.parse(value.expires_at))) throw Error('Invalid pairing challenge')
+    return {pairingId:value.pairing_id, code:`${value.pairing_id}:${deviceId}:${value.secret}`, expiresAt:value.expires_at}
+  }
+  async inspectPairing(pairingId: string, deviceId: string) {
+    const value = record(await this.request('/api/v2/device-pairings/'+encodeURIComponent(pairingId)))
+    if (value.pairing_id !== pairingId || value.device_id !== deviceId || !['issued','claimed','confirmed','revoked','expired'].includes(String(value.state)) || (value.fingerprint != null && (typeof value.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(value.fingerprint)))) throw Error('Invalid pairing inspection')
+    return {state:String(value.state),fingerprint:value.fingerprint as string | null}
+  }
+  async confirmPairing(pairingId: string, deviceId: string, fingerprint: string) {
+    const value = record(await this.request('/api/v2/device-pairings/'+encodeURIComponent(pairingId)+'/confirm',{fingerprint}))
+    if (value.device_id !== deviceId || value.pairing_state !== 'paired' || value.fingerprint !== fingerprint) throw Error('Invalid pairing confirmation')
+  }
+  async unpair(deviceId: string, revision: number) {
+    const value = record(await this.request('/api/v2/devices/'+encodeURIComponent(deviceId)+'/unpair',{expected_revision:revision}))
+    if (value.device_id !== deviceId || value.pairing_state !== 'revoked' || value.revision !== revision + 1) throw Error('Invalid unpair response')
+  }
 }

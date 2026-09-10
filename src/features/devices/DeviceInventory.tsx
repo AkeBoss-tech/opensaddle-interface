@@ -1,3 +1,4 @@
+import { DevicePairing } from './DevicePairing'
 import React, { useEffect, useRef, useState } from 'react'
 import { Laptop, Plus, RefreshCw } from 'lucide-react'
 import { PersonalDevicesClient, type DevicePage, type DeviceRegistration, type PersonalDevice } from '../../services/personalDevices'
@@ -21,7 +22,7 @@ export function DeviceInventory({ authority, identity }: { authority: PersonalDe
   }, [authority, identity])
   async function load(more = false) {
     if (locked.current) return
-    locked.current = true; setBusy(true); setError('')
+    locked.current = true; setBusy(true); setError(''); setNotice('')
     const version = generation.current
     if (!more) setSnapshot(undefined)
     try {
@@ -40,7 +41,7 @@ export function DeviceInventory({ authority, identity }: { authority: PersonalDe
     try {
       await authority.register(body)
       if (version !== generation.current) return
-      pending.current = null; setName(''); setNotice('Device saved. It is not paired or connected yet.')
+      pending.current = null; setName(''); setNotice('Device saved. Pair it to establish a connection.')
       const next = await authority.list()
       if (version === generation.current) setSnapshot({authority,identity,page:next})
     } catch (reason) { if (version === generation.current) { setSnapshot(undefined); setError(reason instanceof Error ? reason.message : String(reason)) } }
@@ -52,7 +53,7 @@ export function DeviceInventory({ authority, identity }: { authority: PersonalDe
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {busy && !page && <p role="status">Loading your devices…</p>}
     {page && !page.items.length && <div className="devices-empty"><Laptop/><h3>No devices yet</h3><p>Add a device to your personal inventory. It does not need to belong to a project.</p></div>}
-    <ul className="devices-list">{page?.items.map(item => <li key={item.deviceId}><Laptop size={24}/><div><h3>{item.displayName}</h3><p>{item.platform === 'macos' ? 'macOS' : item.platform} · Owner: {item.ownerSubject}</p><p>{item.pairingState === 'paired' ? 'Paired' : item.pairingState === 'revoked' ? 'Pairing revoked' : 'Not paired'} · {item.connectionState === 'connected' ? 'Recent contact' : 'Connection not verified'}</p></div></li>)}</ul>
+    <ul className="devices-list">{page?.items.map(item => <li key={item.deviceId}><Laptop size={24}/><div><h3>{item.displayName}</h3><p>{item.platform === 'macos' ? 'macOS' : item.platform} · Owner: {item.ownerSubject}</p><p>{item.pairingState === 'paired' ? 'Paired' : item.pairingState === 'revoked' ? 'Pairing revoked' : 'Not paired'} · {item.connectionState === 'connected' ? 'Recent contact' : 'Connection not verified'}</p><DevicePairing authority={authority} device={item} onChanged={()=>void load()}/></div></li>)}</ul>
     {page?.nextCursor && <button disabled={busy} onClick={() => void load(true)}>Load more devices</button>}
     <p className="devices-footnote">Adding a device saves its name. Pairing and project task permissions are separate setup steps; this page does not grant access to files or tasks.</p>
   </React.Fragment>
