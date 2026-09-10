@@ -655,3 +655,13 @@ Handle expected failures inside your renderer. This bridge detects reported
 runtime errors; it cannot certify that a view is responsive or recover every
 frozen loop, browser process crash or malicious interference. Other application
 hosts keep their existing lifecycle behavior.
+
+### Run approval review integration status
+
+Core now exposes the Project-scoped `run_approval_review_v1` capability and
+GET/POST `/api/v2/projects/{project}/runs/{run}/approval-review`. It binds a human
+Run-admission decision to a server-generated review digest and does not mint a
+model-call lease. The host task page still needs to integrate this flow before
+an installed view can offer review navigation. No approval mutation capability
+is currently granted to plugins. Do not use the gateway approval-consumption
+endpoint as a human review action.
