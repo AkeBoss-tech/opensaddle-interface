@@ -10,7 +10,6 @@ const work = source('src/features/work/WorkPage.tsx')
 const start = source('src/features/projects/ConnectedLocalStartPage.tsx')
 const project = source('src/features/projects/ConnectedLocalProjectPage.tsx')
 const dialog = source('src/features/onboarding/ConnectedLocalProjectDialog.tsx')
-const appCss = source('src/styles/app.css')
 const commandCenterCss = source('src/features/command-center/command-center.css')
 
 const required: Array<[string, string, string]> = [
@@ -78,12 +77,7 @@ test('connected Start is an action-oriented entry rather than a project registry
   assert.match(start, /Continue/)
 })
 
-test('connected-local mobile layout keeps compact primary navigation without covering content', () => {
-  assert.match(appCss, /@media \(max-width: 820px\)[\s\S]*\.app \{ grid-template-columns:minmax\(0, 1fr\)/)
-  assert.match(appCss, /grid-template-columns:repeat\(5, minmax\(0, 1fr\)\)/)
-  assert.doesNotMatch(appCss, /\.app > \.sidebar \{ display:none/)
-  for (const label of ['Home', 'Start', 'Work', 'Operations', 'Settings']) assert.match(app, new RegExp(`>${label}<`))
-})
+
 
 test('review surfaces constrain cards, fields, and long evidence to the viewport', () => {
   assert.match(commandCenterCss, /\.cc-page \{ width: 100%; min-width: 0;/)

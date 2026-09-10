@@ -5,6 +5,7 @@ import {registerHooks} from 'node:module'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {MemoryRouter} from 'react-router-dom'
 import {act,create,type ReactTestRenderer} from 'react-test-renderer'
+import {Topbar} from '../../components/layout/TopBar'
 import {StoreProvider} from '../../data/store'
 import {SurfaceErrorBoundary} from '../../ui/SurfaceHost'
 
@@ -19,10 +20,12 @@ hooks.deregister()
  const prior={localStorage:globalThis.localStorage,sessionStorage:globalThis.sessionStorage,window:globalThis.window,React:(globalThis as any).React}
  Object.assign(globalThis,{localStorage:storage,sessionStorage:storage,window:{},React})
  try{
-  const markup=renderToStaticMarkup(<MemoryRouter initialEntries={['/start']}><StoreProvider><ConnectedWorkspaceSidebar onAddProject={()=>{throw Error('render must not create a Project')}}/></StoreProvider></MemoryRouter>)
+  const markup=renderToStaticMarkup(<MemoryRouter initialEntries={['/start']}><StoreProvider><ConnectedWorkspaceSidebar onAddProject={()=>{throw Error('render must not create a Project')}}/><Topbar crumbs="Work" sidebarCollapsed={false} onToggleSidebar={()=>{}} onBack={()=>{}} onForward={()=>{}} onPalette={()=>{}}/></StoreProvider></MemoryRouter>)
   assert.match(markup,/aria-label="Connected workflow"/)
   assert.match(markup,/<a[^>]*aria-current="page"[^>]*href="\/start"/)
   for(const path of ['/home','/work','/operations','/settings'])assert.ok(markup.includes(`href="${path}"`))
+  assert.match(markup,/aria-controls="sidebar"/,'mobile toggle must identify its controlled navigation')
+  assert.match(markup,/aria-expanded="false"/,'mobile toggle must expose its collapsed state')
   assert.match(markup,/New task/)
   assert.match(markup,/Your projects will appear here/)
   assert.doesNotMatch(markup,/Add project|Corporate Base|DEMO DATA/)

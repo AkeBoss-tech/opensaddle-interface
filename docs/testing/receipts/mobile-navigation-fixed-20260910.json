@@ -1,0 +1,31 @@
+{
+  "base_revision": "a7e2fe0ca895f7abedea6a7f68ad3e2b037f82e5",
+  "invariant": "MOBILE-NAVIGATION-1",
+  "regression": "Identical ConnectedNavigation test failed before repair: mobile toggle must identify its controlled navigation; passed after repair (2 tests).",
+  "browser": [
+    "Actual Topbar + ConnectedWorkspaceSidebar in full Vite app with disposable Core",
+    "Open: aria-expanded true, sidebar flex, focus OpenSaddle home",
+    "Escape: aria-expanded false, sidebar none, focus Open workspace navigation",
+    "Work navigation: aria-expanded false, sidebar none, focus Open workspace navigation",
+    "document width and scrollWidth both 433"
+  ],
+  "requested_viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "observed_width": 433,
+  "screenshot": "out/screenshots/mobile-drawer-20260910/fixed-work.png",
+  "limits": [
+    "No exact 390px claim; browser override produced 433 CSS pixels",
+    "Non-modal drawer; no focus trap",
+    "Not a device hardware or full mobile page audit"
+  ],
+  "checks": {
+    "workspace": 339,
+    "features": 329,
+    "scoped_sdk": 2,
+    "sdk_declarations": "passed",
+    "typecheck": "passed",
+    "desktop_targeted_renderer_build": "passed"
+  }
+}
