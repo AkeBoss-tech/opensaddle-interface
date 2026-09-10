@@ -727,3 +727,13 @@ Failure/revocation restores default content, and retry can remount the selection
 The real-Core component proof now also checks replacement, local escape with
 unchanged authoritative selection, retry and full-page revocation recovery.
 Current rendered browser behavior remains a separate acceptance check.
+
+### SCOPED-HOST-1 — real browser execution
+
+Manual CUA browser verification used `scripts/scoped-workspace-browser.html`
+and the production scoped components against Core's signed executable fixture.
+The plug-in acknowledged initialization and updated a counter on click/Enter;
+selection survived reload, local escape restored defaults and Core disablement
+removed the Team frame. Screenshot/limitation receipt:
+`docs/testing/receipts/scoped-browser-20260910.json`. This unstyled harness is not
+packaged Electron or complete application visual acceptance.

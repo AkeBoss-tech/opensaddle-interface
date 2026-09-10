@@ -1,0 +1,26 @@
+{
+  "invariant": "SCOPED-HOST-1",
+  "boundary": "real browser running production ScopedWorkspace, ScopedViewCatalog and ScopedViewHost against signed disposable Core packages; loopback proxy injects fixture owner credential",
+  "checks": [
+    "personal selection and ready acknowledgement from real JavaScript",
+    "personal click changed in-frame counter",
+    "personal selection persisted across reload",
+    "local host escape showed default content",
+    "Team began independently unselected",
+    "Team selection and reload mounted full workspace",
+    "Team Enter-key interaction changed counter",
+    "Core package disable removed Team frame and restored default",
+    "browser console error log empty"
+  ],
+  "screenshots": [
+    "out/screenshots/scoped-workspace-20260910/personal-active.png",
+    "out/screenshots/scoped-workspace-20260910/team-active.png",
+    "out/screenshots/scoped-workspace-20260910/team-small-window.png",
+    "out/screenshots/scoped-workspace-20260910/team-revoked.png"
+  ],
+  "limits": [
+    "unstyled manual harness; not full application navigation or packaged Electron",
+    "no owner-device SDK or scoped state persistence proof",
+    "small-window capture checks recovery visibility only; not complete responsive acceptance"
+  ]
+}
