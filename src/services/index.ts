@@ -155,6 +155,7 @@ export function initServices(opts: {
       let resourceCapacityAvailable = false
       let nativeAdaptersAvailable = false
       let authorizedContextAvailable = false
+      let associationsAvailable = false
       let teamsAvailable = false
       let presentationSettingsAvailable = false
       let projectDirectoryAvailable = false
@@ -265,6 +266,7 @@ export function initServices(opts: {
           if (capabilityResponse.ok) {
             v2CapabilitiesAvailable = true
             const capabilities = await capabilityResponse.json() as {
+              project_team_presentation_v1?: {available?:boolean}
               teams_v1?: {available?:boolean}
               presentation_settings_v1?: {available?:boolean}
               project_directory_v1?: {available?:boolean;scope?:string}
@@ -294,6 +296,7 @@ export function initServices(opts: {
             nativeSessionResume=continuation?.native_session_resume===true
             const context = capabilities.authorized_context_packets
             authorizedContextAvailable = context?.available === true && context.schema_version === 'krail.authorized-context-packet.v2' && context.selection_field === 'authorized_context_source_ids' && context.inspector_path_template === '/api/v2/runs/{run_id}/authorized-context-packet' && context.worker_path_template === '/api/v2/workers/{worker_id}/runs/{run_id}/authorized-context-packet' && context.reauthorization_schema_version === 'krail.authorized-context-reauthorization.v1' && context.unavailable_reason === 'context_packet_unavailable' && context.sources_path_template === '/api/v2/projects/{project_id}/authorized-context-sources'
+            associationsAvailable = capabilities.project_team_presentation_v1?.available===true
             teamsAvailable = capabilities.teams_v1?.available===true
             presentationSettingsAvailable = capabilities.presentation_settings_v1?.available===true
             projectDirectoryAvailable = capabilities.project_directory_v1?.available===true && capabilities.project_directory_v1.scope==='current_memberships'
@@ -409,7 +412,7 @@ export function initServices(opts: {
         malleableShell,
         journey,
         personalRuntime,
-        teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token) : undefined,
+        teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token,associationsAvailable) : undefined,
         presentationSettings: backendAvailable && presentationSettingsAvailable ? new PresentationSettingsClient(baseUrl,getUserId,token) : undefined,
         projectDirectory: backendAvailable && projectDirectoryAvailable ? new ProjectDirectoryClient(baseUrl,getUserId,token) : undefined,
         personalDevices: backendAvailable && personalDevicesAvailable ? new PersonalDevicesClient(baseUrl, getUserId, token, personalDevicePairingAvailable, deviceAssignmentsAvailable) : undefined,

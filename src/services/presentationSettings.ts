@@ -6,6 +6,7 @@ export class PresentationSettingsClient {
   constructor(privateBase:string,user:()=>string,token?:string){this.base=privateBase.replace(/\/$/,'');this.user=user;this.token=token}
   private base:string;private user:()=>string;private token?:string
   identity(){return this.user()}
+  notifyChanged(){this.listeners.forEach(listener=>listener())}
   subscribe(listener:()=>void){this.listeners.add(listener);return()=>{this.listeners.delete(listener)}}
   private path(scope:PresentationScope,projectId?:string){if(scope==='user')return '/api/v2/settings/presentation';if(!projectId)throw Error('Scope required');if(scope==='team')return `/api/v2/teams/${encodeURIComponent(projectId)}/settings/presentation`;return `/api/v2/projects/${encodeURIComponent(projectId)}/settings/presentation/${scope}`}
   private async request(path:string,body?:unknown){const identity=this.identity();const response=await fetch(this.base+path,{method:body?'PUT':'GET',cache:'no-store',signal:AbortSignal.timeout(15000),headers:{'X-OpenSaddle-User':identity,...(this.token?{Authorization:`Bearer ${this.token}`} : {}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(!response.ok)throw Error(response.status===409?'Settings changed elsewhere. Reload before saving.':'Settings are unavailable for this account or project.');const value=await response.json();if(identity!==this.identity())throw Error('Settings account changed');return value}

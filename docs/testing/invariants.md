@@ -38,3 +38,7 @@ PROJECT-DEVICE-REVIEW-UI-1 now includes a named-Team policy: the review identifi
 ## TEAM-UI-1
 
 Recipients must review and explicitly accept the displayed invitation revision before joining a Team. TeamsPanel.test.tsx exercises the mounted UI and actual transport client, controlling only external HTTP. Existing device tests do not cover invitation consent. This is a new surface, with no prior UI regression baseline. Browser verification separately covers Team creation, saved Team preferences after navigation, and a named-Team device proposal against disposable Core data; it does not prove real remote execution.
+
+## PROJECT-TEAM-UI-1
+
+TeamProjectReviews requires an explicit publication review before sending the displayed association revision. A conflict removes decision controls until reload. ProjectTeamSettings.test.tsx mounts the real client and UI with HTTP controlled at the external boundary. Standalone Team invitation tests do not cover project publication. New UI contract, no prior regression baseline. Browser verification on disposable Core data covered project proposal, Team acceptance, inherited light theme with Team provenance, and detach restoring default theme. Renderer and Electron builds passed; this is local browser/API evidence, not production or remote task proof.
