@@ -149,3 +149,15 @@ test('personal dashboard saves a Project widget and revokes its mounted frame',a
  assert.equal(view.root.findAllByType('iframe').length,0)
  assert.match(markup(view),/Unavailable widget/);assert.equal(stored.widgets.length,1,'unavailable placements remain saved')
 })
+
+test('local first-run home leads to runtime setup instead of an ineffective retry',async()=>{
+  let renderer!:ReturnType<typeof create>
+  await act(async()=>{renderer=create(<MemoryRouter><CommandCenterSurface connected identity={{}} projects={[]} localSetupAvailable/></MemoryRouter>)})
+  assert.match(markup(renderer),/Set up your workspace/,'local home must explain the setup step')
+  assert.equal(renderer.root.findAllByType('a').find(link=>link.children.includes('Set up personal runtime'))?.props.href,'/settings')
+  assert.doesNotMatch(markup(renderer),/command_center_v1|Check again/)
+  await act(async()=>renderer.update(view(undefined,false)))
+  assert.doesNotMatch(markup(renderer),/Set up personal runtime/)
+  assert.equal(renderer.root.findAllByType('a').find(link=>link.children.includes('Connection settings'))?.props.href,'/settings')
+  await act(async()=>renderer.unmount())
+})

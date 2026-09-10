@@ -56,7 +56,7 @@ const UNAVAILABLE_REASON: Record<CommandCenterSnapshot['unavailableSections'][nu
   inbox: 'Inbox findings and triage actions do not have an authoritative API yet.',
 }
 
-type CommandCenterProps = {rendererSettings?:RendererSettingsAuthority;taskFeed?:ProjectTaskFeedAuthority;widgetClient?:MalleableShellClient;taskAuthority?:JourneyAuthority;widgetStateScope?:string;managerConversations?:ManagerConversationsAuthority;managerContext?:ManagerContextAuthority;projectDirectory?:Pick<ProjectDirectoryClient,'list'>;dashboardSettings?:DashboardSettings;dashboardIdentity?:unknown;client?:CommandCenterClient;connected:boolean;identity:object;projects:Array<{id:string;name:string}>}
+type CommandCenterProps = {localSetupAvailable?:boolean;rendererSettings?:RendererSettingsAuthority;taskFeed?:ProjectTaskFeedAuthority;widgetClient?:MalleableShellClient;taskAuthority?:JourneyAuthority;widgetStateScope?:string;managerConversations?:ManagerConversationsAuthority;managerContext?:ManagerContextAuthority;projectDirectory?:Pick<ProjectDirectoryClient,'list'>;dashboardSettings?:DashboardSettings;dashboardIdentity?:unknown;client?:CommandCenterClient;connected:boolean;identity:object;projects:Array<{id:string;name:string}>}
 
 export function CommandCenterSurface(props:CommandCenterProps) {
   const {connected,managerContext,projectDirectory,managerConversations,dashboardIdentity,identity}=props
@@ -66,7 +66,7 @@ export function CommandCenterSurface(props:CommandCenterProps) {
   </main>
 }
 
-function CommandCenterDashboard({client,connected,identity,projects,dashboardSettings,dashboardIdentity,projectDirectory,widgetClient,taskAuthority,widgetStateScope,taskFeed,rendererSettings}:CommandCenterProps) {
+function CommandCenterDashboard({localSetupAvailable,client,connected,identity,projects,dashboardSettings,dashboardIdentity,projectDirectory,widgetClient,taskAuthority,widgetStateScope,taskFeed,rendererSettings}:CommandCenterProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const generation=useRef(0)
 
@@ -93,10 +93,11 @@ function CommandCenterDashboard({client,connected,identity,projects,dashboardSet
 
   const projectName = (projectId: string) => projects.find((project) => project.id === projectId)?.name ?? projectId
 
-  if(!connected)return <section className="cc-dashboard"><EmptyState title="Command Center unavailable" description="Connect an OpenSaddle control plane to load authoritative priorities, work, and outcomes." action={<Button onClick={() => void load()}>Check again</Button>} /></section>
+  if(!connected)return <section className="cc-dashboard"><EmptyState title="Command Center unavailable" description="Connect an OpenSaddle control plane to load authoritative priorities, work, and outcomes." action={<Link className="cc-text-link" to="/settings">Connection settings</Link>} /></section>
+  if(!client&&localSetupAvailable)return <section className="cc-dashboard"><EmptyState title="Set up your workspace" description="Your local server is connected. Set up a personal runtime to use the manager, run coding tasks and review results." action={<Link className="cc-text-link" to="/settings">Set up personal runtime</Link>} /></section>
   const current=state.kind!=='loading'&&state.identity===identity&&state.client===client
   const snapshot=current&&state.kind==='ready'?state.snapshot:undefined
-  const notice=!client?<EmptyState title="Command Center unavailable" description="This control plane does not advertise the command_center_v1 projection." action={<Button onClick={() => void load()}>Check again</Button>}/>
+  const notice=!client?<EmptyState title="Command Center unavailable" description="The connected server does not support this dashboard. Choose a compatible server in connection settings." action={<Link className="cc-text-link" to="/settings">Connection settings</Link>}/>
     :!current?<p role="status">Loading authoritative Command Center…</p>
     :state.kind==='error'?<EmptyState role="alert" title="Command Center could not load" description={state.reason} action={<Button onClick={() => void load()}>Retry</Button>} secondaryAction={<Link className="cc-text-link" to="/settings">Connection settings</Link>}/>
     :state.kind==='unavailable'?<EmptyState title="Command Center unavailable" description={state.reason} action={<Button onClick={() => void load()}>Check again</Button>}/>:null

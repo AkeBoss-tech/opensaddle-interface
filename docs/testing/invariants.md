@@ -607,3 +607,11 @@ capabilities. A late local onboarding server becomes connected and hydrates its
 registered Projects without a reload. An established v2-only connection retains
 its authenticated v2 probe. The mounted store test uses a real loopback server
 and controlled retry timer. Receipt: `receipts/desktop-local-reconnect-20260910.json`.
+
+## DESKTOP-RUNTIME-SETUP-1
+
+A connected local onboarding server without Command Center offers personal
+runtime setup, not an ineffective data retry. A disconnected or incompatible
+server offers connection settings. The setup request permits only the current
+personal runtime's supported concurrency of one. Mounted home states and request
+validation are covered by `receipts/desktop-runtime-setup-20260910.json`.

@@ -1,0 +1,43 @@
+{
+  "invariant": "DESKTOP-RUNTIME-SETUP-1",
+  "base": "b9967d5f459f0eeab47be77848049600c516d495",
+  "cases": [
+    {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-name-pattern=local first-run home",
+        "src/features/command-center/CommandCenterPage.mounted.test.tsx"
+      ],
+      "before": {
+        "exit_code": 1,
+        "output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2716 local first-run home leads to runtime setup instead of an ineffective retry (10.469583ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 231.339\n\n\u2716 failing tests:\n\ntest at src/features/command-center/CommandCenterPage.mounted.test.tsx:1:17790\n\u2716 local first-run home leads to runtime setup instead of an ineffective retry (10.469583ms)\n  AssertionError [ERR_ASSERTION]: local home must explain the setup step\n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-setup-baseline-4uapxl7n/src/features/command-center/CommandCenterPage.mounted.test.tsx:156:10)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: '{\"type\":\"main\",\"props\":{\"className\":\"content-page cc-page\"},\"children\":[{\"type\":\"section\",\"props\":{\"className\":\"cc-dashboard\"},\"children\":[{\"type\":\"div\",\"props\":{\"className\":\"os-empty-state\"},\"children\":[{\"type\":\"h2\",\"props\":{},\"children\":[\"Command Center unavailable\"]},{\"type\":\"p\",\"props\":{},\"children\":[\"This control plane does not advertise the command_center_v1 projection.\"]},{\"type\":\"div\",\"props\":{\"className\":\"os-empty-state__actions\"},\"children\":[{\"type\":\"button\",\"props\":{\"type\":\"button\",\"className\":\"os-button os-button--secondary os-button--md\",\"disabled\":false},\"children\":[{\"type\":\"span\",\"props\":{\"className\":\"os-button__label\"},\"children\":[\"Check again\"]}]}]}]},{\"type\":\"section\",\"props\":{\"className\":\"dashboard-layout\",\"aria-label\":\"Your dashboard\"},\"children\":[{\"type\":\"div\",\"props\":{\"className\":\"dashboard-widgets\"},\"children\":[{\"type\":\"section\",\"props\":{\"className\":\"cc-panel\"},\"children\":[{\"type\":\"h2\",\"props\":{},\"children\":[\"Current objective\"]},{\"type\":\"p\",\"props\":{},\"children\":[\"This overview is currently unavailable.\"]}]},{\"type\":\"section\",\"props\":{\"className\":\"cc-panel\"},\"children\":[{\"type\":\"h2\",\"props\":{},\"children\":[\"Needs your attention\"]},{\"type\":\"p\",\"props\":{},\"children\":[\"This overview is currently unavailable.\"]}]},{\"type\":\"section\",\"props\":{\"className\":\"cc-panel\"},\"children\":[{\"type\":\"h2\",\"props\":{},\"children\":[\"Agents working\"]},{\"type\":\"p\",\"props\":{},\"children\":[\"This overview is currently unavailable.\"]}]},{\"type\":\"section\",\"props\":{\"className\":\"cc-panel\"},\"children\":[{\"type\":\"h2\",\"props\":{},\"children\":[\"Projects\"]},{\"type\":\"p\",\"props\":{},\"children\":[\"This overview is currently unavailable.\"]}]},{\"type\":\"section\",\"props\":{\"className\":\"cc-panel\"},\"children\":[{\"type\":\"h2\",\"props\":{},\"children\":[\"Recent outcomes\"]},{\"type\":\"p\",\"props\":{},\"children\":[\"This overview is currently unavailable.\"]}]}]}]}]}]}',\n    expected: /Set up your workspace/,\n    operator: 'match',\n    diff: 'simple'\n  }\n"
+      },
+      "after": {
+        "exit_code": 0,
+        "output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 local first-run home leads to runtime setup instead of an ineffective retry (9.166875ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 179.901584\n"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-name-pattern=commissioning rejects concurrency",
+        "src/services/personalRuntimeCommissioning.test.ts"
+      ],
+      "before": {
+        "exit_code": 1,
+        "output": "\u2716 commissioning rejects concurrency the personal worker cannot run (1.251333ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 117.289417\n\n\u2716 failing tests:\n\ntest at src/services/personalRuntimeCommissioning.test.ts:1:1755\n\u2716 commissioning rejects concurrency the personal worker cannot run (1.251333ms)\n  AssertionError [ERR_ASSERTION]: Missing expected exception.\n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-setup-baseline-4uapxl7n/src/services/personalRuntimeCommissioning.test.ts:6:84)\n      at Test.runInAsyncScope (node:async_hooks:226:14)\n      at Test.run (node:internal/test_runner/test:1201:25)\n      at Test.start (node:internal/test_runner/test:1096:17)\n      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: /Concurrency/,\n    operator: 'throws',\n    diff: 'simple'\n  }\n"
+      },
+      "after": {
+        "exit_code": 0,
+        "output": "\u2714 commissioning rejects concurrency the personal worker cannot run (0.707166ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 86.132625\n"
+      }
+    }
+  ],
+  "limitations": "Mounted UI and request validation only; Mac locked, so desktop visual acceptance remains pending."
+}
