@@ -57,3 +57,11 @@ Project, application instance and exact package/schema version. The mounted
 InstalledProjectView test verifies save/remount restoration, invalid-state
 rejection and scope separation. Storage failure is visible; no upgrade migration
 or cross-device persistence is claimed.
+
+## INSTALLED-PROJECT-MIGRATION-1
+
+The mounted installed view receives migrated state only from an unambiguous
+destination-declared schema migration within the same authority/application/package
+scope. A visible notice accompanies transfer. Prior exact-package data survives
+for rollback; missing migrations and other package IDs cannot import it. Covered
+by InstalledProjectView.test.tsx and the applicationState interpreter suite.

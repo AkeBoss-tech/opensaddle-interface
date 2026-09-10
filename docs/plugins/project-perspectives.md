@@ -87,6 +87,21 @@ messages include optional `state`. Invalid messages leave the saved value alone.
 Storage is browser sessionStorage, scoped to server, user, Project, application
 instance and exact package version/digest/schema version. It survives navigation
 and refresh within the tab; it is not synced, durable across closing the tab, or
-transferred to another package version. Do not put credentials or execution
+automatically transferred to another package version without a declared migration. Do not put credentials or execution
 authority in it. A save failure appears in the host. Storage is a presentation
 convenience and does not replace server authorization.
+
+### Declared state migration
+
+When an exact-version snapshot is absent, the host may restore the latest saved
+state for the same server, user, Project, application instance and package ID.
+The destination's authorized signed descriptor must contain exactly one validated
+`state_migrations` entry from the saved schema version to its new schema version.
+The existing declarative rename/drop/default interpreter validates both schemas
+and the final state/byte limit. Missing or ambiguous migrations, same-schema-version
+package changes, and invalid output start without transferred state.
+
+The old exact-package snapshot remains available for rollback. The host displays
+a migration notice. Rendering does not overwrite the old snapshot; the new
+package's later valid state message saves its own snapshot. This protocol is
+presentation-only and does not run migration code supplied by a plugin.
