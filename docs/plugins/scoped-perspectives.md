@@ -150,3 +150,19 @@ uses the verified catalog reference to find existing preferences. If none exist,
 settings form then edits its own user/Team layer. Team creation and editing still
 require Core authorization. The advanced exact-reference form remains available
 for other installed packages. No package execution is required to edit defaults.
+
+## Personal catalog installation
+
+Personal appearance settings include **Install a signed plug-in**. Select a JSON
+file with exactly `manifest`, `key_id`, `signature_base64`, and `files_base64`.
+File contents are only inspected until an explicit mutation is requested. For an
+unknown publisher key, enter its base64 Ed25519 public key, inspect the displayed
+fingerprint, and explicitly trust it. Then install the package and choose its view
+from the refreshed catalog. The runtime verifies the signature and exact file bytes.
+Only the installation owner can change publisher trust or install packages.
+
+This desktop preview accepts at most 256 KiB of encoded package JSON. It does not
+automatically enable a package. Revoked keys cannot be trusted again by this flow.
+The installer UI has component tests and a browser form inspection; a live signed
+installation through Electron remains an acceptance check. The running Core and
+Electron main process must include the personal catalog API/transport changes.

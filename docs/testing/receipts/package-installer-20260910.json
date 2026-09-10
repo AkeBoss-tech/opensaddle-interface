@@ -1,0 +1,16 @@
+{
+  "date": "2026-09-10",
+  "invariant": "PERSONAL-INSTALLER-1",
+  "checks": [
+    "10 installer and adjacent settings component/client tests passed.",
+    "Production renderer build passed.",
+    "Expanded production installer form inspected in real browser."
+  ],
+  "screenshot": "../../../out/screenshots/package-installer-20260910/form.png",
+  "limits": [
+    "Component journey controls external HTTP; it is not a live signed installation.",
+    "Browser inspection covers the initial expanded form, not file upload, trust or installation.",
+    "Current Core supervisor and Electron main-process upgrade remain necessary for live acceptance.",
+    "Large packages beyond 256 KiB encoded JSON are unsupported by this desktop preview."
+  ]
+}

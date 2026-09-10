@@ -1,5 +1,6 @@
+import {PersonalPackageInstaller} from './PersonalPackageInstaller'
 import {ScopedViewPreferences} from './ScopedViewPreferences'
-import React,{ useEffect, useState } from 'react'
+import React,{ useEffect, useState, useMemo } from 'react'
 import {ScopedViewHost} from '../../perspectives/scoped/ScopedViewHost'
 import type { ScopedEnvironment, ScopedRendererClient } from '../../services/scopedRenderers'
 void React
@@ -7,6 +8,7 @@ void React
 /** Scope-owned catalog stays separate from presentation preferences. */
 export function ScopedViewCatalog({ client, teamId }: { client: ScopedRendererClient; teamId?: string }) {
   const identity = client.identity()
+  const installer=useMemo(()=>client.personalCatalog(),[client])
   const [loaded, setLoaded] = useState<{ client: ScopedRendererClient; identity: string; teamId?: string; environment: ScopedEnvironment; catalog: Awaited<ReturnType<ScopedRendererClient['candidates']>> }>()
   const [error, setError] = useState(''), [reload, setReload] = useState(0)
   useEffect(() => {
@@ -42,6 +44,7 @@ export function ScopedViewCatalog({ client, teamId }: { client: ScopedRendererCl
   }
   return <section className="settings-card presentation-editor"><h2>{teamId ? 'Team views' : 'Personal views'}</h2>
     <p>Installed views available for {teamId ? 'this Team' : 'your account'}.</p>
+    {!teamId&&<PersonalPackageInstaller key={client.stateScope()} client={installer} onInstalled={()=>setReload(value=>value+1)}/>}
     {error && <p role="alert">{error}</p>}
     {!error && !catalog && <p role="status">Loading views…</p>}
     {catalog && <>{!catalog.activation_supported && <p>Scoped views are in preview. Some plug-in capabilities are not available yet.</p>}

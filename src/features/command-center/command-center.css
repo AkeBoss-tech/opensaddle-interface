@@ -146,3 +146,11 @@
   .task-detail-page .page-header { flex-direction: column; gap: 16px; }
   .task-detail-page .cc-panel { padding: 18px; }
 }
+.personal-package-installer { margin-block: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.personal-package-installer summary { cursor: pointer; font-weight: 600; }
+.personal-package-installer label { display: flex; flex-direction: column; gap: 8px; margin-block: 16px; }
+.personal-package-installer input { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+.personal-package-installer code { display: block; margin-block: 12px; font-size: 12px; }
+.personal-package-installer p { line-height: 1.6; overflow-wrap: anywhere; }
+.personal-package-installer .secondary-btn { margin: 8px 8px 8px 0; color: var(--text); }
+.personal-package-installer :is(summary, input, button):focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }

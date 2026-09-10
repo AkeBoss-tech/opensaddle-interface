@@ -895,3 +895,12 @@ and key revocation methods and paths. It binds them to the adopted runtime and
 supplies its credentials in the main process; neighboring mutations and query
 variants remain rejected. `test/personalRuntimeProxy.test.ts` covers these paths.
 The existing request and response byte limits continue to apply.
+
+### PERSONAL-INSTALLER-1 — Explicit publisher trust and installation
+
+Selecting a signed-package file performs no trust or installation mutation.
+Publisher fingerprint inspection precedes explicit trust; installation requires
+an unrevoked trusted key and confirms the exact returned package identity. The
+installer and real HTTP client are covered by
+`src/features/settings/PersonalPackageInstaller.test.tsx`, with HTTP controlled at
+the external boundary. Installation does not select a view.

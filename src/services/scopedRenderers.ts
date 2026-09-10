@@ -1,3 +1,4 @@
+import {PersonalCatalogClient} from './personalCatalog'
 import {StandalonePluginSettingsClient} from './standalonePluginSettings'
 import {rendererSettingsContract} from './rendererSettings'
 import {PersonalDevicesClient} from './personalDevices'
@@ -22,6 +23,7 @@ export class ScopedRendererClient {
   constructor(base: string, user: () => string, token?: string) { this.base = base.replace(/\/$/, ''); this.user = user; this.token = token }
   identity() { return this.user() }
   preferences() { return new StandalonePluginSettingsClient(this.base,this.user,this.token) }
+  personalCatalog() { return new PersonalCatalogClient(this.base,this.user,this.token) }
   stateScope() { return JSON.stringify([this.base,this.user()]) }
   private async request(scope: ViewScope, path: string, init: RequestInit = {}) {
     const subject = this.user(), expected = { ...scope }
