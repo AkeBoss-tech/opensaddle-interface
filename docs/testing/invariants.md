@@ -648,3 +648,14 @@ report rejection, disablement and built-in recovery. Receipt:
 assertion failure. This is client/server evidence, not a mounted executable view
 or a visual desktop acceptance. Settings list the scoped catalog and retain the
 server's explicit display-support limitation.
+
+## LOCAL-DISCOVERY-ADMISSION-1
+
+Agent discovery and Project rescans share a bounded queue in the authoritative
+local client, coalescing identical concurrent requests and releasing admission on
+failure. Slow startup discovery must leave browser connections available for
+health and navigation. Discovery HTTP requests have a 60-second bound. The real
+loopback transport test delays discovery and fails one scan; the before/after
+receipt records nine simultaneous requests reduced to one, duplicate read
+coalescing, and continuation after failure. This is admission evidence, not an
+OS resource cap or a claim that all provider probes finish within that deadline.
