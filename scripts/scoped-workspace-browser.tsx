@@ -1,3 +1,4 @@
+import '../src/perspectives/scoped/scoped-workspace.css'
 /** Manual browser proof harness. Serve through a loopback Vite proxy that injects
  * the disposable fixture credential server-side. Never use a personal runtime. */
 import React from 'react'

@@ -3,12 +3,11 @@ import {Link} from 'react-router-dom'
 import type {ScopedRendererClient,ScopedEnvironment} from '../../services/scopedRenderers'
 import type {ApplicationRendererCandidate} from '../../services/contracts'
 import {ScopedViewHost} from './ScopedViewHost'
-import './scoped-workspace.css'
 void React
 
 /** The host owns navigation and escape controls even when its main view is replaced. */
 export function ScopedWorkspace({client,teamId,children}:{client?:ScopedRendererClient;teamId?:string;children:ReactNode}) {
- const identity=client?.identity(),scopeKey=[identity,teamId??''].join('\0')
+ const identity=client?.identity(),scopeKey=JSON.stringify([client?.stateScope(),identity,teamId??''])
  const [loaded,setLoaded]=useState<{key:string;environment:ScopedEnvironment;candidate?:ApplicationRendererCandidate}>()
  const [fallback,setFallback]=useState<string>(),[attempt,setAttempt]=useState(0),[error,setError]=useState(''),[busy,setBusy]=useState(false)
  const unavailable=useCallback(()=>setFallback(scopeKey),[scopeKey])

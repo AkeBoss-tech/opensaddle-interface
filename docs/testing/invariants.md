@@ -953,3 +953,10 @@ Successful v2 capability discovery does not advertise legacy permission or local
 runner APIs. Service initialization must omit those clients when legacy health
 is absent, while retaining v2 services. A legacy server advertising these APIs
 must retain them. Covered by `test/serviceNegotiation.test.ts`.
+# SCOPED-WORKSPACE-CONNECTION-1
+
+Workspace fallback and loaded selection belong to the server, account and Team.
+Switching to a different server with the same subject must mount that server's
+selected view instead of inheriting the previous fallback. Covered at the React
+workspace boundary with the production scoped client and host in
+`src/perspectives/scoped/ScopedWorkspace.test.tsx`.

@@ -1,3 +1,4 @@
+import './perspectives/scoped/scoped-workspace.css'
 import {ScopedWorkspace} from './perspectives/scoped/ScopedWorkspace'
 import {TeamWorkspacePage} from './features/teams/TeamWorkspacePage'
 import {ProjectTaskPage} from './features/runs/ProjectTaskPage'
