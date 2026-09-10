@@ -2006,3 +2006,8 @@ a.nav-item { text-decoration: none; color: inherit; }
 .local-run-activity-row strong { font-size:10px; }
 .local-run-activity-row small { overflow:hidden; color:var(--dim); font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
 .local-run-row[role="button"] { cursor:pointer; }
+
+
+.scoped-workspace-controls { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 24px; border-bottom:1px solid var(--border); }
+.scoped-workspace-controls p { flex-basis:100%; margin:0; }
+.scoped-workspace-view { flex:1; min-width:0; padding:16px 24px; }

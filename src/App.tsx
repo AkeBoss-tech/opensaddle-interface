@@ -1,3 +1,5 @@
+import {ScopedWorkspace} from './perspectives/scoped/ScopedWorkspace'
+import {TeamWorkspacePage} from './features/teams/TeamWorkspacePage'
 import {ProjectTaskPage} from './features/runs/ProjectTaskPage'
 import { TeamsPage } from './features/teams/TeamsPage'
 import { ProjectPerspectivePage } from './features/perspectives/ProjectPerspectivePage'
@@ -330,7 +332,7 @@ function Shell() {
           <SurfaceErrorBoundary key={`${loc.pathname}:${connectedLocal}`} onRetry={() => nav(0)}>
           {connectedLocal ? <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
-            <Route path="/home" element={services?.commandCenter ? <CommandCenterPage /> : <ConnectedWorkspaceHome onAddProject={() => setProjectModal(true)} />} />
+            <Route path="/home" element={<ScopedWorkspace client={services?.malleableShell?.scopedRenderers}>{services?.commandCenter ? <CommandCenterPage /> : <ConnectedWorkspaceHome onAddProject={() => setProjectModal(true)} />}</ScopedWorkspace>} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
             <Route path="/artifact-evidence" element={<ArtifactEvidencePage />} />
             {import.meta.env.DEV&&<Route path="/dev/application-fixture" element={<ExecutableApplicationFixturePage />} />}
@@ -354,12 +356,13 @@ function Shell() {
             <Route path="/project/:projectId/tasks/:runId" element={<ProjectTaskPage />} />
             <Route path="/devices" element={<PersonalDevicesPage />} />
             <Route path="/teams" element={<TeamsPage />} />
+            <Route path="/teams/:teamId" element={<TeamWorkspacePage />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
             <Route path="/settings/appearance" element={<PresentationPage />} />
             <Route path="*" element={<Navigate to="/start" replace />} />
           </Routes> : <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
-            <Route path="/home" element={<CommandCenterPage />} />
+            <Route path="/home" element={<ScopedWorkspace client={services?.malleableShell?.scopedRenderers}><CommandCenterPage /></ScopedWorkspace>} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
             <Route path="/artifact-evidence" element={<ArtifactEvidencePage />} />
             {import.meta.env.DEV&&<Route path="/dev/application-fixture" element={<ExecutableApplicationFixturePage />} />}

@@ -7,7 +7,7 @@ void React
 type Candidate=ApplicationRendererCandidate & Pick<ExecutableRendererManifest,'entry_file'|'media_type'|'input_schema'|'output_schema'> & {descriptor:{ui_contract:{schema_version:string;scope:string;mount_kind:string;host_api_min:number;host_api_max:number;required_capabilities:string[]}}}
 let generation=0
 /** Credential-free scoped fragment host. The parent retains recovery controls. */
-export function ScopedViewHost({client,scope,environment,candidate}:{client:ScopedRendererClient;scope:ViewScope;environment:ScopedEnvironment;candidate:ApplicationRendererCandidate}) {
+export function ScopedViewHost({client,scope,environment,candidate,onUnavailable,fullPage=false}:{onUnavailable?:()=>void;fullPage?:boolean;client:ScopedRendererClient;scope:ViewScope;environment:ScopedEnvironment;candidate:ApplicationRendererCandidate}) {
  const account=client.identity(), key=[account,scope.kind,scope.id,environment.revision,environment.definition_digest,candidate.manifest_digest,candidate.application_id].join('\0')
  const frame=useRef<HTMLIFrameElement>(null),[state,setState]=useState<{key:string;document?:string;status:string}>({key,status:'Loading view…'})
  useEffect(()=>{
@@ -17,7 +17,7 @@ export function ScopedViewHost({client,scope,environment,candidate}:{client:Scop
   const instance=item.environment_application?.instances[0]?.instance_id
   let session:Awaited<ReturnType<ScopedRendererClient['createHost']>>|undefined
   const current=()=>!disposed&&client.identity()===account
-  const fail=()=>{if(disposed)return;setState({key,status:'This view is unavailable. Your workspace controls remain available.'});clearTimeout(poll);clearTimeout(timeout);abort.abort()}
+  const fail=()=>{if(disposed)return;onUnavailable?.();setState({key,status:'This view is unavailable. Your workspace controls remain available.'});clearTimeout(poll);clearTimeout(timeout);abort.abort()}
   const report=(status:'loading'|'ready'|'error')=>{
    reportTail=reportTail.then(async()=>{if(!current()||!session)return;await client.report(scope,session,{sequence:++sequence,state:status,...(status==='error'?{error_code:'renderer_unavailable'}:{})})}).catch(fail)
    return reportTail
@@ -59,8 +59,8 @@ export function ScopedViewHost({client,scope,environment,candidate}:{client:Scop
   // event from initializing a new account or selection.
   initializeRef.current=initialize
   return()=>{disposed=true;abort.abort();clearTimeout(poll);clearTimeout(timeout);removeEventListener('message',listener);initializeRef.current=()=>{}}
- },[client,key,account,scope.kind,scope.id,environment,candidate])
+ },[client,key,account,scope.kind,scope.id,environment,candidate,onUnavailable])
  const initializeRef=useRef<()=>void>(()=>{})
  const visible=state.key===key?state:{key,status:'Loading view…'}
- return <section aria-label="Selected scoped view"><p role="status">{visible.status}</p>{visible.document&&<iframe ref={frame} title={candidate.title} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={visible.document} onLoad={()=>initializeRef.current()} style={{width:'100%',height:480,border:0}}/>}</section>
+ return <section aria-label="Selected scoped view"><p role="status">{visible.status}</p>{visible.document&&<iframe ref={frame} title={candidate.title} sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={visible.document} onLoad={()=>initializeRef.current()} style={{width:'100%',height:fullPage?'calc(100dvh - 200px)':480,minHeight:320,border:0}}/>}</section>
 }

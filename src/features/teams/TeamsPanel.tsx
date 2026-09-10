@@ -1,3 +1,4 @@
+import {Link} from 'react-router-dom'
 import {ScopedViewCatalog} from '../settings/ScopedViewCatalog'
 import type {ScopedRendererClient} from '../../services/scopedRenderers'
 import {StandalonePluginSettings} from '../settings/StandalonePluginSettings'
@@ -16,6 +17,7 @@ export function TeamsPanel({client,presentation,pluginSettings,views}:{views?:Sc
  {invitations.length>0&&<section className="settings-card presentation-editor"><h2>Invitations</h2>{invitations.map(invitation=><div key={invitation.team_id}><p>{invitation.display_name} · {invitation.role}</p><button disabled={busy} onClick={()=>setReview(invitation)}>Review invitation</button></div>)}{review&&<div><p>Join {review.display_name} as {review.role}? This does not grant project or device access.</p><button disabled={busy} onClick={()=>void run(()=>client.accept(review.team_id,review.revision))}>Accept invitation</button><button disabled={busy} onClick={()=>setReview(undefined)}>Cancel</button></div>}</section>}
  {selected&&!busy&&client.associationsAvailable&&teams.some(team=>team.team_id===selected&&['owner','admin'].includes(team.viewer_role??''))&&<TeamProjectReviews key={'projects:'+selected+revision} client={client} teamId={selected} presentation={presentation}/>}
  {selected&&!busy&&<TeamRoster key={'roster:'+selected+revision} client={client} id={selected} onChanged={()=>setRevision(value=>value+1)} />}{selected&&presentation&&<PresentationEditor key={selected} client={presentation} scope="team" projectId={selected}/>}
+ {selected&&!busy&&views&&<Link to={`/teams/${encodeURIComponent(selected)}`}>Open Team workspace</Link>}
  {selected&&!busy&&views&&<ScopedViewCatalog key={selected+identity} client={views} teamId={selected}/>}
  {selected&&!busy&&pluginSettings&&<StandalonePluginSettings key={selected+identity} client={pluginSettings} teamId={selected}/>}
  </React.Fragment>

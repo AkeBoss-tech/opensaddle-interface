@@ -717,3 +717,13 @@ recovery and listener cleanup. This new host slice has no prior implementation;
 no baseline assertion is claimed. Actual browser execution, full-page placement,
 state persistence, responsiveness monitoring and owner-device SDK remain separate
 acceptance work.
+
+### SCOPED-HOST-1 — full workspace placement
+
+The personal Home route and `/teams/:teamId` use the selected scoped view as
+main content. Host-owned view settings, local default escape and durable reset
+remain outside the iframe. Local escape must not mutate a shared Team selection.
+Failure/revocation restores default content, and retry can remount the selection.
+The real-Core component proof now also checks replacement, local escape with
+unchanged authoritative selection, retry and full-page revocation recovery.
+Current rendered browser behavior remains a separate acceptance check.
