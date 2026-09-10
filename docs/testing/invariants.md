@@ -636,3 +636,15 @@ verification must complete, the patch must contain the expected change, and the
 result remains unapproved. Receipt: `receipts/personal-runtime-task-live-20260910.json`.
 This checks the real protocol/client journey, not visual interaction, streaming
 presentation, native session resumption, or a human approval decision.
+
+## SCOPED-RENDERER-TRANSPORT-1
+
+The production shell exposes user/Team renderer selection, signed content and
+host reporting without synthetic Project identities. The real Core fixture and
+`scripts/prove-scoped-renderers-live.ts` verify exact references, stale revision
+rejection, account fences, Team manager selection, member hosting, cross-subject
+report rejection, disablement and built-in recovery. Receipt:
+`receipts/scoped-renderer-transport-20260910.json` includes an actual baseline
+assertion failure. This is client/server evidence, not a mounted executable view
+or a visual desktop acceptance. Settings list the scoped catalog and retain the
+server's explicit display-support limitation.
