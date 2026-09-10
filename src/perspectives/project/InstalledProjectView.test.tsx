@@ -419,3 +419,54 @@ test('host bridge responds to challenges and missing responses recover the view'
  await act(async()=>parent.postMessage({...init,kind:'pong',request_id:current.request_id}))
  assert.equal(view.root.findAllByType('iframe').length,0,'late response cannot restore a failed generation')
 })
+
+// PROJECT-RESOURCE-SUBSCRIPTIONS: complete snapshots, local cursors and cancellation.
+test('resource subscriptions update in place, resync and cancel in-flight delivery',async t=>{
+ const {RemoteMalleableShellClient}=await import('../../services/remoteMalleableShell')
+ const fragment='<p>Live devices</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT,properties:{kind:{enum:['init','resources']}}},descriptor:{ui_contract:{schema_version:'opensaddle.ui-contract.v1',mount_kind:'perspective',scope:'project',host_api_min:1,host_api_max:1,required_capabilities:['read.project-devices.v1','subscription.resources.v1']}},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
+ assert.equal(installedProjectViews([renderer]).length,1,'resource subscription capability must be supported by the host')
+ const originalFetch=globalThis.fetch,originalAdd=globalThis.addEventListener,originalRemove=globalThis.removeEventListener
+ const listeners=new Set<(event:any)=>void>(),messages:any[]=[]
+ let revision=1,reads=0,bytes=0,hold=false,release:()=>void=()=>{},revoked=false
+ Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ globalThis.fetch=async(input)=>{
+  const url=new URL(String(input))
+  if(url.pathname.endsWith('/content')){bytes++;return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})}
+  if(url.pathname.endsWith('/application-renderers'))return Response.json({project_id:'P',renderers:revoked?[]:[renderer]})
+  assert.equal(url.pathname,'/api/v2/projects/P/devices');reads++
+  if(hold)await new Promise<void>(resolve=>{release=resolve})
+  return Response.json({items:[{project_id:'P',device_id:'D',display_name:'Mac',revision,state:'accepted',audience:'owner_only',consent_allows_requester:false}]})
+ }
+ const client=new RemoteMalleableShellClient('http://core',()=> 'member','host-secret')
+ const source={postMessage:(data:any)=>{messages.push(data);if(data.kind==='ping')for(const listener of listeners)listener({source,data:{...data,kind:'pong'}})}}
+ const node={contentWindow:source,dataset:{}}
+ t.mock.timers.enable({apis:['setTimeout','setInterval','Date'],now:1000})
+ let view!:ReactTestRenderer
+ t.after(async()=>{release();if(view)await act(async()=>view.unmount());t.mock.timers.reset();Object.assign(globalThis,{fetch:originalFetch,addEventListener:originalAdd,removeEventListener:originalRemove})})
+ await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[]}} connectionKey="member" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node})})
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ const init=messages.find(m=>m.kind==='init'),send=(data:any)=>act(async()=>{for(const listener of listeners)listener({source,data:{...init,...data}})})
+ const snapshots=()=>messages.filter(m=>m.kind==='resources'),tick=()=>act(async()=>{t.mock.timers.tick(5000)})
+ await send({kind:'ready'})
+ await send({kind:'request',action:'subscribe_sources',request_id:'undeclared'});assert.equal(reads,0)
+ await send({kind:'request',action:'subscribe_devices',request_id:'devices',project_id:'OTHER'})
+ assert.equal(snapshots().length,1);assert.equal(snapshots()[0].cursor,1);assert.equal(snapshots()[0].subscription_id,'devices');assert.equal(snapshots()[0].delivery,'snapshot')
+ revision=2;await tick()
+ assert.equal(snapshots().at(-1).cursor,2);assert.equal(snapshots().at(-1).projection.items[0].revision,2)
+ await tick();assert.equal(snapshots().length,2,'unchanged resource reads must not emit duplicate snapshots')
+ await send({kind:'request',action:'resync_resources',request_id:'devices'})
+ assert.equal(snapshots().at(-1).cursor,3);assert.equal(bytes,1,'updates must retain the existing frame')
+ hold=true;await tick();const before=reads
+ await send({kind:'request',action:'unsubscribe_resources',request_id:'devices'})
+ await act(async()=>{release()});hold=false
+ assert.equal(snapshots().length,3,'unsubscribe must discard in-flight results')
+ await tick();assert.equal(reads,before)
+ await send({kind:'request',action:'subscribe_devices',request_id:'again'})
+ assert.equal(snapshots().at(-1).cursor,1,'new subscription starts a full snapshot with a fresh cursor')
+ await send({kind:'request',action:'subscribe_devices',request_id:'two'});await send({kind:'request',action:'subscribe_devices',request_id:'three'})
+ const atLimit=reads;await send({kind:'request',action:'subscribe_devices',request_id:'four'});assert.equal(reads,atLimit,'host permits at most three active subscriptions')
+ await send({kind:'request',action:'unsubscribe_resources',request_id:'two'});await send({kind:'request',action:'unsubscribe_resources',request_id:'three'})
+ revoked=true;await tick()
+ assert.equal(view.root.findAllByType('iframe').length,0)
+ assert.equal(snapshots().length,6,'revocation must stop further resource delivery')
+})

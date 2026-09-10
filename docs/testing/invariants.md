@@ -465,3 +465,13 @@ responses trigger removal/recovery; stale and late responses cannot keep or revi
 the frame. Hidden windows suspend this check. Mounted tests execute the injected
 bridge, control timers and deliberately omit message delivery; they do not freeze
 a real browser process. Receipt: `receipts/project-view-responsiveness-20260910.json`.
+
+
+## PROJECT-RESOURCE-SUBSCRIPTIONS
+
+Signed resource subscriptions retain the frame, deliver bounded authorized full
+snapshots with per-subscription cursors, suppress unchanged data, support explicit
+resync, and stop in-flight delivery on unsubscribe/revocation. At most three may
+be active. Mounted tests use the real client and controlled Core responses/clock;
+receipt `receipts/project-resource-subscriptions-20260910.json` includes baseline
+assertion evidence. This is not durable server event replay or browser proof.

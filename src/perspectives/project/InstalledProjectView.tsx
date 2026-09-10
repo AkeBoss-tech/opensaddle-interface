@@ -13,6 +13,7 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
  const preferences=useRef<unknown>(undefined),settingsRevision=useRef(0),frameReady=useRef(false)
  const publishSettings=useRef<()=>void>(()=>{})
  const required=(renderer.descriptor?.ui_contract as {required_capabilities?:unknown}|undefined)?.required_capabilities
+ const resourceSubscriptions=Array.isArray(required)&&required.includes('subscription.resources.v1')
  const sourceReads=Array.isArray(required)&&required.includes('read.project-sources.v1')
  const approvalReads=Array.isArray(required)&&required.includes('read.project-approvals.v1')
  const deviceReads=Array.isArray(required)&&required.includes('read.project-devices.v1')
@@ -58,6 +59,8 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
   return()=>{stopped=true;clearTimeout(poll);abort.abort();generation.current++}
  },[client,settingsClient,settingsIdentity,renderer,lifecycleModel,connectionKey,stateScope,mount])
  useEffect(()=>{if(!document)return;let initialized=false,count=0,windowStart=Date.now();const timeout=setTimeout(()=>{if(!initialized)setError('This view did not become ready. Select another view or refresh.')},5000)
+  let disposed=false
+  const subscriptions=new Map<string,{refresh:(force?:boolean)=>void;timer?:ReturnType<typeof setTimeout>}>()
   const listener=(event:MessageEvent)=>{if(document.generation!==generation.current||!acceptsApplicationMessage(event,{source:frame.current?.contentWindow??null,nonce:document.nonce,generation:document.generation,instanceId:renderer.instance_id,connectionKey,packageRef:renderer.package_ref}))return
    if(event.data.kind==='pong'){if(event.data.request_id===heartbeat.current?.id)heartbeat.current=undefined;return}
    if(event.data.kind==='failure'){generation.current++;frameReady.current=false;setDocument(undefined);setError('This view stopped after a renderer error. Refresh to retry.');return}
@@ -72,24 +75,51 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
     return
    }
    if(!initialized||message.kind!=='request')return
-   if(message.action==='read_sources'||message.action==='read_devices'||message.action==='read_approvals'){
-    const read=message.action==='read_sources'&&sourceReads?client.projectSources?.bind(client):message.action==='read_devices'&&deviceReads?client.projectDevices?.bind(client):message.action==='read_approvals'&&approvalReads?client.projectApprovals?.bind(client):undefined
-    if(!read||requestPending.current||typeof message.request_id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(message.request_id))return
-    requestPending.current=true
+   if(message.action==='unsubscribe_resources'||message.action==='resync_resources'){
+    if(typeof message.request_id!=='string')return
+    const subscription=subscriptions.get(message.request_id)
+    if(!subscription)return
+    if(message.action==='unsubscribe_resources'){clearTimeout(subscription.timer);subscriptions.delete(message.request_id)}
+    else subscription.refresh(true)
+    return
+   }
+   const resourceAction=typeof message.action==='string'?message.action.replace(/^subscribe_/,'read_'):undefined
+   if(resourceAction==='read_sources'||resourceAction==='read_devices'||resourceAction==='read_approvals'){
+    const watching=message.action?.startsWith('subscribe_')===true
+    const read=resourceAction==='read_sources'&&sourceReads?client.projectSources?.bind(client):resourceAction==='read_devices'&&deviceReads?client.projectDevices?.bind(client):resourceAction==='read_approvals'&&approvalReads?client.projectApprovals?.bind(client):undefined
+    if(!read||typeof message.request_id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(message.request_id)||(watching&&(!resourceSubscriptions||subscriptions.size>=3))||subscriptions.has(message.request_id))return
+    if(!watching&&requestPending.current)return
     const requestId=message.request_id
-    void (async()=>{
-     if(!await authorize.current()||document.generation!==generation.current)return
-     const projection=await read(model.projectId,AbortSignal.timeout(5000))
-     if(!await authorize.current()||document.generation!==generation.current)return
-     frame.current?.contentWindow?.postMessage({protocol:APPLICATION_PROTOCOL,kind:'resources',nonce:document.nonce,generation:document.generation,instance_id:renderer.instance_id,connection_key:connectionKey,package_ref:renderer.package_ref,request_id:requestId,projection},'*')
-    })().catch(()=>{if(document.generation===generation.current)setError('Project resources are unavailable. Refresh to recheck access.')}).finally(()=>{if(document.generation===generation.current)requestPending.current=false})
+    let sequence=0,previous='',forceNext=false,running=false
+    const subscription:{refresh:(force?:boolean)=>void;timer?:ReturnType<typeof setTimeout>}={refresh:()=>{}}
+    const active=()=>!disposed&&document.generation===generation.current&&(!watching||subscriptions.get(requestId)===subscription)
+    const schedule=()=>{if(watching&&active())subscription.timer=setTimeout(()=>refresh(),5000)}
+    const refresh=(force=false)=>{
+     forceNext ||= force
+     if(!active()||running)return
+     clearTimeout(subscription.timer)
+     if(requestPending.current){schedule();return}
+     running=true;requestPending.current=true
+     void (async()=>{
+      if(!await authorize.current()||!active())return
+      const projection=await read(model.projectId,AbortSignal.timeout(5000))
+      if(!await authorize.current()||!active())return
+      const serialized=JSON.stringify(projection)
+      if(watching&&serialized===previous&&!forceNext)return
+      previous=serialized;forceNext=false
+      frame.current?.contentWindow?.postMessage({protocol:APPLICATION_PROTOCOL,kind:'resources',nonce:document.nonce,generation:document.generation,instance_id:renderer.instance_id,connection_key:connectionKey,package_ref:renderer.package_ref,request_id:requestId,projection,...(watching?{subscription_id:requestId,cursor:++sequence,delivery:'snapshot'}:{})},'*')
+     })().catch(()=>{if(active()){disposed=true;for(const item of subscriptions.values())clearTimeout(item.timer);subscriptions.clear();setError('Project resources are unavailable. Refresh to recheck access.')}}).finally(()=>{running=false;if(document.generation===generation.current)requestPending.current=false;schedule()})
+    }
+    subscription.refresh=refresh
+    if(watching)subscriptions.set(requestId,subscription)
+    refresh()
     return
    }
    const taskId=message.task_id
    if(requestPending.current||!(message.action==='new_task'||(message.action==='open_task'&&typeof taskId==='string'&&currentModel.current.tasks.some(task=>task.id===taskId))))return
    requestPending.current=true
    void authorize.current().then(ok=>{if(ok&&document.generation===generation.current){if(message.action==='new_task')actions.current.onNewTask();else if(currentModel.current.tasks.some(task=>task.id===taskId))actions.current.onOpenTask(taskId as string)}}).finally(()=>{if(document.generation===generation.current)requestPending.current=false})
-  };addEventListener('message',listener);return()=>{clearTimeout(timeout);removeEventListener('message',listener)}
+  };addEventListener('message',listener);return()=>{disposed=true;clearTimeout(timeout);for(const subscription of subscriptions.values())clearTimeout(subscription.timer);subscriptions.clear();removeEventListener('message',listener)}
  },[document,renderer,connectionKey,stateScope,mount])
  useEffect(()=>{
   if(!live||!ready||!document||sentModel.current===model)return

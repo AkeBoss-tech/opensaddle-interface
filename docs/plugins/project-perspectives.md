@@ -716,3 +716,33 @@ This can recover a nonresponding frame while the host event loop still runs. It
 cannot guarantee recovery from an infinite loop that also blocks the host process,
 or from a crashed browser/desktop process. Process isolation and current browser
 failure testing remain separate requirements.
+
+
+### Resource subscriptions and resync
+
+Require `subscription.resources.v1` plus the matching `read.project-sources.v1`,
+`read.project-devices.v1`, or `read.project-approvals.v1` capability. Accept
+`resources` input. Send a normal fenced request with `action: 'subscribe_sources'`,
+`'subscribe_devices'`, or `'subscribe_approvals'`, and a unique `request_id`.
+The host permits at most three subscriptions per frame. Every read remains bound
+to the mounted Project and current package/user authority.
+
+A subscription emits the same complete resource projection as its one-shot read,
+plus `subscription_id` (the request ID), `cursor` (starting at 1), and
+`delivery: 'snapshot'`. The host polls five seconds after each completed refresh;
+unchanged values produce no new message. Slow reads or other host operations can
+delay refreshes. The current frame is retained.
+
+Track cursors separately for each subscription and frame identity. A skipped
+cursor indicates missed delivery: send `action: 'resync_resources'` with the same
+request ID. The host emits a freshly authorized full snapshot and advances the
+cursor even if its data is unchanged. Replace the local resource projection from
+that snapshot. Send `action: 'unsubscribe_resources'` to stop delivery, including
+results already in flight. Reusing an active request ID does not create a second
+subscription; use explicit resync. After unsubscribe or frame replacement, start
+a new subscription and discard the old cursor.
+
+These are subscription-local delivery cursors, not durable server event offsets.
+There is no cross-frame replay or exactly-once delivery promise. Read failures or
+lost authority remove the installed view through host recovery. One-shot reads
+remain available to packages that do not declare subscriptions.
