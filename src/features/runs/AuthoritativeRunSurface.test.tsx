@@ -42,3 +42,29 @@ test('backend loss clears protected status and never becomes an empty local run 
  assert.match(JSON.stringify(view.toJSON()),/Task unavailable.*backend disconnected/);assert.doesNotMatch(JSON.stringify(view.toJSON()),/Fix actual bug|No local runs yet/)
  await act(async()=>view.unmount())
 })
+
+// PROJECT-TASK-DETAIL: a Perspective cannot substitute another project's Run.
+test('project task detail preserves workspace navigation and rejects cross-project details',async()=>{
+ let wrong=false,cancels=0
+ const authority:AuthoritativeRunAuthority={runDetail:async()=>({...detail,projectId:wrong?'OTHER':'P',task:wrong?'OTHER PRIVATE TASK':detail.task}),cancel:async()=>{cancels++}}
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} runId="run-real" projectId="P"/></MemoryRouter>);await flush()})
+ assert.equal(view.root.findAllByType('a').find(node=>node.children.join('')==='Back to workspace')?.props.href,'/project/P')
+ wrong=true
+ await act(async()=>{button(view,'Refresh task status').props.onClick();await flush()})
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/OTHER PRIVATE TASK/)
+ assert.match(JSON.stringify(view.toJSON()),/Task does not belong to this project/)
+ assert.equal(view.root.findAllByType('button').some(node=>node.children.join('')==='Request cancellation'),false)
+ assert.equal(cancels,0)
+ await act(async()=>view.unmount())
+})
+
+test('project task detail rejects a substituted Run identity',async()=>{
+ const authority:AuthoritativeRunAuthority={runDetail:async()=>({...detail,runId:'substituted',task:'SUBSTITUTED PRIVATE TASK'})}
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} runId="run-real" projectId="P"/></MemoryRouter>);await flush()})
+ try {
+  assert.doesNotMatch(JSON.stringify(view.toJSON()),/SUBSTITUTED PRIVATE TASK/)
+  assert.match(JSON.stringify(view.toJSON()),/Task does not belong to this project/)
+ } finally { await act(async()=>view.unmount()) }
+})

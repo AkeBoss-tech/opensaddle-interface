@@ -11,22 +11,22 @@ export interface AuthoritativeRunAuthority {
   authorizedContextPacket?(projectId:string,runId:string,handle:AuthorizedContextHandle):Promise<AuthorizedContextPacket>
 }
 const terminal = (status:string) => ['completed','failed','cancelled','interrupted'].includes(status)
-export function AuthoritativeRunSurface({authority,runId,codingResults}:{authority:AuthoritativeRunAuthority;runId:string;codingResults?:CodingResultAuthority}) {
-  const [state,setState]=useState<{authority:AuthoritativeRunAuthority;runId:string;detail?:AuthoritativeRunDetail;error?:string}>()
+export function AuthoritativeRunSurface({authority,runId,codingResults,projectId}:{projectId?:string;authority:AuthoritativeRunAuthority;runId:string;codingResults?:CodingResultAuthority}) {
+  const [state,setState]=useState<{authority:AuthoritativeRunAuthority;runId:string;projectId?:string;detail?:AuthoritativeRunDetail;error?:string}>()
   const [packet,setPacket]=useState<{authority:AuthoritativeRunAuthority;runId:string;value?:AuthorizedContextPacket;error?:string}>()
   const [busy,setBusy]=useState(false),generation=useRef(0),packetGeneration=useRef(0),operation=useRef<symbol|undefined>(undefined),finished=useRef(false)
   const refresh=async()=>{
     const current=++generation.current
-    try{const detail=await authority.runDetail(runId);if(current===generation.current){finished.current=terminal(detail.status);setState({authority,runId,detail})}}
-    catch(reason){if(current===generation.current){packetGeneration.current++;setPacket(undefined);setState({authority,runId,error:reason instanceof Error?reason.message:String(reason)})}}
+    try{const detail=await authority.runDetail(runId);if(detail.runId!==runId||(projectId!==undefined&&detail.projectId!==projectId))throw Error('Task does not belong to this project.');if(current===generation.current){finished.current=terminal(detail.status);setState({authority,runId,projectId,detail})}}
+    catch(reason){if(current===generation.current){packetGeneration.current++;setPacket(undefined);setState({authority,runId,projectId,error:reason instanceof Error?reason.message:String(reason)})}}
   }
-  useEffect(()=>{finished.current=false;operation.current=undefined;setBusy(false);setPacket(undefined);setState({authority,runId});void refresh();const timer=setInterval(()=>{if(!finished.current&&!operation.current)void refresh()},2500);return()=>{generation.current++;packetGeneration.current++;operation.current=undefined;clearInterval(timer)}},[authority,runId])
-  const owned=state?.authority===authority&&state.runId===runId?state:undefined,detail=owned?.detail,currentPacket=packet?.authority===authority&&packet.runId===runId?packet:undefined
+  useEffect(()=>{finished.current=false;operation.current=undefined;setBusy(false);setPacket(undefined);setState({authority,runId,projectId});void refresh();const timer=setInterval(()=>{if(!finished.current&&!operation.current)void refresh()},2500);return()=>{generation.current++;packetGeneration.current++;operation.current=undefined;clearInterval(timer)}},[authority,runId,projectId])
+  const owned=state?.authority===authority&&state.runId===runId&&state.projectId===projectId?state:undefined,detail=owned?.detail,currentPacket=packet?.authority===authority&&packet.runId===runId?packet:undefined
   const cancel=async()=>{
     if(!detail||!authority.cancel||operation.current)return
     const token=Symbol();operation.current=token;setBusy(true);const current=generation.current
     try{await authority.cancel(runId);if(current===generation.current)await refresh()}
-    catch(reason){if(current===generation.current)setState({authority,runId,error:reason instanceof Error?reason.message:String(reason)})}
+    catch(reason){if(current===generation.current)setState({authority,runId,projectId,error:reason instanceof Error?reason.message:String(reason)})}
     finally{if(operation.current===token){operation.current=undefined;setBusy(false)}}
   }
   const inspect=async()=>{
@@ -36,6 +36,7 @@ export function AuthoritativeRunSurface({authority,runId,codingResults}:{authori
     catch(reason){if(current===packetGeneration.current)setPacket({authority,runId,error:reason instanceof Error?reason.message:String(reason)})}
   }
   return <main className="content-page cc-page"><header className="page-header"><h1>{detail?.task??'Task status'}</h1><button disabled={busy} onClick={()=>{packetGeneration.current++;setPacket(undefined);void refresh()}}>Refresh task status</button></header>
+    {projectId&&<Link to={`/project/${encodeURIComponent(projectId)}`}>Back to workspace</Link>}
     {owned?.error?<p role="alert">Task unavailable: {owned.error}</p>:!detail?<p role="status">Loading the authoritative Run…</p>:<>
       <section className="cc-panel"><h2>Execution</h2><p role="status">{detail.status}</p><p>{detail.workerId?`Assigned worker: ${detail.workerId}`:'No worker assignment reported.'}</p>{detail.updatedAt&&<p>Updated {detail.updatedAt}</p>}
         {detail.status==='cancelled'?<p>Cancellation acknowledged · the Run is stopped.</p>:detail.cancellationRequested?<p>Cancellation requested · {terminal(detail.status)?'execution ended without a cancellation acknowledgment.':'waiting for the worker to acknowledge a stop.'}</p>:detail.canCancel&&authority.cancel&&!terminal(detail.status)?<button disabled={busy} onClick={()=>void cancel()}>Request cancellation</button>:null}

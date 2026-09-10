@@ -146,3 +146,14 @@ submission clears it and reports submission, not execution completion. Mounted
 ConnectedJourneySurface tests exercise these behaviors. The baseline renders the
 old setup heading; the identical new test passes after the change. See
 receipts/project-task-composer-20260910.json. Native/browser proof is pending.
+
+## PROJECT-TASK-DETAIL
+
+Project Perspective task opening uses a host-owned, Project/Run-bound route. The
+shared authoritative detail surface rejects mismatched Run or Project identities
+before rendering task text or action controls, while preserving the workspace
+return route. Existing global Run navigation remains compatible. Mounted tests
+cover scope mismatch, identity substitution, normal cancellation, lost access and
+late replacement responses. The identical substituted-identity assertion fails on
+the baseline and passes after the repair; see receipts/project-task-detail-20260910.json.
+Browser/native proof remains pending.

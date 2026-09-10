@@ -144,3 +144,14 @@ receive no new execution capability. Submission success means the request was
 accepted; users return to their selected Workspace Perspective for task status.
 Mounted checks and production build cover this change; Mac lock prevents current
 browser verification.
+
+### Shared task inspection
+
+Task cards in built-in and installed Perspectives now use the host route
+`/project/:projectId/tasks/:runId`. The shared task page preserves project
+navigation and returns to the saved Workspace Perspective. It checks that both
+identities match the authoritative response before displaying task text or actions.
+Existing cancellation, launch-context inspection and coding-result review remain
+owned by the same host surface. This adds no plugin permission or independent
+execution path. Non-coding artifact inspection still opens the existing review
+workspace; a full conversational task transcript remains future work.
