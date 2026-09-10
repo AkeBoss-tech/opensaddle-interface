@@ -746,3 +746,47 @@ These are subscription-local delivery cursors, not durable server event offsets.
 There is no cross-frame replay or exactly-once delivery promise. Read failures or
 lost authority remove the installed view through host recovery. One-shot reads
 remain available to packages that do not declare subscriptions.
+
+
+### Typed artifact-read commands
+
+Declare `command.artifact-read.v1` and accept `resources` responses. This matches
+the existing Core invocation gateway, which currently authorizes only read effects
+requiring `artifacts:read`. It does not widen that gateway to write or execute.
+
+Send a fenced `read_commands` request with `request_id` to receive
+`opensaddle.project-commands.v1`: the current Project and up to 100 descriptors,
+including exact version/digest, availability and input/output schemas. Send
+`read_artifacts` with `task_id` from the current task projection to receive
+`opensaddle.project-artifacts.v1` and up to 100 exact artifact refs. The host checks
+the Run's actual Project; private artifact locators are excluded.
+
+Invoke a selected command with `action: 'invoke_command'`, `request_id`, and:
+
+```json
+{
+  "command": {
+    "command_id": "dev.opensaddle.artifact.review",
+    "expected_version": 1,
+    "expected_descriptor_digest": "<exact descriptor hash>",
+    "run_id": "<projected Run>",
+    "artifact_id": "<selected artifact>",
+    "digest": "<exact artifact hash>",
+    "input": {}
+  }
+}
+```
+
+Input must be a JSON object of at most 8192 serialized characters. The host resolves
+the current descriptor and artifact, rejects stale identity/version/digest, and
+uses the same Core command invocation endpoint as the built-in evidence UI. Core
+validates the declared input schema and authority. Responses are bounded
+`opensaddle.project-command-receipt.v1` projections with the canonical invocation
+ID, exact resource, descriptor digest, status, summary and receipt. Private actor
+fields and raw invocation input are not echoed to the renderer. Package access is
+rechecked before receipt delivery.
+
+Only one host operation runs at a time; duplicate in-flight clicks are ignored.
+There is no automatic retry. On an uncertain response, inspect task evidence before
+retrying: a completed read may already have its own durable receipt. Receipt
+verification is not a claim that generated content is semantically correct.

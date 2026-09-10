@@ -483,3 +483,14 @@ plugin JavaScript and real Core reads/approval/source mutations through the moun
 host. Same-frame updates, resync, unsubscribe and environment revocation passed;
 fixture server stopped and Runs are terminal. Device assignments were empty.
 This is a DOM-adapter integration proof, not browser visual/keyboard acceptance.
+
+
+## PROJECT-COMMAND-SDK
+
+Installed views may discover typed artifact-read commands and exact artifact refs,
+then invoke only the current descriptor against a projected Run in the mounted
+Project. Core retains input/authority validation. Duplicate in-flight calls do not
+repeat, and post-call package revocation withholds the bounded receipt. Mounted
+client/transport evidence and baseline assertion are recorded in
+`receipts/project-command-sdk-20260910.json`. Actual signed command integration,
+write/execute expansion and browser verification remain separate work.

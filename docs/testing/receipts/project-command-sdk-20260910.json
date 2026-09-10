@@ -1,0 +1,20 @@
+{
+  "invariant": "PROJECT-COMMAND-SDK",
+  "base": "0c8a20730287bd9547be26210242624d5f9776cb",
+  "test_overlay": [
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern=installed command SDK",
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "before_exit": 1,
+  "before_output": "\u2716 installed command SDK resolves exact descriptors and artifacts through the host (9.392417ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 267.529083\n\n\u2716 failing tests:\n\ntest at src/perspectives/project/InstalledProjectView.test.tsx:1:46000\n\u2716 installed command SDK resolves exact descriptors and artifacts through the host (9.392417ms)\n  AssertionError [ERR_ASSERTION]: artifact command SDK must be supported by the host\n  \n  0 !== 1\n  \n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-command-sdk-fs8jy5kp/src/perspectives/project/InstalledProjectView.test.tsx:478:9)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 0,\n    expected: 1,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+  "after_exit": 0,
+  "after_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 installed command SDK resolves exact descriptors and artifacts through the host (47.476458ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 232.308541\n",
+  "scope": "Mounted host and real SDK client against controlled Core command transport; read-effect gateway only, not native write/execute or browser evidence"
+}

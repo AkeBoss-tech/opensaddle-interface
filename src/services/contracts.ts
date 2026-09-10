@@ -337,7 +337,12 @@ export interface ProjectApprovalProjection {
   schema_version:'opensaddle.project-approvals.v1';project_id:string;limit:1000;approval_scope:'run_admission';grant_authority:'host_review_required';
   items:{run_id:string;title:string;status:'awaiting_approval'}[]
 }
+export interface ProjectCommandRequest {command_id:string;expected_version:number;expected_descriptor_digest:string;run_id:string;artifact_id:string;digest:string;input:Record<string,unknown>}
+export interface ProjectCommandReceipt {schema_version:'opensaddle.project-command-receipt.v1';project_id:string;invocation_id:string;command_id:string;descriptor_digest:string;resource:ExactArtifactRef;status:string;summary:string;receipt:{effect:string;resource_digest:string;verified:boolean}}
 export interface MalleableShellClient {
+  projectArtifacts?(projectId:string,runId:string,signal?:AbortSignal):Promise<{schema_version:'opensaddle.project-artifacts.v1';project_id:string;run_id:string;items:ExactArtifactRef[]}>
+  projectCommands?(projectId:string,signal?:AbortSignal):Promise<{schema_version:'opensaddle.project-commands.v1';project_id:string;items:ShellCommandDescriptor[]}>
+  invokeProjectCommand?(projectId:string,request:ProjectCommandRequest,signal?:AbortSignal):Promise<ProjectCommandReceipt>
   projectApprovals?(projectId:string,signal?:AbortSignal):Promise<ProjectApprovalProjection>
   projectDevices?(projectId:string,signal?:AbortSignal):Promise<ProjectDeviceProjection>
 

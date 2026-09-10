@@ -470,3 +470,47 @@ test('resource subscriptions update in place, resync and cancel in-flight delive
  assert.equal(view.root.findAllByType('iframe').length,0)
  assert.equal(snapshots().length,6,'revocation must stop further resource delivery')
 })
+
+// PROJECT-COMMAND-SDK: exact artifact command receipts use the existing gateway.
+test('installed command SDK resolves exact descriptors and artifacts through the host',async t=>{
+ const {RemoteMalleableShellClient}=await import('../../services/remoteMalleableShell')
+ const fragment='<p>Commands</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT,properties:{kind:{enum:['init','resources']}}},descriptor:{ui_contract:{schema_version:'opensaddle.ui-contract.v1',mount_kind:'perspective',scope:'project',host_api_min:1,host_api_max:1,required_capabilities:['command.artifact-read.v1']}},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
+ assert.equal(installedProjectViews([renderer]).length,1,'artifact command SDK must be supported by the host')
+ const oldFetch=globalThis.fetch,oldAdd=globalThis.addEventListener,oldRemove=globalThis.removeEventListener
+ const listeners=new Set<(event:any)=>void>(),messages:any[]=[];let invoked=0,revoked=false,revokeAfterInvoke=false
+ Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ const descriptor={command_id:'artifact.review',version:1,descriptor_digest:'b'.repeat(64),title:'Review',description:'Read exact evidence',effect:'read',required_actions:['artifacts:read'],available:{available:true},input_schema:{type:'object'},output_schema:{type:'object'}}
+ globalThis.fetch=async(input,options)=>{
+  const path=new URL(String(input)).pathname
+  if(path.endsWith('/content'))return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})
+  if(path.endsWith('/application-renderers'))return Response.json({project_id:'P',renderers:revoked?[]:[renderer]})
+  if(path==='/api/v2/projects/P/commands')return Response.json({commands:[descriptor,{...descriptor,command_id:'execute',effect:'execute'}]})
+  if(path==='/api/v2/runs/R')return Response.json({run_id:'R',project_id:'P'})
+  if(path==='/api/v2/runs/R/artifacts')return Response.json({artifacts:[{run_id:'R',artifact_id:'A',content_digest:'a'.repeat(64),locator:'private-path'}]})
+  assert.equal(path,'/api/v2/commands/artifact.review/invocations');assert.equal(options?.method,'POST');invoked++
+  const body=JSON.parse(String(options?.body));assert.deepEqual(body,{resource:{project_id:'P',run_id:'R',artifact_id:'A',digest:'a'.repeat(64)},input:{format:'brief'},expected_version:1,expected_descriptor_digest:'b'.repeat(64)})
+  if(revokeAfterInvoke)revoked=true
+  return Response.json({invocation_id:'inv-'+invoked,project_id:'P',command_id:descriptor.command_id,version:1,descriptor_digest:descriptor.descriptor_digest,resource:body.resource,input:body.input,invoked_by:'private-user',status:'completed',result:{summary:'Exact review'},receipt:{effect:'read',resource_digest:'a'.repeat(64),verified:false}})
+ }
+ const client=new RemoteMalleableShellClient('http://core',()=> 'member','secret'),source={postMessage:(m:any)=>messages.push(m)},node={contentWindow:source,dataset:{}}
+ let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount());Object.assign(globalThis,{fetch:oldFetch,addEventListener:oldAdd,removeEventListener:oldRemove})})
+ await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[{id:'R',title:'Task',status:'completed',verified:false,source:'result'}]}} connectionKey="member" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node})})
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ const init=messages.find(m=>m.kind==='init'),send=(data:any)=>act(async()=>{for(const fn of listeners)fn({source,data:{...init,...data}})})
+ await send({kind:'ready'});await send({kind:'request',action:'read_commands',request_id:'commands'})
+ assert.equal(messages.at(-1).projection.items.length,1)
+ await send({kind:'request',action:'read_artifacts',request_id:'artifacts',task_id:'R'})
+ assert.deepEqual(messages.at(-1).projection.items,[{project_id:'P',run_id:'R',artifact_id:'A',digest:'a'.repeat(64)}])
+ const command={command_id:'artifact.review',expected_version:1,expected_descriptor_digest:'b'.repeat(64),run_id:'R',artifact_id:'A',digest:'a'.repeat(64),input:{format:'brief'}}
+ await send({kind:'request',action:'invoke_command',request_id:'foreign',command:{...command,run_id:'OTHER'}});assert.equal(invoked,0)
+ const request={...init,kind:'request',action:'invoke_command',request_id:'invoke',project_id:'OTHER',command}
+ await act(async()=>{for(const fn of listeners){fn({source,data:request});fn({source,data:request})}})
+ assert.equal(invoked,1);assert.equal(messages.at(-1).projection.invocation_id,'inv-1');assert.equal(messages.at(-1).projection.project_id,'P')
+ assert.doesNotMatch(JSON.stringify(messages),/private-path|private-user/)
+ await assert.rejects(client.invokeProjectCommand('P',{...command,expected_version:2}),/changed or unavailable/);assert.equal(invoked,1)
+ const before=messages.length;revokeAfterInvoke=true
+ await send({kind:'request',action:'invoke_command',request_id:'revoked',command})
+ assert.equal(invoked,2);assert.equal(messages.length,before,'post-invocation revocation must withhold the receipt')
+ assert.equal(view.root.findAllByType('iframe').length,0)
+})
