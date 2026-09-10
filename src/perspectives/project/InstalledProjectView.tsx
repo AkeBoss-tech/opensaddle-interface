@@ -14,6 +14,7 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
  const publishSettings=useRef<()=>void>(()=>{})
  const required=(renderer.descriptor?.ui_contract as {required_capabilities?:unknown}|undefined)?.required_capabilities
  const sourceReads=Array.isArray(required)&&required.includes('read.project-sources.v1')
+ const approvalReads=Array.isArray(required)&&required.includes('read.project-approvals.v1')
  const deviceReads=Array.isArray(required)&&required.includes('read.project-devices.v1')
  const live=Array.isArray(kinds)&&kinds.includes('projection')
  const currentModel=useRef(model);currentModel.current=model
@@ -47,6 +48,7 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
   if(renderer.descriptor?.settings_contract&&(!rendererSettingsContract(renderer.descriptor.settings_contract)||!settingsClient||!Array.isArray(kinds)||!kinds.includes('settings'))){setError('This view requires supported settings delivery. Update the package or host.');return}
   if(sourceReads&&(!client.projectSources||!Array.isArray(kinds)||!kinds.includes('resources'))){setError('This view requires supported source delivery. Update the package or host.');return}
   if(deviceReads&&(!client.projectDevices||!Array.isArray(kinds)||!kinds.includes('resources'))){setError('This view requires supported device delivery. Update the package or host.');return}
+  if(approvalReads&&(!client.projectApprovals||!Array.isArray(kinds)||!kinds.includes('resources'))){setError('This view requires supported approval delivery. Update the package or host.');return}
   if(incompatible){setError(incompatible);return}
   if(!client.applicationRendererContent){revoke();return}
 
@@ -68,8 +70,8 @@ export function InstalledProjectView({client,settingsClient,renderer,model,conne
     return
    }
    if(!initialized||message.kind!=='request')return
-   if(message.action==='read_sources'||message.action==='read_devices'){
-    const read=message.action==='read_sources'&&sourceReads?client.projectSources?.bind(client):message.action==='read_devices'&&deviceReads?client.projectDevices?.bind(client):undefined
+   if(message.action==='read_sources'||message.action==='read_devices'||message.action==='read_approvals'){
+    const read=message.action==='read_sources'&&sourceReads?client.projectSources?.bind(client):message.action==='read_devices'&&deviceReads?client.projectDevices?.bind(client):message.action==='read_approvals'&&approvalReads?client.projectApprovals?.bind(client):undefined
     if(!read||requestPending.current||typeof message.request_id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(message.request_id))return
     requestPending.current=true
     const requestId=message.request_id

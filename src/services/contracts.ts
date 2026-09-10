@@ -333,7 +333,12 @@ export interface ProjectDeviceProjection {
   schema_version:'opensaddle.project-devices.v1';project_id:string;limit:100;task_admission:'not_evaluated';
   items:{device_id:string;display_name:string;revision:number;state:'proposed'|'accepted'|'removed'|'revoked';audience:'owner_only'|'selected_members'|'project_members'|'team_members';consent_allows_requester:boolean}[]
 }
+export interface ProjectApprovalProjection {
+  schema_version:'opensaddle.project-approvals.v1';project_id:string;limit:1000;approval_scope:'run_admission';grant_authority:'host_review_required';
+  items:{run_id:string;title:string;status:'awaiting_approval'}[]
+}
 export interface MalleableShellClient {
+  projectApprovals?(projectId:string,signal?:AbortSignal):Promise<ProjectApprovalProjection>
   projectDevices?(projectId:string,signal?:AbortSignal):Promise<ProjectDeviceProjection>
 
   projectSources?(projectId:string,signal?:AbortSignal):Promise<ProjectSourceProjection>

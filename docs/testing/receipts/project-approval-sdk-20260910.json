@@ -1,0 +1,20 @@
+{
+  "invariant": "PROJECT-APPROVAL-SDK",
+  "base": "ea6013c39169d9ce7b3da94605798e83559341b2",
+  "test_overlay": [
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern=approval SDK discovers",
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "before_exit": 1,
+  "before_output": "\u2716 approval SDK discovers only pending Project Runs and cannot grant approval (7.141875ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 256.517875\n\n\u2716 failing tests:\n\ntest at src/perspectives/project/InstalledProjectView.test.tsx:1:32525\n\u2716 approval SDK discovers only pending Project Runs and cannot grant approval (7.141875ms)\n  AssertionError [ERR_ASSERTION]: approval-reading Perspectives must be supported by the host\n  \n  0 !== 1\n  \n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-approval-sdk-88f73zyw/src/perspectives/project/InstalledProjectView.test.tsx:345:9)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 0,\n    expected: 1,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+  "after_exit": 0,
+  "after_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 approval SDK discovers only pending Project Runs and cannot grant approval (46.431416ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 232.264333\n",
+  "scope": "Mounted installed frame with real authenticated clients and paginated Core transport fixture; not browser visual evidence"
+}

@@ -444,3 +444,15 @@ native-run failure against the prior Interface head and verifies the repair.
 through the mounted host: 99 rendered updates while running, 621 ordered chunks
 before final publication, matching digest-checked output, and explicit cleanup.
 This is not a browser visual or keyboard acceptance result.
+
+
+## PROJECT-APPROVAL-SDK
+
+Signed approval-reading views receive only pending Run admission metadata from
+the mounted Project, after paginated task/membership reads and package rechecks.
+The queue cannot grant approvals or expose policy bodies/credentials. Existing
+host task navigation leads to exact review. Mounted/client tests prove pagination,
+field filtering, foreign Project rejection by host binding, unsupported grant
+requests and package revocation during read. Receipt:
+`receipts/project-approval-sdk-20260910.json`. This is bounded discovery, not live
+approval cursors or tool/model-call approval support.

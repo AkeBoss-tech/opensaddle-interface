@@ -671,3 +671,32 @@ plugins still cannot submit approval decisions. The host displays the exact task
 source, requester and policy before an explicit approval click, and clears failed
 or stale reviews. Unsupported connections show review as unavailable. This is
 Run admission, not model-call permission or execution/result verification.
+
+
+### Pending Run approval queue
+
+Require `read.project-approvals.v1` in the signed UI contract and accept
+`resources` input. Send a fenced `request` with `action: 'read_approvals'` and a
+unique `request_id`. The host always reads the mounted Project; caller-supplied
+Project IDs cannot change the scope. The response projection is:
+
+```json
+{
+  "schema_version": "opensaddle.project-approvals.v1",
+  "project_id": "P",
+  "limit": 1000,
+  "approval_scope": "run_admission",
+  "grant_authority": "host_review_required",
+  "items": [{"run_id": "run_example", "title": "Review task", "status": "awaiting_approval"}]
+}
+```
+
+The host traverses the existing bounded Project task feed (up to 1000 tasks),
+filters pending admission and rechecks membership and package access. Excess feed
+size fails rather than returning a misleading partial queue. The projection is a
+point-in-time discovery result, not permission to approve or a durable review.
+Use the existing `open_task` navigation request for a task in the current task
+projection. The host loads its current exact approval review and owns the grant.
+A newly discovered task may require a task-projection refresh before navigation.
+No policy body, approval lease, credential, or grant operation is delivered.
+Tool/model-call approvals and live approval cursors are not part of this v1 read.

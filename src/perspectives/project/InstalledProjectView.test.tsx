@@ -337,3 +337,45 @@ test('renderer error bridge removes a ready view and fences its later messages',
  assert.equal(reports.length,1,'one generic failure per frame')
  assert.equal(reports[0].kind,'failure');assert.doesNotMatch(JSON.stringify(reports),/diagnostic|repeated/)
 })
+
+// PROJECT-APPROVAL-SDK: discovery is read-only; exact grants belong to host review.
+test('approval SDK discovers only pending Project Runs and cannot grant approval',async t=>{
+ const {RemoteMalleableShellClient}=await import('../../services/remoteMalleableShell')
+ const fragment='<p>Approval queue</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT,properties:{kind:{enum:['init','resources']}}},descriptor:{ui_contract:{schema_version:'opensaddle.ui-contract.v1',mount_kind:'perspective',scope:'project',host_api_min:1,host_api_max:1,required_capabilities:['read.project-approvals.v1','navigation.task.open.v1']}},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
+ assert.equal(installedProjectViews([renderer]).length,1,'approval-reading Perspectives must be supported by the host')
+ const originalFetch=globalThis.fetch,originalAdd=globalThis.addEventListener,originalRemove=globalThis.removeEventListener
+ const listeners=new Set<(event:any)=>void>(),messages:any[]=[],opened:string[]=[]
+ let revoked=false,revokeDuringRead=false,reads=0
+ Object.assign(globalThis,{addEventListener:(_:string,fn:(event:any)=>void)=>listeners.add(fn),removeEventListener:(_:string,fn:(event:any)=>void)=>listeners.delete(fn)})
+ globalThis.fetch=async(input,options)=>{
+  const url=new URL(String(input));assert.ok(!options?.method||options.method==='GET','approval discovery must never mutate')
+  assert.equal((options?.headers as Record<string,string>).Authorization,'Bearer host-secret')
+  if(url.pathname.endsWith('/content'))return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})
+  if(url.pathname.endsWith('/application-renderers'))return Response.json({project_id:'P',renderers:revoked?[]:[renderer]})
+  assert.equal(url.pathname,'/api/v2/projects/P/task-feed');assert.equal(options?.cache,'no-store');reads++
+  if(revokeDuringRead)revoked=true
+  const item=(id:string,status:string)=>({id,title:'Task '+id,status,verification:'not_assessed',private_policy:'not for renderer'})
+  return Response.json({schema_version:'opensaddle.project-task-feed.v1',project_id:'P',items:url.searchParams.get('after')?[item('c','awaiting_approval')]:[item('a','awaiting_approval'),item('b','running')],next_cursor:url.searchParams.get('after')?null:'b'})
+ }
+ const client=new RemoteMalleableShellClient('http://core',()=> 'member','host-secret'),source={postMessage:(message:any)=>messages.push(message)},node={contentWindow:source,dataset:{}}
+ let view!:ReactTestRenderer
+ t.after(async()=>{if(view)await act(async()=>view.unmount());Object.assign(globalThis,{fetch:originalFetch,addEventListener:originalAdd,removeEventListener:originalRemove})})
+ await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[{id:'a',title:'Task a',status:'awaiting_approval',verified:false,source:'active_run'}]}} connectionKey="member" onOpenTask={id=>opened.push(id)} onNewTask={()=>{}}/>,{createNodeMock:()=>node})})
+ for(let i=0;i<50&&!view.root.findAllByType('iframe').length;i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10))})
+ assert.equal(view.root.findAllByType('iframe').length,1)
+ await act(async()=>view.root.findByType('iframe').props.onLoad())
+ const send=async(data:any)=>{const init=messages.find(m=>m.kind==='init');await act(async()=>{for(const listener of listeners)listener({source,data:{...init,...data}})})}
+ await send({kind:'ready'})
+ await send({kind:'request',action:'read_devices',request_id:'undeclared'});assert.equal(reads,0)
+ await send({kind:'request',action:'read_approvals',request_id:'queue',project_id:'OTHER'})
+ const result=messages.find(m=>m.kind==='resources');assert.ok(result)
+ assert.deepEqual(result.projection,{schema_version:'opensaddle.project-approvals.v1',project_id:'P',limit:1000,approval_scope:'run_admission',grant_authority:'host_review_required',items:[{run_id:'a',title:'Task a',status:'awaiting_approval'},{run_id:'c',title:'Task c',status:'awaiting_approval'}]})
+ assert.equal(reads,3,'page through current Project tasks then recheck membership')
+ assert.doesNotMatch(JSON.stringify(messages),/host-secret|private_policy|not for renderer/)
+ await send({kind:'request',action:'approve',task_id:'a'});assert.deepEqual(opened,[])
+ await send({kind:'request',action:'open_task',task_id:'a'});assert.deepEqual(opened,['a'])
+ revokeDuringRead=true
+ await send({kind:'request',action:'read_approvals',request_id:'revoked'})
+ assert.equal(messages.filter(m=>m.kind==='resources').length,1,'revoked package must not receive the new queue')
+ assert.equal(view.root.findAllByType('iframe').length,0)
+})
