@@ -1,0 +1,73 @@
+{
+  "schema_version": "opensaddle.resource-subscriptions-live-proof.v1",
+  "package_ref": {
+    "package_id": "dev.opensaddle.resource-example",
+    "version": "1.0.0",
+    "manifest_digest": "01ffaf5ed51a6ca0eb67005119a6f0155a0544d09f05aa6a076a28730527c9a0"
+  },
+  "content_digest": "4bc8690f030151987a52f7ea6c1c860779e3345809e4d1edb6af658e759f519e",
+  "project_id": "renderer-proof",
+  "resource_messages": [
+    {
+      "subscription": "sources",
+      "cursor": 1,
+      "items": 1
+    },
+    {
+      "subscription": "devices",
+      "cursor": 1,
+      "items": 0
+    },
+    {
+      "subscription": "approvals",
+      "cursor": 1,
+      "items": 1
+    },
+    {
+      "subscription": "approvals",
+      "cursor": 2,
+      "items": 0
+    },
+    {
+      "subscription": "sources",
+      "cursor": 2,
+      "items": 2
+    },
+    {
+      "subscription": "sources",
+      "cursor": 3,
+      "items": 2
+    },
+    {
+      "subscription": "devices",
+      "cursor": 2,
+      "items": 0
+    },
+    {
+      "subscription": "approvals",
+      "cursor": 3,
+      "items": 0
+    }
+  ],
+  "checks": [
+    "actual signed catalog and immutable renderer bytes",
+    "actual plugin JavaScript subscribes to sources devices approvals",
+    "real Core approval transition updates queue",
+    "new source updates same frame",
+    "explicit resync advances all cursors",
+    "unsubscribe prevents further source delivery",
+    "environment removal revokes frame",
+    "fixture pending Run cancelled"
+  ],
+  "limits": [
+    "Empty Project device assignments; no device execution",
+    "Mounted React with minimal DOM adapter; not browser visual or sandbox proof"
+  ],
+  "completed_at": "2026-09-10T10:34:34.437Z",
+  "cleanup": {
+    "server_stopped": true,
+    "fixture_runs_terminal": true,
+    "workers_registered": 0,
+    "environment_removed": true
+  }
+}

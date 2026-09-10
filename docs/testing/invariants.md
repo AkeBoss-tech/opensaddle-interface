@@ -475,3 +475,11 @@ resync, and stop in-flight delivery on unsubscribe/revocation. At most three may
 be active. Mounted tests use the real client and controlled Core responses/clock;
 receipt `receipts/project-resource-subscriptions-20260910.json` includes baseline
 assertion evidence. This is not durable server event replay or browser proof.
+
+
+Live PROJECT-RESOURCE-SUBSCRIPTIONS evidence:
+`receipts/project-resource-subscriptions-live-20260910.json` exercises actual signed
+plugin JavaScript and real Core reads/approval/source mutations through the mounted
+host. Same-frame updates, resync, unsubscribe and environment revocation passed;
+fixture server stopped and Runs are terminal. Device assignments were empty.
+This is a DOM-adapter integration proof, not browser visual/keyboard acceptance.
