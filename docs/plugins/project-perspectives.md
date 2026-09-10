@@ -470,3 +470,16 @@ the frame. Host polling/navigation/data updates recheck exact-package access and
 settings; failures remove the frame. The starter implements task visibility and
 card limits. Sixteen mounted/client checks and the build pass. Visual acceptance
 and combined live-server/browser proof remain pending.
+
+
+### Live settings proof
+
+The disposable signed-starter walkthrough now verifies the complete editor →
+Core persistence → host polling → actual plugin JavaScript flow over HTTP. A
+member's private visibility change hides a completed fixture task without frame
+reload; clearing the override restores it. A new client observes the saved value,
+the owner's private view remains unchanged, and shared writes by the member are
+denied. Environment removal revokes the frame. See the reusable
+`scripts/prove-renderer-settings-live.tsx` and its dated receipt. The service was
+stopped after verification. This closes combined live-server/protocol proof,
+while browser visuals and OS sandbox acceptance remain unverified.

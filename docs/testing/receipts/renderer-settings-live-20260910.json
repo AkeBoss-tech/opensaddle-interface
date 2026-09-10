@@ -1,0 +1,36 @@
+{
+  "invariant": "RENDERER-SETTINGS-LIVE",
+  "project": "renderer-proof",
+  "package_ref": {
+    "package_id": "dev.opensaddle.project-starter",
+    "version": "1.0.0",
+    "manifest_digest": "d0daea8c3e345df3888c02e848c1beef7fa14deacebd8abe2ed2294c2e0ef1e1"
+  },
+  "content_digest": "5c4a03b871984438949ef806c6dad6096704853b7de1de76d476ece92af0a0b7",
+  "checks": [
+    "real signed catalog and bytes",
+    "member generated editor saves private override",
+    "poll delivers same-frame settings to actual plugin JavaScript",
+    "completed task becomes hidden",
+    "new client reads durable value",
+    "owner private values isolated",
+    "member shared write denied",
+    "empty override restores displayed task",
+    "environment removal revokes frame"
+  ],
+  "transport": "real loopback HTTP, fixture bearer authentication",
+  "renderer": "actual signed JavaScript in minimal DOM adapter; mounted React host",
+  "limitations": [
+    "fixture task, not native agent execution",
+    "not browser visual acceptance",
+    "not OS/network sandbox proof"
+  ],
+  "completed_at": "2026-09-10T08:32:53.059Z",
+  "core_commit": "ae067b40d2549d74605df34b1d341bb234c62069",
+  "interface_commit": "76767e6f1d028e8d2ada65f08681472db29e2cd9",
+  "cleanup": {
+    "fixture_server_stopped": true,
+    "selected_fixture_environment_removed": true,
+    "tokens": "private local fixture files; not recorded or committed"
+  }
+}

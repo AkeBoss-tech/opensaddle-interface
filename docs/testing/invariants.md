@@ -269,3 +269,16 @@ updates preserve it. Generated board/dialogue plugins apply card limits and
 finished-task visibility, ignoring stale or incorrectly framed messages.
 See `receipts/renderer-settings-delivery-20260910.json`; generated JavaScript runs
 against a minimal DOM adapter, not a browser rendering acceptance test.
+
+
+## RENDERER-SETTINGS-LIVE
+
+The generated editor, actual HTTP settings client, mounted host, and signed plugin
+JavaScript must agree on a saved private override. Resetting it restores inherited
+behavior; another member's preferences stay private, shared writes respect roles,
+and removing the configured plugin removes its frame.
+`node --import tsx scripts/prove-renderer-settings-live.tsx STATE_DIR RECEIPT_PATH`
+runs against Core's disposable `dev_project_perspective_fixture`. It removes that
+fixture's selected environment. No injected HTTP responses or replacement settings
+store are used. A minimal DOM/message adapter is used instead of a browser.
+Receipt: `receipts/renderer-settings-live-20260910.json`.
