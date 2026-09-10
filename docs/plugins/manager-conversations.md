@@ -111,3 +111,14 @@ account fences. Context preview appears only when its separate client is present
 Thirteen mounted dashboard/manager checks and the renderer build pass. The new
 regression test fails on the previous Interface commit and passes after separation.
 This is component-level evidence; browser acceptance remains pending.
+
+## Pending Project context integration
+
+Core Project conversations now accept an explicit `include_conversation_context`
+dispatch option. The default is false, and the current Interface does not send it.
+The host must expose an opt-in choice explaining that prior private messages and
+authorized task results become Project-visible task context. The Core capability
+reports bounds of 32 messages and 100,000 task characters. Active prior tasks,
+unavailable output or changed context block submission. This remains a separately
+admitted task, not a resumed provider session. Implement the host choice before
+advertising contextual follow-up support in the product.
