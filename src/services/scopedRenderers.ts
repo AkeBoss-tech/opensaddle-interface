@@ -21,6 +21,7 @@ export class ScopedRendererClient {
   private base: string; private user: () => string; private token?: string
   constructor(base: string, user: () => string, token?: string) { this.base = base.replace(/\/$/, ''); this.user = user; this.token = token }
   identity() { return this.user() }
+  preferences() { return new StandalonePluginSettingsClient(this.base,this.user,this.token) }
   stateScope() { return JSON.stringify([this.base,this.user()]) }
   private async request(scope: ViewScope, path: string, init: RequestInit = {}) {
     const subject = this.user(), expected = { ...scope }

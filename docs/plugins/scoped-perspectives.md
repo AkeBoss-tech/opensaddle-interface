@@ -138,3 +138,10 @@ The production-host/real-Core receipt covers distinct personal and Team values;
 the bundled helper also has real-browser delivery evidence in
 `scoped-settings-browser-20260910.json`. Settings editing through the full desktop
 remains a separate acceptance check.
+
+For installed scoped views, open **View settings** on the catalog item. The host
+uses the verified catalog reference to find existing preferences. If none exist,
+**Create view defaults** explicitly enrolls that exact application; the shared
+settings form then edits its own user/Team layer. Team creation and editing still
+require Core authorization. The advanced exact-reference form remains available
+for other installed packages. No package execution is required to edit defaults.

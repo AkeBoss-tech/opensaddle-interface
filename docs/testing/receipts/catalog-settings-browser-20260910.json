@@ -1,0 +1,7 @@
+{
+ "boundary":"production catalog/preferences/editor in real browser, disposable authenticated Core",
+ "verified":["personal defaults created without manual package reference","personal Density override saved","Team defaults created from separate catalog scope","Team Density override saved using Enter","Team override retained after browser reload","no browser error logs"],
+ "checks":"9 existing standalone and renderer-settings tests passed; renderer build passed",
+ "screenshot":"out/screenshots/catalog-settings-20260910/team-saved.png",
+ "limits":["unstyled harness, not packaged Electron","owner account; role denial covered by existing tests","personal and Team settings edits affect disposable fixture only"]
+}
