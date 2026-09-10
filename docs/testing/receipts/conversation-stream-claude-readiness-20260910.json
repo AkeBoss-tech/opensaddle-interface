@@ -1,0 +1,18 @@
+{
+  "schema_version": "opensaddle.native-stream-readiness-check.v1",
+  "adapter_id": "claude-code-stream-json",
+  "executable_version": "2.1.263 (Claude Code)",
+  "protocol_state": "compatible",
+  "authentication_state": "unauthenticated",
+  "ready": false,
+  "reason": "provider_authentication_required",
+  "native_runs_dispatched": 0,
+  "cleanup": {
+    "processes_stopped": true,
+    "worker_credential_revoked": true,
+    "workspace_empty": true
+  },
+  "limits": [
+    "Actual Claude streaming remains unverified until authenticated readiness is available"
+  ]
+}
