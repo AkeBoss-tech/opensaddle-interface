@@ -15,6 +15,7 @@ export function ScopedViewHost({client,scope,environment,candidate,onUnavailable
   let disposed=false,ready=false,statePending=false,sequence=0,reportTail=Promise.resolve(),poll:ReturnType<typeof setTimeout>|undefined,timeout:ReturnType<typeof setTimeout>|undefined
   let probeTimer:ReturnType<typeof setTimeout>|undefined,probeDeadline:ReturnType<typeof setTimeout>|undefined,pendingProbe:string|undefined
   const epoch=++generation,nonce=crypto.randomUUID(),abort=new AbortController(),item=candidate as Candidate
+  const capabilities=item.descriptor?.ui_contract?.required_capabilities??[],knownDevices=new Set<string>();let resourcePending=false
   const packageRef={package_id:item.package_id,version:item.package_version,manifest_digest:item.manifest_digest}
   const instance=item.environment_application?.instances[0]?.instance_id
   let session:Awaited<ReturnType<ScopedRendererClient['createHost']>>|undefined
@@ -34,6 +35,21 @@ export function ScopedViewHost({client,scope,environment,candidate,onUnavailable
   const listener=(event:MessageEvent)=>{
    if(abort.signal.aborted||!current()||!instance||!acceptsApplicationMessage(event,{source:frame.current?.contentWindow??null,nonce,generation:epoch,instanceId:instance,connectionKey:key,packageRef}))return
    if(event.data.kind==='pong'){if(pendingProbe&&event.data.request_id===pendingProbe){pendingProbe=undefined;clearTimeout(probeDeadline);probeTimer=setTimeout(probe,5000)}return}
+   if(event.data.kind==='request'&&ready&&!resourcePending&&scope.kind==='user'){
+    const message=event.data as typeof event.data & {after?:unknown;device_id?:unknown}
+    if(typeof message.request_id!=='string'||!/^[-A-Za-z0-9_]{1,100}$/.test(message.request_id))return
+    const inventory=message.action==='read_devices'&&capabilities.includes('owner.devices.read')&&(message.after===undefined||typeof message.after==='string'&&message.after.length<=512)
+    const activity=message.action==='read_device_activity'&&capabilities.includes('owner.device-activity.read')&&typeof message.device_id==='string'&&knownDevices.has(message.device_id)
+    if(!inventory&&!activity)return
+    resourcePending=true
+    void (async()=>{
+     await report('ready');if(!current()||abort.signal.aborted)return
+     const value=inventory?await client.ownerDevices(scope,typeof message.after==='string'?message.after:''):await client.ownerDeviceActivity(scope,message.device_id as string)
+     await report('ready');if(!current()||abort.signal.aborted)return
+     if('items' in value){for(const device of value.items)knownDevices.add(device.device_id);while(knownDevices.size>200)knownDevices.delete(knownDevices.values().next().value!)}
+     frame.current?.contentWindow?.postMessage({...envelope,kind:'resources',request_id:message.request_id,resource:inventory?'owner_devices':'owner_device_activity',value},'*')
+    })().catch(()=>{if(current()&&!abort.signal.aborted)frame.current?.contentWindow?.postMessage({...envelope,kind:'resource_error',request_id:message.request_id,error:'unavailable'},'*')}).finally(()=>{resourcePending=false})
+   }
    if(event.data.kind==='state'&&ready&&!statePending){
     statePending=true
     const proposed=event.data.state
@@ -44,7 +60,7 @@ export function ScopedViewHost({client,scope,environment,candidate,onUnavailable
   }
   // Parent init is dispatched only to this opaque-origin sandbox. No services,
   // tokens, Project identifiers or automatic cross-scope data are exposed.
-  const initialize=()=>frame.current?.contentWindow?.postMessage({...envelope,kind:'init',state:instance?readScopedViewState(stateScope,scope,item,instance):undefined,model:{schema_version:'opensaddle.scoped-view.v1',scope:{...scope},capabilities:[]}},'*')
+  const initialize=()=>frame.current?.contentWindow?.postMessage({...envelope,kind:'init',state:instance?readScopedViewState(stateScope,scope,item,instance):undefined,model:{schema_version:'opensaddle.scoped-view.v1',scope:{...scope},capabilities}},'*')
   addEventListener('message',listener)
   const check=async()=>{
    const latest=await client.environment(scope,abort.signal)
@@ -56,7 +72,8 @@ export function ScopedViewHost({client,scope,environment,candidate,onUnavailable
   setState({key,status:'Loading view…'})
   void (async()=>{
    const contract=item.descriptor?.ui_contract
-   if(!instance||contract?.schema_version!=='opensaddle.ui-contract.v1'||contract.scope!==scope.kind||contract.mount_kind!=='perspective'||contract.host_api_min>1||contract.host_api_max<1||!Array.isArray(contract.required_capabilities)||contract.required_capabilities.length)throw Error('unsupported_scoped_contract')
+   if(!instance||contract?.schema_version!=='opensaddle.ui-contract.v1'||contract.scope!==scope.kind||contract.mount_kind!=='perspective'||contract.host_api_min>1||contract.host_api_max<1||!Array.isArray(contract.required_capabilities)||contract.required_capabilities.some(capability=>scope.kind!=='user'||!['owner.devices.read','owner.device-activity.read'].includes(capability)))throw Error('unsupported_scoped_contract')
+   if(capabilities.includes('owner.device-activity.read')&&!capabilities.includes('owner.devices.read'))throw Error('owner_inventory_required')
    const ref={...packageRef,application_id:item.application_id,environment_revision:environment.revision,environment_digest:environment.definition_digest,content_digest:item.content_digest}
    const manifest={...item,instance_id:instance,size:item.size_bytes,package_ref:packageRef,authority:'core' as const,sandbox_policy:{scripts:true as const,network:false as const,same_origin:false as const,navigation:false as const}}
    const fragment=await readExactRenderer(await client.content(scope,ref,abort.signal),manifest)

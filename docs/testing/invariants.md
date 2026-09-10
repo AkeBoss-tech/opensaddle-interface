@@ -781,3 +781,18 @@ then silence with repeated stale pong messages, fallback and the Core error
 receipt. The original implementation failed the silent-frame removal assertion.
 This does not prove recovery when JavaScript blocks the parent/browser event loop;
 process isolation and packaged desktop termination remain separate release checks.
+
+## OWNER-DEVICE-SDK-1
+
+A signed personal view declaring owner device reads receives only its authenticated
+owner's bounded inventory projection. Team scope cannot use the capability.
+Activity additionally requires the activity capability and a device delivered
+to that frame. Host-session authorization brackets reads and account changes
+prevent delivery. Payloads omit credentials and retain task-authority uncertainty.
+Only one resource request is in flight; known device IDs are bounded at 200.
+
+`scripts/prove-owner-device-sdk-live.tsx` runs production host/services against
+real signed Core fixtures with owner and outsider inventory. It verifies inventory
+isolation, Core denial of outsider activity, no bearer in frame payloads, explicit
+activity selection and cleanup. Only iframe messages are simulated. This is a new
+SDK capability, not a preexisting bug; no baseline failure is claimed.
