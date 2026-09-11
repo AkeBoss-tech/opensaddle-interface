@@ -4,7 +4,7 @@ import type { CommandCenterSnapshot } from '../../services/contracts'
 
 void React
 
-function projectHref(projectId: string) { return `/project/${encodeURIComponent(projectId)}` }
+function projectHref(projectId: string) { return `/project/${encodeURIComponent(projectId)}/overview` }
 function dateTime(value?: string) {
   if (!value) return 'Update time unavailable'
   const date = new Date(value)

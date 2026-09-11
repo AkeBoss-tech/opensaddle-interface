@@ -28,6 +28,7 @@ test('mounted objective updates to the revised Goal identity without retaining t
   const renderer = await mount(snapshot('available', 7))
   assert.match(JSON.stringify(renderer.toJSON()), /Ship the daily loop.*G1.*revision.*7.*Acceptance criteria/s)
   await act(async () => { renderer.update(<MemoryRouter><CurrentObjectivePanel snapshot={snapshot('available', 8)} projectName={(id) => `Project ${id}`} /></MemoryRouter>) })
+  assert.equal(renderer.root.findByType('a').props.href, '/project/P1/overview')
   const revised = JSON.stringify(renderer.toJSON())
   assert.match(revised, /revision.*8/)
   assert.equal(renderer.root.findAllByType('code').some((node) => node.children.join('') === '7'), false)
@@ -42,7 +43,7 @@ test('mounted multi-project ambiguity explains why Home does not select a priori
 test('mounted objective distinguishes configured empty from unavailable authority', async () => {
   const empty = await mount(snapshot('empty'))
   assert.match(JSON.stringify(empty.toJSON()), /No active objective is recorded/)
-  assert.equal(empty.root.findByType('a').props.href, '/project/P1')
+  assert.equal(empty.root.findByType('a').props.href, '/project/P1/overview')
   assert.match(empty.root.findByType('a').children.join(''), /Create objective/)
   const unavailable=JSON.stringify((await mount(snapshot('unavailable'))).toJSON());assert.match(unavailable,/Objective tracking is not configured for this server/);assert.doesNotMatch(unavailable,/goal_authority_not_configured/)
 })

@@ -986,3 +986,13 @@ The rendered connected sidebar marks the active task route, keeps Home/Work/Oper
 ## MOBILE-NAVIGATION-1
 
 The navigation toggle identifies the sidebar and announces expanded state. Opening focuses the first navigation item; Escape and a route change close the drawer and return focus to the toggle. ConnectedNavigation.test.tsx asserts the actual Topbar's collapsed accessibility contract and failed with an assertion before repair. The full-app browser journey verifies open, Escape, Work navigation, focus return, and absence of horizontal overflow at an observed 433 CSS pixels. This replaces the obsolete five-button bottom-bar source assertion. The drawer is non-modal; focus is not trapped. Receipt: docs/testing/receipts/mobile-navigation-fixed-20260910.json.
+
+### OBJECTIVE-NAVIGATION-1
+
+Home objective creation and existing objective links reach the Project overview,
+which owns the objective editor. They must not route to the replaceable conversation
+workspace. CurrentObjectivePanel.test.tsx checks both rendered link destinations;
+the identical test failed twice before the correction and passes afterward (3 tests).
+The real personal Electron app confirmed the old empty-state link misroute and the
+corrected saved-objective link reaching the populated editor after renderer reload.
+TypeScript and desktop renderer build passed. Screenshot: out/screenshots/reviewer-objective-20260910/home.png.
