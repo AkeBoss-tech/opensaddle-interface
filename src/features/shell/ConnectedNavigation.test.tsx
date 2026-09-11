@@ -5,7 +5,7 @@ import {registerHooks} from 'node:module'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {MemoryRouter} from 'react-router-dom'
 import {act,create,type ReactTestRenderer} from 'react-test-renderer'
-import {Topbar} from '../../components/layout/TopBar'
+import {Topbar} from '../../components/layout/Topbar'
 import {StoreProvider} from '../../data/store'
 import {SurfaceErrorBoundary} from '../../ui/SurfaceHost'
 

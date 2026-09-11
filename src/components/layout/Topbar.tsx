@@ -1,3 +1,4 @@
+import {MobileNavigation} from './MobileNavigation'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../../data/store'
@@ -80,7 +81,7 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
         <button className="icon-btn page-nav" title="Back" onClick={onBack}><Icon name="back" /></button>
         <button className="icon-btn page-nav" title="Forward" onClick={onForward}><Icon name="forward" /></button>
       </div>
-      <button className="icon-btn mobile-menu" aria-label="Open team navigation" onClick={() => document.getElementById('sidebar')?.classList.toggle('mobile-open')}><Icon name="menu" /></button>
+      <MobileNavigation />
       <div className="crumbs">{crumbs}</div>
       <div className="topbar-actions">
         <Link
