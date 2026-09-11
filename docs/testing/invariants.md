@@ -1021,3 +1021,12 @@ The registered client validates optional comparison state, commit and digest.
 ProjectKnowledgePanel and registeredProjectKnowledge tests, TypeScript and desktop
 build pass. Actual personal server comparison remains pending runtime upgrade.
 This is not accepted-procedure invalidation or automatic source exclusion.
+
+### ARTIFACT-HANDOFF-ROUTING-1
+
+Independent artifact application links preserve the host's hash routing on desktop
+and relative HTTP routing on web, along with the exact artifact and command identity.
+The mounted desktop handoff assertion fails with the previous relative-only behavior
+and passes with the hash-aware link. Return links use the same production helper.
+32 review/evidence tests, TypeScript and desktop build pass. Initial test-environment
+errors were not counted as regression evidence. Live desktop round-trip is pending.

@@ -265,3 +265,18 @@ test('mounted connected-resource inspector renders the no-grant path without an 
   assert.match(markup, /No connected-resource capability was granted for this Run/)
   assert.doesNotMatch(markup, /Get repository|Run read/)
 })
+
+// ARTIFACT-HANDOFF-ROUTING-1
+test('desktop artifact handoff retains the host hash route and exact artifact identity', async () => {
+  const previous = globalThis.window
+  Object.assign(globalThis, {window:{location:{protocol:'opensaddle:'},addEventListener(){},removeEventListener(){}}})
+  let renderer:ReactTestRenderer|undefined
+  try {
+    renderer=await mount(client())
+    const link=renderer.root.findAllByType('a').find(node=>node.children.join('')==='Open with Artifact evidence notebook')!
+    assert.ok(link.props.href.startsWith('#/artifact-evidence?'),'desktop handoff must stay in the hash router')
+    const params=new URLSearchParams(link.props.href.split('?')[1])
+    assert.equal(params.get('artifact'),'A');assert.equal(params.get('digest'),'digest-A')
+    assert.equal(params.get('descriptor'),'descriptor-new')
+  } finally {if(renderer)await act(async()=>renderer!.unmount());Object.assign(globalThis,{window:previous})}
+})
