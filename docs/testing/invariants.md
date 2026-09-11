@@ -996,3 +996,17 @@ the identical test failed twice before the correction and passes afterward (3 te
 The real personal Electron app confirmed the old empty-state link misroute and the
 corrected saved-objective link reaching the populated editor after renderer reload.
 TypeScript and desktop renderer build passed. Screenshot: out/screenshots/reviewer-objective-20260910/home.png.
+
+### PROJECT-PROFILE-AVAILABILITY-1
+
+A Project profile without an onboarding client reports unavailable, never indefinite
+loading. Request failures replace loading; removing the capability removes stale
+errors. The production profile panel was extracted without changing behavior, then
+the same two mounted tests failed on the original loading output before adding the
+capability guard. CSS-only loader adaptation was needed; the initial import failure
+was not counted as regression proof. After the guard, both tests and two goal editor
+tests passed. TypeScript and desktop renderer build passed. Real personal desktop
+confirmed the unavailable message and retained objective editor. This does not add
+the missing personal-runtime onboarding API.
+
+Evidence: `out/screenshots/reviewer-objective-20260910/profile-unavailable.png`.
