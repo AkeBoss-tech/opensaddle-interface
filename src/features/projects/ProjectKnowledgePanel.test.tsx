@@ -108,3 +108,16 @@ test('unknown withdrawal clears protected content, refreshes eligibility, and st
   assert.equal(refreshed,1);assert.doesNotMatch(JSON.stringify(view.toJSON()),/late response|README.md/)
   await act(async()=>view.unmount())
 })
+
+// INV-RETAINED-SOURCE-FRESHNESS: status is descriptive, never a review mutation.
+test('retained review history distinguishes changed content from unavailable freshness', async () => {
+  let mutations=0
+  const authority:ProjectKnowledgeAuthority={list:async()=>({...list,captures:[{...capture,state:'reviewed',freshness:{state:'changed',checkedCommit:'c'.repeat(40)}}]}),setup:async()=>{mutations++},capture:async()=>{mutations++},inspect:async()=>({...capture,text:'Historical content'}),review:async()=>{mutations++}}
+  let view!:ReactTestRenderer
+  await act(async()=>{view=create(<ProjectKnowledgePanel authority={authority} projectId="P" onReviewed={()=>{}}/>);await flush()})
+  assert.match(JSON.stringify(view.toJSON()),/Source content changed since capture/)
+  assert.match(JSON.stringify(view.toJSON()),/Review recorded/)
+  assert.match(JSON.stringify(view.toJSON()),/cccccccccccccccccccccccccccccccccccccccc/)
+  assert.equal(mutations,0)
+  await act(async()=>view.unmount())
+})

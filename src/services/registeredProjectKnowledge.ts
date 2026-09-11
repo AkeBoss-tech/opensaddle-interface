@@ -24,7 +24,13 @@ export class RegisteredProjectKnowledgeClient implements ProjectKnowledgeAuthori
   private captureRecord(raw: unknown): ProjectKnowledgeCapture {
     const item = object(raw)
     if (item.state !== 'captured' && item.state !== 'reviewed') throw Error('Project knowledge review state is invalid')
-    return { sourceId: text(item.source_id), ...(item.availability === undefined ? {} : { availability: availability(item.availability) }), captureId: text(item.capture_id), path: text(item.path), commit: commit(item.commit), digest: digest(item.content_digest), state: item.state }
+    let freshness: ProjectKnowledgeCapture['freshness']
+    if (item.freshness !== undefined) {
+      const value = object(item.freshness)
+      if (!['unchanged', 'changed', 'missing', 'unknown'].includes(String(value.state))) throw Error('Project knowledge freshness is invalid')
+      freshness = { state: value.state as NonNullable<ProjectKnowledgeCapture['freshness']>['state'], checkedCommit: commit(value.checked_commit), ...(value.current_digest === undefined ? {} : { currentDigest: digest(value.current_digest) }) }
+    }
+    return { freshness, sourceId: text(item.source_id), ...(item.availability === undefined ? {} : { availability: availability(item.availability) }), captureId: text(item.capture_id), path: text(item.path), commit: commit(item.commit), digest: digest(item.content_digest), state: item.state }
   }
   async list(projectId: string) {
     const value = await this.request(this.route(projectId))

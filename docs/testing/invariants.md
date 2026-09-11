@@ -1010,3 +1010,14 @@ confirmed the unavailable message and retained objective editor. This does not a
 the missing personal-runtime onboarding API.
 
 Evidence: `out/screenshots/reviewer-objective-20260910/profile-unavailable.png`.
+
+### INV-RETAINED-SOURCE-FRESHNESS
+
+Knowledge rows show the server's committed-byte freshness and checked revision,
+separate from review history. Older servers with no comparison remain unknown;
+a different Git revision alone is not labeled changed. A mounted reviewed-source
+case proves changed content is visible without submitting a review or mutation.
+The registered client validates optional comparison state, commit and digest.
+ProjectKnowledgePanel and registeredProjectKnowledge tests, TypeScript and desktop
+build pass. Actual personal server comparison remains pending runtime upgrade.
+This is not accepted-procedure invalidation or automatic source exclusion.
