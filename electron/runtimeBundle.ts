@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { accessSync, constants, existsSync, readFileSync } from 'node:fs'
+import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 export interface KrailRuntimeManifest {
@@ -24,12 +24,25 @@ export interface ResolvedKrailRuntime {
   backendCommand: string
 }
 
-function bundledCommand(root: string, candidate: unknown): string | null {
+function confinedBundledPath(root: string, candidate: unknown): string | null {
   if (typeof candidate !== 'string' || !candidate || path.isAbsolute(candidate)) return null
   const resolved = path.resolve(root, candidate)
   if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) return null
-  if (!existsSync(resolved)) return null
   try {
+    const actualRoot = realpathSync(root)
+    const actualPath = realpathSync(resolved)
+    if (actualPath !== actualRoot && !actualPath.startsWith(`${actualRoot}${path.sep}`)) return null
+  } catch {
+    return null
+  }
+  return resolved
+}
+
+function bundledCommand(root: string, candidate: unknown): string | null {
+  const resolved = confinedBundledPath(root, candidate)
+  if (!resolved) return null
+  try {
+    if (!statSync(resolved).isFile()) return null
     accessSync(resolved, process.platform === 'win32' ? constants.F_OK : constants.X_OK)
   } catch {
     return null
@@ -39,8 +52,8 @@ function bundledCommand(root: string, candidate: unknown): string | null {
 
 function bundledDigest(root: string, candidate: unknown, expected: unknown): boolean {
   if (typeof candidate !== 'string' || !candidate || path.isAbsolute(candidate) || typeof expected !== 'string' || !/^[a-f0-9]{64}$/.test(expected)) return false
-  const resolved = path.resolve(root, candidate)
-  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) return false
+  const resolved = confinedBundledPath(root, candidate)
+  if (!resolved) return false
   try {
     return createHash('sha256').update(readFileSync(resolved)).digest('hex') === expected
   } catch {
@@ -51,7 +64,10 @@ function bundledDigest(root: string, candidate: unknown, expected: unknown): boo
 export function resolveKrailRuntime(resourceRoot: string): ResolvedKrailRuntime | null {
   const root = path.resolve(resourceRoot, 'krail-runtime')
   try {
-    const manifest = JSON.parse(readFileSync(path.join(root, 'manifest.json'), 'utf8')) as KrailRuntimeManifest
+    if (!confinedBundledPath(path.resolve(resourceRoot), 'krail-runtime')) return null
+    const manifestPath = confinedBundledPath(root, 'manifest.json')
+    if (!manifestPath) return null
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as KrailRuntimeManifest
     if (manifest.schemaVersion !== 2 || manifest.runtime !== 'krail') return null
     const expectedRepositories = {
       interface: 'https://github.com/AkeBoss-tech/opensaddle-interface.git',

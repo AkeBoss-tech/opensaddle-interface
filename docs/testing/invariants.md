@@ -1110,7 +1110,7 @@ The mounted desktop commissioning form distinguishes a missing coding-agent CLI 
 
 ## DESKTOP-PINNED-BUNDLE-1
 
-In a packaged app, the bundled Core executable is available only when the exact KRAIL runtime manifest, pinned interpreter, dependency records, KRAIL commands, and Core launcher validate together. A stray Core launcher cannot start the managed backend after the bundle is damaged or incomplete. An explicitly configured executable remains an operator override. Owning resource-root test: `test/krailRuntimeBundle.test.ts`; desktop main selects only its validated `backendCommand`.
+In a packaged app, the bundled Core executable is available only when the exact KRAIL runtime manifest, pinned interpreter, dependency records, KRAIL commands, and Core launcher validate together. A stray Core launcher cannot start the managed backend after the bundle is damaged or incomplete. Manifest, digest records and launchers must resolve inside their declared resource root, even when a path is a symlink; symlinks remaining inside the bundle are allowed. Commands must resolve to regular executable files, not directories. The resource-root tests reproduced prior acceptance of both an external launcher and a directory launcher before these checks and pass afterward. An explicitly configured executable remains an operator override. Owning resource-root test: `test/krailRuntimeBundle.test.ts`; desktop main selects only its validated `backendCommand`.
 
 ## WORKSPACE-PERSISTENCE-1
 
