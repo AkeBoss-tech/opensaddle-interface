@@ -1,0 +1,7 @@
+# Pinned desktop bundle smoke, 2026-09-19
+
+The committed macOS arm64 Python 3.13 lock was downloaded into a temporary directory: its 35 PyPI wheels and immutable Python archive each matched the lock's byte size and SHA-256. The bundle builder ran from a verified Git archive of Interface `8559c9064991f9f38c0b6513cc41382bf0b9168d` with the official KRAIL `v1.2.0rc2` and Core `v1.2.0rc5` wheels. Source revision inputs were their exact release-tag commits (`d3e5fbc1d464f3d18f6fe82b6f7037395ef62049` and `ded820bcc077943dd6a468c5e123eff8a3aa22fc`). The resulting manifest pins KRAIL `1.2.0rc2` and Core `1.2.0rc5`; the current `resolveKrailRuntime` returned both launchers from that temporary bundle.
+
+The builder's sanitized launcher smokes passed. `node scripts/smoke-packaged-onboarding.mjs --resources <temporary runtime-bundle>` then passed with `project_onboarding` at `opensaddle.project-onboarding/v1`, registered a disposable Git project, performed profile-only KRAIL prepare, and found its source unchanged. The result reported execution barriers `git_clean`, `runner_executable`, `runner_authenticated`, and `runner_compatible`. No native coding agent ran.
+
+This exercised the source-free sidecar resources on the developer Mac. It did not launch a signed Electron app, use a fresh macOS account, or prove restart, upgrade, uninstall, or retained knowledge. The working tree's new packaged-backend guard is covered separately by `DESKTOP-PINNED-BUNDLE-1`; the archive used for this smoke is the clean pre-change Interface commit.

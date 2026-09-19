@@ -694,11 +694,11 @@ async function resolveOpenSaddleLaunch(): Promise<OpenSaddleLaunch | null> {
   if (configured && existsSync(configured)) {
     return { command: configured, args: serverArgs, cwd: stateDir, source: 'configured executable' }
   }
-  const bundled = process.platform === 'win32'
-    ? path.join(process.resourcesPath, 'opensaddle-backend', 'opensaddle.exe')
-    : path.join(process.resourcesPath, 'opensaddle-backend', 'opensaddle')
-  if (!isDev && existsSync(bundled)) {
-    return { command: bundled, args: serverArgs, cwd: stateDir, source: 'bundled backend' }
+  if (!isDev) {
+    const bundled = packagedKrailRuntime()
+    return bundled
+      ? { command: bundled.backendCommand, args: serverArgs, cwd: stateDir, source: 'bundled backend' }
+      : null
   }
   const backendRoots = [
     process.env.OPENSADDLE_BACKEND_DIR,
@@ -741,7 +741,9 @@ async function launchOpenSaddle(): Promise<void> {
   if (opensaddleProc || sidecarsShuttingDown) return
   const launch = await resolveOpenSaddleLaunch()
   if (!launch) {
-    opensaddleLaunchError = 'OpenSaddle backend was not found. Install the opensaddle CLI or set OPENSADDLE_EXECUTABLE.'
+    opensaddleLaunchError = isDev
+      ? 'OpenSaddle backend was not found. Install the opensaddle CLI or set OPENSADDLE_EXECUTABLE.'
+      : 'The packaged runtime is missing or incomplete. Reinstall the OpenSaddle desktop app.'
     return
   }
   opensaddleLaunchError = null

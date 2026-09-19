@@ -21,6 +21,7 @@ export interface ResolvedKrailRuntime {
   manifest: KrailRuntimeManifest
   adminCommand: string
   mutationCommand: string
+  backendCommand: string
 }
 
 function bundledCommand(root: string, candidate: unknown): string | null {
@@ -73,8 +74,9 @@ export function resolveKrailRuntime(resourceRoot: string): ResolvedKrailRuntime 
     const pythonCommand = bundledCommand(root, manifest.python.command)
     const adminCommand = bundledCommand(root, manifest.commands?.admin)
     const mutationCommand = bundledCommand(root, manifest.commands?.mutation)
-    return pythonCommand && adminCommand && mutationCommand
-      ? { manifest, adminCommand, mutationCommand }
+    const backendCommand = bundledCommand(path.resolve(resourceRoot), process.platform === 'win32' ? 'opensaddle-backend/opensaddle.exe' : 'opensaddle-backend/opensaddle')
+    return pythonCommand && adminCommand && mutationCommand && backendCommand
+      ? { manifest, adminCommand, mutationCommand, backendCommand }
       : null
   } catch {
     return null
