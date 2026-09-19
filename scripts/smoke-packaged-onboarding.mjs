@@ -18,8 +18,12 @@ function requireValue(args, flag) {
 function configuration(args) {
   const resources = requireValue(args, '--resources')
   const app = requireValue(args, '--app')
+  const upgradeResources = requireValue(args, '--upgrade-resources')
   if (Boolean(resources) === Boolean(app)) {
     throw new Error('provide exactly one of --resources <Resources> or --app <OpenSaddle.app>')
+  }
+  if (upgradeResources && (!resources || upgradeResources === resources)) {
+    throw new Error('--upgrade-resources requires a distinct initial --resources bundle')
   }
   if (app) {
     const appResources = path.join(app, 'Contents', 'Resources')
@@ -31,7 +35,7 @@ function configuration(args) {
   }
   const launcher = path.join(resources, 'opensaddle-backend', process.platform === 'win32' ? 'opensaddle.exe' : 'opensaddle')
   if (!existsSync(launcher)) throw new Error(`OpenSaddle sidecar launcher is missing: ${launcher}`)
-  return { mode: 'sidecar', command: launcher, args: null, resources }
+  return { mode: 'sidecar', command: launcher, args: null, resources, upgradeResources }
 }
 
 function appendLog(current, chunk) {
@@ -139,7 +143,7 @@ async function waitForCompatibleHealth(baseUrl, childState, timeoutMs = 30_000) 
   throw new Error(`compatible sidecar did not become ready at ${baseUrl}: ${lastError}`)
 }
 
-async function waitForManagedOwnership(stateDir, baseUrl, timeoutMs = 5_000) {
+async function waitForManagedOwnership(stateDir, baseUrl, ownerPid, timeoutMs = 5_000) {
   const ownershipPath = path.join(stateDir, 'desktop-sidecar.json')
   const deadline = Date.now() + timeoutMs
   let lastError = 'ownership record was not created'
@@ -150,6 +154,8 @@ async function waitForManagedOwnership(stateDir, baseUrl, timeoutMs = 5_000) {
         ownership?.version === 1
         && Number.isSafeInteger(ownership.pid)
         && ownership.pid > 1
+        && processRunning(ownership.pid)
+        && ownership.ownerPid === ownerPid
         && ownership.url === baseUrl
         && path.resolve(ownership.stateDir ?? '') === path.resolve(stateDir)
         && typeof ownership.command === 'string'
@@ -162,6 +168,24 @@ async function waitForManagedOwnership(stateDir, baseUrl, timeoutMs = 5_000) {
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   throw new Error(`Electron did not record ownership of its packaged sidecar: ${lastError}`)
+}
+
+async function launchRuntime(config, context, env) {
+  context.spawnError = null
+  const child = spawn(config.command, config.args, {
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: process.platform !== 'win32',
+  })
+  context.child = child
+  child.stdout?.on('data', (chunk) => { context.stdout = appendLog(context.stdout, chunk) })
+  child.stderr?.on('data', (chunk) => { context.stderr = appendLog(context.stderr, chunk) })
+  child.once('error', (error) => { context.spawnError = error })
+  const health = await waitForCompatibleHealth(context.baseUrl, { child, get spawnError() { return context.spawnError } })
+  const ownership = config.mode === 'desktop-app'
+    ? await waitForManagedOwnership(context.stateDir, context.baseUrl, child.pid)
+    : null
+  return { health, ownership }
 }
 
 function processRunning(pid) {
@@ -232,27 +256,25 @@ async function runSmoke(config, context) {
     sanitizedEnv.OPENSADDLE_KRAIL_MUTATION_COMMAND = path.join(config.resources, 'krail-runtime', 'bin', 'krail-mutate')
     config.args = ['serve-api', '--host', '127.0.0.1', '--port', String(port), '--state-dir', state]
   }
+  const replacement = config.upgradeResources
+    ? configuration(['--resources', config.upgradeResources])
+    : config
+  if (config.upgradeResources) {
+    const first = JSON.parse(readFileSync(path.join(config.resources, 'krail-runtime', 'manifest.json'), 'utf8'))
+    const second = JSON.parse(readFileSync(path.join(replacement.resources, 'krail-runtime', 'manifest.json'), 'utf8'))
+    if (first.wheel?.sha256 === second.wheel?.sha256 && first.opensaddle?.sha256 === second.opensaddle?.sha256) {
+      throw new Error('upgrade bundles must contain a changed KRAIL or OpenSaddle wheel')
+    }
+    replacement.args = config.args
+  }
 
   const before = createDisposableProject(project, sanitizedEnv)
-  const child = spawn(config.command, config.args, {
-    env: sanitizedEnv,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: process.platform !== 'win32',
-  })
-  context.child = child
   context.stateDir = state
   context.baseUrl = baseUrl
-  child.stdout?.on('data', (chunk) => { context.stdout = appendLog(context.stdout, chunk) })
-  child.stderr?.on('data', (chunk) => { context.stderr = appendLog(context.stderr, chunk) })
-  child.once('error', (error) => { context.spawnError = error })
-  const health = await waitForCompatibleHealth(baseUrl, { child, get spawnError() { return context.spawnError } })
+  const { health, ownership } = await launchRuntime(config, context, sanitizedEnv)
   if (health.clis?.codex !== false || health.clis?.claude_code !== false) {
     throw new Error(`clean profile-only smoke unexpectedly discovered Codex or Claude: ${JSON.stringify(health.clis)}`)
   }
-  const ownership = config.mode === 'desktop-app'
-    ? await waitForManagedOwnership(state, baseUrl)
-    : null
-
   const tokenPayload = await requestJson(baseUrl, '/api/local-action-token')
   if (typeof tokenPayload?.token !== 'string' || tokenPayload.token.length < 16) {
     throw new Error('local-action bootstrap returned no usable token')
@@ -287,6 +309,44 @@ async function runSmoke(config, context) {
     throw new Error('prepared onboarding state was not durably readable')
   }
 
+  await cleanup(context)
+  context.child = null
+  const replacementEnv = config.upgradeResources
+    ? {
+        ...sanitizedEnv,
+        OPENSADDLE_KRAIL_RUNTIME_DIR: replacement.resources,
+        OPENSADDLE_KRAIL_ADMIN_COMMAND: path.join(replacement.resources, 'krail-runtime', 'bin', 'krail-admin'),
+        OPENSADDLE_KRAIL_MUTATION_COMMAND: path.join(replacement.resources, 'krail-runtime', 'bin', 'krail-mutate'),
+      }
+    : sanitizedEnv
+  const restarted = await launchRuntime(replacement, context, replacementEnv)
+  if (restarted.health.clis?.codex !== false || restarted.health.clis?.claude_code !== false) {
+    throw new Error('restarted profile-only runtime unexpectedly discovered Codex or Claude')
+  }
+  const restartedToken = await requestJson(baseUrl, '/api/local-action-token')
+  if (typeof restartedToken?.token !== 'string' || restartedToken.token.length < 16 || restartedToken.token === tokenPayload.token) {
+    throw new Error('restart did not establish a fresh process-scoped local-action token')
+  }
+  const retainedProject = await requestJson(baseUrl, `/api/projects/${projectId}`)
+  if (retainedProject?.project_id !== projectId || realpathSync(retainedProject?.root ?? '') !== realpathSync(project)) {
+    throw new Error(`registered Project did not survive restart: ${JSON.stringify(retainedProject)}`)
+  }
+  const retainedOnboarding = await requestJson(baseUrl, `/api/projects/${projectId}/onboarding`)
+  if (retainedOnboarding?.fingerprint !== prepared.fingerprint || retainedOnboarding?.active_run_id !== null) {
+    throw new Error('prepared onboarding state did not survive restart')
+  }
+  const preparedAfterRestart = await requestJson(baseUrl, `/api/projects/${projectId}/onboarding/prepare`, {
+    method: 'POST',
+    headers: { 'x-opensaddle-local-action': restartedToken.token },
+    body: JSON.stringify({ runner: 'codex_cli' }),
+  })
+  if (preparedAfterRestart?.fingerprint !== prepared.fingerprint
+    || preparedAfterRestart?.discovery?.contract !== 'krail.project-discovery/v1'
+    || preparedAfterRestart?.execution_ready !== false
+    || !preparedAfterRestart?.execution_barriers?.includes('git_clean')) {
+    throw new Error('KRAIL prepare did not preserve the same profile-only state after restart')
+  }
+
   const after = {
     head: git(project, ['rev-parse', 'HEAD'], sanitizedEnv),
     status: git(project, ['status', '--porcelain=v1', '--untracked-files=all'], sanitizedEnv),
@@ -303,10 +363,17 @@ async function runSmoke(config, context) {
     contract: REQUIRED_CONTRACT,
     healthMode: health.mode,
     managedSidecarPid: ownership?.pid ?? null,
+    restartedManagedSidecarPid: restarted.ownership?.pid ?? null,
     projectId,
     fingerprint: prepared.fingerprint,
     executionBarriers: prepared.execution_barriers,
     sourceUnchanged: true,
+    restartVerified: true,
+    projectPersisted: true,
+    onboardingPersisted: true,
+    krailDiscoveryAfterRestart: true,
+    localActionTokenRotated: true,
+    upgradeVerified: Boolean(config.upgradeResources),
   }, null, 2))
 }
 

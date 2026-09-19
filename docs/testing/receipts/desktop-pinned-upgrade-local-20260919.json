@@ -1,0 +1,96 @@
+{
+  "schema_version": "opensaddle.desktop-pinned-upgrade-local.v1",
+  "observed_at_utc": "2026-09-19T20:07:31.722974Z",
+  "source_free": true,
+  "scope": "disposable macOS arm64 sidecar public-HTTP restart and old-to-new bundle transition",
+  "interface_smoke_script_sha256": "57aa62c9e6e786922091b786a5f2933228af382f838f9962b15733e67e34a09b",
+  "old_bundle": {
+    "manifest_sha256": "844f535084f53bcc192e963c10cdd75c8fb74c2ea4019017834222e2fabf2253",
+    "source_revisions": {
+      "interface": "8559c9064991f9f38c0b6513cc41382bf0b9168d",
+      "krail": "d3e5fbc1d464f3d18f6fe82b6f7037395ef62049",
+      "opensaddle": "ded820bcc077943dd6a468c5e123eff8a3aa22fc"
+    },
+    "krail_wheel_sha256": "59319b2fd3bb651f19a6ac10876b7949036bcd8e0a097236c8988754dee6493a",
+    "opensaddle_wheel_sha256": "41a578a3291aa4494a3537f13ed3ef1612f095efbe371905b2907a046fe521f3",
+    "python_archive_sha256": "6d472fc49a4d95e58214a992c4c92aa73fe2a935837a01a9a36bab0bec6d72f3"
+  },
+  "new_bundle": {
+    "manifest_sha256": "f65c966d9d5584b50503d07f352838d9ac149beaf876d11bab72ca4613d6bdf7",
+    "source_revisions": {
+      "interface": "ec277284444a166f384ceef9092d8c7e59b06404",
+      "krail": "ce6e60f564de23b0e66c3b308ae4e72d21c42251",
+      "opensaddle": "0ae8cba75cf9b7b73a6147db0a98aace811199f2"
+    },
+    "krail_wheel_sha256": "ceb7f7f5050e368fe6782ba1dc278ffa7abe2ea07112da592dfb3ebfb0344d30",
+    "opensaddle_wheel_sha256": "b91efa865d6dd7422102299a860bbcce8627e7c3b7a6a88202b653e15df663e4",
+    "python_archive_sha256": "6d472fc49a4d95e58214a992c4c92aa73fe2a935837a01a9a36bab0bec6d72f3",
+    "reviewed_local": true,
+    "lock_wheels": 39
+  },
+  "results": {
+    "new_bundle_same_bundle_restart": {
+      "ok": true,
+      "sourceUnchanged": true,
+      "restartVerified": true,
+      "projectPersisted": true,
+      "onboardingPersisted": true,
+      "krailDiscoveryAfterRestart": true,
+      "localActionTokenRotated": true,
+      "upgradeVerified": false
+    },
+    "old_to_new_bundle_transition": {
+      "ok": true,
+      "sourceUnchanged": true,
+      "restartVerified": true,
+      "projectPersisted": true,
+      "onboardingPersisted": true,
+      "krailDiscoveryAfterRestart": true,
+      "localActionTokenRotated": true,
+      "upgradeVerified": true
+    }
+  },
+  "cleanup": "both commands exited 0 after owned processes stopped and loopback port was unreachable",
+  "limits": [
+    "Not a mounted Electron app or signed DMG upgrade",
+    "No retained KRAIL corpus content checked",
+    "No stable personal installation identity checked",
+    "No real provider call or model invocation",
+    "Older initial bundle is local pinned input; new bundle is reviewed-local temporary lock, not released pins"
+  ],
+  "disposable_lock_additions": [
+    {
+      "distribution": "packaging",
+      "version": "25.0",
+      "filename": "packaging-25.0-py3-none-any.whl",
+      "sha256": "29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484",
+      "size": 66469,
+      "official_pypi_url": "https://files.pythonhosted.org/packages/20/12/38679034af332785aac8774540895e234f4d07f7545804097de4b666afd8/packaging-25.0-py3-none-any.whl"
+    },
+    {
+      "distribution": "psutil",
+      "version": "7.2.2",
+      "filename": "psutil-7.2.2-cp36-abi3-macosx_11_0_arm64.whl",
+      "sha256": "1a7b04c10f32cc88ab39cbf606e117fd74721c831c98a27dc04578deb0c16979",
+      "size": 129859,
+      "official_pypi_url": "https://files.pythonhosted.org/packages/80/c4/f5af4c1ca8c1eeb2e92ccca14ce8effdeec651d5ab6053c589b074eda6e1/psutil-7.2.2-cp36-abi3-macosx_11_0_arm64.whl"
+    },
+    {
+      "distribution": "psycopg",
+      "version": "3.3.6",
+      "filename": "psycopg-3.3.6-py3-none-any.whl",
+      "sha256": "a1db9f7148b06a28606767efaca51fa6f9398c5c0a3810519be69d7000bdb631",
+      "size": 215490,
+      "official_pypi_url": "https://files.pythonhosted.org/packages/4e/de/748bd7609c71cae5d737f0ba9192f19329f70180ecda8fff3cac02c5abe3/psycopg-3.3.6-py3-none-any.whl"
+    },
+    {
+      "distribution": "psycopg-binary",
+      "version": "3.3.6",
+      "filename": "psycopg_binary-3.3.6-cp313-cp313-macosx_11_0_arm64.whl",
+      "sha256": "373704aea331d3f3e3402c125a1543f5875e2986ebb54f97d1647942161f803f",
+      "size": 4772031,
+      "official_pypi_url": "https://files.pythonhosted.org/packages/0a/b9/4283b785339e8e2318d03048994b093d650ea6289fabaa806b765dc0d449/psycopg_binary-3.3.6-cp313-cp313-macosx_11_0_arm64.whl"
+    }
+  ],
+  "release_lock_status": "The committed 35-wheel lock is unchanged and cannot install the newer Core wheel; a reviewed release-lock update is required before packaging a release."
+}
