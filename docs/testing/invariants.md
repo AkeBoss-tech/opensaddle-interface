@@ -987,6 +987,26 @@ The rendered connected sidebar marks the active task route, keeps Home/Work/Oper
 
 Agent setup begins with a no-grant immutable definition, requires a displayed digest and assumption acknowledgment before an owner or admin can publish it, and admits work only through the published participant at revision zero. A lost task response retains the exact idempotency key for retry, while the resulting link uses the canonical Project/Run route. `AgentSetupPage.test.tsx` mounts the actual draft, review, publication, and Run journey against a controlled Core adapter. `remoteAgentProfiles.test.ts` owns the exact v2 request and response contract. Existing participant review tests do not cover immutable agent definitions, digest-bound publication, or task admission.
 
+## AGENT-RESEARCH-UI-1
+
+Online agent research is an optional, disclosed external query that returns
+untrusted excerpts and a grant-free draft. The UI identifies the provider's
+domain and scope before sending queries, separates installed read actions from
+catalog-only ideas, and requires a separate Apply action to copy draft text and
+multiple citations. Apply creates no proposal, publication, or connector grant;
+switching Project/client discards stale results and clears busy state. An
+unconfigured adapter is shown as unavailable. A plausible regression is
+conflating search results with published authority or retaining an old Project's
+research after a connection switch; existing agent setup tests covered only
+manual drafting and review. `AgentSetupPage.test.tsx` mounts the real page across
+research, apply, proposal and connection-switch boundaries;
+`remoteAgentProfiles.test.ts` checks the exact request/response and rejects
+unexpected grants or source identity. This is new behavior with no usable
+pre-feature failure baseline. The separate capability-negotiation regression
+is proven by the identical `test/serviceNegotiation.test.ts` assertion failing
+under the previous `online_research_available === false` gate and passing after
+it accepts the advertised Boolean research state.
+
 ## MOBILE-NAVIGATION-1
 
 The navigation toggle identifies the sidebar and announces expanded state. Opening focuses the first navigation item; Escape and a route change close the drawer and return focus to the toggle. ConnectedNavigation.test.tsx asserts the actual Topbar's collapsed accessibility contract and failed with an assertion before repair. The full-app browser journey verifies open, Escape, Work navigation, focus return, and absence of horizontal overflow at an observed 433 CSS pixels. This replaces the obsolete five-button bottom-bar source assertion. The drawer is non-modal; focus is not trapped. Receipt: docs/testing/receipts/mobile-navigation-fixed-20260910.json.

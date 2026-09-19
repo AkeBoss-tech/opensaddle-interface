@@ -334,7 +334,7 @@ export function initServices(opts: {
             participantsAvailable = capabilities.participants?.available === true && capabilities.participants.schema_version === 'opensaddle.participant.v1' && capabilities.participants.project_path_template === '/api/v2/projects/{project_id}/participants'
             agentProfilesAvailable = capabilities.agent_builder_v1?.available === true
               && capabilities.agent_builder_v1.review_required === true
-              && capabilities.agent_builder_v1.online_research_available === false
+              && typeof capabilities.agent_builder_v1.online_research_available === 'boolean'
               && capabilities.agent_builder_v1.schema_version === 'opensaddle.agent-proposal.v1'
             resourceCapacityAvailable = capabilities.resource_capacity?.available === true && capabilities.resource_capacity.schema_version === 'opensaddle.resource-capacity.v1' && capabilities.resource_capacity.project_config_path_template === '/api/v2/projects/{project_id}/capacity-limits' && capabilities.resource_capacity.status_path_template === '/api/v2/projects/{project_id}/capacity'
             const native = capabilities.native_adapters

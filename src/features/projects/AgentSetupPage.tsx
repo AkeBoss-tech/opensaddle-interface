@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../../data/store'
-import type { AgentBuilderOptions, AgentDefinition, AgentEvidence, AgentGrant, AgentProfileClient, AgentProposal } from '../../services/remoteAgentProfiles'
+import type { AgentBuilderOptions, AgentDefinition, AgentEvidence, AgentGrant, AgentProfileClient, AgentProposal, AgentResearchDossier } from '../../services/remoteAgentProfiles'
 
 void React
 
@@ -23,7 +23,18 @@ function idempotencyKey() {
 }
 
 function isHttpsReference(value: AgentEvidence) {
-  try { return new URL(value.url).protocol === 'https:' } catch { return false }
+  try {
+    const url = new URL(value.url)
+    return url.protocol === 'https:' && Boolean(url.hostname) && !url.username && !url.password
+  } catch { return false }
+}
+
+function researchProvider(options?: AgentBuilderOptions) {
+  if (options?.researchProvider === 'brave_web_search' && options.researchScope === 'web')
+    return { name: 'Brave Search', domain: 'api.search.brave.com', scope: 'Public web search results' }
+  if (options?.researchProvider === 'mediawiki_docs_search' && options.researchScope === 'mediawiki_documentation')
+    return { name: 'MediaWiki documentation search', domain: 'www.mediawiki.org', scope: 'MediaWiki documentation only' }
+  return undefined
 }
 
 type GrantAction = AgentBuilderOptions['connectorActions'][number]
@@ -70,6 +81,11 @@ export function AgentSetupSurface({
 }) {
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [evidence, setEvidence] = useState<AgentEvidence>({ url: '', title: '', finding: '' })
+  const [references, setReferences] = useState<AgentEvidence[]>([])
+  const [researchObjective, setResearchObjective] = useState('')
+  const [researchQueries, setResearchQueries] = useState('')
+  const [researchConnectors, setResearchConnectors] = useState('')
+  const [researchResult, setResearchResult] = useState<AgentResearchDossier>()
   const [items, setItems] = useState<AgentProposal[]>()
   const [options, setOptions] = useState<AgentBuilderOptions>()
   const [viewerCanReview, setViewerCanReview] = useState(false)
@@ -86,9 +102,19 @@ export function AgentSetupSurface({
   const generation = useRef(0)
   const taskIntent = useRef<{ fingerprint: string; key: string } | undefined>(undefined)
 
-  const load = async () => {
+  const load = async (resetDraft = false) => {
     const request = ++generation.current
+    setBusy(false)
     setError('')
+    setResearchResult(undefined)
+    if (resetDraft) {
+      setDraft(emptyDraft)
+      setEvidence({ url: '', title: '', finding: '' })
+      setReferences([])
+      setResearchObjective('')
+      setResearchQueries('')
+      setResearchConnectors('')
+    }
     setItems(undefined)
     setOptions(undefined)
     setViewerCanReview(false)
@@ -116,7 +142,48 @@ export function AgentSetupSurface({
     }
   }
 
-  useEffect(() => { void load() }, [client, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(true) }, [client, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const research = async (event: FormEvent) => {
+    event.preventDefault()
+    const provider = researchProvider(options)
+    if (!client || !options?.researchAvailable || !provider || busy) return
+    const queries = researchQueries.split('\n').map((item) => item.trim()).filter(Boolean)
+    const candidates = researchConnectors.split(',').map((item) => item.trim()).filter(Boolean)
+    if (!researchObjective.trim() || !queries.length || queries.length > 3 || candidates.length > 20) {
+      setError('Add a research objective, one to three queries, and at most 20 candidate connector IDs.')
+      return
+    }
+    const request = generation.current
+    setBusy(true)
+    setError('')
+    setResearchResult(undefined)
+    try {
+      const result = await client.research(projectId, { objective: researchObjective.trim(),
+        sourceId: draft.sourceId, harness: draft.harness, queries,
+        candidateConnectorIds: candidates, resultsPerQuery: 3 })
+      if (request === generation.current) setResearchResult(result)
+    } catch (reason) {
+      if (request === generation.current) setError(errorText(reason))
+    } finally {
+      if (request === generation.current) setBusy(false)
+    }
+  }
+
+  const applyResearchDraft = () => {
+    const value = researchResult?.draftDefinition
+    if (!value || !options?.sources.some((source) => source.sourceId === value.sourceId)
+        || !options.harnesses.includes(value.harness)) return
+    setDraft({ title: value.title, objective: value.objective, instructions: value.instructions,
+      sourceId: value.sourceId, harness: value.harness, assumptionsText: value.assumptions.join('\n') })
+    setReferences(value.evidence)
+    setEvidence({ url: '', title: '', finding: '' })
+    setGrants([])
+    setGrantActionKey('')
+    setGrantValues({})
+    setGrantRationale('')
+    setError('')
+  }
 
   const propose = async (event: FormEvent) => {
     event.preventDefault()
@@ -128,6 +195,7 @@ export function AgentSetupSurface({
       setError('Each reference needs an HTTPS URL, title, and finding.')
       return
     }
+    if (references.length + (hasEvidence ? 1 : 0) > 30) { setError('A draft can have at most 30 references.'); return }
     const request = generation.current
     setBusy(true)
     setError('')
@@ -140,7 +208,7 @@ export function AgentSetupSurface({
         harness: draft.harness,
         grants,
         assumptions,
-        evidence: hasEvidence ? [evidence] : [],
+        evidence: [...references, ...(hasEvidence ? [evidence] : [])],
       })
       if (request === generation.current) {
         setSelected(proposal)
@@ -165,6 +233,17 @@ export function AgentSetupSurface({
       setGrantRationale('')
       setError('')
     } catch (reason) { setError(errorText(reason)) }
+  }
+
+  const addReference = () => {
+    if (!evidence.url || !evidence.title || !evidence.finding || !isHttpsReference(evidence)) {
+      setError('Each reference needs an HTTPS URL, title, and finding.')
+      return
+    }
+    if (references.length >= 30) { setError('A draft can have at most 30 references.'); return }
+    setReferences((current) => [...current, evidence])
+    setEvidence({ url: '', title: '', finding: '' })
+    setError('')
   }
 
   const publish = async () => {
@@ -221,6 +300,7 @@ export function AgentSetupSurface({
   const simpleProperties = selectedAction?.input.properties ?? {}
   const actionEditable = selectedAction && Object.entries(simpleProperties).some(([, property]) => ['string', 'integer', 'boolean'].includes(property.type ?? ''))
     && (selectedAction.input.required ?? []).every((key) => ['string', 'integer', 'boolean'].includes(simpleProperties[key]?.type ?? ''))
+  const onlineResearch = researchProvider(options)
 
   if (!client) return <main className="content-page agent-setup-page"><header className="page-header"><div><span className="eyebrow">Project agents</span><h1>Agent setup unavailable</h1><p>This connection does not advertise the reviewed agent-builder contract.</p></div></header></main>
 
@@ -230,6 +310,29 @@ export function AgentSetupSurface({
       <button className="secondary-btn" type="button" disabled={busy} onClick={() => void load()}>Refresh agents</button>
     </header>
     {error && <p role="alert">{error}</p>}
+
+    <section className="cc-panel agent-setup-research" aria-label="Online agent research">
+      <h2>Optional online research</h2>
+      {!options && <p>Checking research availability…</p>}
+      {options && (!options.researchAvailable || !onlineResearch) && <p>Online research is unavailable on this Core connection. You can still write a draft and add HTTPS references manually.</p>}
+      {options?.researchAvailable && onlineResearch && <>
+        <p>{onlineResearch.scope} through {onlineResearch.name} (<code>{onlineResearch.domain}</code>). Your queries are sent to this external provider. Results are untrusted search-index excerpts; cited pages have not been opened or verified.</p>
+        <form onSubmit={(event) => void research(event)}>
+          <label>Research objective<textarea aria-label="Research objective" maxLength={4000} disabled={busy} value={researchObjective} onChange={(event) => setResearchObjective(event.target.value)} placeholder="What should this agent help with?" /></label>
+          <label>Queries, one per line<textarea aria-label="Research queries" disabled={busy} value={researchQueries} onChange={(event) => setResearchQueries(event.target.value)} placeholder="One to three public search queries" /></label>
+          <label>Candidate connectors, optional<input aria-label="Candidate connectors" disabled={busy} value={researchConnectors} onChange={(event) => setResearchConnectors(event.target.value)} placeholder="github, notion" /></label>
+          <button className="secondary-btn" type="submit" disabled={busy || !draft.sourceId || !options.harnesses.includes(draft.harness) || !researchObjective.trim() || !researchQueries.trim()}>Research draft ideas</button>
+        </form>
+      </>}
+      {researchResult && <div className="agent-setup-research-results">
+        <h3>Research results</h3><p>Checked {researchResult.checkedAt}. These excerpts are untrusted leads, not verified facts or permissions.</p>
+        {researchResult.observations.length ? <ul>{researchResult.observations.map((item, index) => <li key={`${item.url}-${index}`}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> <span>({item.checkedAt})</span><p>{item.excerpt}</p><small>Search-index excerpt via {item.provider}; <a href={item.retrievedFrom} target="_blank" rel="noreferrer">provider endpoint</a>. Cited page not opened.</small></li>)}</ul> : <p>No cited search excerpts were returned.</p>}
+        <h4>Connector ideas</h4>
+        {researchResult.capabilityIdeas.length ? <ul>{researchResult.capabilityIdeas.map((idea) => <li key={idea.connectorId}><strong>{idea.name}</strong> — {idea.status === 'installed_read_action' ? `Installed read actions: ${idea.installedReadActions.map((action) => action.action).join(', ')}` : idea.status === 'catalog_research_only' ? 'Research catalog only; no installed action or access' : 'No matching catalog or installed action'}{idea.catalogSourceUrls.length > 0 && <> · <a href={idea.catalogSourceUrls[0]} target="_blank" rel="noreferrer">provider reference</a></>}</li>)}</ul> : <p>No matching connector ideas.</p>}
+        <p>The suggested draft has no connector permissions. Applying it clears pending manual permissions and fills only draft text and citations; it does not create or publish an agent.</p>
+        <button className="secondary-btn" type="button" disabled={busy || !options?.sources.some((source) => source.sourceId === researchResult.draftDefinition.sourceId) || !options?.harnesses.includes(researchResult.draftDefinition.harness)} onClick={applyResearchDraft}>Apply draft and citations</button>
+      </div>}
+    </section>
 
     <div className="agent-setup-grid">
       <section className="cc-panel">
@@ -248,7 +351,7 @@ export function AgentSetupSurface({
             {selectedAction && !actionEditable && <p>This action needs an argument type this form cannot constrain. It cannot be granted here.</p>}
             {selectedAction && actionEditable && <>{Object.entries(simpleProperties).map(([key, property]) => ['string', 'integer', 'boolean'].includes(property.type ?? '') && <label key={key}>{property.title ?? key}{(selectedAction.input.required ?? []).includes(key) ? ' (required)' : ' (optional)'}{property.type === 'boolean' ? <select aria-label={`Exact ${key}`} disabled={busy} value={grantValues[key] ?? ''} onChange={(event) => setGrantValues((current) => ({ ...current, [key]: event.target.value }))}><option value="">No exact value</option><option value="true">true</option><option value="false">false</option></select> : <input aria-label={`Exact ${key}`} type={property.type === 'integer' ? 'number' : 'text'} step={property.type === 'integer' ? '1' : undefined} disabled={busy} value={grantValues[key] ?? ''} onChange={(event) => setGrantValues((current) => ({ ...current, [key]: event.target.value }))} />}</label>)}<label>Why this access is needed<input aria-label="Permission rationale" disabled={busy} value={grantRationale} onChange={(event) => setGrantRationale(event.target.value)} /></label><button type="button" disabled={busy} onClick={addGrant}>Add exact read permission</button></>}
           </div>
-          <details className="agent-setup-optional"><summary>Add a reference</summary><p>Optional references must be HTTPS and are reviewed with this draft.</p><label>URL<input aria-label="Reference URL" disabled={busy} value={evidence.url} onChange={(event) => setEvidence((current) => ({ ...current, url: event.target.value }))} /></label><label>Title<input aria-label="Reference title" disabled={busy} value={evidence.title} onChange={(event) => setEvidence((current) => ({ ...current, title: event.target.value }))} /></label><label>Finding<textarea aria-label="Reference finding" disabled={busy} value={evidence.finding} onChange={(event) => setEvidence((current) => ({ ...current, finding: event.target.value }))} /></label></details>
+          <details className="agent-setup-optional"><summary>Add references ({references.length})</summary><p>Optional references must be HTTPS and are reviewed with this draft. Search excerpts remain unverified until you inspect the cited pages.</p>{references.length > 0 && <ul>{references.map((item, index) => <li key={`${item.url}-${index}`}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> — {item.finding} <button type="button" disabled={busy} onClick={() => setReferences((current) => current.filter((_, position) => position !== index))}>Remove reference {index + 1}</button></li>)}</ul>}<label>URL<input aria-label="Reference URL" disabled={busy} value={evidence.url} onChange={(event) => setEvidence((current) => ({ ...current, url: event.target.value }))} /></label><label>Title<input aria-label="Reference title" disabled={busy} value={evidence.title} onChange={(event) => setEvidence((current) => ({ ...current, title: event.target.value }))} /></label><label>Finding<textarea aria-label="Reference finding" disabled={busy} value={evidence.finding} onChange={(event) => setEvidence((current) => ({ ...current, finding: event.target.value }))} /></label><button type="button" disabled={busy} onClick={addReference}>Add reference</button></details>
           <button className="primary-btn" type="submit" disabled={busy || !options || !options.sources.some((source) => source.sourceId === draft.sourceId) || !options.harnesses.includes(draft.harness) || !draft.title.trim() || !draft.objective.trim() || !draft.instructions.trim()}>Create draft for review</button>
         </form>
       </section>

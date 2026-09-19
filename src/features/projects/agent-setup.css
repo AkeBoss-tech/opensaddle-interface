@@ -25,4 +25,15 @@
 .agent-setup-definition ul { margin: 6px 0; padding-left: 20px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .agent-setup-publish, .agent-setup-run { display: grid; gap: 10px; margin-top: 18px; }
 .agent-setup-publish label { color: var(--muted); font-size: 11px; }
-@media (max-width: 760px) { .agent-setup-page .page-header { align-items: start; flex-direction: column; }.agent-setup-grid { grid-template-columns: 1fr; } }
+.agent-setup-research { margin-bottom: 16px; }
+.agent-setup-research form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.agent-setup-research form label { display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; }
+.agent-setup-research form textarea, .agent-setup-research form input { box-sizing: border-box; width: 100%; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); padding: 9px 10px; }
+.agent-setup-research form textarea { min-height: 76px; resize: vertical; }
+.agent-setup-research form button { justify-self: start; }
+.agent-setup-research-results { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 12px; }
+.agent-setup-research-results ul { padding-left: 22px; overflow-wrap: anywhere; }
+.agent-setup-research-results li { margin: 12px 0; line-height: 1.5; }
+.agent-setup-research-results li p { margin: 4px 0; }
+.agent-setup-research-results li small { color: var(--muted); }
+@media (max-width: 760px) { .agent-setup-page .page-header { align-items: start; flex-direction: column; }.agent-setup-grid, .agent-setup-research form { grid-template-columns: 1fr; } }

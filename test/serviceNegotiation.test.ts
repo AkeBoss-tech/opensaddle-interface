@@ -50,3 +50,24 @@ test('legacy health still enables its advertised local project and permission cl
     assert.ok(paths.includes('/api/harness-capabilities'))
   } finally { globalThis.fetch = original }
 })
+
+// AGENT-RESEARCH-UI-1: research availability extends the reviewed builder;
+// the optional adapter must not hide the entire agent setup surface.
+test('online research capability keeps the reviewed agent builder available', async () => {
+  const original = globalThis.fetch
+  globalThis.fetch = async (input) => {
+    const path = new URL(String(input)).pathname
+    if (path === '/api/v2/capabilities') return Response.json({ capability_mode: 'local',
+      agent_builder_v1: { available: true, review_required: true, online_research_available: true,
+        schema_version: 'opensaddle.agent-proposal.v1' } })
+    return new Response(null, { status: 404 })
+  }
+  try {
+    const services = await initServices({
+      currentUserId: 'owner', getGrants: () => [], setGrants: () => {},
+      connection: { id: 'research-fixture', name: 'Research fixture', mode: 'remote',
+        baseUrl: 'http://localhost:1234', allowMockFallback: false },
+    })
+    assert.ok(services.agentProfiles, 'reviewed agent setup should remain available when an online adapter is configured')
+  } finally { globalThis.fetch = original }
+})
