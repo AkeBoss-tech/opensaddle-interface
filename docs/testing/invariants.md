@@ -1007,6 +1007,24 @@ is proven by the identical `test/serviceNegotiation.test.ts` assertion failing
 under the previous `online_research_available === false` gate and passing after
 it accepts the advertised Boolean research state.
 
+## AGENT-MEMORY-UI-1
+
+Agent setup starts with no memory. It offers only Core-advertised, currently
+reviewed source IDs, capped at eight, and sends those exact IDs with the draft.
+Before publication it shows every source binding pinned in the proposal,
+including proposals created outside this browser: source identity,
+classification, ResourceRef version and digest, and source/resource record
+digests. A task starts with no memory and can send only an explicit subset of
+reviewed sources still advertised at the same ResourceRef; retry identity
+includes that subset. Applying an online research draft clears prior memory
+selection. A plausible regression would silently retain memory access in a
+research draft, hide externally-created proposal bindings, or send a different
+task source set under a reused idempotency key. `AgentSetupPage.test.tsx`
+exercises draft/review/task selection and the research reset on the mounted
+surface; `remoteAgentProfiles.test.ts` checks the public v2 wire mapping and
+rejects proposals with missing pins. This is a new capability with no
+pre-feature failure baseline.
+
 ## MOBILE-NAVIGATION-1
 
 The navigation toggle identifies the sidebar and announces expanded state. Opening focuses the first navigation item; Escape and a route change close the drawer and return focus to the toggle. ConnectedNavigation.test.tsx asserts the actual Topbar's collapsed accessibility contract and failed with an assertion before repair. The full-app browser journey verifies open, Escape, Work navigation, focus return, and absence of horizontal overflow at an observed 433 CSS pixels. This replaces the obsolete five-button bottom-bar source assertion. The drawer is non-modal; focus is not trapped. Receipt: docs/testing/receipts/mobile-navigation-fixed-20260910.json.

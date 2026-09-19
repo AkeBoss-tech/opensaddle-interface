@@ -20,8 +20,32 @@ export interface AgentDefinition {
   sourceId: string
   harness: AgentHarness
   grants: AgentGrant[]
+  memorySourceIds: string[]
   assumptions: string[]
   evidence: AgentEvidence[]
+}
+
+export interface AgentMemorySource {
+  sourceId: string
+  classification: string
+  sourceVersion: string
+  resourceRef: {
+    authority: string
+    contract: string
+    resource_id: string
+    resource_type: string
+    version: string
+    digest: string
+  }
+  immutable: boolean
+  providerFreshness: string
+}
+
+export interface AgentMemoryBinding {
+  sourceRecordDigest: string
+  resourceRecordDigest: string
+  resourceRef: AgentMemorySource['resourceRef']
+  classification: string
 }
 
 export interface AgentProposal {
@@ -29,6 +53,7 @@ export interface AgentProposal {
   projectId: string
   definitionDigest: string
   definition: AgentDefinition
+  memoryBindings: Record<string, AgentMemoryBinding>
   status: 'proposed' | 'published'
   publishedAt?: string
   reviewedBy?: string
@@ -51,6 +76,8 @@ export interface AgentBuilderOptions {
   researchAvailable: boolean
   researchProvider: string | null
   researchScope: 'web' | 'mediawiki_documentation' | null
+  memoryAvailable: boolean
+  memorySources: AgentMemorySource[]
   sources: Array<{ sourceId: string; sourceKind: string; revision: string; snapshotDigest: string }>
   harnesses: AgentHarness[]
   connectorActions: Array<{ connector: string; action: string; title: string; input: { required?: string[]; properties?: Record<string, { type?: string; title?: string; description?: string; enum?: Array<string | number | boolean>; minimum?: number; maximum?: number; min_length?: number; max_length?: number; pattern?: string }> } }>
@@ -105,7 +132,7 @@ export interface AgentProfileClient {
   list(projectId: string): Promise<AgentProposal[]>
   propose(projectId: string, definition: AgentDefinition): Promise<AgentProposal>
   publish(proposalId: string, expectedDigest: string): Promise<AgentProposal>
-  submitTask(participantId: string, expectedParticipantRevision: number, task: string, idempotencyKey: string): Promise<AgentTaskAdmission>
+  submitTask(participantId: string, expectedParticipantRevision: number, task: string, idempotencyKey: string, authorizedContextSourceIds: string[]): Promise<AgentTaskAdmission>
 }
 
 type WireDefinition = {
@@ -115,6 +142,7 @@ type WireDefinition = {
   source_id: string
   harness: AgentHarness
   grants: Array<{ connector: string; action: string; argument_equals: Record<string, string | number | boolean>; rationale: string }>
+  memory_source_ids?: string[]
   assumptions: string[]
   evidence: AgentEvidence[]
 }
@@ -124,6 +152,7 @@ type WireProposal = {
   project_id: string
   definition_digest: string
   definition: WireDefinition
+  memory_bindings?: Record<string, { source_record_digest: string; resource_record_digest: string; resource_ref: AgentMemorySource['resourceRef']; classification: string }>
   status: 'proposed' | 'published'
   published_at?: string | null
   reviewed_by?: string | null
@@ -167,7 +196,50 @@ function isHttpsUrl(url: unknown): url is string {
   } catch { return false }
 }
 
+const isDigest = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value)
+
+function isResourceRef(value: unknown): value is AgentMemorySource['resourceRef'] {
+  if (!value || typeof value !== 'object') return false
+  const ref = value as AgentMemorySource['resourceRef']
+  return typeof ref.authority === 'string' && typeof ref.contract === 'string'
+    && typeof ref.resource_id === 'string'
+    && typeof ref.resource_type === 'string' && typeof ref.version === 'string'
+    && Boolean(ref.authority && ref.contract && ref.resource_id && ref.resource_type && ref.version)
+    && typeof ref.digest === 'string' && /^sha256:[a-f0-9]{64}$/i.test(ref.digest)
+}
+
+function memorySource(value: unknown): AgentMemorySource {
+  if (!value || typeof value !== 'object') throw Error('Agent memory source response is malformed')
+  const item = value as Record<string, unknown>
+  if (typeof item.source_id !== 'string' || !item.source_id || typeof item.classification !== 'string'
+      || typeof item.source_version !== 'string' || !item.source_version || !isResourceRef(item.resource_ref)
+      || item.immutable !== true || typeof item.provider_freshness !== 'string') {
+    throw Error('Agent memory source response is malformed')
+  }
+  return { sourceId: item.source_id, classification: item.classification,
+    sourceVersion: item.source_version, resourceRef: item.resource_ref,
+    immutable: true, providerFreshness: item.provider_freshness }
+}
+
 function proposal(value: WireProposal): AgentProposal {
+  const memorySourceIds = value.definition.memory_source_ids ?? []
+  const rawBindings = value.memory_bindings ?? {}
+  if (!Array.isArray(memorySourceIds) || memorySourceIds.length > 8
+      || memorySourceIds.some((id) => typeof id !== 'string' || !id)
+      || new Set(memorySourceIds).size !== memorySourceIds.length
+      || !rawBindings || typeof rawBindings !== 'object' || Array.isArray(rawBindings)
+      || Object.keys(rawBindings).length !== memorySourceIds.length
+      || memorySourceIds.some((id) => {
+        const binding = rawBindings[id]
+        return !binding || !isDigest(binding.source_record_digest) || !isDigest(binding.resource_record_digest)
+          || !isResourceRef(binding.resource_ref) || typeof binding.classification !== 'string'
+      })) throw Error('Agent proposal memory bindings are malformed')
+  const memoryBindings = Object.fromEntries(memorySourceIds.map((id) => {
+    const binding = rawBindings[id]
+    return [id, { sourceRecordDigest: binding.source_record_digest,
+      resourceRecordDigest: binding.resource_record_digest,
+      resourceRef: binding.resource_ref, classification: binding.classification }]
+  }))
   return {
     proposalId: value.proposal_id,
     projectId: value.project_id,
@@ -184,9 +256,11 @@ function proposal(value: WireProposal): AgentProposal {
         argumentEquals: grant.argument_equals,
         rationale: grant.rationale,
       })),
+      memorySourceIds,
       assumptions: value.definition.assumptions,
       evidence: value.definition.evidence,
     },
+    memoryBindings,
     status: value.status,
     publishedAt: value.published_at ?? undefined,
     reviewedBy: value.reviewed_by ?? undefined,
@@ -207,6 +281,7 @@ function wireDefinition(value: AgentDefinition): WireDefinition {
       argument_equals: grant.argumentEquals,
       rationale: grant.rationale,
     })),
+    memory_source_ids: value.memorySourceIds,
     assumptions: value.assumptions,
     evidence: value.evidence,
   }
@@ -246,12 +321,14 @@ export class RemoteAgentProfileClient implements AgentProfileClient {
     const value = await this.request<{
       schema_version: string; project_id: string; execution_available: boolean; can_review: boolean
       research_available?: boolean; research_provider?: string | null; research_scope?: 'web' | 'mediawiki_documentation' | null
+      memory_available?: boolean; memory_sources?: unknown[]
       sources: Array<{ source_id: string; source_kind: string; revision: string; snapshot_digest: string }>
       harnesses: AgentHarness[]
       connector_actions: AgentBuilderOptions['connectorActions']
     }>(`/api/v2/projects/${encodeURIComponent(projectId)}/agent-builder-options`)
     if (value.schema_version !== 'opensaddle.agent-builder-options.v1' || value.project_id !== projectId
-        || !Array.isArray(value.sources) || !Array.isArray(value.harnesses) || !Array.isArray(value.connector_actions)) {
+        || !Array.isArray(value.sources) || !Array.isArray(value.harnesses) || !Array.isArray(value.connector_actions)
+        || (value.memory_sources !== undefined && !Array.isArray(value.memory_sources))) {
       throw new Error('Agent builder options response is malformed')
     }
     return {
@@ -260,6 +337,8 @@ export class RemoteAgentProfileClient implements AgentProfileClient {
       researchAvailable: value.research_available === true,
       researchProvider: typeof value.research_provider === 'string' ? value.research_provider : null,
       researchScope: value.research_scope === 'web' || value.research_scope === 'mediawiki_documentation' ? value.research_scope : null,
+      memoryAvailable: value.memory_available === true,
+      memorySources: (value.memory_sources ?? []).map(memorySource),
       sources: value.sources.map((source) => ({ sourceId: source.source_id, sourceKind: source.source_kind,
         revision: source.revision, snapshotDigest: source.snapshot_digest })),
       harnesses: value.harnesses,
@@ -280,6 +359,9 @@ export class RemoteAgentProfileClient implements AgentProfileClient {
         || !value.draft_definition || value.draft_definition.source_id !== request.sourceId
         || value.draft_definition.harness !== request.harness || !Array.isArray(value.draft_definition.grants)
         || value.draft_definition.grants.length !== 0 || !Array.isArray(value.draft_definition.evidence)
+        || (value.draft_definition.memory_source_ids !== undefined
+          && (!Array.isArray(value.draft_definition.memory_source_ids)
+            || value.draft_definition.memory_source_ids.length !== 0))
         || !value.draft_definition.evidence.every((item) => isHttpsUrl(item.url))
         || !value.observations.every((item) => isHttpsUrl(item.url) && isHttpsUrl(item.retrieved_from)
           && item.content_basis === 'search_index_excerpt_unverified_at_page' && item.trust === 'untrusted_external_content')
@@ -296,7 +378,7 @@ export class RemoteAgentProfileClient implements AgentProfileClient {
         catalogSourceUrls: item.catalog_source_urls, selectionBasis: item.selection_basis, grantProposed: false })),
       draftDefinition: { title: value.draft_definition.title, objective: value.draft_definition.objective,
         instructions: value.draft_definition.instructions, sourceId: value.draft_definition.source_id,
-        harness: value.draft_definition.harness, grants: [], assumptions: value.draft_definition.assumptions,
+        harness: value.draft_definition.harness, grants: [], memorySourceIds: [], assumptions: value.draft_definition.assumptions,
         evidence: value.draft_definition.evidence },
     }
   }
@@ -331,11 +413,13 @@ export class RemoteAgentProfileClient implements AgentProfileClient {
     }))
   }
 
-  async submitTask(participantId: string, expectedParticipantRevision: number, task: string, idempotencyKey: string): Promise<AgentTaskAdmission> {
+  async submitTask(participantId: string, expectedParticipantRevision: number, task: string, idempotencyKey: string,
+                   authorizedContextSourceIds: string[]): Promise<AgentTaskAdmission> {
     const response = await this.request<WireTaskAdmission>(`/api/v2/agents/${encodeURIComponent(participantId)}/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-      body: JSON.stringify({ expected_participant_revision: expectedParticipantRevision, task }),
+      body: JSON.stringify({ expected_participant_revision: expectedParticipantRevision, task,
+        authorized_context_source_ids: authorizedContextSourceIds }),
     })
     if (response.schema_version !== 'opensaddle.participant-message.v1') throw new Error('Agent task response is malformed')
     return {

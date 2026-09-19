@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../../data/store'
-import type { AgentBuilderOptions, AgentDefinition, AgentEvidence, AgentGrant, AgentProfileClient, AgentProposal, AgentResearchDossier } from '../../services/remoteAgentProfiles'
+import type { AgentBuilderOptions, AgentDefinition, AgentEvidence, AgentGrant, AgentMemorySource, AgentProfileClient, AgentProposal, AgentResearchDossier } from '../../services/remoteAgentProfiles'
 
 void React
 
@@ -13,6 +13,7 @@ const emptyDraft: Draft = {
   instructions: '',
   sourceId: '',
   harness: 'codex-app-server',
+  memorySourceIds: [],
   assumptionsText: '',
 }
 
@@ -35,6 +36,23 @@ function researchProvider(options?: AgentBuilderOptions) {
   if (options?.researchProvider === 'mediawiki_docs_search' && options.researchScope === 'mediawiki_documentation')
     return { name: 'MediaWiki documentation search', domain: 'www.mediawiki.org', scope: 'MediaWiki documentation only' }
   return undefined
+}
+
+function sameMemoryRef(first: AgentMemorySource['resourceRef'], second: AgentMemorySource['resourceRef']) {
+  return first.authority === second.authority && first.contract === second.contract
+    && first.resource_id === second.resource_id && first.resource_type === second.resource_type
+    && first.version === second.version && first.digest === second.digest
+}
+
+function MemoryIdentity({ sourceId, classification, ref, sourceVersion }: {
+  sourceId: string; classification: string; ref: AgentMemorySource['resourceRef']; sourceVersion?: string
+}) {
+  return <span className="agent-setup-memory-identity"><strong>{sourceId}</strong> · {classification}
+    <small>Resource: <code>{ref.authority} · {ref.resource_type}/{ref.resource_id}</code></small>
+    <small>Contract: <code>{ref.contract}</code></small>
+    <small>Version: <code>{ref.version}</code>{sourceVersion && <> · source version <code>{sourceVersion}</code></>}</small>
+    <small>Digest: <code>{ref.digest}</code></small>
+  </span>
 }
 
 type GrantAction = AgentBuilderOptions['connectorActions'][number]
@@ -95,6 +113,7 @@ export function AgentSetupSurface({
   const [grantRationale, setGrantRationale] = useState('')
   const [selected, setSelected] = useState<AgentProposal>()
   const [task, setTask] = useState('')
+  const [taskMemoryIds, setTaskMemoryIds] = useState<string[]>([])
   const [taskRunId, setTaskRunId] = useState('')
   const [acknowledged, setAcknowledged] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -123,6 +142,7 @@ export function AgentSetupSurface({
     setGrantValues({})
     setGrantRationale('')
     setSelected(undefined)
+    setTaskMemoryIds([])
     setTaskRunId('')
     taskIntent.current = undefined
     if (!client) return
@@ -135,6 +155,7 @@ export function AgentSetupSurface({
         setDraft((current) => ({ ...current,
           sourceId: choices.sources.some((source) => source.sourceId === current.sourceId) ? current.sourceId : choices.sources[0]?.sourceId ?? '',
           harness: choices.harnesses.includes(current.harness) ? current.harness : choices.harnesses[0] ?? 'codex-app-server',
+          memorySourceIds: choices.memoryAvailable ? current.memorySourceIds.filter((id) => choices.memorySources.some((source) => source.sourceId === id)) : [],
         }))
       }
     } catch (reason) {
@@ -175,7 +196,7 @@ export function AgentSetupSurface({
     if (!value || !options?.sources.some((source) => source.sourceId === value.sourceId)
         || !options.harnesses.includes(value.harness)) return
     setDraft({ title: value.title, objective: value.objective, instructions: value.instructions,
-      sourceId: value.sourceId, harness: value.harness, assumptionsText: value.assumptions.join('\n') })
+      sourceId: value.sourceId, harness: value.harness, memorySourceIds: [], assumptionsText: value.assumptions.join('\n') })
     setReferences(value.evidence)
     setEvidence({ url: '', title: '', finding: '' })
     setGrants([])
@@ -196,6 +217,10 @@ export function AgentSetupSurface({
       return
     }
     if (references.length + (hasEvidence ? 1 : 0) > 30) { setError('A draft can have at most 30 references.'); return }
+    if (draft.memorySourceIds.length > 8 || draft.memorySourceIds.some((id) =>
+      !options?.memoryAvailable || !options.memorySources.some((source) => source.sourceId === id))) {
+      setError('Choose at most eight currently available reviewed memory sources.'); return
+    }
     const request = generation.current
     setBusy(true)
     setError('')
@@ -207,6 +232,7 @@ export function AgentSetupSurface({
         sourceId: draft.sourceId.trim(),
         harness: draft.harness,
         grants,
+        memorySourceIds: draft.memorySourceIds,
         assumptions,
         evidence: [...references, ...(hasEvidence ? [evidence] : [])],
       })
@@ -215,6 +241,7 @@ export function AgentSetupSurface({
         setItems((current) => current ? [proposal, ...current] : [proposal])
         setAcknowledged(false)
         setTaskRunId('')
+        setTaskMemoryIds([])
       }
     } catch (reason) {
       if (request === generation.current) setError(errorText(reason))
@@ -257,6 +284,7 @@ export function AgentSetupSurface({
         setSelected(published)
         setItems((current) => current?.map((item) => item.proposalId === published.proposalId ? published : item))
         setTaskRunId('')
+        setTaskMemoryIds([])
         taskIntent.current = undefined
       }
     } catch (reason) {
@@ -269,19 +297,28 @@ export function AgentSetupSurface({
   const startTask = async (event: FormEvent) => {
     event.preventDefault()
     if (!client || !selected?.participantId || !task.trim() || busy) return
+    const selectableMemoryIds = (options?.memoryAvailable ? selected.definition.memorySourceIds.filter((id) => {
+      const current = options.memorySources.find((source) => source.sourceId === id)
+      const reviewed = selected.memoryBindings[id]
+      return current && reviewed && sameMemoryRef(current.resourceRef, reviewed.resourceRef)
+    }) : [])
+    if (taskMemoryIds.some((id) => !selectableMemoryIds.includes(id))) {
+      setError('The selected memory sources are no longer available at their reviewed versions.'); return
+    }
     const request = generation.current
     setBusy(true)
     setError('')
     try {
       const participant = await client.participant(selected.participantId)
       if (participant.projectId !== projectId || participant.lifecycle !== 'waiting') throw Error('This agent is no longer available to start a task.')
-      const fingerprint = `${selected.participantId}:${participant.revision}:${task.trim()}`
+      const fingerprint = JSON.stringify([selected.participantId, participant.revision, task.trim(), [...taskMemoryIds].sort()])
       if (taskIntent.current && taskIntent.current.fingerprint !== fingerprint) {
         taskIntent.current = undefined
         throw Error('The agent or task changed since the last submission. Review it and start a new task explicitly.')
       }
       if (!taskIntent.current || taskIntent.current.fingerprint !== fingerprint) taskIntent.current = { fingerprint, key: idempotencyKey() }
-      const admitted = await client.submitTask(selected.participantId, participant.revision, task.trim(), taskIntent.current.key)
+      const admitted = await client.submitTask(selected.participantId, participant.revision, task.trim(), taskIntent.current.key,
+        [...taskMemoryIds].sort())
       if (request === generation.current) {
         if (admitted.projectId !== projectId || admitted.participantId !== selected.participantId) {
           throw new Error('Agent task admission does not match the selected Project and agent.')
@@ -301,6 +338,11 @@ export function AgentSetupSurface({
   const actionEditable = selectedAction && Object.entries(simpleProperties).some(([, property]) => ['string', 'integer', 'boolean'].includes(property.type ?? ''))
     && (selectedAction.input.required ?? []).every((key) => ['string', 'integer', 'boolean'].includes(simpleProperties[key]?.type ?? ''))
   const onlineResearch = researchProvider(options)
+  const selectableTaskMemorySources = selected && options?.memoryAvailable ? selected.definition.memorySourceIds.filter((id) => {
+    const current = options.memorySources.find((source) => source.sourceId === id)
+    const reviewed = selected.memoryBindings[id]
+    return current && reviewed && sameMemoryRef(current.resourceRef, reviewed.resourceRef)
+  }) : []
 
   if (!client) return <main className="content-page agent-setup-page"><header className="page-header"><div><span className="eyebrow">Project agents</span><h1>Agent setup unavailable</h1><p>This connection does not advertise the reviewed agent-builder contract.</p></div></header></main>
 
@@ -344,6 +386,18 @@ export function AgentSetupSurface({
           <div className="form-row"><label>Instructions<textarea aria-label="Instructions" required maxLength={12000} disabled={busy} value={draft.instructions} onChange={(event) => setDraft((current) => ({ ...current, instructions: event.target.value }))} /></label></div>
           <div className="form-row"><label>Registered source<select aria-label="Registered source" required disabled={busy || !options?.sources.length} value={draft.sourceId} onChange={(event) => setDraft((current) => ({ ...current, sourceId: event.target.value }))}>{!options?.sources.length && <option value="">No registered sources</option>}{options?.sources.map((source) => <option key={source.sourceId} value={source.sourceId}>{source.sourceKind} · {source.revision} · {source.sourceId}</option>)}</select></label></div>
           <div className="form-row"><label>Supported agent runtime<select aria-label="Agent runtime" disabled={busy || !options?.harnesses.length} value={draft.harness} onChange={(event) => setDraft((current) => ({ ...current, harness: event.target.value as Draft['harness'] }))}>{!options?.harnesses.length && <option value="">No supported agent runtime</option>}{options?.harnesses.map((harness) => <option key={harness} value={harness}>{harness === 'codex-app-server' ? 'Codex' : harness === 'claude-code-stream-json' ? 'Claude Code' : 'Cursor'}</option>)}</select></label></div>
+          <div className="agent-setup-optional agent-setup-memory" aria-label="Reviewed memory sources">
+            <h3>Reviewed memory sources</h3>
+            <p>No memory is enabled by default. Select up to eight current, reviewed sources to include in this agent’s publish review. Each task chooses its own subset later.</p>
+            {options && (!options.memoryAvailable || !options.memorySources.length) && <p>No reviewed memory sources are available on this connection.</p>}
+            {options?.memoryAvailable && options.memorySources.length > 0 && <div className="agent-setup-memory-options">{options.memorySources.map((source) => <label key={source.sourceId}>
+              <input type="checkbox" aria-label={`Allow memory ${source.sourceId}`} disabled={busy || (!draft.memorySourceIds.includes(source.sourceId) && draft.memorySourceIds.length >= 8)}
+                checked={draft.memorySourceIds.includes(source.sourceId)} onChange={(event) => setDraft((current) => ({ ...current,
+                  memorySourceIds: event.target.checked ? [...current.memorySourceIds, source.sourceId] : current.memorySourceIds.filter((id) => id !== source.sourceId),
+                }))} />
+              <MemoryIdentity sourceId={source.sourceId} classification={source.classification} sourceVersion={source.sourceVersion} ref={source.resourceRef} />
+            </label>)}</div>}
+          </div>
           <div className="form-row"><label>Assumptions, one per line<textarea aria-label="Assumptions" required disabled={busy} value={draft.assumptionsText} onChange={(event) => setDraft((current) => ({ ...current, assumptionsText: event.target.value }))} placeholder="The registered source is current" /></label></div>
           <div className="agent-setup-optional"><h3>Connector read permissions</h3><p>Choose an installed action and exact argument values. Core also intersects each permission with Project Run policy.</p>
             {grants.length > 0 && <ul>{grants.map((grant, index) => <li key={index}><code>{grant.connector}/{grant.action} {JSON.stringify(grant.argumentEquals)}</code> — {grant.rationale} <button type="button" disabled={busy} onClick={() => setGrants((current) => current.filter((_, item) => item !== index))}>Remove permission {index + 1}</button></li>)}</ul>}
@@ -360,10 +414,36 @@ export function AgentSetupSurface({
         <h2>2. Review and publish</h2>
         {!items && !error && <p role="status">Loading saved agent drafts…</p>}
         {items?.length === 0 && <p>No agent drafts have been saved for this Project.</p>}
-        {items?.length ? <div className="agent-setup-list" aria-label="Saved agent drafts">{items.map((item) => <button type="button" key={item.proposalId} className={selected?.proposalId === item.proposalId ? 'selected' : ''} onClick={() => { setSelected(item); setAcknowledged(false); setTaskRunId(''); taskIntent.current = undefined }}><strong>{item.definition.title}</strong><span>{item.status === 'published' ? 'Published' : 'Needs review'}</span></button>)}</div> : null}
-        {selected && <article className="agent-setup-definition"><span className="eyebrow">{selected.status === 'published' ? 'Published agent' : 'Exact draft to review'}</span><h3>{selected.definition.title}</h3><p>{selected.definition.objective}</p><dl><dt>Source</dt><dd><code>{selected.definition.sourceId}</code></dd><dt>Runtime</dt><dd>{selected.definition.harness === 'codex-app-server' ? 'Codex' : selected.definition.harness === 'claude-code-stream-json' ? 'Claude Code' : 'Cursor'}</dd><dt>Digest</dt><dd><code>{selected.definitionDigest}</code></dd></dl><h4>Instructions to the agent</h4><pre>{selected.definition.instructions}</pre><h4>Connector permissions</h4>{selected.definition.grants.length ? <ul>{selected.definition.grants.map((grant, index) => <li key={index}><code>{grant.connector}/{grant.action} {JSON.stringify(grant.argumentEquals)}</code> — {grant.rationale}</li>)}</ul> : <p>None requested</p>}<h4>Assumptions</h4><ul>{selected.definition.assumptions.map((item) => <li key={item}>{item}</li>)}</ul>{selected.definition.evidence.length > 0 && <><h4>References</h4><ul>{selected.definition.evidence.map((item) => <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> — {item.finding}</li>)}</ul></>}
-          {selected.status === 'proposed' && ((canReview ?? viewerCanReview) ? <div className="agent-setup-publish"><label><input type="checkbox" checked={acknowledged} disabled={busy} onChange={(event) => setAcknowledged(event.target.checked)} />I reviewed the instructions, assumptions, and exact connector permissions.</label><button className="primary-btn" type="button" disabled={busy || !acknowledged} onClick={() => void publish()}>Publish reviewed agent</button></div> : <p>Only a Project owner or admin can publish this exact draft.</p>)}
-          {selected.status === 'published' && selected.participantId && (options?.executionAvailable ? <form className="agent-setup-run" onSubmit={(event) => void startTask(event)}><h4>3. Start a task</h4><p>This requests one Run from the published agent. Its policy is checked again by Core.</p><label>Task<textarea aria-label="Agent task" disabled={busy} value={task} onChange={(event) => setTask(event.target.value)} /></label><button className="primary-btn" type="submit" disabled={busy || !task.trim()}>Start task</button>{taskRunId && <p role="status">Run admitted. <Link to={`/project/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskRunId)}`}>Open this Run</Link></p>}</form> : <p>Task execution is unavailable on this Core connection. This published definition remains saved for review.</p>)}
+        {items?.length ? <div className="agent-setup-list" aria-label="Saved agent drafts">{items.map((item) => <button type="button" key={item.proposalId} className={selected?.proposalId === item.proposalId ? 'selected' : ''} onClick={() => { setSelected(item); setAcknowledged(false); setTaskMemoryIds([]); setTaskRunId(''); taskIntent.current = undefined }}><strong>{item.definition.title}</strong><span>{item.status === 'published' ? 'Published' : 'Needs review'}</span></button>)}</div> : null}
+        {selected && <article className="agent-setup-definition">
+          <span className="eyebrow">{selected.status === 'published' ? 'Published agent' : 'Exact draft to review'}</span>
+          <h3>{selected.definition.title}</h3><p>{selected.definition.objective}</p>
+          <dl><dt>Source</dt><dd><code>{selected.definition.sourceId}</code></dd><dt>Runtime</dt><dd>{selected.definition.harness === 'codex-app-server' ? 'Codex' : selected.definition.harness === 'claude-code-stream-json' ? 'Claude Code' : 'Cursor'}</dd><dt>Digest</dt><dd><code>{selected.definitionDigest}</code></dd></dl>
+          <h4>Instructions to the agent</h4><pre>{selected.definition.instructions}</pre>
+          <h4>Connector permissions</h4>{selected.definition.grants.length ? <ul>{selected.definition.grants.map((grant, index) => <li key={index}><code>{grant.connector}/{grant.action} {JSON.stringify(grant.argumentEquals)}</code> — {grant.rationale}</li>)}</ul> : <p>None requested</p>}
+          <h4>Reviewed memory bindings</h4>
+          {selected.definition.memorySourceIds.length ? <ul className="agent-setup-memory-bindings">{selected.definition.memorySourceIds.map((id) => {
+            const binding = selected.memoryBindings[id]
+            return <li key={id}><MemoryIdentity sourceId={id} classification={binding.classification} ref={binding.resourceRef} />
+              <small>Source record digest: <code>{binding.sourceRecordDigest}</code></small>
+              <small>Resource record digest: <code>{binding.resourceRecordDigest}</code></small>
+            </li>
+          })}</ul> : <p>None reviewed. This agent has no memory access.</p>}
+          <h4>Assumptions</h4><ul>{selected.definition.assumptions.map((item) => <li key={item}>{item}</li>)}</ul>
+          {selected.definition.evidence.length > 0 && <><h4>References</h4><ul>{selected.definition.evidence.map((item) => <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> — {item.finding}</li>)}</ul></>}
+          {selected.status === 'proposed' && ((canReview ?? viewerCanReview) ? <div className="agent-setup-publish"><label><input type="checkbox" checked={acknowledged} disabled={busy} onChange={(event) => setAcknowledged(event.target.checked)} />I reviewed the instructions, assumptions, exact connector permissions, and memory bindings.</label><button className="primary-btn" type="button" disabled={busy || !acknowledged} onClick={() => void publish()}>Publish reviewed agent</button></div> : <p>Only a Project owner or admin can publish this exact draft.</p>)}
+          {selected.status === 'published' && selected.participantId && (options?.executionAvailable ? <form className="agent-setup-run" onSubmit={(event) => void startTask(event)}>
+            <h4>3. Start a task</h4><p>This requests one Run from the published agent. Its policy and memory source access are checked again by Core.</p>
+            <label>Task<textarea aria-label="Agent task" disabled={busy} value={task} onChange={(event) => setTask(event.target.value)} /></label>
+            <div className="agent-setup-memory" aria-label="Task memory sources"><h4>Memory for this task</h4><p>No memory is selected by default. Choose only the reviewed sources this task needs.</p>
+              {selected.definition.memorySourceIds.length > 0 && selectableTaskMemorySources.length === 0 && <p>Reviewed memory sources are not currently available at their pinned versions.</p>}
+              {selectableTaskMemorySources.map((id) => <label key={id} className="agent-setup-task-memory-option"><input type="checkbox" aria-label={`Use memory ${id}`} checked={taskMemoryIds.includes(id)} disabled={busy}
+                onChange={(event) => setTaskMemoryIds((current) => event.target.checked ? [...current, id] : current.filter((item) => item !== id))} />
+                <span>{id} · {selected.memoryBindings[id].classification} · {selected.memoryBindings[id].resourceRef.version}</span></label>)}
+            </div>
+            <button className="primary-btn" type="submit" disabled={busy || !task.trim()}>Start task</button>
+            {taskRunId && <p role="status">Run admitted. <Link to={`/project/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskRunId)}`}>Open this Run</Link></p>}
+          </form> : <p>Task execution is unavailable on this Core connection. This published definition remains saved for review.</p>)}
         </article>}
       </section>
     </div>

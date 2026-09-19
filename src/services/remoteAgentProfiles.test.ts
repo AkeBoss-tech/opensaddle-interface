@@ -9,12 +9,16 @@ const definition = {
   title: 'Repository guide', objective: 'Review a source', instructions: 'Read only.', sourceId: 'src_1',
   harness: 'codex-app-server' as const,
   grants: [{ connector: 'github', action: 'get_repository', argumentEquals: { owner: 'company', repo: 'finance' }, rationale: 'Exact repository' }],
+  memorySourceIds: [],
   assumptions: ['The source is current'], evidence: [],
 }
+const memoryRef = { authority: 'https://memory.example', contract: 'krail.provider.model.v1',
+  resource_id: 'review-1', resource_type: 'note', version: 'v1', digest: `sha256:${'b'.repeat(64)}` }
 const proposal = (status: 'proposed' | 'published' = 'proposed') => ({
   proposal_id: 'agp_1', project_id: 'P1', definition_digest: digest, status,
   definition: { title: definition.title, objective: definition.objective, instructions: definition.instructions, source_id: definition.sourceId, harness: definition.harness,
-    grants: [{ connector: 'github', action: 'get_repository', argument_equals: { owner: 'company', repo: 'finance' }, rationale: 'Exact repository' }], assumptions: definition.assumptions, evidence: [] },
+    grants: [{ connector: 'github', action: 'get_repository', argument_equals: { owner: 'company', repo: 'finance' }, rationale: 'Exact repository' }], memory_source_ids: [], assumptions: definition.assumptions, evidence: [] },
+  memory_bindings: {},
   published_at: status === 'published' ? '2026-09-19T00:00:00Z' : null,
   reviewed_by: status === 'published' ? 'owner' : null,
   participant_id: status === 'published' ? 'ptc_1' : null,
@@ -27,6 +31,8 @@ test('agent-profile client keeps definition, review digest, and task admission o
     const path = new URL(String(url)).pathname
     if (path.endsWith('/agent-builder-options')) return Response.json({ schema_version: 'opensaddle.agent-builder-options.v1', project_id: 'P1', execution_available: true, can_review: true,
       research_available: true, research_provider: 'brave_web_search', research_scope: 'web',
+      memory_available: true, memory_sources: [{ source_id: 'memory-1', classification: 'personal', source_version: 'v1',
+        resource_ref: memoryRef, immutable: true, provider_freshness: 'rechecked_at_packet_create_and_read' }],
       sources: [{ source_id: 'src_1', source_kind: 'git', revision: 'rev-1', snapshot_digest: digest }], harnesses: ['codex-app-server'], connector_actions: [] })
     if (path.endsWith('/participants/ptc_1')) return Response.json({ project_id: 'P1', lifecycle: 'waiting', revision: 3 })
     if (path.endsWith('/agent-proposals') && init?.method !== 'POST') return Response.json({ schema_version: 'opensaddle.agent-proposal-list.v1', items: [proposal()] })
@@ -38,22 +44,50 @@ test('agent-profile client keeps definition, review digest, and task admission o
   const choices = await client.options('P1')
   assert.equal(choices.sources[0].sourceId, 'src_1')
   assert.deepEqual([choices.researchAvailable, choices.researchProvider, choices.researchScope], [true, 'brave_web_search', 'web'])
+  assert.deepEqual([choices.memoryAvailable, choices.memorySources[0].resourceRef.digest], [true, `sha256:${'b'.repeat(64)}`])
   assert.deepEqual(await client.participant('ptc_1'), { projectId: 'P1', lifecycle: 'waiting', revision: 3 })
   assert.equal((await client.list('P1'))[0].definition.sourceId, 'src_1')
   await client.propose('P1', definition)
   await client.publish('agp_1', digest)
-  const admitted = await client.submitTask('ptc_1', 0, 'Inspect the source', 'same-key')
+  const admitted = await client.submitTask('ptc_1', 0, 'Inspect the source', 'same-key', [])
   assert.equal(admitted.runId, 'run_1')
   assert.equal(new Headers(requests[3].init?.headers).get('authorization'), 'Bearer token')
-  assert.deepEqual(JSON.parse(String(requests[3].init?.body)), { title: 'Repository guide', objective: 'Review a source', instructions: 'Read only.', source_id: 'src_1', harness: 'codex-app-server', grants: [{ connector: 'github', action: 'get_repository', argument_equals: { owner: 'company', repo: 'finance' }, rationale: 'Exact repository' }], assumptions: ['The source is current'], evidence: [] })
+  assert.deepEqual(JSON.parse(String(requests[3].init?.body)), { title: 'Repository guide', objective: 'Review a source', instructions: 'Read only.', source_id: 'src_1', harness: 'codex-app-server', grants: [{ connector: 'github', action: 'get_repository', argument_equals: { owner: 'company', repo: 'finance' }, rationale: 'Exact repository' }], memory_source_ids: [], assumptions: ['The source is current'], evidence: [] })
   assert.deepEqual(JSON.parse(String(requests[4].init?.body)), { expected_digest: digest, acknowledge_assumptions: true })
   assert.equal(new Headers(requests[5].init?.headers).get('idempotency-key'), 'same-key')
-  assert.deepEqual(JSON.parse(String(requests[5].init?.body)), { expected_participant_revision: 0, task: 'Inspect the source' })
+  assert.deepEqual(JSON.parse(String(requests[5].init?.body)), { expected_participant_revision: 0, task: 'Inspect the source', authorized_context_source_ids: [] })
 })
 
 test('agent-profile client rejects task replies that are not participant-message admissions', async () => {
   const client = new RemoteAgentProfileClient('https://control.example', () => 'owner', undefined, async () => Response.json({ run_id: 'run_1' }))
-  await assert.rejects(client.submitTask('ptc_1', 0, 'Inspect', 'key'), /Agent task response is malformed/)
+  await assert.rejects(client.submitTask('ptc_1', 0, 'Inspect', 'key', []), /Agent task response is malformed/)
+})
+
+test('externally created proposal retains exact reviewed memory pins and task sends an explicit subset', async () => {
+  const requests: RequestInit[] = []
+  const pinned = { ...proposal('published'), definition: { ...proposal('published').definition, memory_source_ids: ['memory-1'] },
+    memory_bindings: { 'memory-1': { source_record_digest: 'd'.repeat(64), resource_record_digest: 'e'.repeat(64),
+      resource_ref: memoryRef, classification: 'personal' } } }
+  const client = new RemoteAgentProfileClient('https://control.example', () => 'owner', undefined, async (_url, init) => {
+    requests.push(init ?? {})
+    return init?.method === 'POST'
+      ? Response.json({ schema_version: 'opensaddle.participant-message.v1', message_id: 'pmsg_1', participant_id: 'ptc_1',
+        project_id: 'P1', run_id: 'run_1', status: 'queued', participant_revision: 0, replayed: false })
+      : Response.json({ schema_version: 'opensaddle.agent-proposal-list.v1', items: [pinned] })
+  })
+  const returned = (await client.list('P1'))[0]
+  assert.deepEqual(returned.definition.memorySourceIds, ['memory-1'])
+  assert.equal(returned.memoryBindings['memory-1'].resourceRef.digest, `sha256:${'b'.repeat(64)}`)
+  assert.equal(returned.memoryBindings['memory-1'].resourceRecordDigest, 'e'.repeat(64))
+  await client.submitTask('ptc_1', 1, 'Review', 'memory-key', ['memory-1'])
+  assert.deepEqual(JSON.parse(String(requests[1].body)).authorized_context_source_ids, ['memory-1'])
+})
+
+test('proposal client rejects memory IDs whose pinned bindings are absent', async () => {
+  const malformed = { ...proposal(), definition: { ...proposal().definition, memory_source_ids: ['hidden-memory'] } }
+  const client = new RemoteAgentProfileClient('https://control.example', () => 'owner', undefined,
+    async () => Response.json({ schema_version: 'opensaddle.agent-proposal-list.v1', items: [malformed] }))
+  await assert.rejects(client.list('P1'), /memory bindings are malformed/)
 })
 
 test('online research request uses bounded snake-case intake and treats returned grant-free evidence as a draft', async () => {
@@ -83,6 +117,7 @@ test('online research request uses bounded snake-case intake and treats returned
   assert.equal(result.observations[0].contentBasis, 'search_index_excerpt_unverified_at_page')
   assert.equal(result.capabilityIdeas[0].status, 'installed_read_action')
   assert.deepEqual(result.draftDefinition.grants, [])
+  assert.deepEqual(result.draftDefinition.memorySourceIds, [])
   assert.equal(result.draftDefinition.evidence.length, 1)
 })
 
@@ -95,4 +130,15 @@ test('research client rejects a result that supplies permissions or a different 
   }))
   await assert.rejects(client.research('P1', { objective: 'Review repositories', sourceId: 'src_1', harness: 'codex-app-server',
     queries: ['github research'], candidateConnectorIds: [], resultsPerQuery: 3 }), /would widen authority/)
+})
+
+test('research client rejects a draft that attempts to add memory access', async () => {
+  const client = new RemoteAgentProfileClient('https://control.example', () => 'owner', undefined, async () => Response.json({
+    schema_version: 'opensaddle.agent-research.v1', status: 'draft_unpublished', adapter: 'brave_web_search',
+    checked_at: '2026-09-19T05:00:00Z', review_required: true, observations: [], capability_ideas: [],
+    draft_definition: { title: 'Unexpected', objective: 'Unexpected', instructions: 'Unexpected', source_id: 'src_1',
+      harness: 'codex-app-server', grants: [], memory_source_ids: ['memory-1'], assumptions: ['Unverified'], evidence: [] },
+  }))
+  await assert.rejects(client.research('P1', { objective: 'Review', sourceId: 'src_1', harness: 'codex-app-server',
+    queries: ['public'], candidateConnectorIds: [], resultsPerQuery: 3 }), /would widen authority/)
 })

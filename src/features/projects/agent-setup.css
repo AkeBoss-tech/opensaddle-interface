@@ -2,6 +2,7 @@
 .agent-setup-page .page-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
 .agent-setup-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, .9fr); gap: 16px; align-items: start; }
 .agent-setup-page .cc-panel { padding: 18px; }
+.agent-setup-page .primary-btn:hover { background: var(--accent); color: #fff; filter: brightness(.94); }
 .agent-setup-page h2 { margin: 0; font-size: 18px; }
 .agent-setup-page h3 { margin: 7px 0; }
 .agent-setup-page h4 { margin: 18px 0 6px; font-size: 12px; }
@@ -36,4 +37,11 @@
 .agent-setup-research-results li { margin: 12px 0; line-height: 1.5; }
 .agent-setup-research-results li p { margin: 4px 0; }
 .agent-setup-research-results li small { color: var(--muted); }
+.agent-setup-memory-options { display: grid; gap: 8px; }
+.agent-setup-memory-options > label { display: flex; align-items: start; gap: 9px; padding: 9px; border: 1px solid var(--border); border-radius: 8px; }
+.agent-setup-optional .agent-setup-memory-options input[type="checkbox"], .agent-setup-task-memory-option input[type="checkbox"] { flex: none; width: 16px; height: 16px; margin: 3px 0 0; padding: 0; }
+.agent-setup-memory-identity { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.agent-setup-memory-identity small, .agent-setup-memory-bindings > li > small { display: block; color: var(--muted); overflow-wrap: anywhere; }
+.agent-setup-memory-bindings li { margin: 12px 0; }
+.agent-setup-task-memory-option { display: flex; align-items: start; gap: 8px; color: var(--text); font-size: 11px; }
 @media (max-width: 760px) { .agent-setup-page .page-header { align-items: start; flex-direction: column; }.agent-setup-grid, .agent-setup-research form { grid-template-columns: 1fr; } }
