@@ -388,6 +388,7 @@ function Shell() {
             <Route path="/project/:projectId" element={<ProjectWorkspacePage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
             <Route path="/project/:projectId/agents" element={<AgentSetupPage />} />
+            <Route path="/project/:projectId/overview" element={<ConnectedLocalProjectPage />} />
             <Route path="/project/:projectId/manage" element={<ProjectPage />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/wiki" element={<WikiPage />} />

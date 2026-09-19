@@ -1,3 +1,4 @@
+import { ManagedConnectionsPanel } from './ManagedConnectionsPanel'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../../data/store'
@@ -18,11 +19,13 @@ export function ConnectedLocalProjectPage() {
   if (!project && services?.projectGoals) return <div className="content-page connected-local-page">
     <header className="page-header"><div><span className="eyebrow">Authoritative project</span><h1><code>{projectId}</code></h1></div>{services.journey&&<Button onClick={()=>navigate(`/project/${projectId}/collaboration`)}>People and machines</Button>}</header>
     <ProjectGoalEditor projectId={projectId} client={services.projectGoals} />
+    {services.managedConnections && <ManagedConnectionsPanel projectId={projectId} client={services.managedConnections} />}
   </div>
   if (!project) return <div className="content-page"><div className="empty-state">Project not found.</div></div>
   return <div className="content-page connected-local-page">
     <header className="page-header"><div><span className="eyebrow">Source-backed local project</span><h1>{project.name}</h1><p>{project.local?.rootPath}</p></div><div className="page-actions">{services?.journey ? <Button onClick={() => navigate(`/project/${encodeURIComponent(project.id)}/collaboration`)}>Tasks and project knowledge</Button> : <Button onClick={() => navigate('/settings?section=connection')}>Set up personal runtime</Button>}{window.opensaddle?.openPath && project.local && <Button variant="secondary" onClick={() => void window.opensaddle?.openPath(project.local!.rootPath)}>Open folder</Button>}<Button onClick={() => navigate(`/project/${project.id}/onboarding`)}>Governed onboarding</Button></div></header>
     <ProjectGoalEditor projectId={project.id} client={services?.projectGoals} />
+    {services?.managedConnections && <ManagedConnectionsPanel projectId={project.id} client={services.managedConnections} />}
     <ProjectProfilePanel projectId={project.id} client={services?.localProjects} />
   </div>
 }

@@ -24,6 +24,17 @@ const proposal = (status: 'proposed' | 'published' = 'proposed') => ({
   participant_id: status === 'published' ? 'ptc_1' : null,
 })
 
+test('managed credential identities stay in the exact draft and malformed bindings fail closed', async () => {
+  const binding = { connector: 'github', secret_ref: 'token', connection_id: 'mcc_one', display_name: 'Work repository', revision: 2, credential_version: 1 }
+  let bindings: unknown = { github: [binding] }
+  const client = new RemoteAgentProfileClient('https://core.example', () => 'owner', undefined, async () => Response.json({ schema_version: 'opensaddle.agent-proposal-list.v1', items: [{ ...proposal(), managed_connection_bindings: bindings }] }))
+  assert.deepEqual((await client.list('P1'))[0].managedConnectionBindings, { github: [{ connector: 'github', secretRef: 'token', connectionId: 'mcc_one', displayName: 'Work repository', revision: 2, credentialVersion: 1 }] })
+  for (const invalid of [{ other: [binding] }, { github: [{ ...binding, revision: true }] }, { github: [binding, binding] }, { github: [{ ...binding, connection_id: '' }] }]) {
+    bindings = invalid
+    await assert.rejects(client.list('P1'), /credential bindings/)
+  }
+})
+
 test('agent-profile client keeps definition, review digest, and task admission on canonical v2 routes', async () => {
   const requests: Array<{ url: string; init?: RequestInit }> = []
   const client = new RemoteAgentProfileClient('https://control.example/', () => 'owner', 'token', async (url, init) => {

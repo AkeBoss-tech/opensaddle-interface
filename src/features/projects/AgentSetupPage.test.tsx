@@ -34,6 +34,28 @@ const render = (client?: AgentProfileClient, canReview?: boolean) => <MemoryRout
 const button = (view: ReactTestRenderer, label: string) => view.root.findAllByType('button').find((node) => node.children.join('') === label)!
 const field = (view: ReactTestRenderer, label: string) => view.root.findByProps({ 'aria-label': label })
 
+test('review names the exact credential connection without claiming verified provider identity', async () => {
+  const saved = { ...proposed(), managedConnectionBindings: { records: [{ connector: 'records', secretRef: 'token', connectionId: 'mcc_fixed', displayName: 'Team finance records', revision: 7, credentialVersion: 2 }] } }
+  const client: AgentProfileClient = {
+    options: async () => options, list: async () => [saved],
+    research: async () => { throw Error('unexpected') }, participant: async () => { throw Error('unexpected') },
+    propose: async () => { throw Error('unexpected') }, publish: async () => { throw Error('unexpected') }, submitTask: async () => { throw Error('unexpected') },
+  }
+  let view!: ReactTestRenderer
+  await act(async () => { view = create(render(client)); await Promise.resolve() })
+  await act(async () => { view.root.findByProps({ 'aria-label': 'Saved agent drafts' }).findByType('button').props.onClick() })
+  const text = JSON.stringify(view.toJSON())
+  assert.match(text, /Team finance records/)
+  assert.match(text, /mcc_fixed/)
+  assert.match(text, /not verified provider account identities/)
+  const review = view.root.findByProps({ 'aria-label': 'Credential connections' })
+  const visibleText = (node: any): string => typeof node === 'string' ? node : (node.children ?? []).map(visibleText).join('')
+  assert.match(visibleText(review), /revision 7/)
+  assert.match(visibleText(review), /records\/token/)
+  assert.equal(button(view, 'Publish reviewed agent').props.disabled, true)
+  await act(async () => view.unmount())
+})
+
 test('reviewed agent journey submits a deny-by-default draft, exact publication review, and one idempotent Run admission', async () => {
   const definitions: AgentDefinition[] = []
   const digests: string[] = []

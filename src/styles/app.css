@@ -400,6 +400,15 @@
     .connected-local-page .settings-card h2 { margin:0 0 8px; font-size:18px; letter-spacing:-.02em; }
     .connected-local-page .settings-card h3 { margin:16px 0 6px; font-size:14px; }
     .connected-local-page .settings-card p { color:var(--muted); line-height:1.55; }
+    .managed-connections form { display:grid; gap:12px; max-width:580px; margin-top:20px; }
+    .managed-connections form label { display:grid; gap:6px; color:var(--muted); font-size:13px; }
+    .managed-connections form input, .managed-connections form select { width:100%; min-height:40px; padding:8px 10px; border:1px solid var(--border-strong); border-radius:8px; color:var(--text); background:var(--bg-elevated); }
+    .managed-connections form .os-button { justify-self:start; }
+    .managed-connections ul { list-style:none; padding:0; margin:16px 0; }
+    .managed-connections li { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:12px 0; border-top:1px solid var(--border); overflow-wrap:anywhere; }
+    .managed-connections li .os-button { margin-left:auto; }
+    .managed-connection-review { padding:14px; margin:12px 0; border:1px solid var(--border-strong); border-radius:10px; background:var(--bg-elevated); }
+    .managed-connection-review .os-button { margin:0 8px 6px 0; }
     .connected-local-page .section-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:14px; }
     .connected-local-page .section-heading p { margin:4px 0 0; font-size:12px; }
     .connected-local-page .list-stack { display:grid; gap:8px; }

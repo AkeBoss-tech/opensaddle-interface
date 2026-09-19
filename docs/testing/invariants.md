@@ -1,5 +1,9 @@
 # Interface invariants
 
+## MANAGED-CONNECTIONS-UI-1
+
+Only the negotiated personal connection contract exposes Project credential controls. The actual transport client validates Project/owner/connection identity and revisions, retains metadata only, and never renders upstream error bodies. The mounted form clears a submitted secret, requires explicit revision-bound revocation review, withholds stale metadata after denial or uncertain writes, and rejects late responses from a prior Project. Desktop transport permits only exact adopted-Project create/list/revoke paths and bounded bodies; it exposes no secret-read operation. A stored credential does not claim a verified provider account or confer agent access without a new reviewed definition. Tests use the real client and UI with HTTP authority fixtures; Core owns encryption and dispatch enforcement. This is a new surface with no preexisting regression baseline.
+
 ## PROJECT-TASK-JOURNEY-20260919
 
 From a selected Project, an authorized user can open reviewed Agents, submit a task, and follow the exact Core-issued Run to approval, result artifacts, and digest-only connector activity. The task composer retains its draft when admission is rejected or the response names another Project; it does not invent a Run link. Connected task controls use the authenticated Core subject, so a stale browser identity cannot hide the actual requester's cancellation control or confer it on another subject. Missing or malformed authenticated identity withholds v2 task services. A cancelled or interrupted Run shows its terminal state and any artifact inspection path without interpreting absent result bytes as a connection or access failure. Cancellation after dispatch does not prove provider effects were undone.

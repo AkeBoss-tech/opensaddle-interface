@@ -3,6 +3,25 @@ import test from'node:test'
 import{proxyPersonalRuntimeRequest}from'../electron/personalRuntimeProxy'
 
 const handoff={baseUrl:'http://127.0.0.1:8766/',installationId:'install',ownerSubject:'owner',projectId:'project',bearerToken:'private-token',adoptionSocket:'/private/p.sock',ipcDir:'/private'}
+test('MANAGED-CONNECTIONS-UI-1: desktop limits credential operations to the adopted Project and exact bodies',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'},calls:Request[]=[]
+ const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);calls.push(request);assert.equal(request.headers.get('Authorization'),'Bearer private-token');return Response.json({})}
+ const path='/api/v2/projects/project/connector-connections',body={connector:'repository',secret_ref:'repository-token',display_name:'Repository',api_key:'synthetic-key'}
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},server)
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path,body:JSON.stringify(body)},server)
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path:path+'/conn_one/revoke',body:'{"expected_revision":3}'},server)
+ assert.deepEqual(JSON.parse(await calls[1].text()),body)
+ for(const request of [
+  {method:'GET',path:'/api/v2/projects/other/connector-connections'},
+  {method:'GET',path:path+'/conn_one/secret'},
+  {method:'POST',path,body:JSON.stringify({...body,authority:'admin'})},
+  {method:'POST',path,body:JSON.stringify({...body,api_key:'x'.repeat(4097)})},
+  {method:'POST',path:path+'/conn_one/revoke',body:'{"expected_revision":true}'},
+  {method:'POST',path:path+'/conn_one/revoke',body:'{"expected_revision":3,"all":true}'},
+  {method:'GET',path:path+'?include_secrets=true'},
+ ] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,...request},server),/path|authority|connection body/)
+ assert.equal(calls.length,3)
+})
 test('main proxy binds a permitted path to the adopted runtime and owns authorization',async()=>{let seen:Request|undefined;const response=await proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'/api/v2/personal-runtime'},async(input,init)=>{seen=new Request(input,init);return Response.json({lifecycle:'running'})});assert.equal(seen?.url,'http://127.0.0.1:8766/api/v2/personal-runtime');assert.equal(seen?.headers.get('Authorization'),'Bearer private-token');assert.equal(seen?.headers.get('X-OpenSaddle-User'),'owner');assert.equal(Buffer.from(response.bodyBase64,'base64').toString(),'{"lifecycle":"running"}');assert.equal(JSON.stringify(response).includes('private-token'),false)})
 test('main proxy rejects authority expansion, caller URLs, and redirects',async()=>{const never=async()=>{throw Error('fetch must not run')};await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'DELETE',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'/api/v2/personal-runtime'},never),/method/);await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'http://example.com/api/v2/personal-runtime'},never),/path/);await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'POST',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'/api/v2/projects/project/members',body:'{}'},never),/path/);await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'/api/v2/personal-runtime',authorization:'Bearer caller'},never),/fields/);await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'/api/v2/personal-runtime'},async()=>new Response('',{status:302,headers:{Location:'https://example.com'}})),/redirect/)})
 test('main proxy permits only the exact bounded context discovery query',async()=>{await proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'/api/v2/projects/project/authorized-context-sources?limit=100'},async()=>Response.json({items:[]}));await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'/api/v2/projects/project/authorized-context-sources?limit=1000'},async()=>Response.json({items:[]})),/path/)})
