@@ -22,19 +22,30 @@ test('file inspection never trusts or installs before explicit actions and exact
  }
  const client=new PersonalCatalogClient('https://core.example',()=> 'owner')
  const button=(name:string)=>view!.root.findAllByType('button').find(node=>node.children.join('')===name)!
+ const waitForUi=async(ready:()=>boolean)=>{
+  const deadline=Date.now()+1500
+  while(!ready()){
+   if(Date.now()>=deadline)assert.fail('package installer did not reach the expected visible state')
+   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,5))})
+  }
+ }
  try{
   await act(async()=>{view=create(<PersonalPackageInstaller client={client} onInstalled={()=>installed++}/> )})
   await act(async()=>{view!.root.findByProps({'aria-label':'Signed package JSON'}).props.onChange({target:{files:[{size:200,text:async()=>JSON.stringify(upload)}],value:'selected'}})})
   assert.deepEqual(posts,[]);assert.equal(button('Install package').props.disabled,true)
   await act(async()=>view!.root.findByProps({'aria-label':'Publisher public key'}).props.onChange({target:{value:key}}))
-  await act(async()=>{button('Inspect key').props.onClick();await new Promise(resolve=>setTimeout(resolve,10))})
+  await act(async()=>button('Inspect key').props.onClick())
+  await waitForUi(()=>JSON.stringify(view!.toJSON()).includes(fingerprint))
   assert.deepEqual(posts,[]);assert.match(JSON.stringify(view!.toJSON()),new RegExp(fingerprint))
   await act(async()=>button('Trust publisher key').props.onClick())
+  await waitForUi(()=>button('Install package').props.disabled===false)
   assert.deepEqual(posts,['/api/v2/personal-runtime/catalog/publishers']);assert.equal(button('Install package').props.disabled,false)
   await act(async()=>button('Install package').props.onClick())
+  await waitForUi(()=>installed===1&&JSON.stringify(view!.toJSON()).includes('Package installed'))
   assert.equal(installed,1);assert.match(JSON.stringify(view!.toJSON()),/Package installed/)
   changed=true
   await act(async()=>button('Install package').props.onClick())
+  await waitForUi(()=>JSON.stringify(view!.toJSON()).includes('Exact package installation could not be confirmed'))
   assert.equal(installed,1);assert.match(JSON.stringify(view!.toJSON()),/Exact package installation could not be confirmed/)
  }finally{if(view)await act(async()=>view!.unmount());globalThis.fetch=original}
 })

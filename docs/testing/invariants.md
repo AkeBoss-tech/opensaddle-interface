@@ -1094,4 +1094,12 @@ errors were not counted as regression evidence. Live desktop round-trip is pendi
 
 ## PERSONAL-RUNTIME-STARTUP-1
 
-A private runtime startup failure is bound to the requested Project and protocol, contains only an allowlisted code, and produces fixed actionable installation guidance after the spawned process is reaped. Unknown codes, extra fields and mismatched identity never supply user-visible diagnostic content or credentials. The desktop consumes pipe data before treating process close as missing handoff. Owning real-process boundary: `test/personalRuntimeStartupFailure.test.ts`; this complements successful commissioning and malformed-handoff cleanup.
+A private runtime startup failure is bound to the requested Project and protocol, contains only an allowlisted code, and produces fixed actionable installation guidance only after cleanup is confirmed. On POSIX, the commissioned leader PID and its original process group must both disappear, including when the launcher exits before handoff; otherwise cleanup is explicitly unconfirmed. Unknown codes, extra fields and mismatched identity never supply user-visible diagnostic content or credentials. The desktop consumes pipe data before treating process close as missing handoff. Owning real-process boundaries: `test/personalRuntimeStartupFailure.test.ts` and `test/personalRuntimeProcess.test.ts`. Descendants that escape into another process group are outside this proof.
+
+## WORKSPACE-PERSISTENCE-1
+
+An older user-owned workspace migrates forward with its name and member data
+intact, and its exact original snapshot remains recoverable. A legacy seeded
+demo workspace is instead quarantined as an exact recovery snapshot before an
+empty real workspace is shown. Owning storage boundary:
+`packages/control-plane/test/workspacePersistence.test.ts`.
