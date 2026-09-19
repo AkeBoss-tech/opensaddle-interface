@@ -2,6 +2,7 @@ import './perspectives/scoped/scoped-workspace.css'
 import {ScopedWorkspace} from './perspectives/scoped/ScopedWorkspace'
 import {TeamWorkspacePage} from './features/teams/TeamWorkspacePage'
 import {ProjectTaskPage} from './features/runs/ProjectTaskPage'
+import {FactoryStartPage} from './features/runs/FactoryStartPage'
 import { TeamsPage } from './features/teams/TeamsPage'
 import { ProjectPerspectivePage } from './features/perspectives/ProjectPerspectivePage'
 import { PresentationPage } from './features/settings/PresentationPages'
@@ -357,6 +358,7 @@ function Shell() {
             <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/project/:projectId/new-task" element={<ConnectedJourneyPage mode="task" />} />
+            <Route path="/project/:projectId/factory" element={<FactoryStartPage />} />
             <Route path="/project/:projectId/tasks/:runId" element={<ProjectTaskPage />} />
             <Route path="/devices" element={<PersonalDevicesPage />} />
             <Route path="/teams" element={<TeamsPage />} />
@@ -379,6 +381,7 @@ function Shell() {
             <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/project/:projectId/new-task" element={<ConnectedJourneyPage mode="task" />} />
+            <Route path="/project/:projectId/factory" element={<FactoryStartPage />} />
             <Route path="/project/:projectId/tasks/:runId" element={<ProjectTaskPage />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />

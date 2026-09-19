@@ -1232,3 +1232,20 @@ the current form. The mounted panel and real HTTP client tests cover these
 boundaries; a real Core browser fixture verifies review/save, route reservations
 and reducing the limit below existing reservations. No real provider is called
 by that browser fixture.
+
+## FACTORY-UI-1
+
+The personal Interface offers a Factory coding Run only after negotiating Core's
+exact single-Run capability. It discovers enabled signed blueprints and current
+versioned definitions through authenticated, paged Project reads; a disabled
+pinned blueprint cannot be previewed or launched. A human reviews the compiled
+Goal criteria, exact source revision and digest, coding paths and verification
+commands, requested scopes, configured adapter and worker, and compile digest
+before separately preparing the Goal and submitting the Run with one persisted
+exact-body idempotency key. A stale preview or changed Goal is surfaced for
+re-review. On the Run detail, coding-result artifact review remains separate
+from explicit acceptance of every fixed Factory criterion against that exact
+artifact. Goal completion means evidence verified at Run time; it does not
+attest the current workspace. Owning client and mounted journey tests:
+`src/services/factoryCoding.test.ts` and
+`src/features/runs/FactoryJourney.test.tsx`.

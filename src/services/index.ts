@@ -1,4 +1,5 @@
 import { ProjectModelBudgetClient } from './projectModelBudget'
+import { FactoryCodingClient } from './factoryCoding'
 import { ManagedConnectorConnectionsClient } from './managedConnectorConnections'
 import {RunApprovalReviewClient} from './runApprovalReview'
 import {StandalonePluginSettingsClient} from './standalonePluginSettings'
@@ -78,6 +79,7 @@ export interface ServiceBundle {
   projectKnowledge?: RegisteredProjectKnowledgeClient
   managedConnections?: ManagedConnectorConnectionsClient
   projectModelBudget?: ProjectModelBudgetClient
+  factoryCoding?: FactoryCodingClient
   teams?: TeamsClient
   projectConversations?: (projectId:string)=>ManagerConversationsClient
   managerConversations?: ManagerConversationsClient
@@ -209,6 +211,7 @@ export function initServices(opts: {
       let runEventPageAvailable = false
       let projectKnowledgeAvailable = false
       let codingTasksAvailable = false
+      let factoryCodingCapability: {configured_worker_id:string;adapter_binding:{adapter_id:string;adapter_version:string;adapter_config_digest:string}} | undefined
       let portableContinuationAvailable = false
       let nativeSessionResume = false
       let legacyHealthAvailable = false
@@ -336,6 +339,7 @@ export function initServices(opts: {
               agent_builder_v1?: { available?: boolean; review_required?: boolean; online_research_available?: boolean; schema_version?: string }
               resource_capacity?: { available?: boolean; schema_version?: string; project_config_path_template?: string; status_path_template?: string }
               coding_tasks?: {available?:boolean;selection_field?:string;schema_version?:string;supported_adapter_ids?:unknown;result_schema_version?:string;review_path_template?:string}
+              factory_single_coding_run_v1?: {available?:boolean;schema_version?:string;definition_path_template?:string;blueprint_path_template?:string;exact_definition_path_template?:string;preview_path_template?:string;prepare_goal_path_template?:string;acceptance_path_template?:string;run_selection_field?:string;goal_preparation_required?:boolean;multi_step_execution?:boolean;configured_worker_id?:string;adapter_binding?:{adapter_id?:string;adapter_version?:string;adapter_config_digest?:string}}
               registered_git_evidence?: { available?: boolean; schema_version?: string; list_path_template?: string; inspection_path_template?: string; setup_path_template?: string; capture_path_template?: string; review_path_template?: string; semantic_authority?: string }
               native_adapters?: { available?: boolean; schema_version?: string; supported_adapter_ids?: unknown; unsupported_adapter_ids?: unknown; readiness_path_template?: string; report_path_template?: string; selection_field?: string; observation_authority?: string; policy_authority?: string }; portable_run_continuations?: { available?: boolean; schema_version?: string; checkpoint_path_template?: string; continuation_path_template?: string; mode?: string; native_session_resume?: boolean }; authorized_context_packets?: { available?: boolean; schema_version?: string; selection_field?: string; inspector_path_template?: string; worker_path_template?: string; reauthorization_schema_version?: string; unavailable_reason?: string; sources_path_template?: string }; personal_runtime?: {available?:boolean;schema_version?:string;status_path?:string;action_path?:string;authority?:string;ui_process_owner?:boolean;recovery_path?:string}
             }
@@ -393,6 +397,20 @@ export function initServices(opts: {
             const personal=capabilities.personal_runtime
             const coding = capabilities.coding_tasks
             codingTasksAvailable = coding?.available === true && coding.selection_field === 'coding_task' && coding.schema_version === 'opensaddle.coding-task.v1' && JSON.stringify(coding.supported_adapter_ids) === JSON.stringify(['codex-app-server']) && coding.result_schema_version === 'opensaddle.coding-result.v1' && coding.review_path_template === '/api/v2/runs/{run_id}/coding-result/review'
+            const factory = capabilities.factory_single_coding_run_v1
+            if (factory?.available === true && factory.schema_version === 'opensaddle.factory-repo-task-compile.v1'
+                && factory.definition_path_template === '/api/v2/projects/{project_id}/factories'
+                && factory.blueprint_path_template === '/api/v2/projects/{project_id}/factory-blueprints'
+                && factory.exact_definition_path_template === '/api/v2/factories/{factory_id}?version={version}'
+                && factory.preview_path_template === '/api/v2/factories/{factory_id}/compile'
+                && factory.prepare_goal_path_template === '/api/v2/factories/{factory_id}/prepare-goal'
+                && factory.acceptance_path_template === '/api/v2/runs/{run_id}/factory-acceptance'
+                && factory.run_selection_field === 'factory_binding' && factory.goal_preparation_required === true
+                && factory.multi_step_execution === false && typeof factory.configured_worker_id === 'string'
+                && factory.adapter_binding?.adapter_id === 'codex-app-server'
+                && typeof factory.adapter_binding.adapter_version === 'string'
+                && /^[a-f0-9]{64}$/.test(String(factory.adapter_binding.adapter_config_digest)))
+              factoryCodingCapability = {configured_worker_id:factory.configured_worker_id,adapter_binding:{adapter_id:'codex-app-server',adapter_version:factory.adapter_binding.adapter_version!,adapter_config_digest:factory.adapter_binding.adapter_config_digest!}}
             const knowledge = capabilities.registered_git_evidence
             projectKnowledgeAvailable = knowledge?.available === true && knowledge.schema_version === 'opensaddle.registered-git-evidence.v1' && knowledge.list_path_template === '/api/v2/projects/{project_id}/retained-evidence' && knowledge.inspection_path_template === '/api/v2/projects/{project_id}/retained-evidence/captures/{capture_id}/inspection' && knowledge.setup_path_template === '/api/v2/projects/{project_id}/retained-evidence/setup' && knowledge.capture_path_template === '/api/v2/projects/{project_id}/retained-evidence/captures' && knowledge.review_path_template === '/api/v2/projects/{project_id}/retained-evidence/captures/{capture_id}/review' && knowledge.semantic_authority === 'source_document_review'
             personalRuntimeAvailable=personal?.available===true&&personal.schema_version==='opensaddle.personal-runtime.v1'&&personal.status_path==='/api/v2/personal-runtime'&&personal.action_path==='/api/v2/personal-runtime/lifecycle'&&personal.authority==='local_installation_owner'&&personal.ui_process_owner===false&&personal.recovery_path==='/api/v2/personal-runtime/recovery'
@@ -519,6 +537,7 @@ export function initServices(opts: {
         projectDirectory: backendAvailable && projectDirectoryAvailable ? new ProjectDirectoryClient(baseUrl,getUserId,token) : undefined,
         personalDevices: backendAvailable && personalDevicesAvailable ? new PersonalDevicesClient(baseUrl, getUserId, token, personalDevicePairingAvailable, deviceAssignmentsAvailable) : undefined,
         codingResults: backendAvailable && codingTasksAvailable ? new CodingResultReviewClient(baseUrl, getUserId, token) : undefined,
+        factoryCoding: backendAvailable && codingTasksAvailable && factoryCodingCapability ? new FactoryCodingClient(baseUrl,getUserId,token,factoryCodingCapability.configured_worker_id,factoryCodingCapability.adapter_binding) : undefined,
         projectKnowledge: backendAvailable && projectKnowledgeAvailable ? new RegisteredProjectKnowledgeClient(baseUrl, getUserId, token) : undefined,
         controlPlane: {
           connected: backendAvailable,
