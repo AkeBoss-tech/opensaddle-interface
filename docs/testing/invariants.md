@@ -1159,6 +1159,14 @@ and mounted Operations tests: `src/services/controlPlaneV2Client.test.ts`,
 `src/services/remoteOperations.test.ts`, and
 `src/features/operations/OperationsPage.test.tsx`.
 
+## CONNECTED-MACHINE-STATUS-1
+
+The Project Machines panel shows a worker status only when Core reports one.
+PostgreSQL's `project-workers.v1` worker records may omit `status`; the
+connected client renders `Status unavailable` instead of converting the
+missing field into the word `undefined`. A mounted client-to-panel test uses
+the PostgreSQL response shape in `ConnectedJourneySurface.test.tsx`.
+
 ## PROJECT-MEMBER-REMOVAL-1
 
 The normal Project People panel offers removal only when authenticated Core
