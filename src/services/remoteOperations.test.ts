@@ -7,3 +7,17 @@ test('external-session transport uses the exact authorized Project route and pre
 test('external-session revocation errors expose no stale fallback',async()=>{const original=globalThis.fetch;globalThis.fetch=async()=>Response.json({detail:'project membership required'},{status:403});try{await assert.rejects(new RemoteOperationsSessionClient('https://core.example',()=> 'former-member').sessions('P1'),/project membership required/)}finally{globalThis.fetch=original}})
 
 test('external-session transport rejects envelope and row Project substitution',async()=>{const original=globalThis.fetch;globalThis.fetch=async()=>Response.json({project_id:'P2',external_sessions:[]});try{await assert.rejects(new RemoteOperationsSessionClient('https://core.example',()=> 'member').sessions('P1'),/Project identity mismatch/)}finally{globalThis.fetch=original};globalThis.fetch=async()=>Response.json({project_id:'P1',external_sessions:[{session_id:'ses_1',project_id:'P2',harness:'codex',external_session_id:'native',transcript_locator:'opaque',authority_mode:'source_managed',source_capabilities:{},authority_hash:'a',created_at:'now',updated_at:'now'}]});try{await assert.rejects(new RemoteOperationsSessionClient('https://core.example',()=> 'member').sessions('P1'),/Project identity mismatch/)}finally{globalThis.fetch=original}})
+
+test('EXTERNAL-SESSION-OBSERVATION-1: legacy declared mode is evidence only and an unprojected managed mode is refused',async()=>{
+ const original=globalThis.fetch,client=new RemoteOperationsSessionClient('https://core.example',()=> 'member')
+ const row={session_id:'ses_legacy',project_id:'P1',harness:'codex',external_session_id:'native',transcript_locator:'opaque',authority_mode:'source_managed',declared_authority_mode:'hybrid',recorded_authority_hash:'b'.repeat(64),source_capabilities:{},authority_hash:'a'.repeat(64),created_at:'now',updated_at:'now'}
+ try{
+  globalThis.fetch=async()=>Response.json({project_id:'P1',external_sessions:[row]})
+  const [session]=await client.sessions('P1')
+  assert.equal(session.authorityMode,'source_managed')
+  assert.equal(session.declaredAuthorityMode,'hybrid')
+  assert.equal(session.recordedAuthorityHash,'b'.repeat(64))
+  globalThis.fetch=async()=>Response.json({project_id:'P1',external_sessions:[{...row,authority_mode:'opensaddle_managed'}]})
+  await assert.rejects(client.sessions('P1'),/not observational/)
+ }finally{globalThis.fetch=original}
+})
