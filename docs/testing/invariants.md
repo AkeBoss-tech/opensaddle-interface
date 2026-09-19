@@ -1112,6 +1112,10 @@ The mounted desktop commissioning form distinguishes a missing coding-agent CLI 
 
 In a packaged app, the bundled Core executable is available only when the exact KRAIL runtime manifest, pinned interpreter, dependency records, KRAIL commands, and Core launcher validate together. A stray Core launcher cannot start the managed backend after the bundle is damaged or incomplete. Manifest, digest records and launchers must resolve inside their declared resource root, even when a path is a symlink; symlinks remaining inside the bundle are allowed. Commands must resolve to regular executable files, not directories. The resource-root tests reproduced prior acceptance of both an external launcher and a directory launcher before these checks and pass afterward. An explicitly configured executable remains an operator override. Owning resource-root test: `test/krailRuntimeBundle.test.ts`; desktop main selects only its validated `backendCommand`.
 
+## DESKTOP-PINNED-RESTART-1
+
+The source-free packaged onboarding smoke launches the bundled runtime, registers a disposable Project and prepares onboarding, then stops the owned process and confirms the port closes. It relaunches with the same private home/state/project and requires the Project and onboarding fingerprint to remain readable, KRAIL discovery to work, a fresh process-scoped local-action token, and an unchanged Git workspace. The default second launch uses the same bundle; `--upgrade-resources` selects a distinct bundle with changed KRAIL or OpenSaddle wheel bytes. In Electron mode it also requires the new app process to own the managed sidecar record. `scripts/smoke-packaged-onboarding.mjs` exercises real launchers and public HTTP; a source-text test is not the proof. The local old-to-new sidecar qualification does not establish a mounted-app upgrade, retained KRAIL corpus, or stable personal installation identity.
+
 ## WORKSPACE-PERSISTENCE-1
 
 An older user-owned workspace migrates forward with its name and member data

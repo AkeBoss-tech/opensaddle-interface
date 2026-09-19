@@ -62,8 +62,15 @@ from the mounted image with a fresh home and state directory, waits for its
 managed `opensaddle serve-api` process, requires the `project_onboarding`
 capability at the exact `opensaddle.project-onboarding/v1` contract, registers
 a disposable dirty Git project, and runs profile-only KRAIL prepare without
-starting Codex or Claude. It verifies that prepare did not change the project
-and that both the app and sidecar stop during cleanup.
+starting Codex or Claude. It stops the owned app and sidecar, verifies the
+loopback port closes, then relaunches with the same private state. The second
+launch must retain the Project and onboarding fingerprint, run KRAIL discovery
+again, rotate the process-scoped local-action token, and leave the project Git
+state unchanged. The release workflow checks restart on one bundle. A separate
+source-free sidecar qualification can pass `--upgrade-resources` to relaunch
+from a second pinned bundle with changed KRAIL or OpenSaddle wheel bytes and
+verify the same retained Project/onboarding state. Mounted-app upgrade and
+retained KRAIL corpus still require separate qualification.
 
 ## Outputs and verification
 
