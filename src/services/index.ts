@@ -1,3 +1,4 @@
+import { ProjectModelBudgetClient } from './projectModelBudget'
 import { ManagedConnectorConnectionsClient } from './managedConnectorConnections'
 import {RunApprovalReviewClient} from './runApprovalReview'
 import {StandalonePluginSettingsClient} from './standalonePluginSettings'
@@ -76,6 +77,7 @@ export interface ServiceBundle {
   codingResults?: CodingResultReviewClient
   projectKnowledge?: RegisteredProjectKnowledgeClient
   managedConnections?: ManagedConnectorConnectionsClient
+  projectModelBudget?: ProjectModelBudgetClient
   teams?: TeamsClient
   projectConversations?: (projectId:string)=>ManagerConversationsClient
   managerConversations?: ManagerConversationsClient
@@ -202,6 +204,7 @@ export function initServices(opts: {
       let personalDevicesAvailable = false
       let personalRuntimeAvailable = false
       let managedConnectionsAvailable = false
+      let projectModelBudgetAvailable = false
       let runEventPageAvailable = false
       let projectKnowledgeAvailable = false
       let codingTasksAvailable = false
@@ -322,6 +325,7 @@ export function initServices(opts: {
               run_approval_review_v1?: {available?:boolean;scope?:string;model_call_authorization?:boolean}
               agent_connector_sessions_v1?: {available?:boolean;authority_mode?:string;write_actions_available?:boolean}
               project_membership_removal_v1?: {available?:boolean;scope?:string;revision_required?:boolean}
+              project_model_budget_v1?: { available?: boolean; scope?: string; configured_per_project?: boolean }
               managed_connector_connections_v1?: {available?:boolean;scope?:string;path_template?:string;credential_types?:string[]}
               run_event_page_v1?: {available?:boolean;schema_version?:string;path_template?:string;max_limit?:number}
               project_task_feed_v1?: {available?:boolean;scope?:string;schema_version?:string}
@@ -346,6 +350,7 @@ export function initServices(opts: {
             runApprovalReviewAvailable = capabilities.run_approval_review_v1?.available===true&&capabilities.run_approval_review_v1.scope==='run_admission'&&capabilities.run_approval_review_v1.model_call_authorization===false
             connectorWriteReviewAvailable = capabilities.agent_connector_sessions_v1?.available===true&&capabilities.agent_connector_sessions_v1.authority_mode==='broker_scoped'&&capabilities.agent_connector_sessions_v1.write_actions_available===true
             projectMembershipRemovalAvailable = capabilities.project_membership_removal_v1?.available===true&&capabilities.project_membership_removal_v1.scope==='single_project'&&capabilities.project_membership_removal_v1.revision_required===true
+            projectModelBudgetAvailable = capabilities.project_model_budget_v1?.available===true&&capabilities.project_model_budget_v1.scope==='hosted_model_routes_only'&&capabilities.project_model_budget_v1.configured_per_project===true
             managedConnectionsAvailable = capabilities.managed_connector_connections_v1?.available===true&&capabilities.managed_connector_connections_v1.scope==='personal_local_project'&&capabilities.managed_connector_connections_v1.path_template==='/api/v2/projects/{project_id}/connector-connections'&&JSON.stringify(capabilities.managed_connector_connections_v1.credential_types)===JSON.stringify(['api_key'])
             runEventPageAvailable = capabilities.run_event_page_v1?.available===true&&capabilities.run_event_page_v1.schema_version==='opensaddle.run-event-page.v1'&&capabilities.run_event_page_v1.path_template==='/api/v2/runs/{run_id}/event-page'&&capabilities.run_event_page_v1.max_limit===200
             projectTaskFeedAvailable = capabilities.project_task_feed_v1?.available===true&&capabilities.project_task_feed_v1.scope==='current_memberships'&&capabilities.project_task_feed_v1.schema_version==='opensaddle.project-task-feed.v1'
@@ -496,6 +501,7 @@ export function initServices(opts: {
         malleableShell,
         journey,
         personalRuntime,
+        projectModelBudget: backendAvailable&&projectModelBudgetAvailable?new ProjectModelBudgetClient(baseUrl,getUserId,token):undefined,
         managedConnections: backendAvailable&&managedConnectionsAvailable?new ManagedConnectorConnectionsClient(baseUrl,getUserId,token):undefined,
         teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token,associationsAvailable) : undefined,
         standalonePluginSettings: backendAvailable&&standalonePluginSettingsAvailable?new StandalonePluginSettingsClient(baseUrl,getUserId,token):undefined,

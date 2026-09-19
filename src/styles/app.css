@@ -2027,3 +2027,16 @@ a.nav-item { text-decoration: none; color: inherit; }
 .team-workspace-page :is(a,button):focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 
 .team-workspace-page h1 { color:var(--text); }
+
+/* Project overview controls keep review and edit steps readable. */
+.connected-local-page .settings-card form { display:grid; gap:12px; }
+.connected-local-page .settings-card form label,
+.project-model-budget > label { display:grid; gap:7px; max-width:720px; margin:12px 0; color:var(--dim); font-size:12px; }
+.connected-local-page .settings-card textarea,
+.project-model-budget input { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--panel); color:var(--text); font:inherit; }
+.connected-local-page .settings-card textarea { min-height:76px; resize:vertical; }
+.project-model-budget > p { max-width:920px; line-height:1.55; }
+.project-model-budget details { margin:16px 0; }
+.project-model-budget [role="group"] { margin-top:16px; padding:16px; border:1px solid var(--border); border-radius:10px; background:var(--panel-2); }
+.project-model-budget [role="group"] button + button { margin-left:8px; }
+.connected-local-page .settings-card form > button { justify-self:start; min-height:34px; padding:7px 12px; border:1px solid var(--border); border-radius:8px; background:var(--panel-2); color:var(--text); font:inherit; }
