@@ -7,7 +7,7 @@
 - **PROTECTED-COMMAND-RESULT-1** — A fresh protected command invocation clears the prior result before its authorization request begins. If current authorization denies the invocation, no prior result identifier, summary, receipt, or derived bytes remain visible; this does not claim idle revocation polling.
 - **DESKTOP-RUNTIME-PACKAGE-1** — Desktop packaging requires a complete validated Core, Knowledge/KRAIL, and Python runtime whose manifest binds exact source revisions and wheel digests. Missing or malformed inputs fail before replacing a previously valid staged runtime; the installed smoke runs without a source checkout or inherited developer PATH.
 - **PERSONAL-RUNTIME-AUTHORITY-1** — Interface exposes personal-runtime status and lifecycle controls only after exact v2 capability negotiation. Every mutation uses the displayed authoritative revision; rejection retains the readable prior state and attempts an authoritative refresh. Missing capability, unavailable Knowledge, stale readiness, and failed refresh remain explicit. Server-reported UI-independent ownership is not evidence that work survived an actual UI close.
-- **PERSONAL-RUNTIME-COMMISSION-1** — Commissioning requires an existing authoritative local Project, an installed and ready harness with an exact executable path, and explicit bounded CPU, memory, and concurrency. Missing Projects, unavailable providers, malformed limits, and an unavailable desktop bridge cannot produce a launch request.
+- **PERSONAL-RUNTIME-COMMISSION-1** — Commissioning requires an existing authoritative local Project, an installed and ready harness with an exact executable path, and explicit bounded CPU, memory, and concurrency. Missing Projects, unavailable providers, malformed limits, and an unavailable desktop bridge cannot produce a launch request. A malformed private handoff rejects only after its spawned process is reaped. `test/personalRuntimeProcess.test.ts` publishes the SIGTERM-resistant process PID before the malformed handoff and checks that exact PID is gone after rejection; this replaces the weaker elapsed-time assertion, which could fail before the shell installed its signal trap.
 - **LOCAL-WORK-PROJECT-RUN-1** — Local Work includes membership-scoped Project Runs from the existing task feed alongside governed onboarding outcomes, preserves each feed status, and opens the exact Project task. It bounds Project fanout and does not retain rows after caller or connection replacement.
 - **PROJECT-RUN-AUDIT-UI-1** — Exact task inspection can read Core's authenticated per-Run connector events and displays only event state, sequence/time, action identity, outcome, and request/response digests. It never renders arguments, response bodies, credential leases, or principals; a changed Run, Project, caller, or failed refresh clears prior audit rows.
 
@@ -1058,7 +1058,11 @@ TypeScript and desktop renderer build passed. Screenshot: out/screenshots/review
 
 A Project profile without an onboarding client reports unavailable, never indefinite
 loading. Request failures replace loading; removing the capability removes stale
-errors. The production profile panel was extracted without changing behavior, then
+errors. With a client, the mounted profile reads the selected Project's onboarding
+state and renders its fingerprint, ecosystem and cited claim. This mounted success
+case replaces a stale source-string assertion in `test/connectedLocalBoundary.test.ts`
+that did not follow the existing `ProjectProfilePanel` component boundary. The
+production profile panel was extracted without changing behavior, then
 the same two mounted tests failed on the original loading output before adding the
 capability guard. CSS-only loader adaptation was needed; the initial import failure
 was not counted as regression proof. After the guard, both tests and two goal editor

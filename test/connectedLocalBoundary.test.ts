@@ -40,7 +40,6 @@ const required: Array<[string, string, string]> = [
   ['Start does not fabricate runner readiness while capabilities are absent', start, 'No Codex or Claude runner reported by the control plane'],
   ['Start offers one governed project entry action', start, 'Start governed work'],
   ['Start continues into the latest authoritative project', start, 'navigate(`/project/${latestProject.id}`)'],
-  ['project overview loads authoritative onboarding state', project, 'localProjects?.onboardingState?.(projectId)'],
   ['project overview renders discovery fingerprint', project, 'state.fingerprint'],
   ['project overview renders ecosystems', project, 'state.discovery?.ecosystems'],
   ['project overview renders canonical evidence locators', project, '#${evidence.digest}'],
