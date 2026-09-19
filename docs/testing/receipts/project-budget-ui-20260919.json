@@ -1,0 +1,29 @@
+{
+  "schema_version": "opensaddle.interface-project-budget-acceptance.v1",
+  "interface_source_tree": "c7aa95609df7acb8ec1a9ad37f55361aff6ace2f",
+  "core_source_tree": "1cbf6389446f796668f2315be93dcabd18086223",
+  "tests": {
+    "workspace": 352,
+    "features": 398,
+    "sdk": 2,
+    "total": 752
+  },
+  "build": "passed; final stylesheet spacing visually checked",
+  "log_sha256": "492f2af33a3a68f96abf77e46ee9283cebd46f8523debbe10db0b0bd5a960261",
+  "browser": {
+    "boundary": "Chrome Interface with actual Core HTTP/SQLite hosted admission and controlled in-process model provider",
+    "journey": [
+      "review and set Project lifetime quote ceiling 10 at revision0",
+      "one local provider request reserves10",
+      "reload displays retained10",
+      "review and lower ceiling5 at revision1",
+      "status shows over-reserved and blocks new admission without resetting history"
+    ],
+    "real_provider_called": false
+  },
+  "limits": [
+    "route microunits are not a declared currency",
+    "native provider spend excluded",
+    "SQLite fixture browser evidence; separate actual PostgreSQL API acceptance"
+  ]
+}

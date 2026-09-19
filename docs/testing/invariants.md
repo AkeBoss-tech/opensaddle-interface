@@ -1210,3 +1210,17 @@ digest at task admission. Owning tests: `src/services/remoteAgentProfiles.test.t
 and `src/features/projects/AgentSetupPage.test.tsx`. The People panel also
 withholds last-owner self-removal before POST, covered by
 `src/features/onboarding/ConnectedJourneySurface.test.tsx`.
+
+
+## PROJECT-MODEL-BUDGET-UI-1
+
+Project Overview negotiates the exact hosted budget contract and uses Core's
+current membership to show either read-only status or owner/admin revision
+review. All Runs share the lifetime quote-reservation ceiling; failed and
+uncertain reservations remain charged, and native-provider spend is explicitly
+outside it. Unknown writes and revision conflicts clear actionable state until
+an explicit reload. Late responses from a prior identity/Project cannot populate
+the current form. The mounted panel and real HTTP client tests cover these
+boundaries; a real Core browser fixture verifies review/save, route reservations
+and reducing the limit below existing reservations. No real provider is called
+by that browser fixture.
