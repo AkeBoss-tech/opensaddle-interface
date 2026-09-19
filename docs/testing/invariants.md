@@ -1091,3 +1091,7 @@ The mounted desktop handoff assertion fails with the previous relative-only beha
 and passes with the hash-aware link. Return links use the same production helper.
 32 review/evidence tests, TypeScript and desktop build pass. Initial test-environment
 errors were not counted as regression evidence. Live desktop round-trip is pending.
+
+## PERSONAL-RUNTIME-STARTUP-1
+
+A private runtime startup failure is bound to the requested Project and protocol, contains only an allowlisted code, and produces fixed actionable installation guidance after the spawned process is reaped. Unknown codes, extra fields and mismatched identity never supply user-visible diagnostic content or credentials. The desktop consumes pipe data before treating process close as missing handoff. Owning real-process boundary: `test/personalRuntimeStartupFailure.test.ts`; this complements successful commissioning and malformed-handoff cleanup.
