@@ -29,7 +29,7 @@ export function ScopedWorkspace({client,teamId,children}:{client?:ScopedRenderer
   return()=>{active=false;abort.abort()}
  },[client,identity,teamId,scopeKey,attempt])
  const current=loaded?.key===scopeKey?loaded:undefined,selected=Boolean(current?.environment.definition.applications?.length)
- const useDefault=async()=>{
+ const restoreDefault=async()=>{
   if(!client||!current||busy)return
   setBusy(true)
   try{await client.select(teamId?{kind:'team',id:teamId}:{kind:'user',id:identity!},current.environment.revision,null,'Restore default workspace');setFallback(scopeKey);setAttempt(value=>value+1)}
@@ -42,7 +42,7 @@ export function ScopedWorkspace({client,teamId,children}:{client?:ScopedRenderer
   <div className="scoped-workspace-actions">
   <Link to={teamId?`/teams/${encodeURIComponent(teamId)}/settings`:'/settings/appearance'}>View settings</Link>
   {show?<button onClick={()=>setFallback(scopeKey)}>Show default workspace</button>:<button onClick={()=>{setFallback(undefined);setAttempt(value=>value+1)}}>Retry selected view</button>}
-  {selected&&<button disabled={busy} onClick={()=>useDefault()}>Restore default workspace</button>}
+  {selected&&<button disabled={busy} onClick={()=>restoreDefault()}>Restore default workspace</button>}
   </div>
   {selected&&<p className="scoped-workspace-hint">Showing the default is temporary. Restoring it changes your saved view.</p>}
   {error&&<p role="alert">{error}</p>}
