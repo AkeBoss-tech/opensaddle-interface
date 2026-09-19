@@ -39,6 +39,7 @@ import { RemoteParticipantClient } from './remoteParticipants'
 import { RemoteAgentProfileClient, type AgentProfileClient } from './remoteAgentProfiles'
 import { RemoteOperationsSessionClient } from './remoteOperations'
 import { RemoteJourneyClient } from './remoteJourney'
+import { ConnectorWriteReviewClient } from './connectorWriteReview'
 import { PersonalRuntimeClient } from './personalRuntime'
 import type { JourneyAuthority } from '../features/onboarding/ConnectedJourneySurface'
 import { negotiateRunRecovery, type RunRecoverySupport } from './recoverySupport'
@@ -62,6 +63,7 @@ export interface ServiceBundle {
   standalonePluginSettings?: StandalonePluginSettingsClient
   rendererSettings?: RendererSettingsClient
   runApprovalReview?: RunApprovalReviewClient
+  connectorWriteReview?: ConnectorWriteReviewClient
   projectTaskFeed?: ProjectTaskFeedClient
   commandCenter?: CommandCenterClient
   krailProposals?: KrailProposalClient
@@ -170,6 +172,7 @@ export function initServices(opts: {
       let standalonePluginSettingsAvailable = false
       let rendererSettingsAvailable = false
       let runApprovalReviewAvailable = false
+      let connectorWriteReviewAvailable = false
       let projectTaskFeedAvailable = false
       let commandCenterAvailable = false
       let managedKrailAvailable = false
@@ -312,6 +315,7 @@ export function initServices(opts: {
               standalone_plugin_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               renderer_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               run_approval_review_v1?: {available?:boolean;scope?:string;model_call_authorization?:boolean}
+              agent_connector_sessions_v1?: {available?:boolean;authority_mode?:string;write_actions_available?:boolean}
               project_task_feed_v1?: {available?:boolean;scope?:string;schema_version?:string}
               command_center?: { available?: boolean; path?: string; schema_version?: string }
               managed_krail?: boolean
@@ -332,6 +336,7 @@ export function initServices(opts: {
             standalonePluginSettingsAvailable = capabilities.standalone_plugin_settings_v1?.available===true&&capabilities.standalone_plugin_settings_v1.execution_policy===false&&JSON.stringify(capabilities.standalone_plugin_settings_v1.scopes)===JSON.stringify(['user','team'])
             rendererSettingsAvailable = capabilities.renderer_settings_v1?.available===true&&capabilities.renderer_settings_v1.execution_policy===false&&[JSON.stringify(['project','user_project']),JSON.stringify(['user','team','project','user_project'])].includes(JSON.stringify(capabilities.renderer_settings_v1.scopes))
             runApprovalReviewAvailable = capabilities.run_approval_review_v1?.available===true&&capabilities.run_approval_review_v1.scope==='run_admission'&&capabilities.run_approval_review_v1.model_call_authorization===false
+            connectorWriteReviewAvailable = capabilities.agent_connector_sessions_v1?.available===true&&capabilities.agent_connector_sessions_v1.authority_mode==='broker_scoped'&&capabilities.agent_connector_sessions_v1.write_actions_available===true
             projectTaskFeedAvailable = capabilities.project_task_feed_v1?.available===true&&capabilities.project_task_feed_v1.scope==='current_memberships'&&capabilities.project_task_feed_v1.schema_version==='opensaddle.project-task-feed.v1'
             commandCenterAvailable = capabilities.command_center?.available === true
               && capabilities.command_center.path === '/api/v2/command-center'
@@ -484,6 +489,7 @@ export function initServices(opts: {
         standalonePluginSettings: backendAvailable&&standalonePluginSettingsAvailable?new StandalonePluginSettingsClient(baseUrl,getUserId,token):undefined,
         rendererSettings: backendAvailable&&rendererSettingsAvailable?new RendererSettingsClient(baseUrl,getUserId,token):undefined,
         runApprovalReview: backendAvailable&&runApprovalReviewAvailable?new RunApprovalReviewClient(baseUrl,getUserId,token):undefined,
+        connectorWriteReview: backendAvailable&&connectorWriteReviewAvailable?new ConnectorWriteReviewClient(baseUrl,getUserId,token):undefined,
         projectTaskFeed: backendAvailable&&projectTaskFeedAvailable?new ProjectTaskFeedClient(baseUrl,getUserId,token):undefined,
         projectConversations: backendAvailable&&projectConversationsAvailable?(projectId:string)=>new ManagerConversationsClient(baseUrl,getUserId,token,projectChildTasks?journey:undefined,projectChildResults,projectId,projectConversationContext):undefined,
         managerConversations: backendAvailable && managerConversationsAvailable ? new ManagerConversationsClient(baseUrl,getUserId,token,managerChildTasksAvailable?journey:undefined,managerChildResultsAvailable) : undefined,

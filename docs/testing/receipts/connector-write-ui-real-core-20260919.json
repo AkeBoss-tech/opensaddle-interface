@@ -1,0 +1,46 @@
+{
+  "source_tree": "701e707cc45ca86849839f3cbb770a3f2e751844",
+  "interface": "reviewed source slice committed with this receipt",
+  "fixture": "disposable loopback Uvicorn Core, LocalBootstrapAuthenticator fixture token, installed local MCP stdio effect",
+  "public_browser_route": "/project/finance-project/tasks/run_a8e840e910734197b173a798e577f13d",
+  "list_before": {
+    "http": 200,
+    "count": 1,
+    "state": "proposed"
+  },
+  "browser_approval": {
+    "exact_arguments_visible": true,
+    "human_clicks": 1,
+    "state_after": "approved",
+    "click_actor": "Codex browser automation using authorized operator session"
+  },
+  "effect_before_dispatch": {
+    "marker_count": 0
+  },
+  "agent_dispatch": {
+    "http": 200,
+    "receipt_effect_class": "external_write",
+    "marker_count": 1,
+    "arguments": {
+      "record": "approved",
+      "value": "one"
+    }
+  },
+  "list_after": {
+    "http": 200,
+    "count": 0
+  },
+  "detail_after": {
+    "state": "completed"
+  },
+  "browser_refresh_after": {
+    "same_mount_exact_get_state": "completed",
+    "pending_list_claim": "current_only"
+  },
+  "limits": [
+    "no model/provider launch",
+    "local MCP fixture only",
+    "completed state retained only while task view remains mounted",
+    "no persisted screenshot file"
+  ]
+}

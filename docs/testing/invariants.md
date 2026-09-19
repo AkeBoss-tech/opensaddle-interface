@@ -1123,3 +1123,21 @@ intact, and its exact original snapshot remains recoverable. A legacy seeded
 demo workspace is instead quarantined as an exact recovery snapshot before an
 empty real workspace is shown. Owning storage boundary:
 `packages/control-plane/test/workspacePersistence.test.ts`.
+
+## PROJECT-AGENT-WRITE-REVIEW-1
+
+A normal Project task shows an agent's connector write request only after the
+authenticated Core Run-scoped review list returns the same Run and each item
+binds the Project, proposal, and request digest. It shows the exact
+connector, action, arguments, agent, expiry, and current state. Only a human
+click rechecks the individual proposal and submits the exact reviewed digest;
+a lost approval response is unknown
+until refreshed and never causes an automatic retry or connector dispatch.
+Missing Core capability or authenticated identity withholds the review
+surface. Owning public client/mounted task tests:
+`src/features/runs/ConnectorWriteReviewJourney.test.tsx` and
+`src/services/connectorWriteCapability.test.ts`.
+
+Electron forwards only the exact human review paths and digest-only approval
+body; agent dispatch remains unavailable to the renderer proxy. Owning public
+proxy test: `test/personalRuntimeProxy.test.ts`.
