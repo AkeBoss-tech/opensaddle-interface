@@ -9,6 +9,10 @@ import { resolveKrailRuntime } from '../electron/runtimeBundle.ts'
 function fixture() {
   const resourceRoot = mkdtempSync(path.join(os.tmpdir(), 'opensaddle-krail-runtime-'))
   const runtime = path.join(resourceRoot, 'krail-runtime')
+  const backend = path.join(resourceRoot, 'opensaddle-backend', 'opensaddle')
+  mkdirSync(path.dirname(backend), { recursive: true })
+  writeFileSync(backend, '#!/bin/sh\nexit 0\n')
+  chmodSync(backend, 0o755)
   mkdirSync(path.join(runtime, 'bin'), { recursive: true })
   mkdirSync(path.join(runtime, 'python', 'bin'), { recursive: true })
   for (const name of ['krail-admin', 'krail-mutate']) {
@@ -43,8 +47,22 @@ function fixture() {
     builtAt: '2026-08-11T00:00:00Z',
   }
   writeFileSync(path.join(runtime, 'manifest.json'), JSON.stringify(manifest))
-  return { resourceRoot, runtime, manifest }
+  return { resourceRoot, runtime, backend, manifest }
 }
+
+test('a packaged backend is unavailable when the pinned runtime is invalid', () => {
+  const value = fixture()
+  try {
+    assert.equal(resolveKrailRuntime(value.resourceRoot)?.backendCommand, value.backend)
+    rmSync(path.join(value.runtime, 'manifest.json'))
+    assert.equal(resolveKrailRuntime(value.resourceRoot), null)
+    writeFileSync(path.join(value.runtime, 'manifest.json'), JSON.stringify(value.manifest))
+    rmSync(value.backend)
+    assert.equal(resolveKrailRuntime(value.resourceRoot), null)
+  } finally {
+    rmSync(value.resourceRoot, { recursive: true, force: true })
+  }
+})
 
 test('packaged KRAIL runtime resolves only a complete validated manifest', () => {
   const value = fixture()

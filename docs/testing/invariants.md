@@ -1100,6 +1100,10 @@ A private runtime startup failure is bound to the requested Project and protocol
 
 The mounted desktop commissioning form distinguishes a missing coding-agent CLI from a CLI that needs provider login, gives fixed next steps, and never renders provider-supplied diagnostic text or setup commands. A provider that needs login stays unavailable for commissioning. Owning mounted form test: `src/features/projects/PersonalRuntimeCommissioningForm.test.tsx`. This covers the status already advertised by Core, not a clean-account login or installer qualification.
 
+## DESKTOP-PINNED-BUNDLE-1
+
+In a packaged app, the bundled Core executable is available only when the exact KRAIL runtime manifest, pinned interpreter, dependency records, KRAIL commands, and Core launcher validate together. A stray Core launcher cannot start the managed backend after the bundle is damaged or incomplete. An explicitly configured executable remains an operator override. Owning resource-root test: `test/krailRuntimeBundle.test.ts`; desktop main selects only its validated `backendCommand`.
+
 ## WORKSPACE-PERSISTENCE-1
 
 An older user-owned workspace migrates forward with its name and member data
