@@ -1,0 +1,14 @@
+{
+  "invariant": "OWNER-DEVICE-SDK-1",
+  "passed": true,
+  "checks": [
+    "signed user capability mounts",
+    "inventory excludes outsider device",
+    "no token in frame payload",
+    "activity requires delivered device",
+    "activity preserves uncertainty",
+    "Team scope rejected",
+    "cleanup"
+  ],
+  "boundary": "production host and clients with real Core and signed fixture; simulated iframe messaging"
+}

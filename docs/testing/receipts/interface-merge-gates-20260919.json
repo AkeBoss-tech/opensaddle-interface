@@ -1,0 +1,57 @@
+{
+  "schema_version": "opensaddle.interface-merge-gates.v1",
+  "base_revision": "4ad3fffef7eab4f892db306180370faa57f8d324",
+  "scope": "local macOS checkout; Interface PR CI must rerun after these changes are pushed",
+  "startup_cleanup": {
+    "invariant": "PERSONAL-RUNTIME-STARTUP-1",
+    "test": "test/personalRuntimeStartupFailure.test.ts",
+    "test_changed": false,
+    "before": "failed: expected ESRCH after startup rejection; child PID still existed",
+    "before_log_sha256": "b690e6e8352a6dca7bd73af055e5b48ec6a8321a51b8606da0e4c1cc19f5d833",
+    "after": "same test passed in real:check and in 20 consecutive focused process runs",
+    "repeat_log_sha256": "38988b961d1ea5cefed51c969202427a6d21491a4c2faba969e664eaa1a11a3d",
+    "production_file_sha256": "3c47bb5ac0cfed1ceed6d3e6fc3c217f5355d94f155156bc0a5382bb1b960749"
+  },
+  "process_group_cleanup": {
+    "invariant": "PERSONAL-RUNTIME-STARTUP-1",
+    "test": "test/personalRuntimeProcess.test.ts::early launcher exit cannot claim cleanup while a same-group child survives",
+    "base_revision": "4ad3fffef7eab4f892db306180370faa57f8d324",
+    "test_overlay": true,
+    "before": "failed: same-group child survived while commissioning returned ordinary missing-handoff error",
+    "before_log_sha256": "165ed46ceeb6e54214a695c4bde72edd8454c5862850ce02a03b56287afdb242",
+    "after": "passed: descendant stopped or cleanup explicitly unconfirmed",
+    "test_file_sha256": "9f2bfea0f173b7cea95698246df777897c662d1640d146951b3123d6a1231f71"
+  },
+  "workspace_migration_fixture": {
+    "invariant": "WORKSPACE-PERSISTENCE-1",
+    "test": "packages/control-plane/test/workspacePersistence.test.ts",
+    "classification": "test fixture correction; production migration behavior was unchanged",
+    "before": "failed: seeded demo workspace was correctly quarantined, while test expected ordinary migration",
+    "before_log_sha256": "3b13d96df4da6b99ff377832b07f6e8284c5ffa8539af2fba28c7d8525f629e2",
+    "after": "ordinary user-owned migration and separate seeded-demo quarantine both passed",
+    "test_file_sha256": "ea9dff8273ad664c668fd040b0a738a5adf06135c9d9388a415c75c735797373"
+  },
+  "real_check": {
+    "command": "npm run real:check",
+    "exit_code": 0,
+    "log_sha256": "aa50dc4fbf093047a6e59be88f110ee8cd66cea1e7172bafc462c6bcb783fa58",
+    "workspace_tests": "342 passed",
+    "feature_tests": "355 passed",
+    "scoped_sdk_tests": "2 passed",
+    "server_tests": "124 passed",
+    "typechecks_and_builds": "passed"
+  },
+  "feature_fixture_stabilization": {
+    "invariant": "PERSONAL-INSTALLER-1",
+    "test": "src/features/settings/PersonalPackageInstaller.test.tsx",
+    "classification": "test synchronization repair; production installer unchanged",
+    "observed_failure": "full-suite trust assertion ran before async fingerprint and publisher request settled",
+    "after": "bounded wait for rendered fingerprint, trusted install control and install result; exact route and result assertions retained",
+    "test_file_sha256": "fa593e3633fd214072b794c7cb5078de1b4108a37afa60e9c14a0eca2d059322"
+  },
+  "limits": [
+    "This is local source validation, not a passing hosted PR check or merged main.",
+    "The cleanup proof confirms the commissioned child PID and original POSIX process group disappear or reports unconfirmed cleanup; descendants that escape to a separate process group are outside this proof.",
+    "Ignored node_modules were populated from package lockfiles; untracked screenshot directories were untouched."
+  ]
+}

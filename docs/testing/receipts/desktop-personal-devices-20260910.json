@@ -1,0 +1,27 @@
+{
+  "invariant": "DESKTOP-PERSONAL-DEVICES-1",
+  "base_commit": "3b804a4d895823b753733133ef3697908017aa31",
+  "command": "node --import tsx --test --test-name-pattern='personal device inventory pairing' test/personalRuntimeProxy.test.ts",
+  "baseline": {
+    "exit_code": 1,
+    "output": "\u2716 personal device inventory pairing and Project consent routes cross the desktop proxy (3.6155ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 207.452417\n\n\u2716 failing tests:\n\ntest at test/personalRuntimeProxy.test.ts:1:9995\n\u2716 personal device inventory pairing and Project consent routes cross the desktop proxy (3.6155ms)\n  AssertionError [ERR_ASSERTION]: Got unwanted rejection: desktop must admit device route /api/v2/devices?limit=50&after=\n  Actual message: \"Personal runtime request path is unavailable\"\n      at async TestContext.<anonymous> (/Users/akashdubey/Documents/CodingProjects/opensaddle-interface/test/personalRuntimeProxy.test.ts:60:235)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: Error: Personal runtime request path is unavailable\n        at validateRequest (/Users/akashdubey/Documents/CodingProjects/opensaddle-interface/electron/personalRuntimeProxy.ts:42:1205)\n        at proxyPersonalRuntimeRequest (/Users/akashdubey/Documents/CodingProjects/opensaddle-interface/electron/personalRuntimeProxy.ts:44:178)\n        at TestContext.<anonymous> (/Users/akashdubey/Documents/CodingProjects/opensaddle-interface/test/personalRuntimeProxy.test.ts:60:262)\n        at Test.runInAsyncScope (node:async_hooks:226:14)\n        at Test.run (node:internal/test_runner/test:1201:25)\n        at Test.start (node:internal/test_runner/test:1096:17)\n        at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17),\n    expected: undefined,\n    operator: 'doesNotReject',\n    diff: 'simple'\n  }\n"
+  },
+  "after": {
+    "exit_code": 0,
+    "output": "\u2714 personal device inventory pairing and Project consent routes cross the desktop proxy (36.096417ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 1\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 232.973375\n"
+  },
+  "validation": "21 proxy/transport/inventory checks and Electron build passed",
+  "desktop": {
+    "before": "Devices page returned Personal runtime request path is unavailable",
+    "after": [
+      "Inventory loaded with No devices yet",
+      "Registered This Mac (OpenSaddle) through the actual form",
+      "Card showed Not paired and Connection not verified",
+      "Project access panel loaded with Choose a project; no assignment selected or granted"
+    ],
+    "limitations": [
+      "No actual device pairing or task-use policy was completed in this checkpoint",
+      "Proxy route tests do not replace Core authority, pairing or consent regressions"
+    ]
+  }
+}

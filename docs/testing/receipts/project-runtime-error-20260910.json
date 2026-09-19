@@ -1,0 +1,35 @@
+{
+  "invariant": "PROJECT-VIEW-RUNTIME-FAILURE",
+  "base": "93a501bc4f824f65aa0d6a236f686abb8a6aa084",
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern",
+    "renderer error bridge",
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "baseline_exit_code": 1,
+  "baseline_output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2716 renderer error bridge removes a ready view and fences its later messages (42.542125ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 291.321875\n\n\u2716 failing tests:\n\ntest at src/perspectives/project/InstalledProjectView.test.tsx:1:28574\n\u2716 renderer error bridge removes a ready view and fences its later messages (42.542125ms)\n  AssertionError [ERR_ASSERTION]: installed renderer document must include the host error bridge\n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-runtime-error-baseline-dno1eit5/src/perspectives/project/InstalledProjectView.test.tsx:317:9)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n",
+  "boundary": "Mounted InstalledProjectView executes injected host bridge in VM; browser runtime error/rejection events injected",
+  "checks": [
+    "failure before init queued until identity",
+    "one generic failure per frame",
+    "failure after ready removes frame",
+    "wrong frame ignored",
+    "failed generation cannot navigate",
+    "diagnostic text omitted"
+  ],
+  "limits": [
+    "Not a browser or OS process crash proof",
+    "No hung JavaScript loop detection",
+    "Does not guarantee recovery from malicious plugin interference"
+  ],
+  "current_validation": {
+    "command": "node --import tsx --test src/perspectives/project/InstalledProjectView.test.tsx src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx src/applications/executableApplication.test.ts",
+    "passed": 14,
+    "failed": 0,
+    "build": "npm run build passed"
+  }
+}

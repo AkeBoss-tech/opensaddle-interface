@@ -1,0 +1,44 @@
+.scoped-workspace-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 16px 24px;
+  padding: 16px;
+  border: 1px solid var(--border, #343531);
+  border-radius: 12px;
+  background: var(--surface, #252622);
+  color: var(--text, #ededeb);
+  font: 13px/1.5 var(--font, system-ui);
+}
+.scoped-workspace-summary { display: grid; gap: 2px; flex: 1 1 180px; min-width: 0; }
+.scoped-workspace-summary strong { font-size: 14px; overflow-wrap: anywhere; }
+.scoped-workspace-summary span,
+.scoped-workspace-hint { color: var(--muted, #a2a39d); font-size: 12px; }
+.scoped-workspace-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.scoped-workspace-actions :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-strong, #474842);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.scoped-workspace-actions :is(a, button):hover { background: var(--surface-2, #2d2e2a); }
+.scoped-workspace-actions :is(a, button):focus-visible { outline: 2px solid var(--accent, #a78bfa); outline-offset: 3px; }
+.scoped-workspace-actions button:disabled { opacity: .5; cursor: wait; }
+.scoped-workspace-controls > p { flex-basis: 100%; margin: 0; }
+.scoped-workspace-controls [role="alert"] { padding-top: 10px; border-top: 1px solid var(--border, #343531); }
+.scoped-workspace-view { min-width: 0; padding: 0 24px 24px; }
+@media (max-width: 600px) {
+  .scoped-workspace-controls { margin: 12px; padding: 12px; }
+  .scoped-workspace-actions { width: 100%; }
+  .scoped-workspace-actions :is(a, button) { flex: 1 1 auto; }
+  .scoped-workspace-view { padding: 0 12px 12px; }
+}

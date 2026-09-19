@@ -1,0 +1,67 @@
+{
+  "schema_version": "opensaddle.native-conversation-context-proof.v1",
+  "project_id": "context-proof",
+  "conversation_id": "mgr_6abf1b8066be49059f2d47693d619cc04ac10b6115e0917bc140d4cf4bd9649c",
+  "first": {
+    "message_id": "msg_7d02e6e9-afa1-4278-9afc-1b00b5e28ed1",
+    "run_id": "run_0616869fe12a4d3eb430f5c265ad7f3b",
+    "runId": "run_0616869fe12a4d3eb430f5c265ad7f3b",
+    "resource": {
+      "artifact_id": "art_4e210f2c0c8b4e7ba3f2f7d1b962e60c",
+      "digest": "760626353711f76bb1650e50462be5df5325bf58f5da1c18d390b15c7dc090c7"
+    },
+    "text": "CODE=R7K2M9Q4"
+  },
+  "followup": {
+    "message_id": "msg_529d1f3a-d8ab-49a2-9792-177ac5a7b541",
+    "run_id": "run_9f2e3d86a3fb4030a8aff41f49dc93ac",
+    "runId": "run_9f2e3d86a3fb4030a8aff41f49dc93ac",
+    "resource": {
+      "artifact_id": "art_ce1d6796b47d4b5fbd1623fddbe784b2",
+      "digest": "9877c35ac4251516acb64d821180650e2e5a7caee8bf87c9d436ababc7b45788"
+    },
+    "text": "REMEMBERED=R7K2M9Q4"
+  },
+  "checks": [
+    "real Codex readiness",
+    "first native output generates code",
+    "explicit context dispatch includes exact authorized output and artifact identity",
+    "second native output recalls generated code",
+    "duplicate contextual dispatch returns same Run"
+  ],
+  "limits": [
+    "New provider tasks with explicit prompt context; not session resume",
+    "No streaming assistant UI",
+    "No browser visual or arbitrary native sandbox proof"
+  ],
+  "native_dispatches": [
+    {
+      "run_id": "run_0616869fe12a4d3eb430f5c265ad7f3b",
+      "adapter_id": "codex-app-server",
+      "adapter_version": "app-server-v1",
+      "provider_session_id": "01a08aba-f3b1-7e43-abaf-d05946527984",
+      "provider_turn_id": "01a08aba-f4d1-70e1-86a3-4663240fec5a",
+      "provider_terminal_status": "completed",
+      "state": "completed"
+    },
+    {
+      "run_id": "run_9f2e3d86a3fb4030a8aff41f49dc93ac",
+      "adapter_id": "codex-app-server",
+      "adapter_version": "app-server-v1",
+      "provider_session_id": "01a08abb-1467-7bc2-9bbd-7e3c5127784d",
+      "provider_turn_id": "01a08abb-14fe-7da0-9cb5-547206030fb5",
+      "provider_terminal_status": "completed",
+      "state": "completed"
+    }
+  ],
+  "codex_cli_version": "0.153.4",
+  "cleanup": {
+    "worker_stopped": true,
+    "app_server_child_stopped": true,
+    "core_stopped": true,
+    "worker_credentials_revoked": true,
+    "credential_cleanup": "Explicit repository revocation after server termination; finalizer did not revoke it",
+    "workspace_unchanged_empty": true,
+    "private_state_retained_outside_repository": true
+  }
+}

@@ -13,10 +13,26 @@ on:
         required: true
         default: 1.2.0rc2
         type: string
+      krail_source_revision:
+        description: Exact 40-character Git revision used to build the KRAIL wheel
+        required: true
+        type: string
+      krail_source_tree:
+        description: Exact Git tree used to build the KRAIL wheel
+        required: true
+        type: string
       opensaddle_version:
         description: Published OpenSaddle version to bundle
         required: true
         default: 1.2.0rc5
+        type: string
+      opensaddle_source_revision:
+        description: Exact 40-character Git revision used to build the OpenSaddle wheel
+        required: true
+        type: string
+      opensaddle_source_tree:
+        description: Exact Git tree used to build the OpenSaddle wheel
+        required: true
         type: string
       python_archive_url:
         description: Immutable URL for the arm64 install-only Python .tar.gz
@@ -42,6 +58,10 @@ jobs:
     env:
       KRAIL_VERSION: ${{ inputs.krail_version }}
       OPENSADDLE_VERSION: ${{ inputs.opensaddle_version }}
+      KRAIL_SOURCE_REVISION: ${{ inputs.krail_source_revision }}
+      KRAIL_SOURCE_TREE: ${{ inputs.krail_source_tree }}
+      OPENSADDLE_SOURCE_REVISION: ${{ inputs.opensaddle_source_revision }}
+      OPENSADDLE_SOURCE_TREE: ${{ inputs.opensaddle_source_tree }}
       MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
@@ -218,6 +238,8 @@ jobs:
       - name: Build and smoke-test bundled runtimes
         run: |
           set -euo pipefail
+          export INTERFACE_SOURCE_REVISION="$(git rev-parse HEAD)"
+          export INTERFACE_SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
           KRAIL_WHEEL="$KRAIL_WHEEL" \
           OPENSADDLE_WHEEL="$OPENSADDLE_WHEEL" \
           KRAIL_PYTHON_RUNTIME="$PYTHON_ARCHIVE" \
@@ -225,7 +247,7 @@ jobs:
           KRAIL_RUNTIME_LOCK="$RUNTIME_LOCK" \
           KRAIL_REQUIREMENTS_LOCK="$REQUIREMENTS_LOCK" \
           KRAIL_WHEELHOUSE="$WHEELHOUSE" \
-            node scripts/build-krail-runtime.mjs
+            node scripts/build-krail-runtime.mjs --required
 
           export EXPECTED_KRAIL_SHA="$KRAIL_WHEEL_SHA256"
           export EXPECTED_OPENSADDLE_SHA="$OPENSADDLE_WHEEL_SHA256"
@@ -237,6 +259,10 @@ jobs:
           if (krail.wheel?.sha256 !== process.env.EXPECTED_KRAIL_SHA) throw new Error('KRAIL manifest SHA mismatch');
           if (krail.opensaddle?.sha256 !== process.env.EXPECTED_OPENSADDLE_SHA) throw new Error('OpenSaddle manifest SHA mismatch');
           if (krail.python?.sha256 !== process.env.EXPECTED_PYTHON_SHA) throw new Error('Python manifest SHA mismatch');
+          if (krail.schemaVersion !== 2) throw new Error('Unsupported runtime manifest');
+          if (krail.sources?.interface?.repository !== 'https://github.com/AkeBoss-tech/opensaddle-interface.git' || krail.sources?.interface?.revision !== process.env.INTERFACE_SOURCE_REVISION || krail.sources?.interface?.tree !== process.env.INTERFACE_SOURCE_TREE) throw new Error('Interface source provenance mismatch');
+          if (krail.sources?.krail?.repository !== 'https://github.com/AkeBoss-tech/knowledge.git' || krail.sources?.krail?.revision !== process.env.KRAIL_SOURCE_REVISION || krail.sources?.krail?.tree !== process.env.KRAIL_SOURCE_TREE) throw new Error('KRAIL source provenance mismatch');
+          if (krail.sources?.opensaddle?.repository !== 'https://github.com/AkeBoss-tech/opensaddle.git' || krail.sources?.opensaddle?.revision !== process.env.OPENSADDLE_SOURCE_REVISION || krail.sources?.opensaddle?.tree !== process.env.OPENSADDLE_SOURCE_TREE) throw new Error('OpenSaddle source provenance mismatch');
           const report = fs.readFileSync('electron/runtime-bundle/krail-runtime/dependency-install-report.json');
           if (crypto.createHash('sha256').update(report).digest('hex') !== krail.dependencies?.sha256) throw new Error('Dependency report SHA mismatch');
           if (krail.runtimeLock?.sha256 !== crypto.createHash('sha256').update(fs.readFileSync(process.env.RUNTIME_LOCK)).digest('hex')) throw new Error('Runtime lock SHA mismatch');

@@ -10,11 +10,10 @@ const work = source('src/features/work/WorkPage.tsx')
 const start = source('src/features/projects/ConnectedLocalStartPage.tsx')
 const project = source('src/features/projects/ConnectedLocalProjectPage.tsx')
 const dialog = source('src/features/onboarding/ConnectedLocalProjectDialog.tsx')
+const commandCenterCss = source('src/features/command-center/command-center.css')
 
 const required: Array<[string, string, string]> = [
-  ['local routes are selected by authoritative connection mode', app, "controlPlane.connected && services.controlPlane.mode === 'local'"],
   ['local root redirects to Command Center', app, '<Route path="/" element={<Navigate to="/home" replace />} />'],
-  ['both shells mount Command Center', app, '<Route path="/home" element={<CommandCenterPage />} />'],
   ['local Start is mounted', app, '<Route path="/start" element={<StartPage />} />'],
   ['local Work is mounted', app, '<Route path="/work" element={<WorkPage />} />'],
   ['local Operations and exact Run evidence are mounted', app, '<Route path="/operations" element={<OperationsPage />} />'],
@@ -26,11 +25,11 @@ const required: Array<[string, string, string]> = [
   ['local registration invokes the server project API', app, 'services.localProjects.registerProject(proposedId, root)'],
   ['server-returned project identity is retained', app, 'id: registered.projectId'],
   ['server-returned root derives presentation name', app, 'registered.root.split'],
-  ['local registration navigates to governed onboarding', app, '/onboarding?${new URLSearchParams'],
+  ['local registration opens the authoritative Project overview', app, 'nav(`/project/${registered.projectId}`)'],
   ['local command palette offers adding a project', app, "label: 'Add local project'"],
   ['local shortcut cannot create a generic chat', app, '!connectedLocal && (e.metaKey || e.ctrlKey)'],
-  ['loopback mode cannot instantiate remote workspace', services, "backendMode !== 'local'"],
-  ['loopback mode cannot instantiate remote threads', services, "const threads = backendAvailable && backendMode !== 'local'"],
+  ['v2-only mode cannot instantiate legacy remote workspace', services, "backendAvailable && legacyHealthAvailable && backendMode !== 'local'"],
+  ['v2-only mode cannot instantiate legacy remote threads', services, "const threads = backendAvailable && legacyHealthAvailable && backendMode !== 'local'"],
   ['loopback mode cannot instantiate remote workflows', services, "const workflows = backendAvailable && backendMode !== 'local'"],
   ['registry hydration imports only missing projects', store, 'next.projects.push(projectFromRegisteredLocalProject'],
   ['Work reads the governed run registry', work, 'listOnboardingRuns?.(200)'],
@@ -41,7 +40,6 @@ const required: Array<[string, string, string]> = [
   ['Start does not fabricate runner readiness while capabilities are absent', start, 'No Codex or Claude runner reported by the control plane'],
   ['Start offers one governed project entry action', start, 'Start governed work'],
   ['Start continues into the latest authoritative project', start, 'navigate(`/project/${latestProject.id}`)'],
-  ['project overview loads authoritative onboarding state', project, 'localProjects?.onboardingState?.(projectId)'],
   ['project overview renders discovery fingerprint', project, 'state.fingerprint'],
   ['project overview renders ecosystems', project, 'state.discovery?.ecosystems'],
   ['project overview renders canonical evidence locators', project, '#${evidence.digest}'],
@@ -64,6 +62,8 @@ test('local routes do not mount generic chat or workflow pages', () => {
   assert.doesNotMatch(localRoutes, /ChatPage|WorkflowsPage|PermissionsPage|BrowserRuntimePage|LocalProjectsPage/)
 })
 
+
+
 test('the removed Local Projects destination redirects to Start in both shells', () => {
   const redirects = app.match(/<Route path="\/local" element=\{<Navigate to="\/start" replace \/>\} \/>/g) ?? []
   assert.equal(redirects.length, 2)
@@ -74,4 +74,13 @@ test('connected Start is an action-oriented entry rather than a project registry
   assert.doesNotMatch(start, /Registered projects|project\.local\?\.rootPath/)
   assert.match(start, /Add project/)
   assert.match(start, /Continue/)
+})
+
+
+
+test('review surfaces constrain cards, fields, and long evidence to the viewport', () => {
+  assert.match(commandCenterCss, /\.cc-page \{ width: 100%; min-width: 0;/)
+  assert.match(commandCenterCss, /\.cc-priority, \.cc-panel, \.cc-unavailable \{ min-width: 0;/)
+  assert.match(commandCenterCss, /\.cc-panel select \{ width: 100%; min-width: 0; max-width: 100%; \}/)
+  assert.match(commandCenterCss, /\.cc-unavailable > \* \{ min-width: 0; overflow-wrap: anywhere; \}/)
 })

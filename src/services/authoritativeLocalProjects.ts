@@ -284,6 +284,21 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   private readonly token?: string
   private readonly fetchImpl: Fetcher
   private readonly roots = new Map<string, string>()
+  private discoveryTail: Promise<void> = Promise.resolve()
+  private discoveryRequests = new Map<string, Promise<unknown>>()
+
+  // Agent probes and source scans can take seconds. Keep their socket use
+  // bounded so health checks and user navigation are not queued behind them.
+  private discover<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    const existing = this.discoveryRequests.get(key) as Promise<T> | undefined
+    if (existing) return existing
+    const pending = this.discoveryTail.then(operation)
+    this.discoveryRequests.set(key, pending)
+    this.discoveryTail = pending.then(() => undefined, () => undefined)
+    void pending.finally(() => { if (this.discoveryRequests.get(key) === pending) this.discoveryRequests.delete(key) }).catch(() => undefined)
+    return pending
+  }
+
   private localActionCredential: { header: string; token: string } | null = null
   private localActionCredentialRequest: Promise<{ header: string; token: string }> | null = null
 
@@ -433,16 +448,18 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   }
 
   async harnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }> {
-    const response = await this.request<{ harnesses?: DomainHarness[] }>('/api/harnesses')
-    return { generatedAt: new Date().toISOString(), harnesses: (response.harnesses ?? []).map(harnessFromDomain) }
+    return this.discover('harnesses', async () => {
+      const response = await this.request<{ harnesses?: DomainHarness[] }>('/api/harnesses', { signal: AbortSignal.timeout(60_000) })
+      return { generatedAt: new Date().toISOString(), harnesses: (response.harnesses ?? []).map(harnessFromDomain) }
+    })
   }
 
   refreshHarnessCapabilities(): Promise<{ generatedAt: string; harnesses: HarnessCapability[] }> {
-    return this.request<{ harnesses?: DomainHarness[] }>('/api/harnesses?refresh=true')
+    return this.discover('harnesses:refresh', () => this.request<{ harnesses?: DomainHarness[] }>('/api/harnesses?refresh=true', { signal: AbortSignal.timeout(60_000) })
       .then((response) => ({
         generatedAt: new Date().toISOString(),
         harnesses: (response.harnesses ?? []).map(harnessFromDomain),
-      }))
+      })))
   }
 
   async localSessions(provider?: LocalSessionSummary['provider']): Promise<LocalSessionSummary[]> {
@@ -853,9 +870,10 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
   }
 
   async rescan(projectId: string): Promise<ProjectArtifactManifest> {
+    return this.discover('rescan:' + projectId, async () => {
     const [root, result] = await Promise.all([
       this.root(projectId),
-      this.request<DomainRescan>(this.projectPath(projectId, 'rescan'), { method: 'POST' }),
+      this.request<DomainRescan>(this.projectPath(projectId, 'rescan'), { method: 'POST', signal: AbortSignal.timeout(60_000) }),
     ])
     const artifacts = [
       ...(result.discoveries.instructions ?? []).map((path) => artifact(path, 'instruction')),
@@ -866,5 +884,6 @@ export class AuthoritativeLocalProjectClient implements LocalProjectClient {
     const counts: ProjectArtifactManifest['counts'] = { instruction: 0, skill: 0, agent: 0, documentation: 0, site: 0 }
     for (const item of artifacts) counts[item.kind] += 1
     return { root, generatedAt: Date.now(), artifacts, counts, truncated: false }
+    })
   }
 }

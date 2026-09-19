@@ -38,6 +38,13 @@ function statusTone(status: ThreadStatus) {
 
 export function ProjectWorkspacePage() {
   const { projectId } = useParams()
+  const { data } = useStore()
+  const project = data.projects.find(item => item.id === projectId)
+  if (!project) return <section className="content-page"><h1>Project unavailable</h1><p role="status">This project has not been loaded for this connection.</p></section>
+  return <ProjectWorkspaceContent key={project.id} project={project} />
+}
+
+function ProjectWorkspaceContent({project}:{project:ReturnType<typeof useStore>['data']['projects'][number]}) {
   const { data, createChat, setActiveChat, setActiveProject, services: serviceBundle, harnessCapabilities, toast } = useStore()
   const navigate = useNavigate()
   const showGoalError = useCallback((message: string) => toast('Self-driving mode', message), [toast])
@@ -47,9 +54,6 @@ export function ProjectWorkspacePage() {
   const [prompt, setPrompt] = useState('')
   const [selectedAgentId, setSelectedAgentId] = useState('auto')
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
-  const project = data.projects.find((item) => item.id === projectId)
-    ?? data.projects.find((item) => item.id === data.activeProjectId)
-    ?? data.projects[0]
 
   useEffect(() => {
     if (project.id !== data.activeProjectId) setActiveProject(project.id)
@@ -162,7 +166,7 @@ export function ProjectWorkspacePage() {
       : []),
     { label: 'Tokens & pricing', detail: 'Measured usage, coverage, and model rate catalog', icon: 'chart', href: '/usage' },
     { label: 'Project sessions', detail: 'Resume or fork Codex and Claude Code', icon: 'clock', href: `/project/${project.id}/sessions` },
-    { label: 'Agents', detail: `${teamAgents.length} configured`, icon: 'spark', href: `/agents/${project.id}` },
+    { label: 'Agents', detail: `${teamAgents.length} configured`, icon: 'spark', href: `/project/${project.id}/agents` },
     { label: 'Knowledge', detail: `${knowledge.length + sources.length} sources`, icon: 'db', href: '/wiki' },
     { label: 'Automations', detail: `${workflows.length + tasks.length} workflows and tasks`, icon: 'activity', href: `/workflows/${project.id}` },
     { label: 'Apps & sites', detail: `${sites.length} published experiences`, icon: 'globe', href: '/sites' },

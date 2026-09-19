@@ -1,0 +1,13 @@
+{
+  "schema_version": "opensaddle.manager-dispatch-client-proof.v1",
+  "conversation_id": "mgr_a111f41e7cd589d5cb4a3e6c2735a5ff63c6abab71aa4ca7e262a852f48f657c",
+  "message_id": "msg_90d01343-154f-4c53-958e-625f998dcc01",
+  "run_id": "run_d87ad13d836d4c76b313878a4fa63952",
+  "response_loss_recovered": true,
+  "client_recreated": true,
+  "duplicate_run_created": false,
+  "outsider_denied": true,
+  "cleanup_status": "cancelled",
+  "transport": "loopback HTTP with disposable development requester identity",
+  "browser_verified": false
+}

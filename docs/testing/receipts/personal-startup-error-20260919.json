@@ -1,0 +1,28 @@
+{
+  "invariant": "PERSONAL-RUNTIME-STARTUP-1",
+  "base_revision": "233d9ac636a6932d98898d56ea32a87d27a061f3",
+  "test": "test/personalRuntimeStartupFailure.test.ts",
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern=gives actionable",
+    "test/personalRuntimeStartupFailure.test.ts"
+  ],
+  "test_sha256": "3b6beb3fc98f42171db4d30fc095a63bdb0ac6d641998e816c38876d2d816121",
+  "pre_fix": {
+    "exit_code": 1,
+    "observed": "Expected actionable dependency guidance; got Personal runtime handoff contract is invalid",
+    "log_sha256": "36218f696f2b1bf0bd27a62bc01c7a958dcc6d1073d2b034351a7aa59f05488f"
+  },
+  "post_fix": {
+    "exit_code": 0,
+    "log_sha256": "532ea130a269b7b843df4c171ebfbe604d884a96e7e4f558ae6567bb5ec5232f"
+  },
+  "owning_checks": "12 process/commissioning tests passed; Electron TypeScript build passed",
+  "scope": "Real spawned process/private FD/cleanup boundary with external startup fixture; no Electron renderer/browser claim",
+  "production_files": {
+    "electron/personalRuntimeCommissioning.ts": "8335cf9b03f3615362e233b3c052e3178fdd85cbcef8fe7c21ac98901b494d2f"
+  }
+}

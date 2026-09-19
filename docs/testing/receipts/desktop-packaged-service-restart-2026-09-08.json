@@ -1,0 +1,18 @@
+{
+  "schema_version": "opensaddle.desktop-packaged-service-smoke.v1",
+  "interface_revision": "24ae14a05e9a721cf63d69477bf9ef7f532e9340",
+  "runtime_manifest_sha256": "208a833ea8fc6be58c2c1019e0929c9a1429d6577781cba7dec5a7a885f29a1f",
+  "environment": { "path": "/usr/bin:/bin", "state": "fresh private directory" },
+  "journey": {
+    "initial_project_count": 0,
+    "registered_project": "opensaddle",
+    "registration_status": 201,
+    "service_restart": "completed",
+    "post_restart_project_count": 1,
+    "post_restart_status": 200
+  },
+  "provider_calls": 0,
+  "canonical_state_touched": false,
+  "result": "passed",
+  "boundary": "Packaged v1 registry startup and restart persistence only. This does not prove the personal v2 runtime, durable worker lifetime, a signed DMG, or visible UI."
+}

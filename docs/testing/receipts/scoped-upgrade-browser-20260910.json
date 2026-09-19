@@ -1,0 +1,9 @@
+{
+  "boundary": "real browser, production catalog and host, signed v1/v2 fragments, disposable Core",
+  "invariant": "SCOPED-VIEW-STATE-1",
+  "fixture_option": "Core scripts.dev_scoped_renderer_fixture --with-upgrade",
+  "migration": "schema 1 filter -> schema 2 search",
+  "observations": ["personal v1 count 1 migrated to v2 count 1", "personal v2 count 2 rolled back to v1 count 1", "Team initially had no interactions", "Team v1 count 1 migrated to v2 count 1", "Team v2 count 2 rolled back to v1 count 1", "returning to Team v2 restored count 2", "no browser error logs"],
+  "screenshots": ["out/screenshots/scoped-upgrade-20260910/personal-rollback.png", "out/screenshots/scoped-upgrade-20260910/team-upgraded.png"],
+  "limits": ["unstyled harness, not full desktop navigation", "no package installation UX exercised", "no production runtime, Project or device state changed"]
+}

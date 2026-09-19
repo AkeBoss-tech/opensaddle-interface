@@ -1,0 +1,47 @@
+{
+  "boundary": "production scoped host and preferences client against real Core; simulated external frame",
+  "results": [
+    {
+      "scope": {
+        "kind": "user",
+        "id": "owner"
+      },
+      "settings": {
+        "schema_version": "opensaddle.scoped-view-settings.v1",
+        "scope": {
+          "kind": "user",
+          "id": "owner"
+        },
+        "settings_version": 1,
+        "revision": 2,
+        "values": {
+          "density": "personal-compact"
+        },
+        "authority": "presentation_only"
+      }
+    },
+    {
+      "scope": {
+        "kind": "team",
+        "id": "team_f687c390396d4a27bb3122615cd8aaae"
+      },
+      "settings": {
+        "schema_version": "opensaddle.scoped-view-settings.v1",
+        "scope": {
+          "kind": "team",
+          "id": "team_f687c390396d4a27bb3122615cd8aaae"
+        },
+        "settings_version": 1,
+        "revision": 2,
+        "values": {
+          "density": "team-compact"
+        },
+        "authority": "presentation_only"
+      }
+    }
+  ],
+  "limits": [
+    "not a browser walkthrough",
+    "no settings write exposed to plug-ins"
+  ]
+}

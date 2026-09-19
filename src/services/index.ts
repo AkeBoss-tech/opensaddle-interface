@@ -1,3 +1,17 @@
+import {RunApprovalReviewClient} from './runApprovalReview'
+import {StandalonePluginSettingsClient} from './standalonePluginSettings'
+import {RendererSettingsClient} from './rendererSettings'
+import {ProjectTaskFeedClient} from './projectTaskFeed'
+import { ManagerConversationsClient } from './managerConversations'
+import { ManagerContextClient } from './managerContext'
+import { DashboardSettingsClient } from './dashboardSettings'
+import { TeamsClient } from './teams'
+import { PresentationSettingsClient } from './presentationSettings'
+import { ProjectDirectoryClient } from './projectDirectory'
+import { PersonalDevicesClient } from './personalDevices'
+import { personalRuntimeSubject } from './personalRuntimeTransport'
+import { CodingResultReviewClient } from './codingResultReview'
+import { RegisteredProjectKnowledgeClient } from './registeredProjectKnowledge'
 import { detectRuntimeMode, type RuntimeMode } from './capabilities'
 import type { AutonomyPolicySummary, CommandCenterClient, DelegationPolicySummary, ExtensionCatalogClient, FileStore, KrailProposalClient, LocalProjectClient, MalleableShellClient, OperationsSessionClient, ParticipantClient, PermissionClient, ProjectGoalClient, ProjectIntelligenceClient, RuntimeClient, SandboxClient, ThreadClient, ToolClient, WorkflowClient, WorkspaceClient } from './contracts'
 import { createFileStore } from './fileStore'
@@ -22,7 +36,11 @@ import { RemoteCommandCenterClient } from './remoteCommandCenter'
 import { RemoteMalleableShellClient } from './remoteMalleableShell'
 import { RemoteKrailProposalClient } from './remoteKrailProposals'
 import { RemoteParticipantClient } from './remoteParticipants'
+import { RemoteAgentProfileClient, type AgentProfileClient } from './remoteAgentProfiles'
 import { RemoteOperationsSessionClient } from './remoteOperations'
+import { RemoteJourneyClient } from './remoteJourney'
+import { PersonalRuntimeClient } from './personalRuntime'
+import type { JourneyAuthority } from '../features/onboarding/ConnectedJourneySurface'
 import { negotiateRunRecovery, type RunRecoverySupport } from './recoverySupport'
 import type { PermissionGrant } from './contracts'
 
@@ -41,14 +59,32 @@ export interface ServiceBundle {
   projectGoals?: ProjectGoalClient
   extensions?: ExtensionCatalogClient
   projectIntelligence?: ProjectIntelligenceClient
+  standalonePluginSettings?: StandalonePluginSettingsClient
+  rendererSettings?: RendererSettingsClient
+  runApprovalReview?: RunApprovalReviewClient
+  projectTaskFeed?: ProjectTaskFeedClient
   commandCenter?: CommandCenterClient
   krailProposals?: KrailProposalClient
   participants?: ParticipantClient
+  agentProfiles?: AgentProfileClient
   operationsSessions?: OperationsSessionClient
   malleableShell?: MalleableShellClient
+  journey?: JourneyAuthority
+  codingResults?: CodingResultReviewClient
+  projectKnowledge?: RegisteredProjectKnowledgeClient
+  teams?: TeamsClient
+  projectConversations?: (projectId:string)=>ManagerConversationsClient
+  managerConversations?: ManagerConversationsClient
+  managerContext?: ManagerContextClient
+  dashboardSettings?: DashboardSettingsClient
+  presentationSettings?: PresentationSettingsClient
+  projectDirectory?: ProjectDirectoryClient
+  personalDevices?: PersonalDevicesClient
+  personalRuntime?: PersonalRuntimeClient
   controlPlane: {
     connected: boolean
-    mode?: 'local' | 'company'
+    mode?: string
+    v2Capabilities?: boolean
     modelProvider?: string
     models: string[]
     storage?: string
@@ -69,6 +105,10 @@ export interface ConnectionProfile {
   allowMockFallback: boolean
 }
 
+export function usesConnectedProductSurface(services: ServiceBundle | null): boolean {
+  return Boolean(services?.controlPlane.connected && (services.controlPlane.v2Capabilities || services.localProjects))
+}
+
 export function connectionProfileForRuntime(input: {
   runtimeMode: RuntimeMode
   configuredUrl?: string
@@ -76,13 +116,10 @@ export function connectionProfileForRuntime(input: {
   allowMockFallback?: boolean
 }): ConnectionProfile {
   const explicitUrl = input.configuredUrl ?? input.desktopUrl
-  if (input.runtimeMode === 'mock' && !explicitUrl) {
+  if (input.runtimeMode === 'mock' && !explicitUrl && input.allowMockFallback === true) {
     return {
-      id: 'demo',
-      name: 'Demo workspace',
-      mode: 'demo',
-      baseUrl: 'http://127.0.0.1:8765',
-      allowMockFallback: true,
+      id: 'explicit-dev-fixture', name: 'Development fixture', mode: 'demo',
+      baseUrl: 'http://127.0.0.1:8765', allowMockFallback: true,
     }
   }
   const baseUrl = explicitUrl ?? 'http://127.0.0.1:8765'
@@ -121,17 +158,46 @@ export function initServices(opts: {
       const connection = opts.connection ?? defaultConnectionProfile()
       const baseUrl = connection.baseUrl
       const token = connection.token
-      const getUserId = opts.getCurrentUserId ?? (() => opts.currentUserId)
+      const getUserId = () => personalRuntimeSubject(baseUrl) ?? opts.getCurrentUserId?.() ?? opts.currentUserId
       let backendAvailable = false
-      let backendMode: 'local' | 'company' | undefined
+      let backendMode: string | undefined
       let modelProvider: string | undefined
       let configuredModels: string[] = []
       let storage: string | undefined
       let backendCapabilities = new Set<string>()
       let backendContracts: Record<string, string> = {}
+      let standalonePluginSettingsAvailable = false
+      let rendererSettingsAvailable = false
+      let runApprovalReviewAvailable = false
+      let projectTaskFeedAvailable = false
       let commandCenterAvailable = false
       let managedKrailAvailable = false
       let participantsAvailable = false
+      let agentProfilesAvailable = false
+      let resourceCapacityAvailable = false
+      let nativeAdaptersAvailable = false
+      let authorizedContextAvailable = false
+      let associationsAvailable = false
+      let teamsAvailable = false
+      let projectConversationsAvailable = false
+      let projectChildTasks = false
+      let projectChildResults = false
+      let projectConversationContext = false
+      let managerConversationsAvailable = false
+      let managerChildTasksAvailable = false
+      let managerChildResultsAvailable = false
+      let managerContextAvailable = false
+      let dashboardSettingsAvailable = false
+      let presentationSettingsAvailable = false
+      let projectDirectoryAvailable = false
+      let deviceAssignmentsAvailable = false
+      let personalDevicePairingAvailable = false
+      let personalDevicesAvailable = false
+      let personalRuntimeAvailable = false
+      let projectKnowledgeAvailable = false
+      let codingTasksAvailable = false
+      let portableContinuationAvailable = false
+      let nativeSessionResume = false
       let legacyHealthAvailable = false
       let v2CapabilitiesAvailable = false
       let delegation: DelegationPolicySummary | undefined
@@ -231,25 +297,83 @@ export function initServices(opts: {
           if (capabilityResponse.ok) {
             v2CapabilitiesAvailable = true
             const capabilities = await capabilityResponse.json() as {
-              capability_mode?: 'local' | 'company'
+              project_team_presentation_v1?: {available?:boolean}
+              teams_v1?: {available?:boolean}
+              project_conversations_v1?: {available?:boolean;scope?:string;provider_execution?:boolean;user_messages?:boolean;child_tasks?:boolean;child_results?:boolean;conversation_context?:{available?:boolean;opt_in?:boolean;max_messages?:number;max_task_characters?:number}}
+              manager_conversations_v1?: {available?:boolean;scope?:string;provider_execution?:boolean;user_messages?:boolean;scope_edits?:boolean;child_tasks?:boolean;child_results?:boolean}
+              manager_context_v1?: {available?:boolean;scope?:string;execution_authority?:boolean}
+              dashboard_layout_v1?: {available?:boolean;scope?:string}
+              presentation_settings_v1?: {available?:boolean}
+              project_directory_v1?: {available?:boolean;scope?:string}
+              device_assignment_consent_v1?: {available?:boolean}
+              device_inventory_v1?: { available?: boolean; scope?: string; pairing_available?: boolean }
+              capability_mode?: string
+              standalone_plugin_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
+              renderer_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
+              run_approval_review_v1?: {available?:boolean;scope?:string;model_call_authorization?:boolean}
+              project_task_feed_v1?: {available?:boolean;scope?:string;schema_version?:string}
               command_center?: { available?: boolean; path?: string; schema_version?: string }
               managed_krail?: boolean
               participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
+              agent_builder_v1?: { available?: boolean; review_required?: boolean; online_research_available?: boolean; schema_version?: string }
+              resource_capacity?: { available?: boolean; schema_version?: string; project_config_path_template?: string; status_path_template?: string }
+              coding_tasks?: {available?:boolean;selection_field?:string;schema_version?:string;supported_adapter_ids?:unknown;result_schema_version?:string;review_path_template?:string}
+              registered_git_evidence?: { available?: boolean; schema_version?: string; list_path_template?: string; inspection_path_template?: string; setup_path_template?: string; capture_path_template?: string; review_path_template?: string; semantic_authority?: string }
+              native_adapters?: { available?: boolean; schema_version?: string; supported_adapter_ids?: unknown; unsupported_adapter_ids?: unknown; readiness_path_template?: string; report_path_template?: string; selection_field?: string; observation_authority?: string; policy_authority?: string }; portable_run_continuations?: { available?: boolean; schema_version?: string; checkpoint_path_template?: string; continuation_path_template?: string; mode?: string; native_session_resume?: boolean }; authorized_context_packets?: { available?: boolean; schema_version?: string; selection_field?: string; inspector_path_template?: string; worker_path_template?: string; reauthorization_schema_version?: string; unavailable_reason?: string; sources_path_template?: string }; personal_runtime?: {available?:boolean;schema_version?:string;status_path?:string;action_path?:string;authority?:string;ui_process_owner?:boolean;recovery_path?:string}
             }
             backendAvailable = true
             backendMode = capabilities.capability_mode ?? backendMode
+            standalonePluginSettingsAvailable = capabilities.standalone_plugin_settings_v1?.available===true&&capabilities.standalone_plugin_settings_v1.execution_policy===false&&JSON.stringify(capabilities.standalone_plugin_settings_v1.scopes)===JSON.stringify(['user','team'])
+            rendererSettingsAvailable = capabilities.renderer_settings_v1?.available===true&&capabilities.renderer_settings_v1.execution_policy===false&&[JSON.stringify(['project','user_project']),JSON.stringify(['user','team','project','user_project'])].includes(JSON.stringify(capabilities.renderer_settings_v1.scopes))
+            runApprovalReviewAvailable = capabilities.run_approval_review_v1?.available===true&&capabilities.run_approval_review_v1.scope==='run_admission'&&capabilities.run_approval_review_v1.model_call_authorization===false
+            projectTaskFeedAvailable = capabilities.project_task_feed_v1?.available===true&&capabilities.project_task_feed_v1.scope==='current_memberships'&&capabilities.project_task_feed_v1.schema_version==='opensaddle.project-task-feed.v1'
             commandCenterAvailable = capabilities.command_center?.available === true
               && capabilities.command_center.path === '/api/v2/command-center'
               && capabilities.command_center.schema_version === 'opensaddle.command-center.v1'
             managedKrailAvailable = capabilities.managed_krail === true
             participantsAvailable = capabilities.participants?.available === true && capabilities.participants.schema_version === 'opensaddle.participant.v1' && capabilities.participants.project_path_template === '/api/v2/projects/{project_id}/participants'
+            agentProfilesAvailable = capabilities.agent_builder_v1?.available === true
+              && capabilities.agent_builder_v1.review_required === true
+              && typeof capabilities.agent_builder_v1.online_research_available === 'boolean'
+              && capabilities.agent_builder_v1.schema_version === 'opensaddle.agent-proposal.v1'
+            resourceCapacityAvailable = capabilities.resource_capacity?.available === true && capabilities.resource_capacity.schema_version === 'opensaddle.resource-capacity.v1' && capabilities.resource_capacity.project_config_path_template === '/api/v2/projects/{project_id}/capacity-limits' && capabilities.resource_capacity.status_path_template === '/api/v2/projects/{project_id}/capacity'
+            const native = capabilities.native_adapters
+            nativeAdaptersAvailable = native?.available === true && native.schema_version === 'opensaddle.native-adapter-readiness.v1' && JSON.stringify(native.supported_adapter_ids) === JSON.stringify(['codex-app-server','claude-code-stream-json']) && JSON.stringify(native.unsupported_adapter_ids) === JSON.stringify(['cursor']) && native.readiness_path_template === '/api/v2/projects/{project_id}/native-adapters' && native.report_path_template === '/api/v2/workers/{worker_id}/native-adapter-readiness' && native.selection_field === 'native_adapter_id' && native.observation_authority === 'worker_self_reported' && native.policy_authority === 'core'
+            const continuation=capabilities.portable_run_continuations
+            portableContinuationAvailable=continuation?.available===true&&continuation.schema_version==='opensaddle.run-checkpoints.v1'&&continuation.checkpoint_path_template==='/api/v2/runs/{run_id}/checkpoints'&&continuation.continuation_path_template==='/api/v2/runs/{run_id}/continuations'&&continuation.mode==='portable_artifact'&&continuation.native_session_resume===false
+            nativeSessionResume=continuation?.native_session_resume===true
+            const context = capabilities.authorized_context_packets
+            authorizedContextAvailable = context?.available === true && context.schema_version === 'krail.authorized-context-packet.v2' && context.selection_field === 'authorized_context_source_ids' && context.inspector_path_template === '/api/v2/runs/{run_id}/authorized-context-packet' && context.worker_path_template === '/api/v2/workers/{worker_id}/runs/{run_id}/authorized-context-packet' && context.reauthorization_schema_version === 'krail.authorized-context-reauthorization.v1' && context.unavailable_reason === 'context_packet_unavailable' && context.sources_path_template === '/api/v2/projects/{project_id}/authorized-context-sources'
+            associationsAvailable = capabilities.project_team_presentation_v1?.available===true
+            teamsAvailable = capabilities.teams_v1?.available===true
+            projectConversationsAvailable = capabilities.project_conversations_v1?.available===true&&capabilities.project_conversations_v1.scope==='owner_private_fixed_project'&&capabilities.project_conversations_v1.user_messages===true&&capabilities.project_conversations_v1.provider_execution===false
+            projectChildTasks=capabilities.project_conversations_v1?.child_tasks===true
+            projectChildResults=capabilities.project_conversations_v1?.child_results===true
+            const conversationContextContract=capabilities.project_conversations_v1?.conversation_context
+            projectConversationContext=conversationContextContract?.available===true&&conversationContextContract.opt_in===true&&conversationContextContract.max_messages===32&&conversationContextContract.max_task_characters===100000
+            managerConversationsAvailable = capabilities.manager_conversations_v1?.available===true && capabilities.manager_conversations_v1.scope==='authenticated_owner' && capabilities.manager_conversations_v1.provider_execution===false && capabilities.manager_conversations_v1.user_messages===true && capabilities.manager_conversations_v1.scope_edits===true
+            managerChildTasksAvailable = capabilities.manager_conversations_v1?.child_tasks===true
+            managerChildResultsAvailable = capabilities.manager_conversations_v1?.child_results===true
+            managerContextAvailable = capabilities.manager_context_v1?.available===true && capabilities.manager_context_v1.scope==='explicit_current_memberships' && capabilities.manager_context_v1.execution_authority===false
+            dashboardSettingsAvailable = capabilities.dashboard_layout_v1?.available===true && capabilities.dashboard_layout_v1.scope==='authenticated_user'
+            presentationSettingsAvailable = capabilities.presentation_settings_v1?.available===true
+            projectDirectoryAvailable = capabilities.project_directory_v1?.available===true && capabilities.project_directory_v1.scope==='current_memberships'
+            deviceAssignmentsAvailable = capabilities.device_assignment_consent_v1?.available === true
+            personalDevicePairingAvailable = capabilities.device_inventory_v1?.pairing_available === true
+            personalDevicesAvailable = capabilities.device_inventory_v1?.available === true && capabilities.device_inventory_v1.scope === 'authenticated_owner'
+            const personal=capabilities.personal_runtime
+            const coding = capabilities.coding_tasks
+            codingTasksAvailable = coding?.available === true && coding.selection_field === 'coding_task' && coding.schema_version === 'opensaddle.coding-task.v1' && JSON.stringify(coding.supported_adapter_ids) === JSON.stringify(['codex-app-server']) && coding.result_schema_version === 'opensaddle.coding-result.v1' && coding.review_path_template === '/api/v2/runs/{run_id}/coding-result/review'
+            const knowledge = capabilities.registered_git_evidence
+            projectKnowledgeAvailable = knowledge?.available === true && knowledge.schema_version === 'opensaddle.registered-git-evidence.v1' && knowledge.list_path_template === '/api/v2/projects/{project_id}/retained-evidence' && knowledge.inspection_path_template === '/api/v2/projects/{project_id}/retained-evidence/captures/{capture_id}/inspection' && knowledge.setup_path_template === '/api/v2/projects/{project_id}/retained-evidence/setup' && knowledge.capture_path_template === '/api/v2/projects/{project_id}/retained-evidence/captures' && knowledge.review_path_template === '/api/v2/projects/{project_id}/retained-evidence/captures/{capture_id}/review' && knowledge.semantic_authority === 'source_document_review'
+            personalRuntimeAvailable=personal?.available===true&&personal.schema_version==='opensaddle.personal-runtime.v1'&&personal.status_path==='/api/v2/personal-runtime'&&personal.action_path==='/api/v2/personal-runtime/lifecycle'&&personal.authority==='local_installation_owner'&&personal.ui_process_owner===false&&personal.recovery_path==='/api/v2/personal-runtime/recovery'
           }
         } catch {
           commandCenterAvailable = false
         }
       }
       let permissions: PermissionClient
-      if (backendAvailable && (backendCapabilities.size === 0 || backendCapabilities.has('permissions'))) {
+      if (backendAvailable && legacyHealthAvailable && (backendCapabilities.size === 0 || backendCapabilities.has('permissions'))) {
         const remote = new RemotePermissionClient(baseUrl, getUserId, token)
         try {
           let serverGrants = await remote.list()
@@ -261,7 +385,7 @@ export function initServices(opts: {
       } else {
         permissions = new LocalPermissionClient(opts.getGrants, opts.setGrants)
       }
-      const runtime = connection.mode === 'remote' && (mode === 'desktop' || mode === 'browser')
+      const runtime = connection.mode === 'remote'
           ? new OpenSaddleRuntimeClient(baseUrl, new MockRuntimeClient(), {
             token,
             getUserId,
@@ -270,17 +394,17 @@ export function initServices(opts: {
             allowFallback: false,
           })
           : new MockRuntimeClient()
-      const workspace = backendAvailable && backendMode !== 'local' && (backendCapabilities.size === 0 || backendCapabilities.has('workspace'))
+      const workspace = backendAvailable && legacyHealthAvailable && backendMode !== 'local' && (backendCapabilities.size === 0 || backendCapabilities.has('workspace'))
         ? new RemoteWorkspaceClient(baseUrl, getUserId, token)
         : undefined
-      const threads = backendAvailable && backendMode !== 'local'
+      const threads = backendAvailable && legacyHealthAvailable && backendMode !== 'local'
         ? backendCapabilities.has('threads')
           ? new AuthoritativeThreadClient(baseUrl, getUserId, token)
           : backendCapabilities.size === 0
             ? new RemoteThreadClient(baseUrl, getUserId, token)
             : undefined
         : undefined
-      const localProjects = backendAvailable
+      const localProjects = backendAvailable && legacyHealthAvailable
         && backendMode === 'local'
         ? backendCapabilities.has('projects')
           ? new AuthoritativeLocalProjectClient(baseUrl, getUserId, token)
@@ -310,8 +434,11 @@ export function initServices(opts: {
         ? new RemoteKrailProposalClient(baseUrl, getUserId, token)
         : undefined
       const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
+      const agentProfiles = backendAvailable && agentProfilesAvailable ? new RemoteAgentProfileClient(baseUrl, getUserId, token) : undefined
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
-      const tools = connection.mode === 'remote' && mode !== 'mock'
+      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable, authorizedContextAvailable, portableContinuationAvailable, nativeSessionResume) : undefined
+      const personalRuntime=backendAvailable&&personalRuntimeAvailable?new PersonalRuntimeClient(baseUrl,getUserId,token):undefined
+      const tools = connection.mode === 'remote'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
         : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
       const sandbox = new WorkerSandboxClient()
@@ -340,11 +467,29 @@ export function initServices(opts: {
         commandCenter,
         krailProposals,
         participants,
+        agentProfiles,
         operationsSessions,
         malleableShell,
+        journey,
+        personalRuntime,
+        teams: backendAvailable && teamsAvailable ? new TeamsClient(baseUrl,getUserId,token,associationsAvailable) : undefined,
+        standalonePluginSettings: backendAvailable&&standalonePluginSettingsAvailable?new StandalonePluginSettingsClient(baseUrl,getUserId,token):undefined,
+        rendererSettings: backendAvailable&&rendererSettingsAvailable?new RendererSettingsClient(baseUrl,getUserId,token):undefined,
+        runApprovalReview: backendAvailable&&runApprovalReviewAvailable?new RunApprovalReviewClient(baseUrl,getUserId,token):undefined,
+        projectTaskFeed: backendAvailable&&projectTaskFeedAvailable?new ProjectTaskFeedClient(baseUrl,getUserId,token):undefined,
+        projectConversations: backendAvailable&&projectConversationsAvailable?(projectId:string)=>new ManagerConversationsClient(baseUrl,getUserId,token,projectChildTasks?journey:undefined,projectChildResults,projectId,projectConversationContext):undefined,
+        managerConversations: backendAvailable && managerConversationsAvailable ? new ManagerConversationsClient(baseUrl,getUserId,token,managerChildTasksAvailable?journey:undefined,managerChildResultsAvailable) : undefined,
+        managerContext: backendAvailable && managerContextAvailable ? new ManagerContextClient(baseUrl,getUserId,token) : undefined,
+        dashboardSettings: backendAvailable && dashboardSettingsAvailable ? new DashboardSettingsClient(baseUrl,getUserId,token) : undefined,
+        presentationSettings: backendAvailable && presentationSettingsAvailable ? new PresentationSettingsClient(baseUrl,getUserId,token) : undefined,
+        projectDirectory: backendAvailable && projectDirectoryAvailable ? new ProjectDirectoryClient(baseUrl,getUserId,token) : undefined,
+        personalDevices: backendAvailable && personalDevicesAvailable ? new PersonalDevicesClient(baseUrl, getUserId, token, personalDevicePairingAvailable, deviceAssignmentsAvailable) : undefined,
+        codingResults: backendAvailable && codingTasksAvailable ? new CodingResultReviewClient(baseUrl, getUserId, token) : undefined,
+        projectKnowledge: backendAvailable && projectKnowledgeAvailable ? new RegisteredProjectKnowledgeClient(baseUrl, getUserId, token) : undefined,
         controlPlane: {
           connected: backendAvailable,
           mode: backendMode,
+          v2Capabilities: v2CapabilitiesAvailable,
           modelProvider,
           models: configuredModels,
           storage,

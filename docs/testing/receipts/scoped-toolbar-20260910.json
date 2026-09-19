@@ -1,0 +1,7 @@
+{
+  "change": "Style host-owned installed view controls and distinguish temporary fallback from saved default",
+  "build": "npm run build passed",
+  "visual": "CUA browser at 1422px wide, production ScopedWorkspace in disposable real-Core fixture; selected view ready, temporary default content shown with saved selection retained, retry clicked",
+  "screenshots": ["out/screenshots/scoped-toolbar-20260910/selected.png", "out/screenshots/scoped-toolbar-20260910/temporary-default.png"],
+  "limits": "Harness surrounding page is unstyled. No new behavior tests: presentation-only change. Narrow viewport, keyboard flow, theme variants and full Electron layout not reverified. Personal runtime and catalog unchanged."
+}

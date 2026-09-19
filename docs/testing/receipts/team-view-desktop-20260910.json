@@ -1,0 +1,36 @@
+{
+  "schema_version": "opensaddle.manual-desktop-proof.v1",
+  "interface_revision": "06cddcc3bf3ddd33df35f1d0c19709ff7daed2fa",
+  "core_revision": "6309bcb40f3996e3f1e735e7365bef59ee302a83",
+  "setup": "Disposable dev_scoped_renderer_fixture with pending-install and desktop-adoption. Fixture public publisher and signed Team package installed through authenticated catalog APIs before desktop interaction. Isolated Electron profile; no personal runtime mutation.",
+  "verified": [
+    "Select Team in actual Teams directory",
+    "Click Use view to enable and select signed Team renderer",
+    "Open Team workspace: initialized iframe reports exact Team ID",
+    "Click Try the view: Interactions 1",
+    "Show default workspace: built-in Team overview appears",
+    "API confirms temporary fallback retains revision 1 with one application",
+    "Retry selected view remounts iframe with Interactions 1",
+    "Restore default workspace clears selection and shows built-in overview"
+  ],
+  "final_api": {
+    "team": {
+      "revision": 2,
+      "application_count": 0
+    },
+    "user": {
+      "revision": 0,
+      "application_count": 0
+    }
+  },
+  "screenshots": [
+    "out/screenshots/team-view-desktop-20260910/active.png",
+    "out/screenshots/team-view-desktop-20260910/restored.png"
+  ],
+  "limits": [
+    "Install was via API; file-picker installation was not exercised",
+    "No Team member permission revocation, upgrade or malicious plug-in check in this walkthrough",
+    "No cross-device state synchronization or process-restart persistence claim",
+    "Preview capability warning remains; this does not prove all scoped SDK capabilities"
+  ]
+}

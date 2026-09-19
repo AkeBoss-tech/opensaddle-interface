@@ -1,0 +1,39 @@
+{
+  "invariant": "PROJECT-SOURCE-SDK",
+  "base": "4f2a7e4f7ca2331d4cb281df4e4d5c91a42ac884",
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern",
+    "source SDK",
+    "src/perspectives/project/InstalledProjectView.test.tsx"
+  ],
+  "baseline_exit_code": 1,
+  "baseline_output": "\u2716 source SDK reads only the mounted Project through the authenticated host (6.434083ms)\n\u2139 tests 1\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 261.796333\n\n\u2716 failing tests:\n\ntest at src/perspectives/project/InstalledProjectView.test.tsx:1:17377\n\u2716 source SDK reads only the mounted Project through the authenticated host (6.434083ms)\n  AssertionError [ERR_ASSERTION]: source-reading Perspectives must be supported by the host\n  \n  0 !== 1\n  \n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-source-sdk-baseline-o8yhox55/src/perspectives/project/InstalledProjectView.test.tsx:182:9)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 0,\n    expected: 1,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+  "boundary": "Mounted InstalledProjectView using RemoteMalleableShellClient; only HTTP transport and browser frame boundary injected",
+  "checks": [
+    "signed capability compatibility",
+    "explicit initialized frame request",
+    "host-fixed Project scope",
+    "bounded metadata allowlist",
+    "no credentials or private path delivered",
+    "pre/post authorization",
+    "revoke-during-read suppresses projection",
+    "source denial clears frame",
+    "subject change rejected",
+    "wrong Project, duplicate, malformed digest, oversized list rejected"
+  ],
+  "limits": [
+    "No native browser visual evidence",
+    "Bounded snapshot of up to 100 sources; no cursor subscription or completeness claim",
+    "Machine and approval SDK not implemented in this checkpoint"
+  ],
+  "current_validation": {
+    "command": "node --import tsx --test src/perspectives/project/InstalledProjectView.test.tsx src/features/perspectives/ProjectPerspectiveWorkspace.test.tsx",
+    "passed": 7,
+    "failed": 0,
+    "build": "npm run build passed (existing chunk size warning)"
+  }
+}

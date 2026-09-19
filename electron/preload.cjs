@@ -1,9 +1,17 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
+// Reserve native window chrome before React mounts, including empty workspaces.
+window.addEventListener('DOMContentLoaded', () => {
+  if (process.platform === 'darwin') document.documentElement.classList.add('desktop-macos')
+})
+
 contextBridge.exposeInMainWorld('opensaddleDesktop', true)
 contextBridge.exposeInMainWorld('opensaddle', {
   opensaddleUrl: ipcRenderer.sendSync('runtime:opensaddle-url'),
   getRuntimeInfo: () => ipcRenderer.invoke('runtime:info'),
+  commissionPersonalRuntime: (request) => ipcRenderer.invoke('runtime:commission-personal', request),
+  adoptPersonalRuntime: () => ipcRenderer.invoke('runtime:adopt-personal'),
+  personalRuntimeRequest: (request) => ipcRenderer.invoke('runtime:personal-request', request),
   pickRepository: () => ipcRenderer.invoke('runtime:pick-repo'),
   discoverProjects: () => ipcRenderer.invoke('runtime:discover-projects'),
   listTokenPrices: () => ipcRenderer.invoke('runtime:list-token-prices'),
@@ -12,6 +20,10 @@ contextBridge.exposeInMainWorld('opensaddle', {
   inspectProject: (target) => ipcRenderer.invoke('runtime:inspect-project', target),
   scanWorkspaceFolder: (folderPath) => ipcRenderer.invoke('runtime:scan-workspace', folderPath),
   openPath: (target) => ipcRenderer.invoke('runtime:open-path', target),
+  openApplicationRenderer: (request) => ipcRenderer.invoke('runtime:open-application-renderer', request),
+  closeApplicationRenderer: (identity) => ipcRenderer.invoke('runtime:close-application-renderer', identity),
+  setApplicationRendererBounds: (identity, bounds) => ipcRenderer.invoke('runtime:application-renderer-bounds', identity, bounds),
+  onApplicationRendererEvent: (listener) => { const receive = (_event, value) => listener(value); ipcRenderer.on('runtime:application-renderer-event', receive); return () => ipcRenderer.removeListener('runtime:application-renderer-event', receive) },
   openBrowser: (url) => ipcRenderer.invoke('runtime:open-browser', url),
   setBrowserBounds: (bounds) => ipcRenderer.invoke('runtime:browser-bounds', bounds),
   closeBrowser: () => ipcRenderer.invoke('runtime:close-browser'),

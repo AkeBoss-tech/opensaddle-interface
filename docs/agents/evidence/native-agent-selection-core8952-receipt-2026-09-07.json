@@ -1,0 +1,18 @@
+{
+  "actual_http": true,
+  "core_source_revision": "80b708e",
+  "core_import_path": "immutable-archive/src/opensaddle/control_plane/api.py",
+  "project_id": "native-ui-real",
+  "source_id": "src_7e1678d2ad5241639eaba6ca6b497fbf",
+  "readiness_before_run": [
+    {"adapter_id":"claude-code-stream-json","worker_id":"native-ui-claude-worker","ready":true,"executable_state":"installed","authentication_state":"authenticated","protocol_state":"compatible","workspace_state":"configured","revision":"fact-v1"},
+    {"adapter_id":"codex-app-server","worker_id":"native-ui-codex-worker","ready":true,"executable_state":"installed","authentication_state":"authenticated","protocol_state":"compatible","workspace_state":"configured","revision":"fact-v1"}
+  ],
+  "selected_adapter_id": "claude-code-stream-json",
+  "run_id": "run_c5d6172ca6044310af08f2f7f77cc7dd",
+  "interface_result": {"status":"completed","worker_id":"native-ui-claude-worker","artifact_available":true,"admitted_adapter_id":"claude-code-stream-json"},
+  "readiness_after_run": [
+    {"adapter_id":"claude-code-stream-json","ready":true},
+    {"adapter_id":"codex-app-server","ready":false,"reason":"readiness_stale"}
+  ]
+}

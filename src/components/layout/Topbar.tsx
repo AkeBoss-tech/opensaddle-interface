@@ -1,3 +1,4 @@
+import {MobileNavigation} from './MobileNavigation'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../../data/store'
@@ -56,7 +57,7 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
     controlPlane: services?.controlPlane ?? null,
     desktop: Boolean(window.opensaddleDesktop),
   })
-  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
+  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.v2Capabilities)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -80,7 +81,7 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
         <button className="icon-btn page-nav" title="Back" onClick={onBack}><Icon name="back" /></button>
         <button className="icon-btn page-nav" title="Forward" onClick={onForward}><Icon name="forward" /></button>
       </div>
-      <button className="icon-btn mobile-menu" aria-label="Open team navigation" onClick={() => document.getElementById('sidebar')?.classList.toggle('mobile-open')}><Icon name="menu" /></button>
+      <MobileNavigation />
       <div className="crumbs">{crumbs}</div>
       <div className="topbar-actions">
         <Link
@@ -93,7 +94,7 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
           {persistenceStatus === 'error' && <span className="system-pill-sync">Save error</span>}
         </Link>
         {window.opensaddleDesktop && onBrowser && <button className="icon-btn" title="Open split browser" onClick={onBrowser}><Icon name="globe" /></button>}
-        <button className="icon-btn" title={`Theme: ${data.settings.theme === 'liquid' ? 'Liquid Glass' : data.settings.theme}. Click to change.`} onClick={cycleTheme}><Icon name="sun" /></button>
+        <button className="icon-btn" title={services?.presentationSettings ? 'Appearance settings' : `Theme: ${data.settings.theme === 'liquid' ? 'Liquid Glass' : data.settings.theme}. Click to change.`} onClick={services?.presentationSettings ? ()=>nav(location.pathname.startsWith('/project/')?`/project/${location.pathname.split('/')[2]}/appearance`:'/settings/appearance') : cycleTheme}><Icon name="sun" /></button>
         {!connectedLocal && <button className="icon-btn" title="Notifications" onClick={() => { setNotifOpen((v) => !v); if (!notifOpen) markNotificationsRead() }} style={{ position: 'relative' }}>
           <Icon name="bell" />
           {unread > 0 && <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--orange)' }} />}
@@ -114,23 +115,5 @@ export function Topbar({ crumbs, sidebarCollapsed, onToggleSidebar, onBack, onFo
         </div>
       )}
     </header>
-  )
-}
-
-export function DemoBanner() {
-  const { connection, data, updateSettings, toast, services } = useStore()
-  if (!data.settings.demoMode) return null
-  return (
-    <div className="demo-banner">
-      <Icon name="saddle" className="icon sm" />
-      <span>
-        {connection.mode === 'demo'
-          ? 'Demo workspace · seeded sample data · simulated runs · no control-plane enforcement'
-          : services?.controlPlane.connected
-          ? `Connected · ${services.controlPlane.mode === 'company' ? 'company' : 'local'} control plane · ${services.controlPlane.modelProvider && services.controlPlane.modelProvider !== 'unconfigured' ? services.controlPlane.modelProvider : 'native harnesses'} · ${services.controlPlane.storage === 'sqlite' ? 'SQLite persistence' : 'server storage'}`
-          : `Control plane unavailable · reconnect to ${connection.baseUrl} for durable chats and enforced permissions`}
-      </span>
-      <button className="tiny-btn" onClick={() => { updateSettings({ demoMode: false }); toast('Demo banner hidden', 'Re-enable from Settings.') }}>Dismiss</button>
-    </div>
   )
 }

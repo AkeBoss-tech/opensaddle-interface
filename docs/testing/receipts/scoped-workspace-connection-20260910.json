@@ -1,0 +1,8 @@
+{
+  "invariant": "SCOPED-WORKSPACE-CONNECTION-1",
+  "before": "Identical React workspace test failed: new server must mount its selected view without inheriting previous fallback; expected 1 selected host, observed 0",
+  "after": "4 focused tests passed: workspace connection regression, two scoped state tests, desktop scoped transport",
+  "boundary": "Actual workspace, scoped client and host. HTTP responses replace external servers; content is held pending to observe mounting independently of iframe execution.",
+  "change": "Key loaded selection and fallback by existing server/account stateScope plus account and Team. Load CSS from app and browser harness entrypoints, keeping components usable in React boundary tests.",
+  "limits": "No new browser walkthrough of changing live accounts or endpoints. Does not prove revocation or complete host lifecycle. Python regression helper is pytest-only, so identical TypeScript test was run directly before and after."
+}

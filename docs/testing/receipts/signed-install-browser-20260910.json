@@ -1,0 +1,42 @@
+{
+  "scope": "Disposable bearer-authenticated Core fixture with production Interface catalog, installer and scoped host; not personal desktop installation",
+  "publisher_fingerprint": "4bbd427b7ef4037d9ff6acbbed8cab712ac41a7e2b6980ac5051f8b8375f47c6",
+  "journey": [
+    "Catalog started empty and publisher was untrusted.",
+    "Browser chose signed user JSON; Install remained disabled until explicit inspect and trust.",
+    "UI fingerprint matched independently hashed public key.",
+    "Install returned success; candidate was Not enabled and default workspace remained.",
+    "Use view enabled and selected the signed user view; production host reported ready and displayed user: owner.",
+    "Signed Team package installed using existing trust; user selection stayed revision 1 while Team environment stayed revision 0.",
+    "Team catalog selected Team view; host reported ready and displayed the Team scope."
+  ],
+  "final": {
+    "user": {
+      "revision": 1,
+      "package": {
+        "manifest_digest": "47dc52e65fe500a2200dcc176413a5a5da4405025010375f16f3576d410b55d6",
+        "package_id": "dev.opensaddle.user",
+        "version": "1.0.0"
+      }
+    },
+    "team": {
+      "revision": 1,
+      "package": {
+        "manifest_digest": "eceb0487dfa0c960c57a14b0cfed3a50d323969a756a4ab1c6854baf90b99ab6",
+        "package_id": "dev.opensaddle.team",
+        "version": "1.0.0"
+      }
+    }
+  },
+  "screenshots": [
+    "out/screenshots/signed-install-browser-20260910/installed-not-enabled.png",
+    "out/screenshots/signed-install-browser-20260910/activated.png",
+    "out/screenshots/signed-install-browser-20260910/team-activated.png"
+  ],
+  "limitations": [
+    "Unstyled production-component browser harness, not full desktop navigation or visual polish.",
+    "No test publisher or package was added to personal state.",
+    "In-frame counter interaction was not exercised in this run; top-level locator did not cross the iframe.",
+    "Activation remains advertised as preview; no release qualification claim."
+  ]
+}

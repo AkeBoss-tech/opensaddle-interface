@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Icon } from '../components/common/Icon'
 import { useStore } from '../data/store'
 import '../styles/start-hub.css'
+import { ConnectedTaskStartPage } from '../features/projects/ConnectedTaskStartPage'
 import { ConnectedLocalStartPage } from '../features/projects/ConnectedLocalStartPage'
 
 const QUICK_PROMPTS = [
@@ -70,6 +71,7 @@ export function StartPage() {
     }
   }
 
+  if (services?.journey) return <ConnectedTaskStartPage />
   if (connectedLocal) return <ConnectedLocalStartPage />
 
   return (

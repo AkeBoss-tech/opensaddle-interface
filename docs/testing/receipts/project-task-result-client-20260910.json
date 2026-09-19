@@ -1,0 +1,16 @@
+{
+  "schema_version": "opensaddle.task-result-client-proof.v1",
+  "run_id": "run_9ba0d4e46f9e485c820d4bfb61eda489",
+  "artifact": {
+    "project_id": "teammate-proof",
+    "run_id": "run_9ba0d4e46f9e485c820d4bfb61eda489",
+    "artifact_id": "art_44ea51fe132d4bb7812d2269d8fc7ade",
+    "digest": "8e75ded3d243559b9de4073055000f0d06c5927c309a39ec4a447662f8b96948"
+  },
+  "actual_remote_output": "I’ll run both read-only commands exactly as requested and report their stdout.```text\nDarwin\n527\n```",
+  "client": "RemoteJourneyClient",
+  "transport": "real loopback HTTP, development trusted user header",
+  "wrong_project_denied": true,
+  "outsider_denied": true,
+  "browser_verified": false
+}

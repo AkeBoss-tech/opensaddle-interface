@@ -1,0 +1,36 @@
+{
+  "schema_version": "opensaddle.desktop-runtime-smoke.v1",
+  "boundary": "private candidate staging; not a signed package or final daily-driver bridge release",
+  "interface": {
+    "revision": "24ae14a05e9a721cf63d69477bf9ef7f532e9340",
+    "tree": "3438600f5964f2cafecba887af6724aae1a5d08d",
+    "archive_sha256": "cb06b562a384c202c3eab7bc278763f5d21ada2820cf7c8ed9e7ed92ea85ae9a"
+  },
+  "krail": {
+    "revision": "1538b306608784d471f385e45561b4c671c106ae",
+    "tree": "e0dade60e18768629724539e98320693ba4e8da2",
+    "wheel_sha256": "8a5f4173c7d13d04214f071d7611881a4ccabb8c5e6c0138ce1e12eb81a9284a"
+  },
+  "opensaddle": {
+    "revision": "93f20759b605cdc6811a9b7d66d6ee794dce805a",
+    "tree": "ffd37e443cb55952fdb1a4ed125f2c0b3a35e659",
+    "wheel_sha256": "daf68c53fd4deb546e3e4771b6223b6ddbcb6b648b832ee3cfd496d515a74ff1"
+  },
+  "python_sha256": "6d472fc49a4d95e58214a992c4c92aa73fe2a935837a01a9a36bab0bec6d72f3",
+  "dependency_closure": {
+    "wheel_count": 37,
+    "added_from_actual_source_wheel_metadata": ["psycopg==3.3.5", "psycopg-binary==3.3.5"],
+    "runtime_lock_sha256": "34145482959f3c57c94cb26eb52153729481e59b08f76cb81433c05fde17711f",
+    "requirements_sha256": "4906406f5abbe2df3329143b206c8cb2cf4c342d8774381b2c540aaa38f878c8"
+  },
+  "result": {
+    "offline_hash_required_install": "passed",
+    "sanitized_krail_admin_help": "passed",
+    "sanitized_krail_mutate_help": "passed",
+    "sanitized_opensaddle_help": "passed",
+    "manifest_sha256": "208a833ea8fc6be58c2c1019e0929c9a1429d6577781cba7dec5a7a885f29a1f"
+  },
+  "private_fixture": "/Users/akashdubey/.codex/agent-runtime/opensaddle-20260907/personal-runtime-smoke-24ae14a",
+  "canonical_service_touched": false,
+  "limitations": "The source-built Core and KRAIL wheels prove packaging and launcher compatibility. They do not yet include the final durable personal-runtime bridge, a signed DMG, or visual desktop proof. Pip emitted conflict warnings about unrelated packages already present in the standalone interpreter while installing into an isolated target; all three -I launchers passed."
+}

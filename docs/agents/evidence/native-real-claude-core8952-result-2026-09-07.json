@@ -1,0 +1,50 @@
+{
+  "actual_http": true,
+  "core_source_revision": "80b708e",
+  "core_import_path": "archive/src/opensaddle/control_plane/api.py",
+  "run_id": "run_c5d6172ca6044310af08f2f7f77cc7dd",
+  "run_status": "completed",
+  "assigned_worker_id": "native-ui-claude-worker",
+  "admitted_adapter_id": "claude-code-stream-json",
+  "requested_model": null,
+  "artifact_id": "art_05b5578bfd9e48d9b15aac9188d87835",
+  "artifact_digest": "902cc7065fbb7730a3c4490f5f552835fb41cb7be7882f53767af437d2ae2e77",
+  "member_run_status": 200,
+  "member_listing_status": 200,
+  "member_content_status": 200,
+  "member_content_text": "SADDLE-AMBER-8031",
+  "member_content_sha256": "902cc7065fbb7730a3c4490f5f552835fb41cb7be7882f53767af437d2ae2e77",
+  "owner_run_status": 200,
+  "owner_listing_status": 200,
+  "owner_content_status": 200,
+  "owner_content_text": "SADDLE-AMBER-8031",
+  "owner_content_sha256": "902cc7065fbb7730a3c4490f5f552835fb41cb7be7882f53767af437d2ae2e77",
+  "private_capture_sanitized": {
+    "exit_code": 0,
+    "terminal_type": "result",
+    "terminal_subtype": "success",
+    "terminal_is_error": false,
+    "stderr_nonempty": false,
+    "stderr_bytes": 0
+  },
+  "native_dispatch": {
+    "run_id": "run_c5d6172ca6044310af08f2f7f77cc7dd",
+    "attempt": 1,
+    "machine_id": "native-ui-claude-worker",
+    "adapter_id": "claude-code-stream-json",
+    "adapter_version": "stream-json-v1",
+    "model": null,
+    "provider_session_id": null,
+    "provider_turn_id": null,
+    "provider_terminal_status": null,
+    "state": "completed",
+    "result_digest": "a5c39e8c0275ba13ae1341c2129ed5a918955818964d192337b4b4af07cd20bc",
+    "error_class": null,
+    "provider_receipt_json": {
+      "exit_code": 0,
+      "is_error": false,
+      "outcome": "completed",
+      "terminal_subtype": "success"
+    }
+  }
+}

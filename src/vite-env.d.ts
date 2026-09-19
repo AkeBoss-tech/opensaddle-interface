@@ -37,6 +37,9 @@ interface Window {
   opensaddle?: {
     opensaddleUrl: string
     getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; opensaddleConnected: boolean; opensaddleError: string | null; opensaddleNotice: string | null; sessionBridgeUrl: string; /** @deprecated */ krailUrl: string; krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }; clis: string[] }>
+    commissionPersonalRuntime: (request: import('./services/personalRuntimeCommissioning').PersonalRuntimeCommissionRequest) => Promise<{baseUrl:string;installationId:string;ownerSubject:string;projectId:string;adoptionSocket:string;ipcDir:string}>
+    adoptPersonalRuntime: () => Promise<{baseUrl:string;installationId:string;ownerSubject:string;projectId:string;adoptionSocket:string;ipcDir:string}>
+    personalRuntimeRequest: (request:{path:string;method:'GET'|'POST'|'PUT';body?:string;rendererHostToken?:string;expectedBaseUrl:string;expectedInstallationId:string;expectedProjectId:string}) => Promise<{status:number;contentType:string;bodyBase64:string}>
     pickRepository: () => Promise<string | null>
     discoverProjects: () => Promise<import('./types').DiscoveredLocalProject[]>
     listTokenPrices: () => Promise<import('./types').PublicTokenPrice[]>
@@ -53,6 +56,10 @@ interface Window {
       languages: string[]
     }>
     openPath: (path: string) => Promise<void>
+    openApplicationRenderer: (request: {instanceId:string;generation:number;connectionKey:string;packageRef:{package_id:string;version:string;manifest_digest:string};contentDigest:string;fragment:string;stateMaxBytes:number;stateSchema:import('./applications/applicationState').ApplicationStateSchema;state?:import('./applications/applicationState').ApplicationState;projection:{resource:{project_id:string;run_id:string;artifact_id:string;digest:string};text:string;verified_bytes:boolean;fact_verification:'verified'|'not_verified'|'unavailable'};bounds:{x:number;y:number;width:number;height:number}}) => Promise<{identity:string;rendererPid:number}>
+    closeApplicationRenderer: (identity:string) => Promise<boolean>
+    setApplicationRendererBounds: (identity:string,bounds:{x:number;y:number;width:number;height:number}) => Promise<boolean>
+    onApplicationRendererEvent: (listener:(event:{identity:string;instanceId:string;generation:number;kind:'ready'|'state'|'error';state?:unknown;reason?:string})=>void) => () => void
     openBrowser: (url: string) => Promise<void>
     setBrowserBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>
     closeBrowser: () => Promise<void>

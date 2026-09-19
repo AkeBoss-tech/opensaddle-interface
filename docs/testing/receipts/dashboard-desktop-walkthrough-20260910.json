@@ -1,0 +1,15 @@
+{
+  "environment": "Actual Electron, personal Core at loopback, production renderer built with VITE_APP_BASE=./",
+  "feature_suite": {"command":"npm run test:features","passed":325,"failed":0},
+  "journey": [
+    "Home loaded with one Project, saved manager conversation and two retained outcomes",
+    "Native UI Customize dashboard: unchecked Current objective and saved",
+    "Authenticated Core read confirmed revision 1 with attention, runs, projects, outcomes",
+    "Closed and relaunched desktop while personal supervisor stayed running",
+    "Reopened Home retained four cards and unchecked Current objective",
+    "Native UI Use default layout then Save dashboard restored five original widgets"
+  ],
+  "screenshots": ["out/screenshots/dashboard-desktop-20260910/persisted.png","out/screenshots/dashboard-desktop-20260910/restored.png"],
+  "build_note": "Plain npm run build targets /opensaddle-interface/ for web hosting and opened a blank Electron page. Rebuilt using the documented VITE_APP_BASE=./ desktop setting before acceptance.",
+  "limits": "No task launched or human result review supplied. No full keyboard, narrow viewport or distributed installer claim. Supervisor was not restarted."
+}

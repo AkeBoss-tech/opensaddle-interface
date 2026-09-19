@@ -1,3 +1,4 @@
+import { AuthoritativeRunSurface } from '../features/runs/AuthoritativeRunSurface'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from '../data/store'
@@ -10,6 +11,19 @@ import { InlineAgentRequest } from '../features/runs/InlineAgentRequest'
 import { runtimeRunLifecycleControls } from '../features/runs/lifecycleControls'
 
 export function RunsPage() {
+  const { services, runtimeAdoptionPending } = useStore()
+  const [params] = useSearchParams()
+  const runId = params.get('run')
+  if (runId && (runtimeAdoptionPending || !services || !services.controlPlane.connected)) return <main className="content-page"><h1>Task connection unavailable</h1><p role="status">{runtimeAdoptionPending || !services ? 'Connecting to the task authority…' : 'Reconnect to OpenSaddle to inspect this task.'}</p></main>
+  if (runId && services?.controlPlane.v2Capabilities) {
+    const journey = services.journey
+    if (!journey?.runDetail) return <main className="content-page"><h1>Task unavailable</h1><p>The connected server does not expose authoritative Run inspection.</p></main>
+    return <AuthoritativeRunSurface authority={journey as typeof journey & {runDetail:NonNullable<typeof journey.runDetail>}} runId={runId} codingResults={services.codingResults}/>
+  }
+  return <LegacyRunsPage/>
+}
+
+function LegacyRunsPage() {
   const { data, updateTaskStatus, toast, services, createChat, setActiveChat } = useStore()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()

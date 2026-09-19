@@ -1,0 +1,22 @@
+{
+  "environment": "personal Electron desktop with real local Core",
+  "core_commit": "9acb83e",
+  "goal_id": "goal_4973ea95e61441a1905d84c5cf79660e",
+  "goal_revision": 0,
+  "criteria_count": 4,
+  "goal_status": "ready",
+  "supervisor_run_id": null,
+  "saved_through": "Project overview objective form",
+  "reload": "Home retained objective; corrected link opened populated overview editor",
+  "tests": {
+    "before": "2 link destination assertions failed",
+    "after": "3 passed",
+    "typescript": "passed",
+    "desktop_build": "passed"
+  },
+  "limits": [
+    "Fresh commissioning not yet proven",
+    "Project profile panel remains loading",
+    "No reviewer task executed or human acceptance recorded"
+  ]
+}

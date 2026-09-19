@@ -1,0 +1,21 @@
+{
+  "schema_version": "opensaddle.manual-browser-proof.v1",
+  "interface_revision": "fc490839ca3d1ce4b1489f2aa31cc6bfea92507d",
+  "core_revision": "6309bcb40f3996e3f1e735e7365bef59ee302a83",
+  "setup": "Disposable signed scoped renderer fixture. Owner enabled and selected Team view through real HTTP API. Browser harness uses actual member identity and member bearer injected server-side by a temporary Vite proxy. No personal state changed.",
+  "verified": [
+    "Before removal both workspace and catalog preview initialized signed iframe with exact Team scope",
+    "Owner removed member at expected Team revision 3 through HTTP API",
+    "Member environment GET returned 404",
+    "Already open workspace automatically unloaded iframe and showed inaccessible Team fallback",
+    "Catalog preview automatically unloaded iframe too"
+  ],
+  "removal_time_utc": "2026-09-10T23:45:43.144734+00:00",
+  "timing": "Observed after removal; no precise latency bound measured",
+  "screenshot": "out/screenshots/team-revocation-20260910/removed.png",
+  "remaining": [
+    "Manager-only view actions are still rendered to ordinary members",
+    "Catalog retains stale metadata and actions after access loss until refresh",
+    "Full desktop revocation walkthrough remains distinct from this browser component proof"
+  ]
+}

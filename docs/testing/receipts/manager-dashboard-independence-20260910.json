@@ -1,0 +1,9 @@
+{
+  "invariant": "MANAGER-DASHBOARD-INDEPENDENCE",
+  "baseRevision": "efb18a6c8311a8393bd6700c1b67af5d817a7feb",
+  "test": "src/features/command-center/CommandCenterPage.mounted.test.tsx",
+  "preFix": "failed",
+  "preFixAssertion": "saved manager must remain available without dashboard or context-preview capability",
+  "postFix": "passed",
+  "evidence": "Mounted user flow: reopen, retain draft, save during dashboard refresh, hide on disconnect; not browser evidence"
+}

@@ -1,4 +1,6 @@
-import type { HTMLAttributes, ReactNode } from 'react'
+import React, { type HTMLAttributes, type ReactNode } from 'react'
+
+void React
 import { cx } from './cx'
 
 export interface EmptyStateProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {

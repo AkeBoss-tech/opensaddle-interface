@@ -1,0 +1,13 @@
+{
+  "core": "8c7453f",
+  "scope": [
+    "renderer-proof"
+  ],
+  "projectCount": 1,
+  "outcomeCount": 1,
+  "verified": false,
+  "executionAuthority": false,
+  "missingProject": "rejected",
+  "transport": "live loopback HTTP using disposable authenticated fixture",
+  "browser": false
+}

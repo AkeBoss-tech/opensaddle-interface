@@ -1,0 +1,35 @@
+{
+  "boundary": "real in-app browser with production ScopedWorkspace, ScopedViewCatalog and signed frames; disposable authenticated Core",
+  "verified": [
+    "user and Team view activation",
+    "Disable package removes active frames and returns default content",
+    "Use view re-enables package; reload mounts ready workspace",
+    "Team disable activated using Enter",
+    "no browser error logs"
+  ],
+  "final_api_readback": [
+    {
+      "scope": "user",
+      "enablement": {
+        "status": "enabled",
+        "version": "1.0.0",
+        "revision": 3
+      },
+      "selection_retained": true
+    },
+    {
+      "scope": "team",
+      "enablement": {
+        "status": "enabled",
+        "version": "1.0.0",
+        "revision": 3
+      },
+      "selection_retained": true
+    }
+  ],
+  "limits": [
+    "unstyled harness, not full application navigation or Electron",
+    "owner account only in this browser check; Team member denial remains separate API evidence",
+    "no Project, task, personal-runtime or real device state changed"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "invariant": "SCOPED-RENDERER-TRANSPORT-1",
+  "passed": true,
+  "checks": [
+    "user: signed discovery, exact enable/select/content, host sequence, account fence, disable and fallback",
+    "Team member can host selected view; manager-only selection; outsiders and cross-subject reports denied",
+    "team: signed discovery, exact enable/select/content, host sequence, account fence, disable and fallback"
+  ],
+  "projects_created": false,
+  "visual_verification": false,
+  "executable_plugin_mounted": false,
+  "baseline": {
+    "commit": "6171f4f83b031baa1789e39732a7c2435c9a5aba",
+    "exit_code": 1,
+    "output": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: production shell must expose scoped renderer lifecycle\n    at <anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/scoped-client-before-akl2gljf/scripts/prove-scoped-renderers-live.ts:15:8)\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:642:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: undefined,\n  expected: true,\n  operator: '==',\n  diff: 'simple'\n}\n\nNode.js v26.0.0\n",
+    "test_overlay": "scripts/prove-scoped-renderers-live.ts"
+  },
+  "fixture": "Core scripts/dev_scoped_renderer_fixture.py; ephemeral loopback server, signed packages, bearer identities, SQLite; no Projects or external providers"
+}

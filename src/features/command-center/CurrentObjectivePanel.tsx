@@ -4,7 +4,7 @@ import type { CommandCenterSnapshot } from '../../services/contracts'
 
 void React
 
-function projectHref(projectId: string) { return `/project/${encodeURIComponent(projectId)}` }
+function projectHref(projectId: string) { return `/project/${encodeURIComponent(projectId)}/overview` }
 function dateTime(value?: string) {
   if (!value) return 'Update time unavailable'
   const date = new Date(value)
@@ -15,6 +15,7 @@ function priorityMessage(status: CommandCenterSnapshot['priorityStatus']) {
   if (status.reason === 'no_active_goal') return 'No active objective is recorded.'
   if (status.reason === 'multiple_active_goals') return 'Multiple active objectives exist. Home will not choose one without an explicit selection.'
   if (status.reason === 'goal_store_unavailable') return 'The control plane has no authoritative objective source.'
+  if (status.reason === 'goal_authority_not_configured') return 'Objective tracking is not configured for this server.'
   return status.reason ?? (status.state === 'empty' ? 'No active objective is recorded.' : status.state === 'ambiguous' ? 'Multiple active objectives exist. Home will not choose one without an explicit selection.' : 'The control plane has no authoritative objective source.')
 }
 

@@ -1,0 +1,13 @@
+{
+  "core": "488440c",
+  "transport": "live authenticated loopback HTTP",
+  "messages": 2,
+  "scopeRevisions": [
+    0,
+    1
+  ],
+  "lostResponse": "retried after client recreation without duplicate",
+  "otherOwner": "list empty and detail denied",
+  "providerExecution": false,
+  "browser": false
+}

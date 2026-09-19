@@ -1,0 +1,7 @@
+# Personal runtime installation errors
+
+The desktop now accepts an exact, Project-bound startup-error message on the inherited private handoff pipe. Only three fixed prerequisite codes are recognized: unsupported platform, missing KRAIL, and incompatible KRAIL. They map to fixed installation guidance. Arbitrary diagnostics, extra fields, mismatched Project/protocol, and unknown codes are rejected; provider stderr is drained and never displayed. A failure cannot supply a bearer token or become a successful runtime handoff.
+
+The child process close event is handled after its pipe data can be consumed. The existing cleanup path reaps the child before the commissioning promise rejects, including a prerequisite failure. Successful handoff and adoption contracts are unchanged. This is a main-process change; the existing commissioning form already displays the rejected error message.
+
+[Regression receipt](receipts/personal-startup-error-20260919.json): the same real-process test on Interface `233d9ac` failed with `Personal runtime handoff contract is invalid` instead of actionable dependency guidance. The repaired test passed. The owning startup/process/commissioning suites passed **12 tests**, and `npm run build --prefix electron` passed. An external subprocess fixture supplies only the wire message; the spawner, pipe parsing, exact binding and process cleanup are production code. No renderer/browser or clean customer installer claim is made by this test. Core's separate CLI regression verifies that prerequisites fail before commissioning state is created.

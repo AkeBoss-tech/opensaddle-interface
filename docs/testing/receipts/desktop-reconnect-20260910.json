@@ -1,0 +1,38 @@
+{
+  "pid": 26417,
+  "installation_id": "ec6eee40-bc5d-4e0a-9de2-773c09b50c2b",
+  "before_revision": 8,
+  "task_ids": [
+    "run_cc3566dbccd8480098c83071422f9133",
+    "run_d3b735b9ac17462299f3f72f8285c533"
+  ],
+  "pause_seconds": 45,
+  "paused_at": 1789072047.666968,
+  "resumed_at": 1789072092.669306,
+  "after_revision": 8,
+  "workers": [
+    {
+      "pid": 29589,
+      "state": "ready"
+    }
+  ],
+  "retained_tasks_unchanged": true,
+  "environment": "Actual Electron desktop with commissioned personal runtime",
+  "fault_injection": "SIGSTOP on verified idle supervisor; SIGCONT in finally after 45 seconds. No task was running.",
+  "observations": [
+    "Desktop screenshot showed Reconnecting while server was paused.",
+    "Desktop returned automatically to connected local Settings without reload or manual reconnect.",
+    "Runtime installation identity and lifecycle revision remained unchanged; completed task IDs and statuses survived.",
+    "Worker PID after recovery was 29589, replacing pre-check worker 26419. Recovery was not same-worker continuity."
+  ],
+  "finding": "During disconnection the app replaces the connected settings interface with the legacy dark General settings interface. Keep the selected product surface and appearance stable while reconnecting; do not treat cached services as execution authority.",
+  "screenshots": [
+    "out/screenshots/desktop-reconnect-20260910/reconnecting.png",
+    "out/screenshots/desktop-reconnect-20260910/recovered.png"
+  ],
+  "limitations": [
+    "This verifies an idle 45-second server interruption, not in-flight task cancellation, lease expiry, or machine/network failure.",
+    "Native accessibility snapshots remained stale during the transition; rendered screenshots establish the visible states.",
+    "The outage interface regression remains open."
+  ]
+}

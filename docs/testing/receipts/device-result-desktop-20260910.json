@@ -1,0 +1,28 @@
+{
+  "date": "2026-09-10",
+  "interface_commit": "ccc9206932a98c4d534cfe222f61fa029f35b744",
+  "environment": "Actual Electron desktop, opensaddle://bundle, commissioned personal runtime",
+  "method": "Native accessibility navigation and screenshot inspection",
+  "verified": [
+    "Home renders the connected Command Center and retained conversation.",
+    "Devices renders This Mac (OpenSaddle) as paired with connection not verified, separately from Project access.",
+    "Device activity reports no active tasks and an unavailable or expired agent report, without implying native process termination.",
+    "Opening opensaddle replaces the Project list with Project views and displays Dialogue task entries.",
+    "Opening the device-worker task reaches its exact task route and displays completed status, assigned worker and published result bytes."
+  ],
+  "task_id": "run_d3b735b9ac17462299f3f72f8285c533",
+  "worker_id": "device-codex-walkthrough-20260910",
+  "route": "#/project/opensaddle/tasks/run_d3b735b9ac17462299f3f72f8285c533",
+  "result_observed": "Main heading Coding-agent support; full native chat-history transcript import is not verified for Codex or Claude Code.",
+  "screenshot": "../../../out/screenshots/device-result-desktop-20260910/result.png",
+  "follow_up": [
+    "Task detail controls retain browser-default styling and result Markdown appears as raw text; align with the surrounding app.",
+    "Complete disconnect/reconnect and current desktop task creation/streaming walkthrough."
+  ],
+  "limits": [
+    "This inspects a previously completed real task; it does not prove new task submission or live streaming.",
+    "No device access policy was changed and no human result acceptance was submitted.",
+    "Exact artifact disclosure was not expanded; byte digest verification remains the separate API receipt.",
+    "No claim of full daily-driver or release completion."
+  ]
+}

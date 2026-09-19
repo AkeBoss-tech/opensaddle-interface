@@ -1,0 +1,8 @@
+{
+  "baseRevision": "bd60e80b1cb81bb1c87d1041950d2718149b0753",
+  "test": "src/features/command-center/ManagerMessageDispatch.test.tsx",
+  "preFix": "failed",
+  "preFixAssertion": "completed manager task output must appear in the conversation",
+  "postFix": "passed",
+  "evidence": "Mounted component; not browser or native execution"
+}

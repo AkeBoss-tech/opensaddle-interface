@@ -76,13 +76,43 @@
   background: color-mix(in srgb, var(--accent) 9%, transparent) !important;
 }
 
-.tf-team-shell.desktop-mode .tf-team-brand {
-  margin-top: 34px;
+.tf-rail-spacer {
+  display: none;
 }
 
-.tf-rail-spacer {
-  flex: 1;
+/* The list owns all space between the brand and the fixed profile control. */
+.tf-team-list {
+  min-height: 0;
+  flex: 1 1 0;
+  padding-block: 3px;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
+
+.tf-team-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Keep native traffic lights over one continuous, draggable title bar. */
+.desktop-macos { --desktop-titlebar-height: 44px; }
+.desktop-macos body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  height: var(--desktop-titlebar-height);
+  background: var(--os-color-team-sidebar);
+  -webkit-app-region: drag;
+  z-index: 100;
+}
+.desktop-macos #root { padding-top: var(--desktop-titlebar-height); }
+.desktop-macos .app,
+.desktop-macos .app-shell {
+  height: calc(100dvh - var(--desktop-titlebar-height));
+}
+.desktop-macos .tf-sidebar,
+.desktop-macos .codex-settings-shell { height: 100%; }
 
 .tf-rail-profile {
   width: 36px;

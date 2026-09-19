@@ -1,0 +1,29 @@
+{
+  "invariant": "RENDERER-SETTINGS-LIVE",
+  "project": "renderer-proof",
+  "package_ref": {
+    "package_id": "dev.opensaddle.project-starter",
+    "version": "1.0.0",
+    "manifest_digest": "7822525b362280d46b1a6dc4a7335bff86df2dd0f6858b7320ab5e834be00b88"
+  },
+  "content_digest": "5c4a03b871984438949ef806c6dad6096704853b7de1de76d476ece92af0a0b7",
+  "checks": [
+    "real signed catalog and bytes",
+    "member generated editor saves private override",
+    "poll delivers same-frame settings to actual plugin JavaScript",
+    "completed task becomes hidden",
+    "new client reads durable value",
+    "owner private values isolated",
+    "member shared write denied",
+    "empty override restores displayed task",
+    "environment removal revokes frame"
+  ],
+  "transport": "real loopback HTTP, fixture bearer authentication",
+  "renderer": "actual signed JavaScript in minimal DOM adapter; mounted React host",
+  "limitations": [
+    "fixture task, not native agent execution",
+    "not browser visual acceptance",
+    "not OS/network sandbox proof"
+  ],
+  "completed_at": "2026-09-10T09:36:25.581Z"
+}

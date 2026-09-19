@@ -1,0 +1,22 @@
+{
+  "invariant": "SCOPED-HOST-LIVENESS-1",
+  "passed": true,
+  "checks": [
+    "responsive peer remains mounted",
+    "silent peer removed",
+    "stale pong cannot satisfy probe",
+    "host recovery retained",
+    "Core error receipt retained",
+    "listener cleanup"
+  ],
+  "boundary": "production component and real Core; simulated iframe peer; real timers",
+  "limits": [
+    "does not prove recovery from a blocked parent/browser event loop"
+  ],
+  "baseline": {
+    "revision": "c463c8e7d238e0b0cd5f967082929dbc37ebb174",
+    "failure": "AssertionError: silent renderer must be removed despite stale pong messages; actual 1, expected 0",
+    "after": "same lifecycle passed; additional Core error-receipt assertion passed"
+  },
+  "adjacent": "8 state/executable/transport checks, TypeScript and renderer build passed"
+}

@@ -1,0 +1,8 @@
+{
+  "base": "e3d2d85",
+  "test": "src/perspectives/project/InstalledProjectView.test.tsx",
+  "assertion": "compatible package update must retain state",
+  "baseline": "assertion_failed",
+  "overlay_sha256": "b7bfd79ce1ed1fddbe1a0b9558b350dd3cee9b33c39e58dcaab89844c90ea6f5",
+  "fixed": "passed in owning suite"
+}

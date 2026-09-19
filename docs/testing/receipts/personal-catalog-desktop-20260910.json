@@ -1,0 +1,22 @@
+{
+  "date": "2026-09-10",
+  "environment": "Actual Electron desktop, opensaddle://bundle/index.html, commissioned personal runtime on 127.0.0.1:49301",
+  "checks": [
+    "Command Center loaded one Project, saved manager conversation, and two retained task outcomes.",
+    "Personal appearance loaded the real empty scoped view catalog instead of a catalog-unavailable error.",
+    "Expanded signed-package installer and pressed Tab; native accessibility focus reached Signed package JSON and the viewport revealed the chooser.",
+    "Production renderer build passed; force-reloaded Electron through View menu.",
+    "Current connection showed Connected; expanded Connection details described absent legacy metadata without displaying missing contracts."
+  ],
+  "screenshots": [
+    "out/screenshots/personal-catalog-desktop-20260910/installer-keyboard.png",
+    "out/screenshots/personal-catalog-desktop-20260910/connection-details.png"
+  ],
+  "limitations": [
+    "No publisher was trusted and no package was installed in the personal runtime.",
+    "Disconnect and reconnect walkthrough remains pending.",
+    "Native coordinate scrolling intermittently returned noWindowsAvailable; accessibility clicks and keyboard focus worked.",
+    "Existing startup proxy path rejections remain unclassified.",
+    "This is local desktop evidence, not release or human result approval."
+  ]
+}

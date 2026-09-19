@@ -1,4 +1,6 @@
+import type { ScopedRendererClient } from './scopedRenderers'
 import type { AgentRunBlock, AppData, CodingProvider, Harness, ModelKey, RunExecutionMode, RuntimeKind, SitePage } from '../types'
+import type { ApplicationStateMigration, ApplicationStateSchema } from '../applications/applicationState'
 
 export type RunEventType =
   | 'session.created'
@@ -222,7 +224,7 @@ export interface CommandCenterSnapshot {
   activeRuns: CommandCenterRun[]
   projects: CommandCenterProject[]
   outcomes: CommandCenterOutcome[]
-  unavailableSections: Array<'priority' | 'work' | 'recurring_jobs' | 'inbox'>
+  unavailableSections: Array<'priority' | 'work' | 'recurring_jobs' | 'inbox' | 'operation_proposals'>
 }
 
 export interface CommandCenterClient {
@@ -299,15 +301,59 @@ export interface Participant { participantId: string; projectId: string; source:
 export interface ParticipantMessage { messageId: string; participantId: string; projectId: string; status: string; runId: string; invocationId?: string; resource: ExactArtifactRef; input: Record<string, unknown> }
 export interface ParticipantClient { create(projectId: string, input: { source: string; title: string; commandId: string }): Promise<Participant>; get(id: string): Promise<Participant>; lifecycle(id: string, revision: number, lifecycle: Participant['lifecycle']): Promise<Participant>; send(id: string, revision: number, resource: ExactArtifactRef, input: Record<string, unknown>, idempotencyKey: string): Promise<ParticipantMessage>; message(id: string): Promise<ParticipantMessage>; messages(id: string): Promise<ParticipantMessage[]> }
 
-export interface ExactArtifactRef { project_id: string; run_id: string; artifact_id: string; digest: string }
+export interface ExactArtifactRef { project_id: string; run_id: string; artifact_id: string; digest: string; artifact_type?:string;size_bytes?:number;created_at?:string;redaction_class?:string }
+export interface ArtifactContent { text:string;mediaType:string;sizeBytes:number;digest:string }
 export interface ShellCommandDescriptor { command_id: string; version: number; descriptor_digest: string; title: string; description: string; effect: 'read' | 'write' | 'execute'; required_actions: string[]; available: { available: boolean; reason?: string }; input_schema: Record<string, unknown>; output_schema: Record<string, unknown>; package_ref?: { package_id: string; version: string; manifest_digest: string }; contribution_id?: string; handler_id?: string; handler_version?: number }
 export interface ShellCommandResult { invocation_id: string; project_id: string; command_id: string; version: number; descriptor_digest: string; invoked_by: string; created_at: string; resource: ExactArtifactRef; input: Record<string, unknown>; status: string; result: { summary?: string; artifacts?: Array<Record<string, unknown>>; verified?: boolean }; receipt: { effect: string; resource_digest: string; verified: boolean } }
 export interface RunConnectorCapability { connector: string; protocol_version: string; status: { state: 'available' | 'offline'; reason: string | null }; actions: Array<{ action: string; title: string; description: string; effect: 'read'; input: { required: string[]; properties?: Record<string, unknown> }; result: { type: 'object'; additional_properties: true } }> }
 export interface ConnectorInvocationResult { result: Record<string, unknown>; receipt: { connector: string; action: string; request_digest: string; response_digest: string; credential_lease_id: string } }
-export interface EnvironmentRevision { schema_version: string; project_id: string; revision: number; definition: { commands: Array<{ command_id: string; version: number; descriptor_digest: string }>; bindings: string[]; services: Array<{ id: string; status: string }>; packages?: unknown[] }; definition_digest: string; changed_by: string | null; reason: string | null; parent_revision: number | null; created_at: string | null }
+export type ApplicationDensity='compact'|'comfortable'
+export type ApplicationPresentation='document'|'split'|'focus'
+export interface ApplicationPresentationValues{density:ApplicationDensity;presentation:ApplicationPresentation;order:number}
+export interface ApplicationSourceRef{authority:string;resource_type:string;resource_id:string;version:string;digest:string}
+export interface EnvironmentApplicationInstance{instance_id:string;defaults:ApplicationPresentationValues}
+export interface EnvironmentApplicationDefinition{application_id:string;version:number;definition_digest:string;source_ref:ApplicationSourceRef;package_ref:null|{package_id:string;version:string;manifest_digest:string};instances:EnvironmentApplicationInstance[]}
+export interface PersonalEnvironmentOverride{density?:ApplicationDensity;presentation?:ApplicationPresentation;order?:number}
+export interface PersonalEnvironmentOverrides{instances:Record<string,PersonalEnvironmentOverride>}
+export interface EffectiveApplicationInstance{instance_id:string;application_id:string;application_version:number;definition_digest:string;source_ref:ApplicationSourceRef;package_ref:EnvironmentApplicationDefinition['package_ref'];defaults:ApplicationPresentationValues;effective:ApplicationPresentationValues}
+export interface PersonalEnvironmentRevision{schema_version:string;project_id:string;subject:string;revision:number;base_environment_revision:number;base_definition_digest:string;overrides:PersonalEnvironmentOverrides;effective_instances:EffectiveApplicationInstance[];conflicts:string[];changed_by:string|null;reason:string|null;parent_revision:number|null;created_at:string|null}
+export interface PersonalEnvironmentPreview{schema_version:string;project_id:string;subject:string;base_revision:number;base_environment_revision:number;base_definition_digest:string;diff:{before:PersonalEnvironmentOverrides;after:PersonalEnvironmentOverrides};activatable:boolean;requirements:string[]}
+export interface EnvironmentRevision { schema_version: string; project_id: string; revision: number; definition: { commands: Array<{ command_id: string; version: number; descriptor_digest: string }>; bindings: string[]; services: Array<{ id: string; status: string }>; packages?: unknown[];applications?:EnvironmentApplicationDefinition[] }; definition_digest: string; changed_by: string | null; reason: string | null; parent_revision: number | null; created_at: string | null }
 export interface EnvironmentPreview { schema_version: string; project_id: string; base_revision: number; base_definition_digest: string; proposed_definition_digest: string; diff: Record<'commands' | 'bindings' | 'services', { added: unknown[]; removed: unknown[] }>; requirements: string[]; activatable: boolean; observed_service_health: { available: false; reason: string } }
+export interface ApplicationRendererDescriptor{descriptor?:Record<string,unknown>;application_id:string;instance_id:string;entry_file:string;content_digest:string;size:number;media_type:'text/html; profile=opensaddle-renderer-fragment.v1; charset=utf-8';package_ref:{package_id:string;version:string;manifest_digest:string};input_schema:Record<string,unknown>;output_schema:Record<string,unknown>;state_schema_version:number;state_max_bytes:number;state_schema:ApplicationStateSchema;state_migrations:ApplicationStateMigration[];sandbox_policy:{scripts:true;same_origin:false;network_isolation:'unavailable';navigation_containment:'host_observed_only'};authority:'core';execution_trust:'trusted_signed_publisher'}
+export interface ApplicationRendererCandidate{application_id:string;title:string;package_id:string;package_version:string;manifest_digest:string;content_digest:string;size_bytes:number;publisher_key_fingerprint?:string;input_schema?:Record<string,unknown>;descriptor?:Record<string,unknown>;state_schema_version:number;state_max_bytes:number;state_compatibility:null|{accepts_from_versions:number[]};state_schema:ApplicationStateSchema;state_migrations:ApplicationStateMigration[];available:{available:boolean;reason:string|null};enablement:null|{status:'enabled'|'disabled';version:string;revision:number};activation:{desired:boolean;observed_health:'unavailable';receipt:null};environment_application:EnvironmentApplicationDefinition|null}
+export interface ApplicationRendererEnablement{schema_version:'opensaddle.application-renderer-enablement.v1';project_id:string;package_id:string;package_version:string;manifest_digest:string;enablement:{status:'enabled'|'disabled';version:string;revision:number};activation:{desired:'enabled'|'disabled';observed_health:'unavailable';receipt:null};running_process_halted?:false}
+export interface RendererHostSession{session_id:string;report_token:string;expires_at:string;next_sequence:number;host_identity_authority:'client_asserted'}
+export interface RendererHostObservation{session_id:string;project_id:string;subject:string;host_id:string;application_id:string;instance_id:string;package_ref:ApplicationRendererDescriptor['package_ref'];environment_revision:number;environment_definition_digest:string;generation:number;state:'loading'|'ready'|'error'|'unknown';error_code:string|null;sequence:number;updated_at:string;expires_at:string;reason?:string}
+export interface RendererHostObservationList{schema_version:'opensaddle.renderer-host-observations.v1';project_id:string;generated_at:string;items:RendererHostObservation[];authority:'host_reported';semantic_correctness:'not_verified'}
+export interface ProjectSourceProjection {
+  schema_version:'opensaddle.project-sources.v1'; project_id:string; limit:100; completeness:'bounded_snapshot';
+  items:{source_id:string;source_kind:string;revision:string;snapshot_digest:string;display_label:string}[]
+}
+export interface ProjectDeviceProjection {
+  schema_version:'opensaddle.project-devices.v1';project_id:string;limit:100;task_admission:'not_evaluated';
+  items:{device_id:string;display_name:string;revision:number;state:'proposed'|'accepted'|'removed'|'revoked';audience:'owner_only'|'selected_members'|'project_members'|'team_members';consent_allows_requester:boolean}[]
+}
+export interface ProjectApprovalProjection {
+  schema_version:'opensaddle.project-approvals.v1';project_id:string;limit:1000;approval_scope:'run_admission';grant_authority:'host_review_required';
+  items:{run_id:string;title:string;status:'awaiting_approval'}[]
+}
+export interface ProjectCommandRequest {command_id:string;expected_version:number;expected_descriptor_digest:string;run_id:string;artifact_id:string;digest:string;input:Record<string,unknown>}
+export interface ProjectCommandReceipt {schema_version:'opensaddle.project-command-receipt.v1';project_id:string;invocation_id:string;command_id:string;descriptor_digest:string;resource:ExactArtifactRef;status:string;summary:string;receipt:{effect:string;resource_digest:string;verified:boolean}}
 export interface MalleableShellClient {
+  scopedRenderers?: ScopedRendererClient
+  projectArtifacts?(projectId:string,runId:string,signal?:AbortSignal):Promise<{schema_version:'opensaddle.project-artifacts.v1';project_id:string;run_id:string;items:ExactArtifactRef[]}>
+  projectCommands?(projectId:string,signal?:AbortSignal):Promise<{schema_version:'opensaddle.project-commands.v1';project_id:string;items:ShellCommandDescriptor[]}>
+  invokeProjectCommand?(projectId:string,request:ProjectCommandRequest,signal?:AbortSignal):Promise<ProjectCommandReceipt>
+  projectApprovals?(projectId:string,signal?:AbortSignal):Promise<ProjectApprovalProjection>
+  projectDevices?(projectId:string,signal?:AbortSignal):Promise<ProjectDeviceProjection>
+
+  projectSources?(projectId:string,signal?:AbortSignal):Promise<ProjectSourceProjection>
+
   commands(projectId?: string): Promise<ShellCommandDescriptor[]>; artifacts(runId: string, projectId: string): Promise<ExactArtifactRef[]>; invoke(descriptor: ShellCommandDescriptor, resource: ExactArtifactRef, input?: Record<string, unknown>): Promise<ShellCommandResult>; invocations(projectId: string): Promise<ShellCommandResult[]>; invocation(invocationId: string): Promise<ShellCommandResult>
+  content?(resource:ExactArtifactRef):Promise<ArtifactContent>;applicationRenderers?(projectId:string,signal?:AbortSignal):Promise<ApplicationRendererDescriptor[]>;applicationRendererContent?(projectId:string,renderer:ApplicationRendererDescriptor,signal?:AbortSignal):Promise<Response>;applicationRendererCandidates?(projectId:string):Promise<ApplicationRendererCandidate[]>;enableApplicationRendererCandidate?(projectId:string,candidate:ApplicationRendererCandidate):Promise<ApplicationRendererEnablement>;disableApplicationRendererCandidate?(projectId:string,candidate:ApplicationRendererCandidate):Promise<ApplicationRendererEnablement>
+  createRendererHostSession?(projectId:string,input:{host_id:string;application_id:string;instance_id:string;package_ref:ApplicationRendererDescriptor['package_ref'];environment_revision:number;environment_definition_digest:string;generation:number}):Promise<RendererHostSession>;reportRendererHostObservation?(sessionId:string,reportToken:string,input:{sequence:number;state:'loading'|'ready'|'error';error_code?:string}):Promise<RendererHostObservation>;rendererHostObservations?(projectId:string):Promise<RendererHostObservationList>
+  personalEnvironment?(projectId:string):Promise<PersonalEnvironmentRevision>;previewPersonalEnvironment?(projectId:string,expectedRevision:number,overrides:PersonalEnvironmentOverrides,reason:string):Promise<PersonalEnvironmentPreview>;applyPersonalEnvironment?(projectId:string,expectedRevision:number,overrides:PersonalEnvironmentOverrides,reason:string,expectedBaseEnvironmentRevision:number,baseDefinitionDigest:string):Promise<PersonalEnvironmentRevision>;revertPersonalEnvironment?(projectId:string,expectedRevision:number,targetRevision:number,reason:string):Promise<PersonalEnvironmentRevision>
   connectors(runId: string): Promise<RunConnectorCapability[]>; invokeConnector(runId: string, connector: string, action: string, args: Record<string, unknown>): Promise<ConnectorInvocationResult>; environment(projectId: string): Promise<EnvironmentRevision>; preview(projectId: string, expectedRevision: number, definition: EnvironmentRevision['definition'], reason: string, baseDefinitionDigest: string): Promise<EnvironmentPreview>; apply(projectId: string, expectedRevision: number, definition: EnvironmentRevision['definition'], reason: string, baseDefinitionDigest: string): Promise<EnvironmentRevision>; revert(projectId: string, expectedRevision: number, targetRevision: number, reason: string): Promise<EnvironmentRevision>
 }
 

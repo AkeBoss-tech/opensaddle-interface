@@ -1,0 +1,24 @@
+{
+  "invariant": "STANDALONE-PLUGIN-ENROLLMENT",
+  "baseline": "0b2618d40e1699dc1e77c2f6a4875157cf22a097",
+  "overlay": [
+    "src/features/settings/StandalonePluginSettings.test.tsx"
+  ],
+  "command": [
+    "node",
+    "--import",
+    "tsx",
+    "--test",
+    "--test-name-pattern=initial .* defaults",
+    "src/features/settings/StandalonePluginSettings.test.tsx"
+  ],
+  "before": {
+    "exit_code": 1,
+    "output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2716 initial personal defaults submit one exact reference without Project access (39.49675ms)\n\u2716 initial Team defaults submit one exact reference without Project access (2.363583ms)\n\u2139 tests 2\n\u2139 suites 0\n\u2139 pass 0\n\u2139 fail 2\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 270.046833\n\n\u2716 failing tests:\n\ntest at src/features/settings/StandalonePluginSettings.test.tsx:1:4580\n\u2716 initial personal defaults submit one exact reference without Project access (39.49675ms)\n  AssertionError [ERR_ASSERTION]: initial plugin defaults must have a host setup form\n  \n  0 !== 1\n  \n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-setup-form-clahpf7i/src/features/settings/StandalonePluginSettings.test.tsx:63:9)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 0,\n    expected: 1,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at src/features/settings/StandalonePluginSettings.test.tsx:1:4580\n\u2716 initial Team defaults submit one exact reference without Project access (2.363583ms)\n  AssertionError [ERR_ASSERTION]: initial plugin defaults must have a host setup form\n  \n  0 !== 1\n  \n      at TestContext.<anonymous> (/private/var/folders/h_/bwlq6y0534d7s34l733j5q_h0000gn/T/opensaddle-setup-form-clahpf7i/src/features/settings/StandalonePluginSettings.test.tsx:63:9)\n      at async Test.run (node:internal/test_runner/test:1208:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 0,\n    expected: 1,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n"
+  },
+  "after": {
+    "exit_code": 0,
+    "output": "react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n\u2714 initial personal defaults submit one exact reference without Project access (55.73175ms)\n\u2714 initial Team defaults submit one exact reference without Project access (6.601083ms)\n\u2139 tests 2\n\u2139 suites 0\n\u2139 pass 2\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 275.115542\n"
+  },
+  "scope": "Mounted host forms with real client and injected HTTP. No browser or live Core proof."
+}

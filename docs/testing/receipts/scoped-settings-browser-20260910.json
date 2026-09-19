@@ -1,0 +1,8 @@
+{
+ "invariant":"SCOPED-SETTINGS-1",
+ "boundary":"real browser, bundled SDK, production host, signed declarations and real disposable Core",
+ "setup":"standalone preferences enrolled and saved through authenticated Core API; personal and Team overrides differ",
+ "observations":["personal signed frame displayed user: user-compact (revision 2)","Team signed frame displayed team: team-compact (revision 2)","Team read activated using Enter", "no browser error logs"],
+ "screenshots":["out/screenshots/scoped-settings-20260910/personal.png","out/screenshots/scoped-settings-20260910/team.png"],
+ "limits":["unstyled harness, not Electron or full settings editor journey","owner account only; unauthorized-member checks remain separate","no settings writes exposed to plug-ins","no real personal runtime, Project or device state changed"]
+}

@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+window.addEventListener('DOMContentLoaded', () => {
+  if (process.platform === 'darwin') document.documentElement.classList.add('desktop-macos')
+})
+
 contextBridge.exposeInMainWorld('opensaddleDesktop', true)
 contextBridge.exposeInMainWorld('opensaddle', {
   opensaddleUrl: ipcRenderer.sendSync('runtime:opensaddle-url') as string,
@@ -15,6 +19,9 @@ contextBridge.exposeInMainWorld('opensaddle', {
     krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }
     clis: string[]
   }>,
+  commissionPersonalRuntime: (request: unknown) => ipcRenderer.invoke('runtime:commission-personal', request),
+  adoptPersonalRuntime: () => ipcRenderer.invoke('runtime:adopt-personal'),
+  personalRuntimeRequest: (request: unknown) => ipcRenderer.invoke('runtime:personal-request', request),
   pickRepository: () => ipcRenderer.invoke('runtime:pick-repo') as Promise<string | null>,
   discoverProjects: () => ipcRenderer.invoke('runtime:discover-projects') as Promise<Array<{
     id: string; rootPath: string; name: string; sources: Array<'codex' | 'cursor' | 'claude'>; lastSeenAt: number

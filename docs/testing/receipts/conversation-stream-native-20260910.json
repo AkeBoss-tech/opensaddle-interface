@@ -1,0 +1,57 @@
+{
+  "schema_version": "opensaddle.native-conversation-stream-proof.v1",
+  "project_id": "context-proof",
+  "conversation_id": "mgr_2963e18ea20dac5952df98291b08224f2ec29113b8d2276ed7bd3dbcb464e114",
+  "message_id": "msg_5b3d95a0-6f1d-4037-b821-81b8ff4a9f1c",
+  "run_id": "run_d969ce557d894e55b55fe5fde7d35be9",
+  "first_observed_status": "running",
+  "rendered_updates": 99,
+  "first_preview": "1.",
+  "last_preview_characters": 3541,
+  "output": {
+    "runId": "run_d969ce557d894e55b55fe5fde7d35be9",
+    "resource": {
+      "artifact_id": "art_7bb1226a151a4691940fd5c81b171fb1",
+      "digest": "0fbbb184a021426f51f310aae65274e7906ba84a14a23538eab9c414d3869ef8"
+    },
+    "text": "1. Begin by identifying the activities your workspace must comfortably support each day.\n2. Remove everything from your desk before deciding what deserves permanent space there.\n3. Sort loose belongings into categories based on their purpose and usage frequency.\n4. Discard obvious trash and recycle unwanted paper according to your local guidelines.\n5. Set aside useful items you can donate instead of storing them indefinitely.\n6. Clean your desktop thoroughly before returning any equipment, supplies, or decorative objects.\n7. Position your desk where available lighting supports comfortable reading and focused work.\n8. Adjust your chair so your feet rest comfortably flat on the floor.\n9. Place your monitor directly ahead, with its top approximately at eye level.\n10. Keep your keyboard and mouse close enough to avoid reaching while working.\n11. Reserve the central desktop area for whatever task currently requires your attention.\n12. Store frequently used supplies within easy reach of your normal seated position.\n13. Move rarely used equipment into labeled cabinets, shelves, or nearby storage bins.\n14. Use drawer dividers to prevent small supplies from becoming mixed together again.\n15. Give every essential item a specific home that feels logical to you.\n16. Label containers clearly so you can locate their contents without opening everything.\n17. Group charging cables together and secure excess length with reusable cable ties.\n18. Place a power strip conveniently nearby without creating hazards beneath your desk.\n19. Keep drinks on a stable coaster away from electronics and important documents.\n20. Establish one incoming tray for paperwork that still needs review or action.\n21. Create separate folders for active projects, reference materials, and records requiring retention.\n22. File completed paperwork promptly instead of allowing temporary piles to become permanent.\n23. Digitize suitable documents when electronic copies will satisfy your future reference needs.\n24. Name digital files consistently using descriptive titles and dates whenever they help.\n25. Organize computer folders around projects or responsibilities rather than vague miscellaneous categories.\n26. Keep your desktop screen uncluttered by moving files into their designated folders.\n27. Back up important digital materials automatically and occasionally verify successful file recovery.\n28. Store passwords in a reputable password manager instead of scattered handwritten notes.\n29. Choose a task lamp that illuminates your work without creating distracting glare.\n30. Reduce visual clutter by displaying only a few meaningful photographs or objects.\n31. Add a manageable plant if greenery makes your workspace feel more inviting.\n32. Keep headphones nearby if they help you manage noise and maintain concentration.\n33. Place a notebook within reach for quick ideas, reminders, and meeting notes.\n34. Maintain one task list so commitments do not disappear across scattered scraps.\n35. Review tomorrow\u2019s priorities before finishing work and prepare the materials you need.\n36. Spend five minutes resetting your workspace at the end of each day.\n37. Return borrowed supplies immediately so your organizational system remains dependable over time.\n38. Schedule weekly checks to clear drawers, process paperwork, and replenish essential supplies.\n39. Reconsider your arrangement whenever repeated inconvenience suggests something belongs somewhere more practical.\n40. Aim for a workspace that supports your habits and remains easily maintainable."
+  },
+  "checks": [
+    "actual local Codex task",
+    "real Core SSE and Interface conversation client",
+    "mounted saved-message preview rendered while Run running",
+    "multiple rendered text updates",
+    "preview prefixes match digest-checked final native result"
+  ],
+  "limits": [
+    "Mounted React evidence; not a browser screenshot or keyboard acceptance",
+    "Codex only; Claude forwarding not proven"
+  ],
+  "runtime_dispatch": {
+    "run_id": "run_d969ce557d894e55b55fe5fde7d35be9",
+    "adapter_id": "codex-app-server",
+    "adapter_version": "app-server-v1",
+    "state": "completed",
+    "provider_session_id": "01a08acd-f6e3-7622-8658-3142fb7738c1",
+    "provider_turn_id": "01a08acd-f771-7cd3-880c-6cdeda9a6c34",
+    "provider_terminal_status": "completed"
+  },
+  "durable_event_order": {
+    "first_output_sequence": 4,
+    "last_output_sequence": 624,
+    "output_events": 621,
+    "result_published_sequence": 625
+  },
+  "cleanup": {
+    "runs_terminal": true,
+    "fixture_processes_stopped": true,
+    "worker_credential_revoked": true,
+    "workspace_empty": true
+  },
+  "initial_failed_proof": {
+    "run_id": "run_d70d2ac800d5446bb4d32f075a5faa8c",
+    "native_status": "completed",
+    "failure": "UI rejected initial Core event sequence zero",
+    "resolution": "Fixed reader cursor and ran a new task only after prior terminal completion"
+  }
+}

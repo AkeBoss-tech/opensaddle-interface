@@ -1,0 +1,40 @@
+{
+  "boundary": "Actual Electron main process, preload IPC, renderer transport, native file picker, signed scoped host and real disposable Core API",
+  "profile": "Isolated /tmp profile; original personal runtime stayed running",
+  "journey": [
+    "Private adoption socket established the fixture owner without entering a bearer token in the renderer.",
+    "Native picker opened user-package.json; desktop fingerprint matched the independently hashed public key.",
+    "Explicit trust and installation succeeded through production runtime:personal-request IPC.",
+    "Installed candidate remained Not enabled until Use view.",
+    "Selected view reached ready, displayed user: owner and incremented Count from 0 to 1.",
+    "Read devices returned Devices: 0; authority: not_evaluated.",
+    "Clicking OpenSaddle logo mounted the selected view on Home with Count: 1 restored.",
+    "Show default workspace exposed the manager and Command Center while retaining environment revision 1."
+  ],
+  "environment": {
+    "revision": 1,
+    "package_ref": {
+      "manifest_digest": "47dc52e65fe500a2200dcc176413a5a5da4405025010375f16f3576d410b55d6",
+      "package_id": "dev.opensaddle.user",
+      "version": "1.0.0"
+    }
+  },
+  "screenshots": [
+    "out/screenshots/signed-install-electron-20260910/ready-owner-read.png",
+    "out/screenshots/signed-install-electron-20260910/home-restored-state.png",
+    "out/screenshots/signed-install-electron-20260910/default-escape.png"
+  ],
+  "limits": [
+    "Development Electron loading production-built renderer, not distributed installer/package qualification.",
+    "User-scope installation verified; Team scope has browser evidence but was not repeated in Electron here.",
+    "No personal publisher trust or package state changed.",
+    "Existing startup proxy path rejections remain unclassified.",
+    "Scoped host recovery strip uses unstyled controls; visual polish remains open."
+  ],
+  "cleanup": {
+    "fixture_core": "stopped normally",
+    "fixture_electron": "SIGKILL after quit/SIGINT/TERM attempts did not end the owned process",
+    "original_desktop": "reopened and visually checked with retained conversation and two outcomes",
+    "personal_runtime": "running and ready; catalog confirmed empty"
+  }
+}

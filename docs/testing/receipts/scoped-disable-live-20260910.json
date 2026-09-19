@@ -1,0 +1,25 @@
+{
+  "boundary": "React catalog UI and production HTTP client against disposable Core",
+  "results": [
+    {
+      "scope": {
+        "kind": "user",
+        "id": "owner"
+      },
+      "status": "disabled",
+      "revision": 2
+    },
+    {
+      "scope": {
+        "kind": "team",
+        "id": "team_59c42dfb6d0d46c3bb4e8ceb43aff49f"
+      },
+      "status": "disabled",
+      "revision": 2
+    }
+  ],
+  "limits": [
+    "no actual browser frame mounted",
+    "active workspace recovery covered separately by host lifecycle evidence"
+  ]
+}

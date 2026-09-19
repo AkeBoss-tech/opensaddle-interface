@@ -1,0 +1,24 @@
+{
+  "schema_version": "opensaddle.manual-browser-proof.v1",
+  "core_revision": "6309bcb40f3996e3f1e735e7365bef59ee302a83",
+  "interface_revision": "47f3ba9941cf8c40b6984541b9b39db4de65494f",
+  "environment": "Disposable loopback Core with actual HTTP clients and TeamWorkspaceOverview in scoped-workspace-browser.html; Codex in-app browser",
+  "setup": "dev_scoped_renderer_fixture with pending-install; Projects and two-sided association seeded through actual Core TestClient API using TrustedProxyAuthenticator against disposable database. Runtime browser uses fixture bearer injected server-side. Fixture owner token lacks requester role, so creation was not performed through that bearer.",
+  "verified": [
+    "Accepted/effective astra-scheduling renders its canonical Project link",
+    "Pending ineffective Project is excluded",
+    "Team settings link includes exact Team ID",
+    "Detach through actual bearer Core API then Refresh Team removes Project",
+    "Fresh browser load shows empty Project state"
+  ],
+  "screenshots": [
+    "out/screenshots/team-populated-20260910/accepted.png",
+    "out/screenshots/team-populated-20260910/detached.png"
+  ],
+  "limitations": [
+    "Full application route and settings destination not mounted or exercised",
+    "Not Electron desktop or narrow-window/keyboard coverage",
+    "Refresh screenshot capture omitted heading pixels despite DOM headings; fresh-page screenshot rendered headings and is retained. Cause not established.",
+    "No personal runtime state changed"
+  ]
+}

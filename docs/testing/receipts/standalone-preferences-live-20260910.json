@@ -1,0 +1,36 @@
+{
+  "checked_at": "2026-09-10T11:09:48.138Z",
+  "fixture": {
+    "base_url": "http://127.0.0.1:61612",
+    "team_id": "team_018ed664a2fa43299d061cd4d264173e",
+    "package_ref": {
+      "package_id": "dev.opensaddle.standalone-example",
+      "version": "1.0.0",
+      "manifest_digest": "0e5a2ea8227b01746ec18a35af9967ed5ee6a12c55afc63953464e55e937803d"
+    },
+    "application_id": "board",
+    "authentication": "loopback development trusted-header fixture",
+    "projects": 0
+  },
+  "checks": [
+    "Personal host setup, edit, fresh-client persistence and duplicate rejection",
+    "Team host setup, edit, fresh-client persistence and duplicate rejection",
+    "Private personal defaults and readable, non-writable member Team defaults"
+  ],
+  "projects": 0,
+  "scope": "Mounted production host forms and real HTTP/Core signed catalog. Development identity, not browser visuals or production auth.",
+  "interface_head": "957919bdd2e3e707860a76c6b63c554d4b55c4d6",
+  "core_head": "c1bc794a5d34a75632c35925c18143469f435147",
+  "durable_verification": {
+    "team_revision": 2,
+    "team_card_limit": 42,
+    "user_revision": 2,
+    "user_card_limit": 31,
+    "executable_enablements": 0
+  },
+  "cleanup": {
+    "both_fixture_servers_stopped": true,
+    "native_workers_registered": 0
+  },
+  "harness_correction": "First fixture passed HTTP checks but did not enable the override before editing and used an overly broad save wait. Corrected script was run against a fresh second fixture; only that run is acceptance evidence."
+}

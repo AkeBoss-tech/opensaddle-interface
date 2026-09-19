@@ -1,0 +1,16 @@
+{
+  "run_id": "run_f18645d2234c471ea1cadbd8dbd84786",
+  "run_status": "failed",
+  "assigned_worker_id": "native-real-claude-worker",
+  "member_read_status": 200,
+  "owner_read_status": 200,
+  "artifact_count": 0,
+  "native_dispatch": {
+    "attempt": 1,
+    "adapter_id": "claude-code-cli",
+    "adapter_version": "stream-json-v1",
+    "state": "failed",
+    "result_digest": "9842c41b8c031f75b4ea49aba88b54f22c6a24fc0d11b25f6a3bde203fd3b0cc",
+    "error_class": "provider_failure"
+  }
+}

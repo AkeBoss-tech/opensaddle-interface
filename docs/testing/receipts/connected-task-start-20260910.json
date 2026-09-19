@@ -1,0 +1,16 @@
+{
+  "before": "Global New task displayed legacy onboarding and incorrectly reported no runner in a personal v2 connection",
+  "after": "Connected Project directory routes one Project to its task composer; multiple Projects offer links; missing authority reports unavailable",
+  "desktop": "Real personal task form displayed Codex, accepted a read-only task with no retained context sources, and showed submission confirmation",
+  "run_id": "run_60d56556ed7a45c1b7dff0894866c913",
+  "validation": {
+    "journey_tests": 25,
+    "typescript": "passed",
+    "desktop_build": "passed"
+  },
+  "limits": [
+    "Review run still executing at checkpoint",
+    "Multiple-Project choice not visually exercised",
+    "No retained source or task result approved"
+  ]
+}

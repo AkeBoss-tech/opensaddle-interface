@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
@@ -15,6 +15,7 @@ import type {
   OnboardingRunSummary,
 } from '../../services/contracts'
 import { selectAttentionItems, type AttentionItem } from '../thread/domain'
+import type { ProjectTaskCard } from '../../perspectives/project/model'
 
 
 function relativeTime(timestamp?: number) {
@@ -98,6 +99,10 @@ export function WorkPage() {
   const [filter, setFilter] = useState<WorkFilter | 'all'>('all')
   const [durableRuns, setDurableRuns] = useState<RuntimeRunSummary[]>([])
   const [onboardingRuns, setOnboardingRuns] = useState<OnboardingRunSummary[]>([])
+  const [projectRuns, setProjectRuns] = useState<Array<{ projectId: string; projectName: string; task: ProjectTaskCard }>>([])
+  const [projectRunScope, setProjectRunScope] = useState<{ subject: string; authority: NonNullable<typeof services>['projectTaskFeed'] }>()
+  const [projectRunNotice, setProjectRunNotice] = useState('')
+  const refreshGeneration = useRef(0)
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([])
   const [executions, setExecutions] = useState<WorkflowExecution[]>([])
   const [timeline, setTimeline] = useState<WorkflowTimelineEvent[]>([])
@@ -107,9 +112,42 @@ export function WorkPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null)
 
   const refreshDurableWork = useCallback(async () => {
+    const generation = ++refreshGeneration.current
     if (services?.controlPlane.connected && services.controlPlane.mode === 'local') {
-      const runs = await services.localProjects?.listOnboardingRuns?.(200) ?? []
+      // The canonical personal Project is discovered by Core's membership
+      // directory and need not exist in the legacy local workspace store.
+      const [runs, directory] = await Promise.all([
+        services.localProjects?.listOnboardingRuns?.(200) ?? Promise.resolve([]),
+        services.projectDirectory?.list().then((projects) => ({ projects, unavailable: false }))
+          .catch(() => ({ projects: [], unavailable: true }))
+          ?? Promise.resolve({ projects: [], unavailable: true }),
+      ])
+      const visibleProjects = directory.projects
+      const projectIds = visibleProjects.slice(0, 12).map((project) => project.id)
+      const feeds = await (async () => {
+          const values: Array<{ projectId: string; projectName: string; task: ProjectTaskCard }> = []
+          let failures = 0
+          if (!services.projectTaskFeed) return { values, failures: projectIds.length }
+          for (let start = 0; start < projectIds.length; start += 4) {
+            const batch = await Promise.allSettled(projectIds.slice(start, start + 4).map(async (projectId) =>
+              ({ projectId, model: await services.projectTaskFeed!.read(projectId) })))
+            for (const result of batch) {
+              if (result.status === 'rejected') { failures++; continue }
+              for (const task of result.value.model.tasks) values.push({ projectId: result.value.projectId,
+                projectName: visibleProjects.find((project) => project.id === result.value.projectId)?.name ?? result.value.projectId, task })
+            }
+          }
+          return { values, failures }
+        })()
+      if (generation !== refreshGeneration.current) return
       setOnboardingRuns(runs)
+      setProjectRuns(feeds.values)
+      setProjectRunScope({ subject: data.currentUserId, authority: services.projectTaskFeed })
+      setProjectRunNotice([
+        directory.unavailable ? 'Project task directory unavailable; no Project task rows are shown.' : '',
+        feeds.failures ? `${feeds.failures} Project task feed${feeds.failures === 1 ? '' : 's'} unavailable; this list is partial.` : '',
+        visibleProjects.length > projectIds.length ? 'Work lists tasks from the first 12 Projects. Open another Project workspace to see its tasks.' : '',
+      ].filter(Boolean).join(' '))
       setDurableRuns([]); setWorkflows([]); setExecutions([])
       return
     }
@@ -118,10 +156,12 @@ export function WorkPage() {
       services?.workflows?.list() ?? Promise.resolve([]),
       services?.workflows?.executions({ limit: 200 }) ?? Promise.resolve([]),
     ])
+    if (generation !== refreshGeneration.current) return
+    setProjectRuns([]); setProjectRunScope(undefined); setProjectRunNotice('')
     setDurableRuns(runs)
     setWorkflows(definitions)
     setExecutions(workflowExecutions)
-  }, [services])
+  }, [services, data.currentUserId])
 
   useEffect(() => {
     let cancelled = false
@@ -141,6 +181,7 @@ export function WorkPage() {
     const timer = window.setInterval(() => void refresh().catch(() => undefined), 2_500)
     return () => {
       cancelled = true
+      refreshGeneration.current++
       window.clearInterval(timer)
     }
   }, [refreshDurableWork, toast])
@@ -164,11 +205,22 @@ export function WorkPage() {
           kind: run.status === 'approval_required' ? 'approval' : 'run',
         }
       })
+      const onboardingIds = new Set(onboardingRuns.map((run) => run.runId))
+      for (const { projectId, projectName, task } of projectRunScope?.subject === data.currentUserId && projectRunScope.authority === services.projectTaskFeed ? projectRuns : []) {
+        if (onboardingIds.has(task.id)) continue
+        const project = data.projects.find((candidate) => candidate.id === projectId)
+        const status = task.status === 'awaiting_approval' ? 'Needs approval'
+          : task.status[0]!.toUpperCase() + task.status.slice(1).replaceAll('_', ' ')
+        localRows.push({ id: `project-run-${task.id}`, title: task.title.length > 180 ? `${task.title.slice(0, 177)}…` : task.title,
+          subtitle: 'Project task · facts not independently verified', projectId,
+          owner: project?.name ?? projectName, status, timeSignal: 'Current status',
+          href: `/project/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(task.id)}`, kind: 'run' })
+      }
       return {
-        attention: localRows.filter((row) => ['Needs approval', 'Failed', 'Interrupted'].includes(row.status)),
-        running: localRows.filter((row) => row.status === 'Running'),
+        attention: localRows.filter((row) => ['Needs approval', 'Approval required', 'Failed', 'Verification failed', 'Interrupted'].includes(row.status)),
+        running: localRows.filter((row) => ['Queued', 'Provisioning', 'Running'].includes(row.status)),
         scheduled: [],
-        completed: localRows.filter((row) => ['Committed', 'Applied', 'Rejected'].includes(row.status)),
+        completed: localRows.filter((row) => ['Completed', 'Committed', 'Applied', 'Rejected', 'Cancelled'].includes(row.status)),
         archived: [],
       }
     }
@@ -325,7 +377,7 @@ export function WorkPage() {
       completed: completed.filter(inSelectedTeam),
       archived: archived.filter(inSelectedTeam),
     }
-  }, [data, durableRuns, executions, onboardingRuns, services?.controlPlane.connected, services?.controlPlane.mode, services?.mode, workflows])
+  }, [data, durableRuns, executions, onboardingRuns, projectRuns, projectRunScope, services?.controlPlane.connected, services?.controlPlane.mode, services?.mode, services?.projectTaskFeed, workflows])
 
   const selectedWorkflow = workflows.find((workflow) => workflow.workflowId === selectedWorkflowId)
   const selectedExecution = executions.find((execution) => execution.executionId === selectedExecutionId)
@@ -498,12 +550,13 @@ export function WorkPage() {
 
   if (connectedLocal) {
     const localSections = [
-      { title: 'Needs attention', description: 'Exact-diff approvals, verification failures, and interrupted runs', rows: rows.attention },
-      { title: 'Running', description: 'Active detached-worktree executions', rows: rows.running },
-      { title: 'Completed', description: 'Committed, applied, and rejected governed outcomes', rows: rows.completed },
+      { title: 'Needs attention', description: 'Project approvals, failures, and interrupted work', rows: rows.attention },
+      { title: 'Running', description: 'Queued and active Project tasks', rows: rows.running },
+      { title: 'Completed', description: 'Completed Project tasks and governed outcomes', rows: rows.completed },
     ]
     return <div className="content-page connected-local-page">
-      <header className="page-header"><div><span className="eyebrow">Authoritative run registry</span><h1>Work</h1><p>Sanitized, newest-first governed onboarding summaries from the local OpenSaddle server.</p></div><Button onClick={() => window.dispatchEvent(new Event('opensaddle:add-project'))}>Add local project</Button></header>
+      <header className="page-header"><div><span className="eyebrow">Authoritative run registry</span><h1>Work</h1><p>Project tasks and governed onboarding outcomes from the local OpenSaddle server.</p></div><Button onClick={() => window.dispatchEvent(new Event('opensaddle:add-project'))}>Add local project</Button></header>
+      {projectRunNotice && <p role="status">{projectRunNotice}</p>}
       {localSections.map((section) => <section className="settings-card" key={section.title}><div className="section-heading"><div><h2>{section.title}</h2><p>{section.description}</p></div><span>{section.rows.length}</span></div>{section.rows.length ? <div className="list-stack">{section.rows.map((row) => <button className="list-row" type="button" key={row.id} onClick={() => navigate(row.href ?? `/project/${row.projectId}`)}><span><strong>{row.title}</strong><small>{row.subtitle}</small></span><span><strong>{row.status}</strong><small>{row.owner} · {row.timeSignal}</small></span></button>)}</div> : <div className="empty-state">Nothing here.</div>}</section>)}
     </div>
   }

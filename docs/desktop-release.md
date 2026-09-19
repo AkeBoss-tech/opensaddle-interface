@@ -44,8 +44,9 @@ is necessary because an ordinary Actions token may not read that setting.
    `python/bin/python3`. Retain its immutable URL, SHA-256, upstream release
    page, and license record.
 5. Dispatch **Desktop release** with tag `desktop-v0.2.1`, KRAIL `1.2.0rc2`,
-   OpenSaddle `1.2.0rc5`, the pinned Python archive URL, and its 64-character
-   lowercase SHA-256.
+   OpenSaddle `1.2.0rc5`, the exact 40-character source revision for each
+   wheel, the pinned Python archive URL, and its 64-character lowercase
+   SHA-256. The checked-out Interface revision is recorded automatically.
 
 The workflow checks out the tag itself and requires its version to match the
 Electron package. It resolves the exact versioned wheels from the official PyPI

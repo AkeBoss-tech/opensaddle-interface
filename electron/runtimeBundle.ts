@@ -3,10 +3,11 @@ import { accessSync, constants, existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 export interface KrailRuntimeManifest {
-  schemaVersion: 1
+  schemaVersion: 2
   runtime: 'krail'
-  wheel: { name: string; sha256: string }
-  opensaddle: { name: string; sha256: string; command: string }
+  sources: Record<'interface'|'krail'|'opensaddle', { repository: string; revision: string; tree: string }>
+  wheel: { name: string; sha256: string; provenance: 'pypi'|'reviewed_local' }
+  opensaddle: { name: string; sha256: string; command: string; provenance: 'pypi'|'reviewed_local' }
   python: { name: string; sha256: string; command: string }
   dependencies: { report: string; sha256: string }
   runtimeLock: { name: string; sha256: string }
@@ -50,7 +51,18 @@ export function resolveKrailRuntime(resourceRoot: string): ResolvedKrailRuntime 
   const root = path.resolve(resourceRoot, 'krail-runtime')
   try {
     const manifest = JSON.parse(readFileSync(path.join(root, 'manifest.json'), 'utf8')) as KrailRuntimeManifest
-    if (manifest.schemaVersion !== 1 || manifest.runtime !== 'krail') return null
+    if (manifest.schemaVersion !== 2 || manifest.runtime !== 'krail') return null
+    const expectedRepositories = {
+      interface: 'https://github.com/AkeBoss-tech/opensaddle-interface.git',
+      krail: 'https://github.com/AkeBoss-tech/knowledge.git',
+      opensaddle: 'https://github.com/AkeBoss-tech/opensaddle.git',
+    } as const
+    if (!manifest.sources || Object.keys(manifest.sources).sort().join(',') !== 'interface,krail,opensaddle') return null
+    if (Object.entries(expectedRepositories).some(([name, repository]) => {
+      const source = manifest.sources[name as keyof typeof expectedRepositories]
+      return source?.repository !== repository || !/^[a-f0-9]{40}$/.test(source?.revision ?? '') || !/^[a-f0-9]{40}$/.test(source?.tree ?? '')
+    })) return null
+    if (!['pypi','reviewed_local'].includes(manifest.wheel?.provenance) || !['pypi','reviewed_local'].includes(manifest.opensaddle?.provenance)) return null
     if (!manifest.wheel || typeof manifest.wheel.name !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.wheel.sha256)) return null
     if (!manifest.opensaddle || typeof manifest.opensaddle.name !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.opensaddle.sha256) || manifest.opensaddle.command !== '../opensaddle-backend/opensaddle') return null
     if (!manifest.python || typeof manifest.python.name !== 'string' || !/^[a-f0-9]{64}$/.test(manifest.python.sha256)) return null

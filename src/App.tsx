@@ -1,7 +1,15 @@
+import './perspectives/scoped/scoped-workspace.css'
+import {ScopedWorkspace} from './perspectives/scoped/ScopedWorkspace'
+import {TeamWorkspacePage} from './features/teams/TeamWorkspacePage'
+import {ProjectTaskPage} from './features/runs/ProjectTaskPage'
+import { TeamsPage } from './features/teams/TeamsPage'
+import { ProjectPerspectivePage } from './features/perspectives/ProjectPerspectivePage'
+import { PresentationPage } from './features/settings/PresentationPages'
+import { PresentationAppearance } from './features/settings/PresentationAppearance'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter, HashRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { StoreProvider, useStore } from './data/store'
-import { DemoBanner, Topbar } from './components/layout/Topbar'
+import { Topbar } from './components/layout/Topbar'
 import { ToastStack } from './components/common/ToastStack'
 import { CommandPalette, type PaletteItem } from './components/common/CommandPalette'
 import { ChatPage } from './pages/ChatPage'
@@ -29,20 +37,25 @@ import { WorkspaceStatusBar } from './features/shell/WorkspaceStatusBar'
 import { WorkPage } from './features/work/WorkPage'
 import { CommandCenterPage } from './features/command-center/CommandCenterPage'
 import { ReviewWorkspacePage } from './features/shell/ReviewWorkspacePage'
+import { ArtifactEvidencePage } from './features/shell/ArtifactEvidenceApplication'
+import { ExecutableApplicationFixturePage } from './applications/SandboxApplicationHost'
 import { ProposalReviewPage } from './features/proposals/ProposalReviewPage'
 import { ParticipantReviewPage } from './features/participants/ParticipantReviewPage'
 import { OperationsPage } from './features/operations/OperationsPage'
 import { PerspectivesPage } from './features/perspectives/PerspectivesPage'
 import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
-import { AddProjectDialog } from './features/onboarding/AddProjectDialog'
+import { AgentSetupPage } from './features/projects/AgentSetupPage'
 import { ProjectOnboardingPage } from './features/onboarding/ProjectOnboardingPage'
 import { ConnectedLocalProjectPage } from './features/projects/ConnectedLocalProjectPage'
 import { ConnectedLocalSettingsPage } from './features/projects/ConnectedLocalSettingsPage'
 import { ConnectedLocalProjectDialog } from './features/onboarding/ConnectedLocalProjectDialog'
-import { supportsGovernedProjectOnboarding } from './features/onboarding/onboardingAvailability'
-import { registerLocalWorkspace } from './features/onboarding/registerLocalWorkspace'
-import { scaffoldApply } from './features/onboarding/scaffoldApply'
+import { ConnectedJourneyPage } from './features/onboarding/ConnectedJourneyPage'
+import { ProjectDevicesPage } from './features/devices/ProjectDevicesPage'
+import { PersonalDevicesPage } from './features/devices/PersonalDevicesPage'
+import { ConnectedProjectKnowledgePage, ConnectedProjectPluginsPage } from './features/projects/ConnectedProjectViews'
+import { ConnectedWorkspaceSidebar, ConnectedWorkspaceHome } from './features/shell/ConnectedWorkspace'
+import { useProductSurface } from './features/shell/useProductSurface'
 import { SurfaceErrorBoundary } from './ui/SurfaceHost'
 import type { DiscoveredLocalProject, DiscoveredUiPlugin } from './types'
 import './styles/app.css'
@@ -52,17 +65,20 @@ import './styles/scaffold.css'
 import './features/memory/project-memory.css'
 import './features/evidence/evidence.css'
 import './features/investigation/components/investigation.css'
+import './features/projects/agent-setup.css'
 
 const IconPacksPage = lazy(() => import('./pages/IconPacksPage').then((module) => ({ default: module.IconPacksPage })))
 
 function Shell() {
-  const { data, createChat, createProject, importLocalProject, createAgent, createMember, addServiceConnections, addPermissionGrants, updateProject, services, setTheme, resetData, toast, setActiveProject } = useStore()
+  const { data, createChat, importLocalProject, services, connection, runtimeAdoptionPending, setTheme, toast, setActiveProject } = useStore()
   const [palette, setPalette] = useState(false)
   const [projectModal, setProjectModal] = useState(false)
   const [discoveredProjects, setDiscoveredProjects] = useState<DiscoveredLocalProject[]>([])
-  const [discoveredUiPlugins, setDiscoveredUiPlugins] = useState<DiscoveredUiPlugin[]>([])
+  const [, setDiscoveredUiPlugins] = useState<DiscoveredUiPlugin[]>([])
   const [registeredDiscoveryRoots, setRegisteredDiscoveryRoots] = useState<string[]>([])
   const [discoveryReady, setDiscoveryReady] = useState(false)
+  const [discoveryOwner, setDiscoveryOwner] = useState<typeof services>(null)
+  const [registryConfirmedEmpty, setRegistryConfirmedEmpty] = useState(false)
   const discoveryPrompted = useRef(false)
   const [browserOpen, setBrowserOpen] = useState(false)
   const [browserCollapsed, setBrowserCollapsed] = useState(false)
@@ -77,11 +93,11 @@ function Shell() {
   const loc = useLocation()
   const settingsFocused = loc.pathname === '/settings'
   const globalStart = loc.pathname === '/start'
-  const connectedLocal = Boolean(services?.controlPlane.connected && services.controlPlane.mode === 'local')
+  const connectedLocal = useProductSurface(services, JSON.stringify([connection.id, connection.mode, connection.baseUrl, data.currentUserId]))
 
   const openArtifactReview = useCallback(async () => {
     if (loc.pathname === '/review' && loc.search) {
-      nav(`/review${loc.search}`)
+      window.dispatchEvent(new CustomEvent('opensaddle:invoke-artifact-review'))
       return
     }
     if (!services?.commandCenter) {
@@ -103,23 +119,27 @@ function Shell() {
 
   useEffect(() => {
     let cancelled = false
-    if (!window.opensaddle?.discoverProjects) return
+    setDiscoveryReady(false)
+    setRegistryConfirmedEmpty(false)
+    if (!window.opensaddle?.discoverProjects || runtimeAdoptionPending) return
     if (window.opensaddleDesktop && !services) return
     void Promise.all([
       window.opensaddle.discoverProjects(),
-      services?.localProjects?.listProjects?.().catch(() => []) ?? Promise.resolve([]),
+      services?.localProjects?.listProjects?.() ?? Promise.resolve(undefined),
       window.opensaddle.discoverUiPlugins?.().catch(() => []) ?? Promise.resolve([]),
     ]).then(([projects, registered, uiPlugins]) => {
       if (cancelled) return
       setDiscoveredProjects(projects)
-      setRegisteredDiscoveryRoots(registered.map((project) => project.root))
+      setRegisteredDiscoveryRoots(registered?.map((project) => project.root) ?? [])
+      setRegistryConfirmedEmpty(registered?.length === 0)
+      setDiscoveryOwner(services)
       setDiscoveredUiPlugins(uiPlugins)
       setDiscoveryReady(true)
     }).catch(() => {
-      if (!cancelled) { setDiscoveredProjects([]); setRegisteredDiscoveryRoots([]); setDiscoveryReady(true) }
+      if (!cancelled) { setDiscoveredProjects([]); setRegisteredDiscoveryRoots([]); setDiscoveryReady(false) }
     })
     return () => { cancelled = true }
-  }, [services])
+  }, [services, runtimeAdoptionPending])
 
   const availableDiscoveredProjects = useMemo(() => {
     const normalize = (value: string) => value.replaceAll('\\', '/').replace(/\/+$/, '')
@@ -131,10 +151,10 @@ function Shell() {
   }, [data.projects, discoveredProjects, registeredDiscoveryRoots])
 
   useEffect(() => {
-    if (!discoveryReady || !availableDiscoveredProjects.length || discoveryPrompted.current) return
+    if (runtimeAdoptionPending || !services?.controlPlane.connected || !services.localProjects || services.personalRuntime || discoveryOwner !== services || !registryConfirmedEmpty || !discoveryReady || !availableDiscoveredProjects.length || discoveryPrompted.current) return
     discoveryPrompted.current = true
     setProjectModal(true)
-  }, [availableDiscoveredProjects.length, discoveryReady])
+  }, [availableDiscoveredProjects.length, discoveryReady, discoveryOwner, registryConfirmedEmpty, services, runtimeAdoptionPending])
 
   useEffect(() => {
     const open = () => setPalette(true)
@@ -163,6 +183,7 @@ function Shell() {
   useEffect(() => {
     const openReview = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'r') {
+        if (event.target instanceof HTMLElement && (event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName))) return
         event.preventDefault()
         void openArtifactReview()
       }
@@ -174,8 +195,9 @@ function Shell() {
   const crumbs = useMemo(() => {
     const parts = loc.pathname.split('/').filter(Boolean)
     const routeLabels: Record<string, string> = {
+      devices: 'Devices',
       work: 'Work',
-      home: 'Command Center',
+      home: connectedLocal && !services?.commandCenter ? 'Home' : 'Command Center',
       review: 'Review workspace',
       perspectives: 'Perspectives',
       start: 'Start',
@@ -200,7 +222,7 @@ function Shell() {
       : parts[0] === 'project' ? (project?.name ?? 'Project')
       : routeLabels[parts[0] ?? ''] ?? parts[0] ?? 'Work'
     return <><span>OpenSaddle</span><span>/</span><strong>{label}</strong></>
-  }, [loc.pathname, data.chats, data.projects])
+  }, [loc.pathname, data.chats, data.projects, connectedLocal, services?.commandCenter])
 
   const cycleTheme = useCallback(() => {
     const order = ['dark', 'light', 'liquid', 'hc'] as const
@@ -243,16 +265,16 @@ function Shell() {
   const items: PaletteItem[] = useMemo(() => connectedLocal ? [
     { id: 'cproj', group: 'Create', label: 'Add local project', description: 'Register a local Git project', icon: 'folder', run: () => setProjectModal(true) },
     { id: 'start', group: 'Navigate', label: 'Start', description: 'Open registered projects', icon: 'spark', run: () => nav('/start') },
-    { id: 'home', group: 'Navigate', label: 'Command Center', description: 'Priorities and attention', icon: 'layout', run: () => nav('/home') },
-    { id: 'review', group: 'Commands', label: 'Review selected artifact', description: 'Open the shared artifact review application', icon: 'review', run: () => void openArtifactReview() },
+    { id: 'home', group: 'Navigate', label: 'Home', description: 'Projects and recent work', icon: 'layout', run: () => nav('/home') },
+    { id: 'review', group: 'Commands', label: 'Run selected artifact review', description: 'Dispatch the exact selected resource through the shared review command', keywords: ['review selected artifact'], icon: 'review', run: () => void openArtifactReview() },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Governed onboarding runs', icon: 'clock', run: () => nav('/work') },
     { id: 'set', group: 'Navigate', label: 'Settings', description: 'Connection status', icon: 'settings', run: () => nav('/settings') },
     ...data.projects.filter((project) => project.workspaceKind === 'local').map((project) => ({ id: project.id, group: 'Projects', label: project.name, description: project.local?.rootPath ?? 'Local project', icon: 'folder', run: () => nav(`/project/${project.id}`) })),
   ] : [
     { id: 'new', group: 'Create', label: 'New task', description: 'Start work in the current project', keywords: ['thread', 'chat'], icon: 'plus', run: () => { const c = createChat(data.activeProjectId, 'New task'); nav(`/chat/${c.id}`) } },
-    { id: 'cproj', group: 'Create', label: 'Create project', description: 'Add a local folder or cloud workspace', keywords: ['workspace', 'folder'], icon: 'folder', run: () => setProjectModal(true) },
+    { id: 'cproj', group: 'Connect', label: 'Connect local service', description: 'Connect OpenSaddle before adding a project folder', keywords: ['workspace', 'folder'], icon: 'folder', run: () => nav('/settings') },
     { id: 'home', group: 'Navigate', label: 'Command Center', description: 'Priorities, human attention, active work, and outcomes', icon: 'layout', run: () => nav('/home') },
-    { id: 'review', group: 'Commands', label: 'Review selected artifact', description: 'Open the shared artifact review application', icon: 'review', run: () => void openArtifactReview() },
+    { id: 'review', group: 'Commands', label: 'Run selected artifact review', description: 'Dispatch the exact selected resource through the shared review command', keywords: ['review selected artifact'], icon: 'review', run: () => void openArtifactReview() },
     { id: 'work', group: 'Navigate', label: 'Work', description: 'Approvals, active runs, and recent outcomes', icon: 'clock', run: () => nav('/work') },
     { id: 'perspectives', group: 'Navigate', label: 'Workspace perspectives', description: 'Switch project-aware operational views', icon: 'layout', run: () => nav('/perspectives') },
     { id: 'wiki', group: 'Navigate', label: 'Team wiki', description: 'Browse shared project knowledge', icon: 'review', run: () => nav('/wiki') },
@@ -281,8 +303,7 @@ function Shell() {
       run: () => nav(`/chat/${chat.id}`),
     })),
     { id: 'theme', group: 'Preferences', label: 'Toggle theme', description: 'Switch the current appearance', icon: 'sun', run: cycleTheme },
-    { id: 'reset', group: 'Danger zone', label: 'Reset demo data', description: 'Remove local demonstration state', keywords: ['clear'], icon: 'refresh', tone: 'danger', run: () => { if (confirm('Reset demo data?')) resetData() } },
-  ], [connectedLocal, createChat, data.activeProjectId, data.chats, data.projects, nav, setActiveProject, cycleTheme, resetData, openArtifactReview])
+  ], [connectedLocal, createChat, data.activeProjectId, data.chats, data.projects, nav, setActiveProject, cycleTheme, openArtifactReview])
 
   if (loc.pathname.startsWith('/published/')) {
     return <Routes><Route path="/published/:slug" element={<PublishedSitePage />} /></Routes>
@@ -291,14 +312,14 @@ function Shell() {
   return (
     <div
       className={`app ${settingsFocused ? 'settings-focus' : ''} ${globalStart ? 'global-start' : ''}`}
-      style={{ '--sidebar-w': `${connectedLocal ? 220 : globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
+      style={{ '--sidebar-w': `${connectedLocal ? 326 : globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
     >
       {!settingsFocused && !connectedLocal && (
         <ThreadFirstSidebar
           collapsed={sidebarCollapsed}
           globalMode={globalStart}
           onCollapsedChange={setSidebarCollapsed}
-          onCreateProject={() => setProjectModal(true)}
+          onCreateProject={() => nav('/settings')}
           onResizeStart={beginSidebarResize}
           onResetWidth={() => {
             setSidebarWidth(292)
@@ -306,35 +327,59 @@ function Shell() {
           }}
         />
       )}
-      {!settingsFocused && connectedLocal && <aside className="sidebar" id="sidebar"><nav className="sidebar-nav" aria-label="Local workflow"><NavLink to="/home">Home</NavLink><NavLink to="/start">Start</NavLink><NavLink to="/work">Work</NavLink><NavLink to={`/operations?project=${encodeURIComponent(data.activeProjectId)}`}>Operations</NavLink><button type="button" onClick={() => setProjectModal(true)}>Add project</button><NavLink to="/settings">Settings</NavLink></nav></aside>}
-      <main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
+      {!settingsFocused && connectedLocal && <ConnectedWorkspaceSidebar onAddProject={() => setProjectModal(true)} />}
+      <PresentationAppearance/><main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
         {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
-        {!settingsFocused && <DemoBanner />}
         <div ref={workspaceRef} className="workspace-split">
         <div className="page-wrap">
-          <SurfaceErrorBoundary key={loc.pathname} onRetry={() => nav(0)}>
+          <SurfaceErrorBoundary key={`${loc.pathname}:${connectedLocal}`} onRetry={() => nav(0)}>
           {connectedLocal ? <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
-            <Route path="/home" element={<CommandCenterPage />} />
+            <Route path="/home" element={<ScopedWorkspace client={services?.malleableShell?.scopedRenderers}>{services?.commandCenter ? <CommandCenterPage /> : <ConnectedWorkspaceHome onAddProject={() => setProjectModal(true)} />}</ScopedWorkspace>} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
+            <Route path="/artifact-evidence" element={<ArtifactEvidencePage />} />
+            {import.meta.env.DEV&&<Route path="/dev/application-fixture" element={<ExecutableApplicationFixturePage />} />}
             <Route path="/proposals/review" element={<ProposalReviewPage />} />
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />
+            <Route path="/collaboration" element={<ConnectedJourneyPage />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/local" element={<Navigate to="/start" replace />} />
-            <Route path="/project/:projectId" element={<ConnectedLocalProjectPage />} />
+            <Route path="/project/:projectId" element={<ProjectPerspectivePage />} />
+            <Route path="/project/:projectId/overview" element={<ConnectedLocalProjectPage />} />
+            <Route path="/project/:projectId/knowledge" element={<ConnectedProjectKnowledgePage />} />
+            <Route path="/project/:projectId/plugins" element={<ConnectedProjectPluginsPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
+            <Route path="/project/:projectId/agents" element={<AgentSetupPage />} />
+            <Route path="/project/:projectId/appearance" element={<PresentationPage />} />
+            <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
+            <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
+            <Route path="/project/:projectId/new-task" element={<ConnectedJourneyPage mode="task" />} />
+            <Route path="/project/:projectId/tasks/:runId" element={<ProjectTaskPage />} />
+            <Route path="/devices" element={<PersonalDevicesPage />} />
+            <Route path="/teams" element={<TeamsPage />} />
+            <Route path="/teams/:teamId" element={<TeamWorkspacePage />} />
+            <Route path="/teams/:teamId/settings" element={<TeamWorkspacePage settings />} />
             <Route path="/settings" element={<ConnectedLocalSettingsPage />} />
+            <Route path="/settings/appearance" element={<PresentationPage />} />
             <Route path="*" element={<Navigate to="/start" replace />} />
           </Routes> : <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
-            <Route path="/home" element={<CommandCenterPage />} />
+            <Route path="/home" element={<ScopedWorkspace client={services?.malleableShell?.scopedRenderers}><CommandCenterPage /></ScopedWorkspace>} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
+            <Route path="/artifact-evidence" element={<ArtifactEvidencePage />} />
+            {import.meta.env.DEV&&<Route path="/dev/application-fixture" element={<ExecutableApplicationFixturePage />} />}
             <Route path="/proposals/review" element={<ProposalReviewPage />} />
             <Route path="/participants/review" element={<ParticipantReviewPage />} />
             <Route path="/operations" element={<OperationsPage />} />
+            <Route path="/collaboration" element={<ConnectedJourneyPage />} />
+            <Route path="/project/:projectId/appearance" element={<PresentationPage />} />
+            <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
+            <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
+            <Route path="/project/:projectId/new-task" element={<ConnectedJourneyPage mode="task" />} />
+            <Route path="/project/:projectId/tasks/:runId" element={<ProjectTaskPage />} />
             <Route path="/start" element={<StartPage />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/perspectives" element={<PerspectivesPage />} />
@@ -342,6 +387,7 @@ function Shell() {
             <Route path="/chat/:chatId" element={<ChatPage />} />
             <Route path="/project/:projectId" element={<ProjectWorkspacePage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
+            <Route path="/project/:projectId/agents" element={<AgentSetupPage />} />
             <Route path="/project/:projectId/manage" element={<ProjectPage />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/wiki" element={<WikiPage />} />
@@ -384,7 +430,7 @@ function Shell() {
       <ToastStack />
       <CommandPalette open={palette} onClose={() => setPalette(false)} items={items} />
 
-      {connectedLocal ? <ConnectedLocalProjectDialog open={projectModal} onClose={() => setProjectModal(false)} onRegister={async ({ root, runner }) => {
+      {services?.localProjects ? <ConnectedLocalProjectDialog open={projectModal} onClose={() => setProjectModal(false)} onRegister={async ({ root, runner }) => {
         if (!services?.localProjects?.registerProject) throw new Error('The connected local server does not advertise project registration.')
         const proposedId = `local_${globalThis.crypto.randomUUID()}`
         const registered = await services.localProjects.registerProject(proposedId, root)
@@ -392,61 +438,8 @@ function Shell() {
         importLocalProject({ id: registered.projectId, name, description: `Local code project at ${registered.root}`, local: { rootPath: registered.root, importedFrom: 'folder', importedAt: Date.now(), defaultHarnessId: runner === 'codex_cli' ? 'codex' : 'claude', permissionPreset: 'workspace-write', adminAccess: true, detectedConfigs: [], harnesses: [], skills: [], documents: [] } })
         setActiveProject(registered.projectId)
         toast('Local project registered', name)
-        nav(`/project/${registered.projectId}/onboarding?${new URLSearchParams({ start: '1', runner })}`)
-      }} /> : <AddProjectDialog
-        open={projectModal}
-        projects={data.projects}
-        discoveredProjects={availableDiscoveredProjects}
-        uiPlugins={discoveredUiPlugins}
-        defaultParentId={data.activeProjectId}
-        governedOnboardingAvailable={supportsGovernedProjectOnboarding(services)}
-        onClose={() => setProjectModal(false)}
-        onCreateCloud={({ name, parentId, color }) => {
-          const id = createProject(name, parentId, 'Cloud workspace')
-          updateProject(id, { iconColor: color } as never)
-          toast('Project created', name)
-          nav(`/project/${id}`)
-        }}
-        onCreateLocal={async ({ name, color, selection, krailRunner }) => {
-          const localProjects = services?.localProjects
-          if (krailRunner && !supportsGovernedProjectOnboarding(services)) {
-            throw new Error('Connect a local OpenSaddle server before starting governed KRAIL onboarding. Connected mode never falls back to a simulated run.')
-          }
-          const application = scaffoldApply(selection.proposal, selection.selectedIds, selection.proposal.folderPath, name, selection.perspective)
-          const projectId = `local_${globalThis.crypto.randomUUID()}`
-          await registerLocalWorkspace({
-            projectId,
-            root: application.project.local.rootPath,
-            registerProject: localProjects?.registerProject
-              ? localProjects.registerProject.bind(localProjects)
-              : undefined,
-            commitRendererState: () => {
-              importLocalProject({ id: projectId, name: application.project.name, description: application.project.description, local: application.project.local })
-              updateProject(projectId, { iconColor: color, perspective: application.project.perspective } as never)
-              application.channels.forEach((channel) => createChat(projectId, channel.title, undefined, undefined, false))
-              application.members.forEach((member) => createMember(member))
-              application.agents.forEach((agent) => createAgent({
-                projectId, name: agent.name, description: agent.description, systemPrompt: agent.description, modelPolicy: 'auto', harness: 'coding', harnessId: agent.harnessId, runtime: 'local',
-                permissionPolicy: { sandbox: 'workspace-write', approvals: 'on-request', network: false, allowedTools: [], deniedTools: [] }, skillIds: [], tools: ['Files', 'Shell', 'Git'], knowledgeSourceIds: [], visibility: 'private',
-              }))
-              addServiceConnections(projectId, application.connectors)
-              addPermissionGrants(application.permissionGrants.map((permission) => ({
-                principalKind: 'user', principalId: data.currentUserId, resourceKind: 'project', resourceId: projectId, action: permission.action, effect: 'allow', inheritance: 'direct', approvalRequired: permission.approvalRequired,
-              })))
-            },
-          })
-          try {
-            await services?.projectIntelligence?.create(projectId)
-          } catch (error) {
-            toast('Workspace created; intelligence needs attention', error instanceof Error ? error.message : String(error))
-          }
-          setActiveProject(projectId)
-          toast('Local workspace created', name)
-          nav(krailRunner
-            ? `/project/${projectId}/onboarding?${new URLSearchParams({ start: '1', runner: krailRunner })}`
-            : `/project/${projectId}`)
-        }}
-      />}
+        nav(`/project/${registered.projectId}`)
+      }} /> : null}
     </div>
   )
 }

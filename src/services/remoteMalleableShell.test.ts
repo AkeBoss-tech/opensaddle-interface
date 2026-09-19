@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import{createHash}from'node:crypto'
 import { RemoteMalleableShellClient } from './remoteMalleableShell'
 
 const reviewDescriptor = { command_id: 'dev.opensaddle.artifact.review', version: 2, descriptor_digest: 'd'.repeat(64), title: 'Review artifact', description: '', effect: 'read' as const, required_actions: ['artifacts:read'], available: { available: true }, input_schema: {}, output_schema: {} }
@@ -27,6 +28,14 @@ test('uses exact server artifact identities and the durable invocation endpoints
     assert.match(requests[3]!.url, /command-invocations\/invocation-1$/)
   } finally { globalThis.fetch = originalFetch }
 })
+
+test('reads bounded exact artifact bytes and verifies their SHA-256 digest',async()=>{const original=globalThis.fetch;const bytes=new TextEncoder().encode('# Report\nCited source.');const digest=createHash('sha256').update(bytes).digest('hex');let request!:Request;globalThis.fetch=async(input,init)=>{request=new Request(input,init);return new Response(bytes,{headers:{'Content-Type':'application/octet-stream','Content-Length':String(bytes.length)}})};try{const resource={project_id:'P1',run_id:'R1',artifact_id:'A1',digest};const content=await new RemoteMalleableShellClient('https://core.example',()=> 'member','token').content(resource);assert.equal(request.url,'https://core.example/api/v2/runs/R1/artifacts/A1/content');assert.equal(request.headers.get('Authorization'),'Bearer token');assert.deepEqual(content,{text:'# Report\nCited source.',mediaType:'application/octet-stream',sizeBytes:bytes.length,digest})}finally{globalThis.fetch=original}})
+
+test('artifact content rejects corruption, unavailable bytes, and oversized bodies',async()=>{const original=globalThis.fetch;const client=new RemoteMalleableShellClient('https://core.example',()=> 'member');const resource={project_id:'P1',run_id:'R1',artifact_id:'A1',digest:'0'.repeat(64)};try{globalThis.fetch=async()=>new Response('changed');await assert.rejects(client.content(resource),/artifact_content_integrity_denied/);globalThis.fetch=async()=>Response.json({detail:{code:'artifact_bytes_unavailable'}},{status:409});await assert.rejects(client.content(resource),/artifact_bytes_unavailable/);globalThis.fetch=async()=>new Response('small',{headers:{'Content-Length':'262145'}});await assert.rejects(client.content(resource),/artifact_content_too_large/)}finally{globalThis.fetch=original}})
+
+test('chunked artifact content cancels before buffering beyond the bound',async()=>{const original=globalThis.fetch;let cancelled=false,pulls=0;const stream=new ReadableStream<Uint8Array>({pull(controller){pulls++;controller.enqueue(new Uint8Array(140000));if(pulls===3)controller.close()},cancel(){cancelled=true}},{highWaterMark:0});globalThis.fetch=async()=>new Response(stream);try{await assert.rejects(new RemoteMalleableShellClient('https://core.example',()=> 'member').content({project_id:'P1',run_id:'R1',artifact_id:'A1',digest:'0'.repeat(64)}),/artifact_content_too_large/);assert.equal(cancelled,true);assert.equal(pulls,2)}finally{globalThis.fetch=original}})
+
+test('queued missing-length content is cancelled at the first over-limit read',async()=>{const original=globalThis.fetch;let cancelled=false;const stream=new ReadableStream<Uint8Array>({start(controller){for(let index=0;index<10;index++)controller.enqueue(new Uint8Array(100000));controller.close()},cancel(){cancelled=true}});globalThis.fetch=async()=>new Response(stream);try{await assert.rejects(new RemoteMalleableShellClient('https://core.example',()=> 'member').content({project_id:'P1',run_id:'R1',artifact_id:'A1',digest:'0'.repeat(64)}),/artifact_content_too_large/);assert.equal(cancelled,true)}finally{globalThis.fetch=original}})
 
 test('discovers only the run-scoped connector capabilities returned by Core', async () => {
   const originalFetch = globalThis.fetch
@@ -69,6 +78,10 @@ test('binds environment preview and apply to both revision and definition digest
   } finally { globalThis.fetch = originalFetch }
 })
 
+test('personal application presentation uses authenticated project-scoped CAS routes',async()=>{const original=globalThis.fetch;const requests:Array<{url:string;method?:string;body?:unknown}>=[];globalThis.fetch=async(input,init)=>{requests.push({url:String(input),method:init?.method,body:init?.body?JSON.parse(String(init.body)):undefined});return Response.json({revision:1,project_id:'P/1'})};const client=new RemoteMalleableShellClient('https://core.example',()=> 'member','token');const overrides={instances:{'evidence-main':{density:'compact' as const,presentation:'split' as const}}};try{await client.personalEnvironment('P/1');await client.previewPersonalEnvironment('P/1',0,overrides,'Preview mine');await client.applyPersonalEnvironment('P/1',0,overrides,'Save mine',4,'b'.repeat(64));await client.revertPersonalEnvironment('P/1',1,0,'Restore mine');assert.deepEqual(requests.map(({url,method,body})=>({path:new URL(url).pathname,method:method??'GET',body})),[{path:'/api/v2/projects/P%2F1/environment/personal',method:'GET',body:undefined},{path:'/api/v2/projects/P%2F1/environment/personal/changes/preview',method:'POST',body:{expected_revision:0,overrides,reason:'Preview mine'}},{path:'/api/v2/projects/P%2F1/environment/personal/changes',method:'POST',body:{expected_revision:0,overrides,reason:'Save mine',expected_base_environment_revision:4,base_definition_digest:'b'.repeat(64)}},{path:'/api/v2/projects/P%2F1/environment/personal/reverts',method:'POST',body:{expected_revision:1,target_revision:0,reason:'Restore mine'}}])}finally{globalThis.fetch=original}})
+
+test('personal presentation rejects a cross-project response',async()=>{const original=globalThis.fetch;globalThis.fetch=async()=>Response.json({project_id:'another-project'});try{await assert.rejects(new RemoteMalleableShellClient('https://core.example',()=> 'member').personalEnvironment('P1'),/project mismatch/)}finally{globalThis.fetch=original}})
+
 test('surfaces command API failures without local authority fallback', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async () => Response.json({ detail: 'descriptor digest replaced' }, { status: 409 })
@@ -83,4 +96,40 @@ test('renders structured server validation details instead of object coercion', 
   try {
     await assert.rejects(new RemoteMalleableShellClient('https://control.example', () => 'user-1').revert('project-1', 1, 0, 'Restore'), /target_revision.*must name an existing revision/)
   } finally { globalThis.fetch = originalFetch }
+})
+test('application renderer transport preserves exact authenticated package authority',async()=>{
+  const original=globalThis.fetch
+  const requests:string[]=[]
+  globalThis.fetch=async(input)=>{requests.push(String(input));if(String(input).includes('/content?'))return new Response('<p>renderer</p>',{headers:{'Content-Type':'text/html; profile=opensaddle-renderer-fragment.v1; charset=utf-8'}});return Response.json({project_id:'P/1',renderers:[{application_id:'review-evidence',instance_id:'review-main',entry_file:'renderer.html',content_digest:'b'.repeat(64),size:15,media_type:'text/html; profile=opensaddle-renderer-fragment.v1; charset=utf-8',package_ref:{package_id:'package/id',version:'1.0.0',manifest_digest:'a'.repeat(64)},input_schema:{},output_schema:{},state_schema_version:1,sandbox_policy:{scripts:true,network:false,same_origin:false,navigation:false},authority:'core'}]})}
+  try{const client=new RemoteMalleableShellClient('https://core.example',()=> 'member','token');const[renderer]=await client.applicationRenderers('P/1');const response=await client.applicationRendererContent('P/1',renderer!);assert.equal(await response.text(),'<p>renderer</p>');const url=new URL(requests[1]!);assert.equal(url.pathname,'/api/v2/projects/P%2F1/application-renderers/review-evidence/content');assert.equal(url.searchParams.get('package_id'),'package/id');assert.equal(url.searchParams.get('manifest_digest'),'a'.repeat(64));assert.equal(url.searchParams.get('content_digest'),'b'.repeat(64))}finally{globalThis.fetch=original}
+})
+
+test('renderer host observations preserve exact package identity and the one-time report token header', async () => {
+  const original = globalThis.fetch
+  const requests: Array<{ path: string; method: string; headers: Headers; body?: unknown }> = []
+  globalThis.fetch = async (input, init) => {
+    requests.push({
+      path: new URL(String(input)).pathname,
+      method: init?.method ?? 'GET',
+      headers: new Headers(init?.headers),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    })
+    if (requests.length === 1) return Response.json({ session_id: 'rhs_1', report_token: 'opaque', expires_at: '2026-09-07T20:00:00Z', next_sequence: 1, host_identity_authority: 'client_asserted' })
+    if (requests.length === 2) return Response.json({ session_id: 'rhs_1', project_id: 'P/1', state: 'ready', sequence: 1 })
+    return Response.json({ schema_version: 'opensaddle.renderer-host-observations.v1', project_id: 'P/1', generated_at: '2026-09-07T19:00:00Z', items: [], authority: 'host_reported', semantic_correctness: 'not_verified' })
+  }
+  const client = new RemoteMalleableShellClient('https://core.example', () => 'member', 'bearer')
+  const packageRef = { package_id: 'pkg/id', version: '2', manifest_digest: 'a'.repeat(64) }
+  try {
+    const session = await client.createRendererHostSession('P/1', { host_id: 'desktop:test', application_id: 'review-evidence', instance_id: 'review-main', package_ref: packageRef, environment_revision: 3, environment_definition_digest: 'b'.repeat(64), generation: 7 })
+    await client.reportRendererHostObservation(session.session_id, session.report_token, { sequence: session.next_sequence, state: 'ready' })
+    await client.rendererHostObservations('P/1')
+    assert.deepEqual(requests.map(value => ({ path: value.path, method: value.method, body: value.body })), [
+      { path: '/api/v2/projects/P%2F1/renderer-host-sessions', method: 'POST', body: { host_id: 'desktop:test', application_id: 'review-evidence', instance_id: 'review-main', package_ref: packageRef, environment_revision: 3, environment_definition_digest: 'b'.repeat(64), generation: 7 } },
+      { path: '/api/v2/renderer-host-sessions/rhs_1/observations', method: 'POST', body: { sequence: 1, state: 'ready' } },
+      { path: '/api/v2/projects/P%2F1/renderer-host-observations', method: 'GET', body: undefined },
+    ])
+    assert.equal(requests[1]?.headers.get('X-OpenSaddle-Renderer-Host-Token'), 'opaque')
+    assert.equal(requests[1]?.headers.get('Authorization'), 'Bearer bearer')
+  } finally { globalThis.fetch = original }
 })

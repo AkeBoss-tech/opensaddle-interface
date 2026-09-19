@@ -1,0 +1,24 @@
+{
+  "date": "2026-09-10",
+  "invariant": "SCOPED-SDK-1",
+  "base": "a2b0cbffcb470221462f9313aab2656a149229b7",
+  "boundary": "Public SDK with controlled external parent messages",
+  "pre_fix": {
+    "exit_code": 1,
+    "assertion": "ready must wait for asynchronous initialization",
+    "method": "Export prior index.js and package metadata to a temporary directory, overlay the final test, run node --test."
+  },
+  "post_fix": "2 SDK protocol tests passed; user and Team self-contained fragments bundled.",
+  "checks": [
+    "Pending initialization emits no ready and rejects resource/state calls.",
+    "Resolved initialization emits ready once.",
+    "Disposal before resolution suppresses late ready.",
+    "Rejected initialization emits failure and removes listener.",
+    "Existing source/envelope, request correlation, timeout, capability and disposal checks still pass."
+  ],
+  "limits": [
+    "No browser or desktop verification of this change: Mac locked.",
+    "Core pytest-only regression tool does not run JavaScript; isolated Node regression used.",
+    "No registry publication; SDK remains a local preview package."
+  ]
+}

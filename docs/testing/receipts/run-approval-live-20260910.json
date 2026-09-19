@@ -1,0 +1,31 @@
+{
+  "schema_version": "opensaddle.live-run-approval-proof.v1",
+  "project_id": "approval-proof",
+  "run_ids": [
+    "run_46a4b0274e364e21bb7e1848343fa1e5",
+    "run_a45c8277216045d48b33ec03ba2200ed"
+  ],
+  "checks": [
+    "auditor read-only and grant denied",
+    "cross-Project review denied",
+    "mounted host shows exact task/policy",
+    "explicit host approval reaches real Core",
+    "recreated client sees durable queued state",
+    "duplicate grant rejected",
+    "role revoked after display denies submission",
+    "host clears stale review and removes approval control",
+    "second task remains awaiting approval"
+  ],
+  "transport": "real HTTP to isolated loopback Core with fixture bearer authentication",
+  "limits": [
+    "No visual browser proof",
+    "No worker/model execution",
+    "Development identity only"
+  ],
+  "persistence_checks": [
+    "fresh RunStore object sees first queued and second awaiting approval",
+    "database has exactly one run.review_approved event",
+    "database has zero model-call approval leases"
+  ],
+  "cleanup": "fixture server stopped after proof; private fixture state retained outside repository"
+}

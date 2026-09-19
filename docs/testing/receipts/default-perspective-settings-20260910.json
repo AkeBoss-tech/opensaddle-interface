@@ -1,0 +1,8 @@
+{
+  "invariant": "DEFAULT-PERSPECTIVE-SETTINGS",
+  "baseRevision": "8461d93011f29d3d3a6bc07da0659d1b6ecb4b26",
+  "test": "src/features/settings/PresentationEditor.test.tsx",
+  "preFix": "failed",
+  "preFixAssertion": "shared settings must expose a default Perspective selector",
+  "postFix": "passed"
+}
