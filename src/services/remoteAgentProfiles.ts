@@ -55,10 +55,20 @@ export interface AgentProposal {
   definitionDigest: string
   definition: AgentDefinition
   memoryBindings: Record<string, AgentMemoryBinding>
+  managedConnectionBindings?: Record<string, AgentConnectionBinding[]>
   status: 'proposed' | 'published'
   publishedAt?: string
   reviewedBy?: string
   participantId?: string
+}
+
+export interface AgentConnectionBinding {
+  connector: string
+  secretRef: string
+  connectionId: string
+  displayName: string
+  revision: number
+  credentialVersion: number
 }
 
 export interface AgentTaskAdmission {
@@ -156,6 +166,7 @@ type WireProposal = {
   definition_digest: string
   definition: WireDefinition
   memory_bindings?: Record<string, { source_record_digest: string; resource_record_digest: string; resource_ref: AgentMemorySource['resourceRef']; classification: string }>
+  managed_connection_bindings?: Record<string, Array<{ connector: string; secret_ref: string; connection_id: string; display_name: string; revision: number; credential_version: number }>>
   status: 'proposed' | 'published'
   published_at?: string | null
   reviewed_by?: string | null
@@ -225,6 +236,18 @@ function memorySource(value: unknown): AgentMemorySource {
 }
 
 function proposal(value: WireProposal): AgentProposal {
+  const managed = value.managed_connection_bindings ?? {}
+  if (!managed || typeof managed !== 'object' || Array.isArray(managed) || Object.keys(managed).length > 100) throw Error('Agent credential bindings are malformed')
+  const managedConnectionBindings: Record<string, AgentConnectionBinding[]> = {}
+  for (const [connector, bindings] of Object.entries(managed)) {
+    if (!value.definition.grants.some(grant => grant.connector === connector) || !Array.isArray(bindings) || bindings.length < 1 || bindings.length > 100
+        || bindings.some(binding => !binding || binding.connector !== connector
+          || [binding.secret_ref, binding.connection_id, binding.display_name].some(item => typeof item !== 'string' || !item.trim() || item.length > 200 || /[\u0000-\u001f\u007f]/.test(item))
+          || !Number.isSafeInteger(binding.revision) || binding.revision < 1
+          || !Number.isSafeInteger(binding.credential_version) || binding.credential_version < 1)
+        || new Set(bindings.map(binding => binding.secret_ref)).size !== bindings.length) throw Error('Agent credential bindings are malformed')
+    managedConnectionBindings[connector] = bindings.map(binding => ({ connector, secretRef: binding.secret_ref, connectionId: binding.connection_id, displayName: binding.display_name, revision: binding.revision, credentialVersion: binding.credential_version }))
+  }
   const externalWorkerId=value.definition.external_worker_id
   if(value.definition.harness==='external-agent-client'
     ? typeof externalWorkerId!=='string'||!externalWorkerId||externalWorkerId.length>200
@@ -269,6 +292,7 @@ function proposal(value: WireProposal): AgentProposal {
       evidence: value.definition.evidence,
     },
     memoryBindings,
+    managedConnectionBindings,
     status: value.status,
     publishedAt: value.published_at ?? undefined,
     reviewedBy: value.reviewed_by ?? undefined,

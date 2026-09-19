@@ -1,0 +1,48 @@
+{
+  "schema_version": "opensaddle.interface-managed-connections-acceptance.v1",
+  "interface_source_tree": "4d15bb8b801ecf8f76936cc712e32657fb45332d",
+  "core_source_tree": "464e799fe241d2d173e1b7a968376545e0840252",
+  "checks": {
+    "build": "passed",
+    "electron_build": "passed",
+    "workspace_tests": 352,
+    "feature_tests": 392,
+    "sdk_tests": 2,
+    "total_tests": 746,
+    "sdk_types": "passed"
+  },
+  "test_log_sha256": "b93f9bf140ab175e61b8fc2a6a72730669b6fc66339c2ad0e54e785564e4ff23",
+  "browser": {
+    "boundary": "Chrome normal Interface with real Core HTTP and encrypted vault, synthetic local credential only",
+    "journey": [
+      "store credential",
+      "inspect exact connection ID slot revision and credential version in agent review",
+      "publish reviewed fixture definition",
+      "review and revoke connection",
+      "full page reload retains overview route and revoked metadata"
+    ],
+    "console_errors": 0,
+    "provider_task_started": false
+  },
+  "regressions": [
+    {
+      "case": "overview reload redirect",
+      "before": "redirected Home before capability negotiation",
+      "after": "retains Project overview through negotiation",
+      "evidence": "manual real browser before/after"
+    },
+    {
+      "case": "duplicate credential slot labels",
+      "before": "two-slot mounted UI assertion failed to find exact slot",
+      "after": "17 focused mounted tests passed with explicit secret_ref"
+    }
+  ],
+  "screenshots": {
+    "binding-review.png": "139413faec1c986b61f4458faa5dbdf0f9a127d785ff06c007ccb025eac0cf7e",
+    "revoked-final.png": "063db569b7444182ed1b95bc99ad846cae6780eb6e22a87613c2cb2b527ede4a"
+  },
+  "limits": [
+    "personal API-key slots only, no provider identity/OAuth qualification",
+    "browser fixture uses no real provider key and starts no provider task"
+  ]
+}

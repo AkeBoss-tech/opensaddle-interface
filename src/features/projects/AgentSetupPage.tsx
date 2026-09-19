@@ -438,6 +438,14 @@ export function AgentSetupSurface({
           {selected.definition.harness==='external-agent-client'&&<p>This definition names the source and worker shown above. Core binds the registered source revision and digest when a task is admitted. Provider session references are labels, not permissions; each action still needs Run-scoped authorization.</p>}
           <h4>Instructions to the agent</h4><pre>{selected.definition.instructions}</pre>
           <h4>Connector permissions</h4>{selected.definition.grants.length ? <ul>{selected.definition.grants.map((grant, index) => <li key={index}><code>{grant.connector}/{grant.action} {JSON.stringify(grant.argumentEquals)}</code> — {grant.rationale}</li>)}</ul> : <p>None requested</p>}
+          {Object.keys(selected.managedConnectionBindings ?? {}).length > 0 && <section aria-label="Credential connections">
+            <h4>Credential connections</h4>
+            <p>These user-entered names identify the stored credentials pinned to this draft. They are not verified provider account identities.</p>
+            <ul>{Object.values(selected.managedConnectionBindings ?? {}).flat().map(binding => <li key={binding.connectionId}>
+              <strong>{binding.displayName}</strong> · <code>{binding.connector}/{binding.secretRef}</code> · revision {binding.revision}
+              <div><code>{binding.connectionId}</code> · credential version {binding.credentialVersion}</div>
+            </li>)}</ul>
+          </section>}
           <h4>Reviewed memory bindings</h4>
           {selected.definition.memorySourceIds.length ? <ul className="agent-setup-memory-bindings">{selected.definition.memorySourceIds.map((id) => {
             const binding = selected.memoryBindings[id]
@@ -448,7 +456,7 @@ export function AgentSetupSurface({
           })}</ul> : <p>None reviewed. This agent has no memory access.</p>}
           <h4>Assumptions</h4><ul>{selected.definition.assumptions.map((item) => <li key={item}>{item}</li>)}</ul>
           {selected.definition.evidence.length > 0 && <><h4>References</h4><ul>{selected.definition.evidence.map((item) => <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> — {item.finding}</li>)}</ul></>}
-          {selected.status === 'proposed' && ((canReview ?? viewerCanReview) ? <div className="agent-setup-publish"><label><input type="checkbox" checked={acknowledged} disabled={busy || !selectedExternalReady} onChange={(event) => setAcknowledged(event.target.checked)} />I reviewed the instructions, assumptions, exact connector permissions, memory bindings, and the selected worker when external.</label><button className="primary-btn" type="button" disabled={busy || !acknowledged || !selectedExternalReady} onClick={() => void publish()}>Publish reviewed agent</button>{!selectedExternalReady&&<p>Refresh to review an active credential for the selected external worker. This draft will not switch workers automatically.</p>}</div> : <p>Only a Project owner or admin can publish this exact draft.</p>)}
+          {selected.status === 'proposed' && ((canReview ?? viewerCanReview) ? <div className="agent-setup-publish"><label><input type="checkbox" checked={acknowledged} disabled={busy || !selectedExternalReady} onChange={(event) => setAcknowledged(event.target.checked)} />I reviewed the instructions, assumptions, exact connector permissions and credential connections, memory bindings, and the selected worker when external.</label><button className="primary-btn" type="button" disabled={busy || !acknowledged || !selectedExternalReady} onClick={() => void publish()}>Publish reviewed agent</button>{!selectedExternalReady&&<p>Refresh to review an active credential for the selected external worker. This draft will not switch workers automatically.</p>}</div> : <p>Only a Project owner or admin can publish this exact draft.</p>)}
           {selected.status === 'published' && selected.participantId && (options?.executionAvailable ? <form className="agent-setup-run" onSubmit={(event) => void startTask(event)}>
             <h4>3. Start a task</h4><p>This requests one Run from the published agent. Its policy and memory source access are checked again by Core.</p>
             <label>Task<textarea aria-label="Agent task" disabled={busy} value={task} onChange={(event) => setTask(event.target.value)} /></label>
