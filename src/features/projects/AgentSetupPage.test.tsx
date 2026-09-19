@@ -24,6 +24,7 @@ const options: AgentBuilderOptions = { executionAvailable: true, canReview: true
   memoryAvailable: false, memorySources: [],
   sources: [{ sourceId: 'src_1', sourceKind: 'git', revision: 'rev-1', snapshotDigest: 'a'.repeat(64) }],
   harnesses: ['codex-app-server', 'claude-code-stream-json'],
+  externalWorkers: [],
   connectorActions: [{ connector: 'github', action: 'get_repository', title: 'Get repository',
     input: { required: ['owner', 'repo'], properties: { owner: { type: 'string' }, repo: { type: 'string' } } } }],
 }
@@ -95,6 +96,46 @@ test('ordinary members can inspect a proposed definition but do not receive a pu
   assert.match(JSON.stringify(view.toJSON()), /Only a Project owner or admin can publish this exact draft/)
   assert.equal(view.root.findAllByType('button').some((node) => node.children.join('') === 'Publish reviewed agent'), false)
   await act(async () => view.unmount())
+})
+
+test('EXTERNAL-AGENT-BUILDER-1: external draft selects one active advertised worker and reviews the exact binding',async()=>{
+ const submissions:AgentDefinition[]=[]
+ const externalOptions={...options,harnesses:['external-agent-client'],externalWorkers:[{workerId:'worker-active',credentialState:'active'},{workerId:'worker-revoked',credentialState:'revoked'}],researchAvailable:true,researchProvider:'brave_web_search',researchScope:'web'} as AgentBuilderOptions
+ const client:AgentProfileClient={options:async()=>externalOptions,research:async()=>{throw Error('research must stay disabled for external client')},participant:async()=>{throw Error('unused')},list:async()=>[],propose:async(_project,value)=>{submissions.push(value);return{...proposed(),definition:value}},publish:async()=>{throw Error('not approved')},submitTask:async()=>{throw Error('unused')}}
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(render(client));await Promise.resolve()})
+ assert.equal(field(view,'Agent runtime').props.value,'external-agent-client')
+ assert.equal(view.root.findAllByProps({'aria-label':'Research objective'}).length,0)
+ assert.equal(button(view,'Create draft for review').props.disabled,true)
+ await act(async()=>{field(view,'Agent name').props.onChange({target:{value:'External reviewer'}});field(view,'Objective').props.onChange({target:{value:'Review registered source'}});field(view,'Instructions').props.onChange({target:{value:'Use only reviewed tools.'}});field(view,'Assumptions').props.onChange({target:{value:'External worker is enrolled'}})})
+ assert.equal(button(view,'Create draft for review').props.disabled,true)
+ await act(async()=>{field(view,'External worker').props.onChange({target:{value:'worker-revoked'}})})
+ assert.equal(button(view,'Create draft for review').props.disabled,true)
+ await act(async()=>{view.root.findAllByType('form')[0].props.onSubmit({preventDefault(){}});await Promise.resolve()})
+ assert.equal(submissions.length,0)
+ await act(async()=>{field(view,'External worker').props.onChange({target:{value:'worker-active'}})})
+ assert.equal(button(view,'Create draft for review').props.disabled,false)
+ await act(async()=>{view.root.findAllByType('form')[0].props.onSubmit({preventDefault(){}});await Promise.resolve()})
+ assert.equal(submissions[0].externalWorkerId,'worker-active')
+ assert.match(JSON.stringify(view.toJSON()),/src_1.*worker-active/s)
+ assert.match(JSON.stringify(view.toJSON()),/Provider session references.*not permissions/s)
+ await act(async()=>view.unmount())
+})
+
+test('EXTERNAL-AGENT-BUILDER-1: a saved external draft never switches from its unavailable worker',async()=>{
+ const old={...proposed(),definition:{...definition,harness:'external-agent-client' as const,externalWorkerId:'worker-old'}}
+ let publications=0
+ const client:AgentProfileClient={options:async()=>({...options,harnesses:['external-agent-client'],externalWorkers:[{workerId:'worker-new',credentialState:'active'}]}),research:async()=>{throw Error('unused')},participant:async()=>{throw Error('unused')},list:async()=>[old],propose:async()=>{throw Error('unused')},publish:async()=>{publications++;throw Error('must not publish')},submitTask:async()=>{throw Error('unused')}}
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(render(client));await Promise.resolve()})
+ await act(async()=>{view.root.findAllByType('button').find(node=>node.findAllByType('strong').some(title=>title.children.join('')==='Source reviewer'))!.props.onClick()})
+ const review=JSON.stringify(view.toJSON())
+ assert.match(review,/worker-old/)
+ assert.match(review,/credential unavailable or changed/)
+ assert.doesNotMatch(review,/Reviewed external worker.*worker-new/s)
+ assert.equal(button(view,'Publish reviewed agent').props.disabled,true)
+ assert.equal(publications,0)
+ await act(async()=>view.unmount())
 })
 
 test('a saved draft stays reviewable when execution is unavailable', async () => {

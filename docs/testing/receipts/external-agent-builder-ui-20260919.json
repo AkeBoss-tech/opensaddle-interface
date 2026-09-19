@@ -1,0 +1,43 @@
+{
+  "schema_version": "opensaddle.external-agent-builder-ui-acceptance.v1",
+  "environment": "disposable localhost fixture; Python Core from project-removal-archive; current Interface Vite checkout",
+  "core_archive_agent_builder_sha256": "79f0b0bae5626af112aacc209fd3461c7a60bbb2ea4e3a5765ac41ba04a6445e",
+  "interface_agent_setup_sha256": "bf6a3558ef6e9efdca302e864c3f0a4278887a562492859cdf3d6f98ce061740",
+  "browser": "Chrome local tab 1638517840 via UI controls",
+  "project_id": "browser-fixture",
+  "options": {
+    "status": 200,
+    "external_harness_advertised": true,
+    "external_workers": [
+      {
+        "worker_id": "fixture-worker",
+        "credential_state": "active"
+      }
+    ]
+  },
+  "journey": {
+    "source_id": "src_892eee0f063c48509b2fb01fc2f98e13",
+    "selected_harness": "external-agent-client",
+    "selected_worker": "fixture-worker",
+    "proposal_id": "agp_5aa3dde152dc4562b42a1b8aac566203",
+    "definition_digest": "5fcd9245ee956dc7c4810c204c64a1c64a8b6d60d6754faed9b3defbacd310e2",
+    "draft_created": true,
+    "publish_explicitly_reviewed": true,
+    "published_survived_reload": true,
+    "connector_grants": 0,
+    "model_or_external_provider_called": false
+  },
+  "people_panel": {
+    "sole_owner_leave_button_visible": false,
+    "retain_owner_explanation_visible": true
+  },
+  "validation": {
+    "owning_tests": "50 passed",
+    "typecheck": "passed",
+    "build": "passed"
+  },
+  "limits": [
+    "No external worker claim/task was submitted in this browser qualification.",
+    "Browser ran against a disposable source archive rather than a packaged desktop runtime."
+  ]
+}

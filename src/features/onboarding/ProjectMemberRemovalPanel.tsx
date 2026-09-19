@@ -20,8 +20,9 @@ export function ProjectMemberRemovalPanel({ authority, projectId, snapshot, onRe
   if (!snapshot.membershipRemovalAvailable || !authority.removeMember || !Number.isSafeInteger(snapshot.rosterRevision) || !snapshot.rosterRevision || snapshot.rosterRevision < 1 || !snapshot.currentSubject) return null
   const caller = snapshot.members.find(member => member.subject === snapshot.currentSubject && member.status === 'active')
   if (!caller) return null
+  const lastOwner=caller.role==='owner'&&snapshot.members.filter(member=>member.status==='active'&&member.role==='owner').length===1
   const canRemove = (member: JourneySnapshot['members'][number]) => member.status === 'active' &&
-    (member.subject === caller.subject || caller.role === 'owner' || caller.role === 'admin' && !['owner', 'admin'].includes(member.role))
+    (member.subject === caller.subject && !lastOwner || caller.role === 'owner' && member.subject!==caller.subject || caller.role === 'admin' && !['owner', 'admin'].includes(member.role))
   const submit = async () => {
     if (locked.current || stale || !review || snapshot.rosterRevision !== review.revision ||
       !snapshot.members.some(member => member.subject === review.subject && member.role === review.role && canRemove(member))) return
@@ -56,6 +57,7 @@ export function ProjectMemberRemovalPanel({ authority, projectId, snapshot, onRe
     finally { if (current === generation.current) { locked.current = false; setBusy(false) } }
   }
   return <div aria-label="Project membership removal">
+    {lastOwner&&<p>This Project needs another owner before you can leave.</p>}
     {snapshot.members.filter(canRemove).map(member => <button key={member.subject} disabled={busy || stale || Boolean(review)} onClick={() => { setReceipt(undefined); setError(''); setReview({ subject: member.subject, role: member.role, revision: snapshot.rosterRevision! }) }}>
       {member.subject === caller.subject ? 'Review leaving Project' : `Review removal of ${member.subject}`}
     </button>)}
