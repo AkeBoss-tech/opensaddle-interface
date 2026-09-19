@@ -64,6 +64,14 @@ export interface ControlPlaneEvent {
   timestamp: string
 }
 
+export interface ControlPlaneEventPage {
+  schema_version: 'opensaddle.run-event-page.v1'
+  run_id: string
+  events: ControlPlaneEvent[]
+  next_after_sequence: number
+  truncated: boolean
+}
+
 export interface ControlPlaneExternalSession {
   session_id: string
   project_id: string
@@ -146,6 +154,31 @@ export class ControlPlaneV2Client {
 
   async getRun(runId: string): Promise<ControlPlaneRun> {
     return this.request(`/api/v2/runs/${encodeURIComponent(runId)}`)
+  }
+
+  async eventPage(runId: string, options: { afterSequence?: number; limit?: number; signal?: AbortSignal } = {}): Promise<ControlPlaneEventPage> {
+    const cursor = options.afterSequence ?? -1, limit = options.limit ?? 100
+    if (!Number.isSafeInteger(cursor) || cursor < -1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 200)
+      throw Error('Run event page bounds are invalid')
+    const query = new URLSearchParams({ after_sequence: String(cursor), limit: String(limit) })
+    const response = await this.send(`/api/v2/runs/${encodeURIComponent(runId)}/event-page?${query}`, { signal: options.signal, cache: 'no-store' })
+    if (!response.ok) throw await this.toError(response)
+    const page = await response.json() as ControlPlaneEventPage
+    options.signal?.throwIfAborted()
+    if (page?.schema_version !== 'opensaddle.run-event-page.v1' || page.run_id !== runId ||
+        !Array.isArray(page.events) || page.events.length > limit || typeof page.truncated !== 'boolean' ||
+        !Number.isSafeInteger(page.next_after_sequence) || page.next_after_sequence < cursor)
+      throw Error('Run event page identity or bounds are invalid')
+    let last = cursor
+    for (const event of page.events) {
+      if (!event || event.run_id !== runId || !Number.isSafeInteger(event.sequence) || event.sequence <= last ||
+          typeof event.type !== 'string' || typeof event.timestamp !== 'string' ||
+          !event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload))
+        throw Error('Run event page entry is invalid')
+      last = event.sequence
+    }
+    if (page.next_after_sequence !== last) throw Error('Run event page cursor is invalid')
+    return page
   }
 
   async *events(runId: string, options: { afterSequence?: number; signal?: AbortSignal } = {}): AsyncGenerator<ControlPlaneEvent> {

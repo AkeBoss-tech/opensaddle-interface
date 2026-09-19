@@ -1,0 +1,45 @@
+{
+  "schema_version": "opensaddle.interface.run-event-page-acceptance.v1",
+  "core_commit": "e93869c7a46625800afdedf5b6fc4485fb29aff8",
+  "core_archive": "/tmp/opensaddle-20260919/run-event-page-ui/core",
+  "interface_base_commit": "b43462e47657e5c8293c6a432c1903780b6747f0",
+  "changed_production_sha256": {
+    "src/services/controlPlaneV2Client.ts": "7603d95f8cc800f06dc254d40fed0c46d9d4c083f0df4e3b0cbed9ef78b5d58c",
+    "src/services/remoteJourney.ts": "132f7592445cf9e13bafcdb289754b9911210413ba6526f1287f604d04806b38",
+    "src/services/index.ts": "8394c831eebb24c0c6665f435f9e770d6e83fb7abdf525c48295fa2bdd883a8d",
+    "src/features/runs/AuthoritativeRunSurface.tsx": "60656b9f5c439f9b503b0367c77d9704cdc44127fed5a1083e26802ec153492f",
+    "electron/personalRuntimeProxy.ts": "80c1b6378f3ca97138a10e3dbdc4de876002eecadd6acd0d9a005fab6014a31a"
+  },
+  "baseline_failures": [
+    "ControlPlaneV2Client.eventPage was absent",
+    "desktop proxy rejected exact event-page path"
+  ],
+  "tests": {
+    "owning_public_tests": "42 passed",
+    "typecheck": "passed",
+    "frontend_build": "passed",
+    "electron_build": "passed",
+    "lint": "exit 0 with existing warnings",
+    "diff_check": "passed"
+  },
+  "real_browser": {
+    "environment": "Chrome local tab, current Interface Vite, exact committed Core archive, disposable loopback fixture",
+    "run_id": "run_1f894f5a28c046e699cf93e1803fac21",
+    "run_status_at_audit": "running",
+    "core_event_page_status": 200,
+    "core_event_count": 10,
+    "next_after_sequence": 9,
+    "truncated": false,
+    "ui_checked_as_of_visible": true,
+    "explicit_refresh_returned": true,
+    "ui_connector_items": 0,
+    "external_provider_called": false,
+    "tab_closed": true,
+    "owned_servers_stopped": true
+  },
+  "limits": [
+    "Fixture worker reported ValueError after claim during later cancellation attempt; active Run audit read is verified, terminal result is not.",
+    "The disposable browser screenshot was emitted inline during verification, not saved as a local file.",
+    "Populated two-page connector audit and 403 clearing were verified at the mounted public service/UI boundary against mocked HTTP; real browser fixture had no connector activity."
+  ]
+}

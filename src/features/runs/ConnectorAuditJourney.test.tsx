@@ -106,3 +106,81 @@ test('aborted roster checks reject before and after the event stream', async (t)
     assert.equal(eventReads, abortAtRoster === 1 ? 0 : 1)
   }
 })
+
+test('PROJECT-RUN-AUDIT-PAGE-1: active Run pages load on demand and revocation clears prior digests', async (t) => {
+  const original = globalThis.fetch
+  let subject = 'owner', pages = 0, streams = 0, view: ReactTestRenderer | undefined
+  t.after(async () => { if (view) await act(async () => view!.unmount()); globalThis.fetch = original })
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input)), path = url.pathname
+    if (path.endsWith('/members')) return Response.json({ project_id: 'P', members: [] })
+    if (path.endsWith('/events')) { streams++; throw Error('active SSE must not be opened') }
+    if (path.endsWith('/event-page')) {
+      pages++
+      assert.equal(new Headers(init?.headers).get('X-OpenSaddle-User'), 'owner')
+      if (pages === 3) return Response.json({ detail: 'project membership required' }, { status: 403 })
+      assert.equal(url.searchParams.get('limit'), '100')
+      assert.equal(url.searchParams.get('after_sequence'), pages === 1 ? '-1' : '1')
+      return Response.json({ schema_version: 'opensaddle.run-event-page.v1', run_id: runId,
+        events: pages === 1 ? auditEvents : [event(2, 'run.progress', {}), event(3, 'agent_connector.denied',
+          { project_id: 'P', connector: 'public_github', action: 'get_repository', request_digest: 'c'.repeat(64) })],
+        next_after_sequence: pages === 1 ? 1 : 3, truncated: pages === 1 })
+    }
+    if (path.endsWith(`/${runId}`)) return Response.json({ ...run, status: 'running' })
+    return Response.json({}, { status: 404 })
+  }
+  const authority = new RemoteJourneyClient('https://core.example', () => subject, undefined,
+    false, false, false, false, false, undefined, false, true)
+  await act(async () => { view = create(<MemoryRouter><AuthoritativeRunSurface authority={authority} runId={runId} projectId="P" /></MemoryRouter>); await flush() })
+  const button = (label: string) => view!.root.findAllByType('button').find(node => node.children.join('') === label)!
+  await act(async () => { button('Inspect connector activity').props.onClick(); await flush() })
+  let rendered = JSON.stringify(view!.toJSON())
+  assert.match(rendered, /More stored events are available/)
+  assert.match(rendered, new RegExp(requestDigest))
+  await act(async () => { button('Load more stored events').props.onClick(); await flush() })
+  rendered = JSON.stringify(view!.toJSON())
+  assert.match(rendered, /active Run may add events/)
+  assert.match(rendered, new RegExp(requestDigest))
+  assert.match(rendered, /"denied".*" · event ","3"/)
+  assert.equal(pages, 2)
+  assert.equal(streams, 0)
+  await act(async () => { button('Check for new events').props.onClick(); await flush() })
+  rendered = JSON.stringify(view!.toJSON())
+  assert.match(rendered, /Connector activity unavailable/)
+  assert.doesNotMatch(rendered, new RegExp(requestDigest))
+  assert.equal(pages, 3)
+})
+
+test('PROJECT-RUN-AUDIT-PAGE-1: old Core active Run does not open an unbounded desktop SSE stream', async (t) => {
+  const original = globalThis.fetch
+  t.after(() => { globalThis.fetch = original })
+  let streams = 0
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname
+    if (path.endsWith('/members')) return Response.json({ project_id: 'P', members: [] })
+    if (path.endsWith('/events')) { streams++; throw Error('SSE should not be called') }
+    return Response.json({ ...run, status: 'running' })
+  }
+  await assert.rejects(new RemoteJourneyClient('https://core.example', () => 'owner').connectorAudit('P', runId), /Finite connector audit is unavailable/)
+  assert.equal(streams, 0)
+})
+
+test('PROJECT-RUN-AUDIT-PAGE-1: a Run ending after the page read requires a final check', async (t) => {
+  const original = globalThis.fetch
+  t.after(() => { globalThis.fetch = original })
+  let runReads = 0
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname
+    if (path.endsWith('/members')) return Response.json({ project_id: 'P', members: [] })
+    if (path.endsWith('/event-page')) return Response.json({ schema_version:'opensaddle.run-event-page.v1',
+      run_id:runId,events:[],next_after_sequence:-1,truncated:false })
+    if (path.endsWith(`/${runId}`)) return Response.json({ ...run, status:++runReads === 1 ? 'running' : 'completed' })
+    throw Error('unexpected route')
+  }
+  const authority = new RemoteJourneyClient('https://core.example', () => 'owner', undefined,
+    false, false, false, false, false, undefined, false, true)
+  const raced = await authority.connectorAudit('P', runId)
+  assert.equal(raced.complete, false)
+  assert.equal(raced.runStatus, 'completed')
+  assert.equal((await authority.connectorAudit('P', runId)).complete, true)
+})
