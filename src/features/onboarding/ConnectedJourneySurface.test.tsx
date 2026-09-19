@@ -93,7 +93,7 @@ test('focused task composer submits in its project and preserves a failed draft 
   let attempts=0
   const calls:unknown[][]=[]
   const ready={workerId:'machine',adapterId:'codex-app-server' as const,sourceId:'source',revision:'rev',digest:'d'.repeat(64),executableState:'installed' as const,authenticationState:'authenticated' as const,protocolState:'compatible' as const,workspaceState:'configured' as const,ready:true,observedAt:'2026-09-10T00:00:00Z',expiresAt:'2026-09-10T00:02:00Z',reportedAt:'2026-09-10T00:00:01Z'}
-  const authority:JourneyAuthority={snapshot:async()=>({...snap('astra'),canManage:true,sources:[{sourceId:'source',label:'Repository'}],nativeAdaptersAvailable:true,nativeAdapters:[ready]}),invite:async()=>{throw Error('unexpected invitation')},enroll:async()=>{throw Error('unexpected enrollment')},delegate:async(...args)=>{calls.push(args);if(++attempts===1)throw Error('Task request unavailable')}}
+  const authority:JourneyAuthority={snapshot:async()=>({...snap('astra'),canManage:true,sources:[{sourceId:'source',label:'Repository'}],nativeAdaptersAvailable:true,nativeAdapters:[ready]}),invite:async()=>{throw Error('unexpected invitation')},enroll:async()=>{throw Error('unexpected enrollment')},delegate:async(...args)=>{calls.push(args);if(++attempts===1)throw Error('Task request unavailable');return {project_id:'astra',run_id:'admitted-run'}}}
   let view!:ReactTestRenderer
   await act(async()=>{view=create(<MemoryRouter><ConnectedJourneySurface authority={authority} projectId="astra" mode="task"/></MemoryRouter>);await Promise.resolve()})
   assert.equal(view.root.findAllByType('h1')[0].children.join(''),'New task')
@@ -108,5 +108,21 @@ test('focused task composer submits in its project and preserves a failed draft 
   assert.deepEqual(calls,[['astra','source','Review the scheduler','codex-app-server',[]],['astra','source','Review the scheduler','codex-app-server',[]]])
   assert.equal(view.root.findByType('textarea').props.value,'')
   assert.match(JSON.stringify(view.toJSON()),/Task submitted/)
+  assert.equal(view.root.findAllByType('a').find(node=>node.children.includes('View task'))?.props.href,'/project/astra/tasks/admitted-run')
+  await act(async()=>view.unmount())
+})
+
+// PROJECT-TASK-RECEIPT: a mismatched receipt cannot produce a cross-Project task link.
+test('focused task composer rejects a wrong-Project receipt without clearing the task', async () => {
+  const ready = {workerId:'machine',adapterId:'codex-app-server' as const,sourceId:'source',revision:'rev',digest:'d'.repeat(64),executableState:'installed' as const,authenticationState:'authenticated' as const,protocolState:'compatible' as const,workspaceState:'configured' as const,ready:true,observedAt:'2026-09-10T00:00:00Z',expiresAt:'2026-09-10T00:02:00Z',reportedAt:'2026-09-10T00:00:01Z'}
+  const authority: JourneyAuthority = {snapshot:async()=>({...snap('project-A'),sources:[{sourceId:'source',label:'Repository'}],nativeAdaptersAvailable:true,nativeAdapters:[ready]}),invite:async()=>{},enroll:async()=>{},delegate:async()=>({project_id:'project-B',run_id:'run-123',status:'awaiting_approval'})}
+  let view!: ReactTestRenderer
+  await act(async()=>{view=create(<MemoryRouter><ConnectedJourneySurface authority={authority} projectId="project-A" mode="task"/></MemoryRouter>);await Promise.resolve()})
+  await act(async()=>view.root.findByType('textarea').props.onChange({target:{value:'Review the source'}}))
+  const submit=()=>view.root.findAllByType('button').find(node=>node.children.includes('Delegate task'))!
+  await act(async()=>{submit().props.onClick();await new Promise(resolve=>setImmediate(resolve))})
+  assert.equal(view.root.findByType('textarea').props.value,'Review the source')
+  assert.match(JSON.stringify(view.toJSON()),/Task admission receipt is unavailable/)
+  assert.equal(view.root.findAllByType('a').some(node=>node.children.includes('View task')),false)
   await act(async()=>view.unmount())
 })
