@@ -1096,6 +1096,10 @@ errors were not counted as regression evidence. Live desktop round-trip is pendi
 
 A private runtime startup failure is bound to the requested Project and protocol, contains only an allowlisted code, and produces fixed actionable installation guidance only after cleanup is confirmed. On POSIX, the commissioned leader PID and its original process group must both disappear, including when the launcher exits before handoff; otherwise cleanup is explicitly unconfirmed. Unknown codes, extra fields and mismatched identity never supply user-visible diagnostic content or credentials. The desktop consumes pipe data before treating process close as missing handoff. Owning real-process boundaries: `test/personalRuntimeStartupFailure.test.ts` and `test/personalRuntimeProcess.test.ts`. Descendants that escape into another process group are outside this proof.
 
+## PERSONAL-RUNTIME-FIRST-RUN-1
+
+The mounted desktop commissioning form distinguishes a missing coding-agent CLI from a CLI that needs provider login, gives fixed next steps, and never renders provider-supplied diagnostic text or setup commands. A provider that needs login stays unavailable for commissioning. Owning mounted form test: `src/features/projects/PersonalRuntimeCommissioningForm.test.tsx`. This covers the status already advertised by Core, not a clean-account login or installer qualification.
+
 ## WORKSPACE-PERSISTENCE-1
 
 An older user-owned workspace migrates forward with its name and member data

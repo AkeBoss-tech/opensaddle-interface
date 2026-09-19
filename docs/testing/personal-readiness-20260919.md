@@ -1,0 +1,7 @@
+# Personal first-run readiness guidance
+
+Invariant: PERSONAL-RUNTIME-FIRST-RUN-1. The production commissioning form now distinguishes missing CLI from missing authentication using fixed guidance, including `codex login` and locally verified `claude auth login`. Untrusted provider diagnostics/setup commands are not rendered. The request builder rejects authentication explicitly reported as absent.
+
+Validation: seven focused form/service tests and TypeScript checks passed. The added mounted test failed before the repair on missing login guidance. Independent review and actual installed Claude help caught and corrected an initially incorrect login command; the same mounted test failed before that correction and passed afterward.
+
+Browser check: September 19, 2026, Chrome on macOS, local Vite fixture at `/opensaddle-interface/out/personal-readiness-preview/index.html`, rendering the actual production component with synthetic registered-project and harness records. Confirmed both fixed login commands, missing-CLI guidance, disabled unavailable radio inputs, and refusal to commission a selected unauthenticated agent. No private diagnostic or injected setup command was rendered. No browser console errors. Screenshot inspected in the task record. This isolated component check does not prove packaged installation, provider authentication, production shell styling, or a complete user journey. Temporary server and fixture are removed after inspection.
