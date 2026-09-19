@@ -1,0 +1,34 @@
+{
+  "schema_version": "opensaddle.ui-verification-receipt.v1",
+  "feature": "FACTORY-UI-1",
+  "date": "2026-09-19",
+  "environment": {
+    "interface": "Vite at http://127.0.0.1:53974",
+    "core": "real local Core API at http://127.0.0.1:53973 with synthetic project/source/worker fixture",
+    "provider_execution": false
+  },
+  "browser_observation": {
+    "tool": "native Chrome accessibility and screenshot through CUA",
+    "steps": [
+      "Selected existing signed Factory factory_delivery version 1 and current registered source",
+      "Compiled and visually reviewed Goal, two criteria, source revision and digest, adapter config, worker, paths, checks, scopes, and compile digest",
+      "Prepared exact Goal goal_0dbe17481edf4c408b2276c851501117",
+      "Launched once and navigated to task detail for run_329ec36b633044409bae9c55dcadd45a, visibly queued"
+    ],
+    "core_run_get_confirmed_factory_binding": true,
+    "coding_result_or_human_acceptance_observed": false
+  },
+  "checks": {
+    "focused_factory_tests": "9 passed",
+    "feature_tests": "410 passed",
+    "full_npm_test": "passed: 352 workspace, 410 feature, 2 scoped SDK tests; scoped SDK types passed",
+    "typecheck": "passed",
+    "build": "passed",
+    "diff_check": "passed"
+  },
+  "limits": [
+    "The fixture reports a worker identity but starts no provider process; queued Run is the tested boundary.",
+    "Coding result review and Factory criterion acceptance were verified by mounted UI/client tests, not this browser fixture.",
+    "The synthetic fixture omitted an optional task-recovery route, so the browser displayed unrelated Not Found toasts."
+  ]
+}
