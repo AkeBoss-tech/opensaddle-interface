@@ -63,6 +63,35 @@ test('agent-profile client rejects task replies that are not participant-message
   await assert.rejects(client.submitTask('ptc_1', 0, 'Inspect', 'key', []), /Agent task response is malformed/)
 })
 
+test('EXTERNAL-AGENT-BUILDER-1: client preserves one reviewed external worker across options, proposal and publish',async()=>{
+ const sent:unknown[]=[]
+ const external={...proposal(),definition:{...proposal().definition,harness:'external-agent-client',external_worker_id:'worker-external'}}
+ const client=new RemoteAgentProfileClient('https://control.example',()=> 'owner',undefined,async(url,init)=>{
+  const path=new URL(String(url)).pathname
+  if(path.endsWith('/agent-builder-options'))return Response.json({schema_version:'opensaddle.agent-builder-options.v1',project_id:'P1',execution_available:true,can_review:true,sources:[{source_id:'src_1',source_kind:'git',revision:'rev-1',snapshot_digest:digest}],harnesses:['external-agent-client'],external_workers:[{worker_id:'worker-external',credential_state:'active'},{worker_id:'worker-revoked',credential_state:'revoked'}],connector_actions:[]})
+  if(init?.method==='POST'&&path.endsWith('/agent-proposals')){sent.push(JSON.parse(String(init.body)));return Response.json(external)}
+  if(path.endsWith('/publish'))return Response.json({...external,status:'published'})
+  return Response.json({schema_version:'opensaddle.agent-proposal-list.v1',items:[external]})
+ })
+ const options=await client.options('P1')
+ assert.deepEqual((options as unknown as {externalWorkers:unknown}).externalWorkers,[{workerId:'worker-external',credentialState:'active'},{workerId:'worker-revoked',credentialState:'revoked'}])
+ const definition={...proposal().definition,title:'External reviewer',sourceId:'src_1',harness:'external-agent-client' as const,externalWorkerId:'worker-external',memorySourceIds:[],grants:[]}
+ const value=await client.propose('P1',definition)
+ assert.equal(value.definition.externalWorkerId,'worker-external')
+ assert.equal((sent[0] as Record<string,unknown>).external_worker_id,'worker-external')
+ const published=await client.publish(value.proposalId,value.definitionDigest)
+ assert.equal(published.definition.externalWorkerId,'worker-external')
+})
+
+test('EXTERNAL-AGENT-BUILDER-1: missing worker binding or worker inventory cannot become an external draft',async()=>{
+ const optionsClient=new RemoteAgentProfileClient('https://control.example',()=> 'owner',undefined,async()=>Response.json({schema_version:'opensaddle.agent-builder-options.v1',project_id:'P1',execution_available:true,can_review:true,sources:[],harnesses:['external-agent-client'],connector_actions:[]}))
+ await assert.rejects(optionsClient.options('P1'),/options response is malformed/)
+ const malformed={...proposal(),definition:{...proposal().definition,harness:'external-agent-client'}}
+ const listClient=new RemoteAgentProfileClient('https://control.example',()=> 'owner',undefined,async()=>Response.json({schema_version:'opensaddle.agent-proposal-list.v1',items:[malformed]}))
+ await assert.rejects(listClient.list('P1'),/external worker binding is malformed/)
+ await assert.rejects(listClient.propose('P1',{...definition,harness:'external-agent-client'}),/external worker binding is invalid/)
+})
+
 test('externally created proposal retains exact reviewed memory pins and task sends an explicit subset', async () => {
   const requests: RequestInit[] = []
   const pinned = { ...proposal('published'), definition: { ...proposal('published').definition, memory_source_ids: ['memory-1'] },

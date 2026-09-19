@@ -1191,3 +1191,17 @@ keeps its existing response size and deadline bounds. An active Run's open SSE
 stream cannot be delivered through the buffered IPC response and is not
 claimed as supported by this invariant. Owning test:
 `test/personalRuntimeProxy.test.ts`.
+
+## EXTERNAL-AGENT-BUILDER-1
+
+When Core advertises `external-agent-client`, the normal agent builder requires
+one currently advertised external worker with an active credential. Its exact
+ID is preserved in the proposal request and returned review, alongside the
+registered source ID and definition digest. A saved proposal does not switch
+to another worker if its credential becomes unavailable. External-agent
+research is unavailable in this editor; provider session references are
+labels, not permissions. The Core Run binds a current source revision and
+digest at task admission. Owning tests: `src/services/remoteAgentProfiles.test.ts`
+and `src/features/projects/AgentSetupPage.test.tsx`. The People panel also
+withholds last-owner self-removal before POST, covered by
+`src/features/onboarding/ConnectedJourneySurface.test.tsx`.

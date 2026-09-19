@@ -13,6 +13,7 @@ const emptyDraft: Draft = {
   instructions: '',
   sourceId: '',
   harness: 'codex-app-server',
+  externalWorkerId: undefined,
   memorySourceIds: [],
   assumptionsText: '',
 }
@@ -155,6 +156,7 @@ export function AgentSetupSurface({
         setDraft((current) => ({ ...current,
           sourceId: choices.sources.some((source) => source.sourceId === current.sourceId) ? current.sourceId : choices.sources[0]?.sourceId ?? '',
           harness: choices.harnesses.includes(current.harness) ? current.harness : choices.harnesses[0] ?? 'codex-app-server',
+          externalWorkerId: current.harness==='external-agent-client' && choices.externalWorkers.some(worker=>worker.workerId===current.externalWorkerId&&worker.credentialState==='active') ? current.externalWorkerId : undefined,
           memorySourceIds: choices.memoryAvailable ? current.memorySourceIds.filter((id) => choices.memorySources.some((source) => source.sourceId === id)) : [],
         }))
       }
@@ -168,7 +170,7 @@ export function AgentSetupSurface({
   const research = async (event: FormEvent) => {
     event.preventDefault()
     const provider = researchProvider(options)
-    if (!client || !options?.researchAvailable || !provider || busy) return
+    if (!client || !options?.researchAvailable || !provider || draft.harness==='external-agent-client' || busy) return
     const queries = researchQueries.split('\n').map((item) => item.trim()).filter(Boolean)
     const candidates = researchConnectors.split(',').map((item) => item.trim()).filter(Boolean)
     if (!researchObjective.trim() || !queries.length || queries.length > 3 || candidates.length > 20) {
@@ -221,6 +223,9 @@ export function AgentSetupSurface({
       !options?.memoryAvailable || !options.memorySources.some((source) => source.sourceId === id))) {
       setError('Choose at most eight currently available reviewed memory sources.'); return
     }
+    if(draft.harness==='external-agent-client' && !options?.externalWorkers.some(worker=>worker.workerId===draft.externalWorkerId&&worker.credentialState==='active')){
+      setError('Choose a currently advertised external worker with an active credential.');return
+    }
     const request = generation.current
     setBusy(true)
     setError('')
@@ -231,6 +236,7 @@ export function AgentSetupSurface({
         instructions: draft.instructions.trim(),
         sourceId: draft.sourceId.trim(),
         harness: draft.harness,
+        ...(draft.harness==='external-agent-client'?{externalWorkerId:draft.externalWorkerId}:{}),
         grants,
         memorySourceIds: draft.memorySourceIds,
         assumptions,
@@ -275,6 +281,9 @@ export function AgentSetupSurface({
 
   const publish = async () => {
     if (!client || !selected || selected.status !== 'proposed' || !acknowledged || busy) return
+    if(selected.definition.harness==='external-agent-client' && !options?.externalWorkers.some(worker=>worker.workerId===selected.definition.externalWorkerId&&worker.credentialState==='active')){
+      setError('The reviewed external worker no longer has an active credential. Refresh before publishing.');return
+    }
     const request = generation.current
     setBusy(true)
     setError('')
@@ -297,6 +306,9 @@ export function AgentSetupSurface({
   const startTask = async (event: FormEvent) => {
     event.preventDefault()
     if (!client || !selected?.participantId || !task.trim() || busy) return
+    if(selected.definition.harness==='external-agent-client' && !options?.externalWorkers.some(worker=>worker.workerId===selected.definition.externalWorkerId&&worker.credentialState==='active')){
+      setError('The reviewed external worker no longer has an active credential. Refresh before starting a task.');return
+    }
     const selectableMemoryIds = (options?.memoryAvailable ? selected.definition.memorySourceIds.filter((id) => {
       const current = options.memorySources.find((source) => source.sourceId === id)
       const reviewed = selected.memoryBindings[id]
@@ -337,7 +349,9 @@ export function AgentSetupSurface({
   const simpleProperties = selectedAction?.input.properties ?? {}
   const actionEditable = selectedAction && Object.entries(simpleProperties).some(([, property]) => ['string', 'integer', 'boolean'].includes(property.type ?? ''))
     && (selectedAction.input.required ?? []).every((key) => ['string', 'integer', 'boolean'].includes(simpleProperties[key]?.type ?? ''))
-  const onlineResearch = researchProvider(options)
+  const onlineResearch = draft.harness==='external-agent-client'?undefined:researchProvider(options)
+  const externalWorkerReady = draft.harness!=='external-agent-client' || options?.externalWorkers.some(worker=>worker.workerId===draft.externalWorkerId&&worker.credentialState==='active')===true
+  const selectedExternalReady = selected?.definition.harness!=='external-agent-client' || options?.externalWorkers.some(worker=>worker.workerId===selected.definition.externalWorkerId&&worker.credentialState==='active')===true
   const selectableTaskMemorySources = selected && options?.memoryAvailable ? selected.definition.memorySourceIds.filter((id) => {
     const current = options.memorySources.find((source) => source.sourceId === id)
     const reviewed = selected.memoryBindings[id]
@@ -356,7 +370,8 @@ export function AgentSetupSurface({
     <section className="cc-panel agent-setup-research" aria-label="Online agent research">
       <h2>Optional online research</h2>
       {!options && <p>Checking research availability…</p>}
-      {options && (!options.researchAvailable || !onlineResearch) && <p>Online research is unavailable on this Core connection. You can still write a draft and add HTTPS references manually.</p>}
+      {options && draft.harness==='external-agent-client' && <p>Online research does not support external-agent drafts. You can write a draft and add HTTPS references manually.</p>}
+      {options && draft.harness!=='external-agent-client' && (!options.researchAvailable || !onlineResearch) && <p>Online research is unavailable on this Core connection. You can still write a draft and add HTTPS references manually.</p>}
       {options?.researchAvailable && onlineResearch && <>
         <p>{onlineResearch.scope} through {onlineResearch.name} (<code>{onlineResearch.domain}</code>). Your queries are sent to this external provider. Results are untrusted search-index excerpts; cited pages have not been opened or verified.</p>
         <form onSubmit={(event) => void research(event)}>
@@ -366,7 +381,7 @@ export function AgentSetupSurface({
           <button className="secondary-btn" type="submit" disabled={busy || !draft.sourceId || !options.harnesses.includes(draft.harness) || !researchObjective.trim() || !researchQueries.trim()}>Research draft ideas</button>
         </form>
       </>}
-      {researchResult && <div className="agent-setup-research-results">
+      {researchResult && draft.harness!=='external-agent-client' && <div className="agent-setup-research-results">
         <h3>Research results</h3><p>Checked {researchResult.checkedAt}. These excerpts are untrusted leads, not verified facts or permissions.</p>
         {researchResult.observations.length ? <ul>{researchResult.observations.map((item, index) => <li key={`${item.url}-${index}`}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> <span>({item.checkedAt})</span><p>{item.excerpt}</p><small>Search-index excerpt via {item.provider}; <a href={item.retrievedFrom} target="_blank" rel="noreferrer">provider endpoint</a>. Cited page not opened.</small></li>)}</ul> : <p>No cited search excerpts were returned.</p>}
         <h4>Connector ideas</h4>
@@ -385,7 +400,8 @@ export function AgentSetupSurface({
           <div className="form-row"><label>Objective<textarea aria-label="Objective" required maxLength={4000} disabled={busy} value={draft.objective} onChange={(event) => setDraft((current) => ({ ...current, objective: event.target.value }))} /></label></div>
           <div className="form-row"><label>Instructions<textarea aria-label="Instructions" required maxLength={12000} disabled={busy} value={draft.instructions} onChange={(event) => setDraft((current) => ({ ...current, instructions: event.target.value }))} /></label></div>
           <div className="form-row"><label>Registered source<select aria-label="Registered source" required disabled={busy || !options?.sources.length} value={draft.sourceId} onChange={(event) => setDraft((current) => ({ ...current, sourceId: event.target.value }))}>{!options?.sources.length && <option value="">No registered sources</option>}{options?.sources.map((source) => <option key={source.sourceId} value={source.sourceId}>{source.sourceKind} · {source.revision} · {source.sourceId}</option>)}</select></label></div>
-          <div className="form-row"><label>Supported agent runtime<select aria-label="Agent runtime" disabled={busy || !options?.harnesses.length} value={draft.harness} onChange={(event) => setDraft((current) => ({ ...current, harness: event.target.value as Draft['harness'] }))}>{!options?.harnesses.length && <option value="">No supported agent runtime</option>}{options?.harnesses.map((harness) => <option key={harness} value={harness}>{harness === 'codex-app-server' ? 'Codex' : harness === 'claude-code-stream-json' ? 'Claude Code' : 'Cursor'}</option>)}</select></label></div>
+          <div className="form-row"><label>Supported agent runtime<select aria-label="Agent runtime" disabled={busy || !options?.harnesses.length} value={draft.harness} onChange={(event) => {setDraft((current) => ({ ...current, harness: event.target.value as Draft['harness'], externalWorkerId:undefined }));setResearchResult(undefined)}}>{!options?.harnesses.length && <option value="">No supported agent runtime</option>}{options?.harnesses.map((harness) => <option key={harness} value={harness}>{harness === 'codex-app-server' ? 'Codex' : harness === 'claude-code-stream-json' ? 'Claude Code' : harness === 'external-agent-client' ? 'External agent client' : 'Cursor'}</option>)}</select></label></div>
+          {draft.harness==='external-agent-client' && <div className="agent-setup-optional"><label>External worker<select aria-label="External worker" value={draft.externalWorkerId??''} disabled={busy} onChange={(event)=>setDraft(current=>({...current,externalWorkerId:event.target.value||undefined}))}><option value="">Choose an active enrolled worker</option>{options?.externalWorkers.map(worker=><option key={worker.workerId} value={worker.workerId} disabled={worker.credentialState!=='active'}>{worker.workerId} · credential {worker.credentialState}</option>)}</select></label><p>The definition names one enrolled worker and registered source. Core binds the source revision and digest when a task is admitted. Provider session references are labels, not permissions; Core checks actions against the Run and scoped agent session.</p></div>}
           <div className="agent-setup-optional agent-setup-memory" aria-label="Reviewed memory sources">
             <h3>Reviewed memory sources</h3>
             <p>No memory is enabled by default. Select up to eight current, reviewed sources to include in this agent’s publish review. Each task chooses its own subset later.</p>
@@ -406,7 +422,7 @@ export function AgentSetupSurface({
             {selectedAction && actionEditable && <>{Object.entries(simpleProperties).map(([key, property]) => ['string', 'integer', 'boolean'].includes(property.type ?? '') && <label key={key}>{property.title ?? key}{(selectedAction.input.required ?? []).includes(key) ? ' (required)' : ' (optional)'}{property.type === 'boolean' ? <select aria-label={`Exact ${key}`} disabled={busy} value={grantValues[key] ?? ''} onChange={(event) => setGrantValues((current) => ({ ...current, [key]: event.target.value }))}><option value="">No exact value</option><option value="true">true</option><option value="false">false</option></select> : <input aria-label={`Exact ${key}`} type={property.type === 'integer' ? 'number' : 'text'} step={property.type === 'integer' ? '1' : undefined} disabled={busy} value={grantValues[key] ?? ''} onChange={(event) => setGrantValues((current) => ({ ...current, [key]: event.target.value }))} />}</label>)}<label>Why this access is needed<input aria-label="Permission rationale" disabled={busy} value={grantRationale} onChange={(event) => setGrantRationale(event.target.value)} /></label><button type="button" disabled={busy} onClick={addGrant}>Add exact read permission</button></>}
           </div>
           <details className="agent-setup-optional"><summary>Add references ({references.length})</summary><p>Optional references must be HTTPS and are reviewed with this draft. Search excerpts remain unverified until you inspect the cited pages.</p>{references.length > 0 && <ul>{references.map((item, index) => <li key={`${item.url}-${index}`}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> — {item.finding} <button type="button" disabled={busy} onClick={() => setReferences((current) => current.filter((_, position) => position !== index))}>Remove reference {index + 1}</button></li>)}</ul>}<label>URL<input aria-label="Reference URL" disabled={busy} value={evidence.url} onChange={(event) => setEvidence((current) => ({ ...current, url: event.target.value }))} /></label><label>Title<input aria-label="Reference title" disabled={busy} value={evidence.title} onChange={(event) => setEvidence((current) => ({ ...current, title: event.target.value }))} /></label><label>Finding<textarea aria-label="Reference finding" disabled={busy} value={evidence.finding} onChange={(event) => setEvidence((current) => ({ ...current, finding: event.target.value }))} /></label><button type="button" disabled={busy} onClick={addReference}>Add reference</button></details>
-          <button className="primary-btn" type="submit" disabled={busy || !options || !options.sources.some((source) => source.sourceId === draft.sourceId) || !options.harnesses.includes(draft.harness) || !draft.title.trim() || !draft.objective.trim() || !draft.instructions.trim()}>Create draft for review</button>
+          <button className="primary-btn" type="submit" disabled={busy || !options || !options.sources.some((source) => source.sourceId === draft.sourceId) || !options.harnesses.includes(draft.harness) || !externalWorkerReady || !draft.title.trim() || !draft.objective.trim() || !draft.instructions.trim()}>Create draft for review</button>
         </form>
       </section>
 
@@ -418,7 +434,8 @@ export function AgentSetupSurface({
         {selected && <article className="agent-setup-definition">
           <span className="eyebrow">{selected.status === 'published' ? 'Published agent' : 'Exact draft to review'}</span>
           <h3>{selected.definition.title}</h3><p>{selected.definition.objective}</p>
-          <dl><dt>Source</dt><dd><code>{selected.definition.sourceId}</code></dd><dt>Runtime</dt><dd>{selected.definition.harness === 'codex-app-server' ? 'Codex' : selected.definition.harness === 'claude-code-stream-json' ? 'Claude Code' : 'Cursor'}</dd><dt>Digest</dt><dd><code>{selected.definitionDigest}</code></dd></dl>
+          <dl><dt>Source</dt><dd><code>{selected.definition.sourceId}</code></dd><dt>Runtime</dt><dd>{selected.definition.harness === 'codex-app-server' ? 'Codex' : selected.definition.harness === 'claude-code-stream-json' ? 'Claude Code' : selected.definition.harness==='external-agent-client'?'External agent client':'Cursor'}</dd>{selected.definition.harness==='external-agent-client'&&<><dt>Reviewed external worker</dt><dd><code>{selected.definition.externalWorkerId}</code> · {selectedExternalReady?'active credential advertised':'credential unavailable or changed'}</dd></>}<dt>Digest</dt><dd><code>{selected.definitionDigest}</code></dd></dl>
+          {selected.definition.harness==='external-agent-client'&&<p>This definition names the source and worker shown above. Core binds the registered source revision and digest when a task is admitted. Provider session references are labels, not permissions; each action still needs Run-scoped authorization.</p>}
           <h4>Instructions to the agent</h4><pre>{selected.definition.instructions}</pre>
           <h4>Connector permissions</h4>{selected.definition.grants.length ? <ul>{selected.definition.grants.map((grant, index) => <li key={index}><code>{grant.connector}/{grant.action} {JSON.stringify(grant.argumentEquals)}</code> — {grant.rationale}</li>)}</ul> : <p>None requested</p>}
           <h4>Reviewed memory bindings</h4>
@@ -431,7 +448,7 @@ export function AgentSetupSurface({
           })}</ul> : <p>None reviewed. This agent has no memory access.</p>}
           <h4>Assumptions</h4><ul>{selected.definition.assumptions.map((item) => <li key={item}>{item}</li>)}</ul>
           {selected.definition.evidence.length > 0 && <><h4>References</h4><ul>{selected.definition.evidence.map((item) => <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> — {item.finding}</li>)}</ul></>}
-          {selected.status === 'proposed' && ((canReview ?? viewerCanReview) ? <div className="agent-setup-publish"><label><input type="checkbox" checked={acknowledged} disabled={busy} onChange={(event) => setAcknowledged(event.target.checked)} />I reviewed the instructions, assumptions, exact connector permissions, and memory bindings.</label><button className="primary-btn" type="button" disabled={busy || !acknowledged} onClick={() => void publish()}>Publish reviewed agent</button></div> : <p>Only a Project owner or admin can publish this exact draft.</p>)}
+          {selected.status === 'proposed' && ((canReview ?? viewerCanReview) ? <div className="agent-setup-publish"><label><input type="checkbox" checked={acknowledged} disabled={busy || !selectedExternalReady} onChange={(event) => setAcknowledged(event.target.checked)} />I reviewed the instructions, assumptions, exact connector permissions, memory bindings, and the selected worker when external.</label><button className="primary-btn" type="button" disabled={busy || !acknowledged || !selectedExternalReady} onClick={() => void publish()}>Publish reviewed agent</button>{!selectedExternalReady&&<p>Refresh to review an active credential for the selected external worker. This draft will not switch workers automatically.</p>}</div> : <p>Only a Project owner or admin can publish this exact draft.</p>)}
           {selected.status === 'published' && selected.participantId && (options?.executionAvailable ? <form className="agent-setup-run" onSubmit={(event) => void startTask(event)}>
             <h4>3. Start a task</h4><p>This requests one Run from the published agent. Its policy and memory source access are checked again by Core.</p>
             <label>Task<textarea aria-label="Agent task" disabled={busy} value={task} onChange={(event) => setTask(event.target.value)} /></label>
@@ -441,7 +458,7 @@ export function AgentSetupSurface({
                 onChange={(event) => setTaskMemoryIds((current) => event.target.checked ? [...current, id] : current.filter((item) => item !== id))} />
                 <span>{id} · {selected.memoryBindings[id].classification} · {selected.memoryBindings[id].resourceRef.version}</span></label>)}
             </div>
-            <button className="primary-btn" type="submit" disabled={busy || !task.trim()}>Start task</button>
+            <button className="primary-btn" type="submit" disabled={busy || !task.trim() || !selectedExternalReady}>Start task</button>
             {taskRunId && <p role="status">Run admitted. <Link to={`/project/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskRunId)}`}>Open this Run</Link></p>}
           </form> : <p>Task execution is unavailable on this Core connection. This published definition remains saved for review.</p>)}
         </article>}

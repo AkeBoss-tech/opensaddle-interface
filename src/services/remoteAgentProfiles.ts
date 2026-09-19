@@ -1,4 +1,4 @@
-export type AgentHarness = 'codex-app-server' | 'claude-code-stream-json' | 'cursor-agent-cli'
+export type AgentHarness = 'codex-app-server' | 'claude-code-stream-json' | 'cursor-agent-cli' | 'external-agent-client'
 
 export interface AgentGrant {
   connector: string
@@ -19,6 +19,7 @@ export interface AgentDefinition {
   instructions: string
   sourceId: string
   harness: AgentHarness
+  externalWorkerId?: string
   grants: AgentGrant[]
   memorySourceIds: string[]
   assumptions: string[]
@@ -80,6 +81,7 @@ export interface AgentBuilderOptions {
   memorySources: AgentMemorySource[]
   sources: Array<{ sourceId: string; sourceKind: string; revision: string; snapshotDigest: string }>
   harnesses: AgentHarness[]
+  externalWorkers: Array<{ workerId: string; credentialState: 'active' | 'revoked' | 'unavailable' }>
   connectorActions: Array<{ connector: string; action: string; title: string; input: { required?: string[]; properties?: Record<string, { type?: string; title?: string; description?: string; enum?: Array<string | number | boolean>; minimum?: number; maximum?: number; min_length?: number; max_length?: number; pattern?: string }> } }>
 }
 
@@ -141,6 +143,7 @@ type WireDefinition = {
   instructions: string
   source_id: string
   harness: AgentHarness
+  external_worker_id?: string | null
   grants: Array<{ connector: string; action: string; argument_equals: Record<string, string | number | boolean>; rationale: string }>
   memory_source_ids?: string[]
   assumptions: string[]
@@ -222,6 +225,10 @@ function memorySource(value: unknown): AgentMemorySource {
 }
 
 function proposal(value: WireProposal): AgentProposal {
+  const externalWorkerId=value.definition.external_worker_id
+  if(value.definition.harness==='external-agent-client'
+    ? typeof externalWorkerId!=='string'||!externalWorkerId||externalWorkerId.length>200
+    : externalWorkerId!==undefined&&externalWorkerId!==null)throw Error('Agent proposal external worker binding is malformed')
   const memorySourceIds = value.definition.memory_source_ids ?? []
   const rawBindings = value.memory_bindings ?? {}
   if (!Array.isArray(memorySourceIds) || memorySourceIds.length > 8
@@ -250,6 +257,7 @@ function proposal(value: WireProposal): AgentProposal {
       instructions: value.definition.instructions,
       sourceId: value.definition.source_id,
       harness: value.definition.harness,
+      ...(typeof externalWorkerId==='string'?{externalWorkerId}:{}),
       grants: value.definition.grants.map((grant) => ({
         connector: grant.connector,
         action: grant.action,
@@ -269,12 +277,16 @@ function proposal(value: WireProposal): AgentProposal {
 }
 
 function wireDefinition(value: AgentDefinition): WireDefinition {
+  if(value.harness==='external-agent-client'
+    ? typeof value.externalWorkerId!=='string'||!value.externalWorkerId||value.externalWorkerId.length>200
+    : value.externalWorkerId!==undefined)throw Error('Agent definition external worker binding is invalid')
   return {
     title: value.title,
     objective: value.objective,
     instructions: value.instructions,
     source_id: value.sourceId,
     harness: value.harness,
+    ...(value.harness==='external-agent-client'?{external_worker_id:value.externalWorkerId}:{}),
     grants: value.grants.map((grant) => ({
       connector: grant.connector,
       action: grant.action,
@@ -324,13 +336,24 @@ export class RemoteAgentProfileClient implements AgentProfileClient {
       memory_available?: boolean; memory_sources?: unknown[]
       sources: Array<{ source_id: string; source_kind: string; revision: string; snapshot_digest: string }>
       harnesses: AgentHarness[]
+      external_workers?: Array<{ worker_id:string; credential_state:string }>
       connector_actions: AgentBuilderOptions['connectorActions']
     }>(`/api/v2/projects/${encodeURIComponent(projectId)}/agent-builder-options`)
     if (value.schema_version !== 'opensaddle.agent-builder-options.v1' || value.project_id !== projectId
         || !Array.isArray(value.sources) || !Array.isArray(value.harnesses) || !Array.isArray(value.connector_actions)
-        || (value.memory_sources !== undefined && !Array.isArray(value.memory_sources))) {
+        || value.harnesses.some(harness=>!['codex-app-server','claude-code-stream-json','cursor-agent-cli','external-agent-client'].includes(harness))
+        || (value.memory_sources !== undefined && !Array.isArray(value.memory_sources))
+        || (value.external_workers !== undefined && !Array.isArray(value.external_workers))
+        || (value.external_workers?.length??0)>10000
+        || (value.harnesses.includes('external-agent-client') && !Array.isArray(value.external_workers))) {
       throw new Error('Agent builder options response is malformed')
     }
+    const externalWorkers=(value.external_workers??[]).map((worker)=>{
+      if(!worker||typeof worker.worker_id!=='string'||!worker.worker_id||worker.worker_id.length>200
+        || !['active','revoked','unavailable'].includes(worker.credential_state))throw Error('Agent external worker options response is malformed')
+      return {workerId:worker.worker_id,credentialState:worker.credential_state as 'active'|'revoked'|'unavailable'}
+    })
+    if(new Set(externalWorkers.map(worker=>worker.workerId)).size!==externalWorkers.length)throw Error('Agent external worker options response is malformed')
     return {
       executionAvailable: value.execution_available === true,
       canReview: value.can_review === true,
@@ -342,11 +365,13 @@ export class RemoteAgentProfileClient implements AgentProfileClient {
       sources: value.sources.map((source) => ({ sourceId: source.source_id, sourceKind: source.source_kind,
         revision: source.revision, snapshotDigest: source.snapshot_digest })),
       harnesses: value.harnesses,
+      externalWorkers,
       connectorActions: value.connector_actions,
     }
   }
 
   async research(projectId: string, request: AgentResearchRequest): Promise<AgentResearchDossier> {
+    if(request.harness==='external-agent-client')throw Error('Online research is unavailable for external agents')
     const value = await this.request<WireResearchDossier>(`/api/v2/projects/${encodeURIComponent(projectId)}/agent-research`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
