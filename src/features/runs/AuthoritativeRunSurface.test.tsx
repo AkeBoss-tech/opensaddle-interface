@@ -13,14 +13,18 @@ test('running task loads exact status and cancellation stays requested until aut
  const authority:AuthoritativeRunAuthority={runDetail:async(id)=>{assert.equal(id,'run-real');return{...detail,status,cancellationRequested:requested}},cancel:async(id)=>{assert.equal(id,'run-real');requests++;requested=true}}
  let view!:ReactTestRenderer
  await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} runId="run-real"/></MemoryRouter>);await flush()})
+ try {
  assert.match(JSON.stringify(view.toJSON()),/Fix actual bug/);assert.doesNotMatch(JSON.stringify(view.toJSON()),/No local runs yet/)
  await act(async()=>{button(view,'Request cancellation').props.onClick();button(view,'Request cancellation').props.onClick();await flush()})
  assert.equal(requests,1);assert.match(JSON.stringify(view.toJSON()),/Cancellation requested/);assert.doesNotMatch(JSON.stringify(view.toJSON()),/Cancellation acknowledged/)
  status='cancelled'
  await act(async()=>{button(view,'Refresh task status').props.onClick();await flush()})
  assert.match(JSON.stringify(view.toJSON()),/Cancellation acknowledged/)
+ assert.match(JSON.stringify(view.toJSON()),/Previously dispatched effects may still have occurred/)
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/Run is stopped/)
  assert.match(view.root.findAllByType('a').find(node=>node.children.join('')==='Inspect result artifacts')!.props.href,/run=run-real.*project=P/)
- await act(async()=>view.unmount());assert.equal(requests,1)
+ } finally {await act(async()=>view.unmount())}
+ assert.equal(requests,1)
 })
 test('cancelled task shows its terminal state without treating absent result bytes as an access failure',async()=>{
  let reads=0
@@ -52,6 +56,56 @@ test('backend loss clears protected status and never becomes an empty local run 
  failed=true;await act(async()=>{button(view,'Refresh task status').props.onClick();await flush()})
  assert.match(JSON.stringify(view.toJSON()),/Task unavailable.*backend disconnected/);assert.doesNotMatch(JSON.stringify(view.toJSON()),/Fix actual bug|No local runs yet/)
  await act(async()=>view.unmount())
+})
+
+// PROJECT-TASK-JOURNEY-20260919: terminal result access is rechecked while visible.
+test('completed task clears result and audit after Project access is revoked',async t=>{
+ const originalInterval=globalThis.setInterval
+ let poll:(()=>void)|undefined,denied=false
+ globalThis.setInterval=((handler:Parameters<typeof setInterval>[0])=>{
+  if(typeof handler==='function')poll=()=>handler()
+  return 1 as unknown as ReturnType<typeof setInterval>
+ }) as typeof setInterval
+ t.after(()=>{globalThis.setInterval=originalInterval})
+ const authority:AuthoritativeRunAuthority={
+  runDetail:async()=>{if(denied)throw Error('Project access revoked');return {...detail,status:'completed'}},
+  review:async()=>({runId:'run-real',resource:{artifact_id:'artifact-real',digest:'a'.repeat(64)},text:'PRIVATE PUBLISHED RESULT'}),
+  connectorAudit:async()=>({runId:'run-real',projectId:'P',complete:true,items:[{sequence:1,timestamp:'2026-09-19T00:00:00Z',state:'completed'}]}),
+ }
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} runId="run-real" projectId="P"/></MemoryRouter>);await flush()})
+ try {
+  assert.match(JSON.stringify(view.toJSON()),/PRIVATE PUBLISHED RESULT/)
+  await act(async()=>{button(view,'Inspect connector activity').props.onClick();await flush()})
+  assert.match(JSON.stringify(view.toJSON()),/Audit stream ended/)
+  denied=true
+  await act(async()=>{poll?.();await flush()})
+  assert.match(JSON.stringify(view.toJSON()),/Task unavailable.*Project access revoked/)
+  assert.doesNotMatch(JSON.stringify(view.toJSON()),/PRIVATE PUBLISHED RESULT|Audit stream ended|Fix actual bug/)
+ } finally {await act(async()=>view.unmount())}
+})
+
+// PROJECT-TASK-JOURNEY-20260919: the heading uses Core's exact original task.
+test('agent Run heading uses the authoritative user task and discloses execution instructions separately',async t=>{
+ const {RemoteJourneyClient}=await import('../../services/remoteJourney')
+ const original=globalThis.fetch
+ t.after(()=>{globalThis.fetch=original})
+ globalThis.fetch=async input=>{
+  const path=new URL(String(input)).pathname
+  if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'owner',role:'owner',status:'active'}]})
+  assert.equal(path,'/api/v2/runs/run-real')
+  return Response.json({run_id:'run-real',project_id:'P',task:'REVIEWED PRIVATE INSTRUCTIONS: execute exact scope. USER TASK: Write a report.',
+   user_task:'Write a report.',status:'running',requested_by:'owner',cancellation_requested:false,
+   policy:{obligations:{agent_definition_digest:'a'.repeat(64)}}})
+ }
+ const authority=new RemoteJourneyClient('https://core.example',()=> 'owner')
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} runId="run-real" projectId="P"/></MemoryRouter>);await flush()})
+ try {
+  const heading=view.root.findByType('h1')
+  assert.equal(heading.children.join(''),'Write a report.')
+  assert.equal(view.root.findAllByType('details').some(node=>node.findAllByType('summary').some(summary=>summary.children.join('')==='Execution instructions')),true)
+ } finally {await act(async()=>view.unmount())}
 })
 
 // PROJECT-TASK-DETAIL: a Perspective cannot substitute another project's Run.

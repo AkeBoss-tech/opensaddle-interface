@@ -28,7 +28,7 @@ type WireSnapshot = {
     updated_at?: string
     available_actions?: string[]
   }>
-  active_runs?: Array<{ run_id: string; project_id: string; task?: string; status: string; updated_at?: string }>
+  active_runs?: Array<{ run_id: string; project_id: string; task?: string; user_task?: string; status: string; updated_at?: string }>
   projects?: Array<{
     project_id: string
     status: 'active' | 'blocked' | 'paused' | 'done' | 'unknown'
@@ -42,6 +42,7 @@ type WireSnapshot = {
     project_id: string
     run_id?: string
     title: string
+    user_task?: string
     summary?: string
     verified: boolean
     completed_at: string
@@ -99,7 +100,7 @@ export class RemoteCommandCenterClient implements CommandCenterClient {
         availableActions: item.available_actions ?? [],
       })),
       activeRuns: (value.active_runs ?? []).map((run) => ({
-        runId: run.run_id, projectId: run.project_id, task: run.task,
+        runId: run.run_id, projectId: run.project_id, task: typeof run.user_task === 'string' && run.user_task.trim() ? run.user_task : run.task,
         status: run.status, updatedAt: run.updated_at,
       })),
       projects: (value.projects ?? []).map((project) => ({
@@ -109,7 +110,8 @@ export class RemoteCommandCenterClient implements CommandCenterClient {
       })),
       outcomes: (value.outcomes ?? []).map((outcome) => ({
         id: outcome.id, projectId: outcome.project_id, runId: outcome.run_id,
-        title: outcome.title, summary: outcome.summary, verified: outcome.verified,
+        title: typeof outcome.user_task === 'string' && outcome.user_task.trim() ? outcome.user_task : outcome.title,
+        summary: outcome.summary, verified: outcome.verified,
         completedAt: outcome.completed_at,
       })),
       unavailableSections: value.unavailable_sections ?? [],
