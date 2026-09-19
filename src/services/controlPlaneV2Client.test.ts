@@ -47,6 +47,22 @@ describe('ControlPlaneV2Client', () => {
     assert.deepEqual(events.map((event) => event.sequence), [4])
   })
 
+  it('PROJECT-RUN-AUDIT-PAGE-1: reads one finite active-Run event page with its exact cursor', async () => {
+    let requestUrl = ''
+    const client = new ControlPlaneV2Client('https://control.example', {
+      fetchImplementation: async (url) => {
+        requestUrl = String(url)
+        return json({ schema_version: 'opensaddle.run-event-page.v1', run_id: 'run_1',
+          events: [{ event_id: 'evt_4', run_id: 'run_1', sequence: 4, type: 'agent_connector.requested', payload: {}, timestamp: '2026-09-19T06:00:00Z' }],
+          next_after_sequence: 4, truncated: true })
+      },
+    })
+    const page = await client.eventPage('run_1', { afterSequence: -1, limit: 100 })
+    assert.equal(requestUrl, 'https://control.example/api/v2/runs/run_1/event-page?after_sequence=-1&limit=100')
+    assert.equal(page.next_after_sequence, 4)
+    assert.equal(page.truncated, true)
+  })
+
   it('uses the external-session create, list, and checkpoint endpoints only for observed records', async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = []
     const session = { session_id: 'ses_1', project_id: 'project-1', harness: 'codex', external_session_id: 'thread-1', transcript_locator: 'file:///transcript', workspace_locator: null, authority_mode: 'source_managed', source_capabilities: { read: true }, checkpoint_digest: null, authority_snapshot: {authority_mode:'source_managed',opensaddle_enforcement:false}, authority_hash: 'hash', created_by: 'alice', created_at: 'now', updated_at: 'now' }

@@ -5,6 +5,7 @@ import { RemoteMalleableShellClient } from './remoteMalleableShell'
 import type { AuthorizedContextHandle, PortableCheckpoint, PortableContinuationIntent } from '../features/onboarding/ConnectedJourneySurface'
 
 type Json = Record<string, unknown>
+const terminal = (status: string) => ['completed', 'failed', 'cancelled', 'interrupted'].includes(status)
 function displayTask(run: Json): string {
   if (run.user_task !== undefined && (typeof run.user_task !== 'string' || !run.user_task.trim() || run.user_task.length > 131072)) throw Error('Authoritative user task is invalid')
   if (typeof run.user_task === 'string') return run.user_task
@@ -41,9 +42,10 @@ export class RemoteJourneyClient {
   private readonly portableContinuationAvailable: boolean
   private readonly nativeSessionResume: boolean
   private readonly membershipRemovalAvailable: boolean
+  private readonly runEventPageAvailable: boolean
   private readonly delegationIntents = new Map<string, string>()
   private readonly storage?: Storage
-  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false, authorizedContextAvailable = false, portableContinuationAvailable = false, nativeSessionResume = false, storage: Storage | undefined = typeof window === 'undefined' ? undefined : window.localStorage, membershipRemovalAvailable = false) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable; this.authorizedContextAvailable = authorizedContextAvailable; this.portableContinuationAvailable=portableContinuationAvailable;this.nativeSessionResume=nativeSessionResume;this.storage=storage;this.membershipRemovalAvailable=membershipRemovalAvailable }
+  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false, authorizedContextAvailable = false, portableContinuationAvailable = false, nativeSessionResume = false, storage: Storage | undefined = typeof window === 'undefined' ? undefined : window.localStorage, membershipRemovalAvailable = false, runEventPageAvailable = false) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable; this.authorizedContextAvailable = authorizedContextAvailable; this.portableContinuationAvailable=portableContinuationAvailable;this.nativeSessionResume=nativeSessionResume;this.storage=storage;this.membershipRemovalAvailable=membershipRemovalAvailable;this.runEventPageAvailable=runEventPageAvailable }
 
   private async request(path: string, method: string, body?: unknown, signal?: AbortSignal): Promise<Json> {
     const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-OpenSaddle-User': this.user(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body), signal })
@@ -135,7 +137,8 @@ export class RemoteJourneyClient {
     if (subject !== this.user()) throw Error('Run authority changed during status read')
     return { runId, projectId, task, executionInstructions: run.task !== task ? run.task : undefined, status: run.status, cancellationRequested: run.cancellation_requested, canCancel: manager || run.requested_by === subject, workerId: typeof run.assigned_worker_id === 'string' ? run.assigned_worker_id : undefined, updatedAt: typeof run.updated_at === 'string' ? run.updated_at : undefined, codingTask: (((run.policy as Json | undefined)?.obligations as Json | undefined)?.coding_task as Json | undefined)?.schema_version === 'opensaddle.coding-task.v1', ...this.authorizedContextSelection(run) }
   }
-  async connectorAudit(projectId: string, runId: string, signal?: AbortSignal): Promise<ConnectorAudit> {
+  async connectorAudit(projectId: string, runId: string, signal?: AbortSignal, afterSequence = -1): Promise<ConnectorAudit> {
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < -1) throw Error('Run audit cursor is invalid')
     const subject = this.user()
     signal?.throwIfAborted()
     const overall = new AbortController(), stream = new AbortController()
@@ -150,34 +153,43 @@ export class RemoteJourneyClient {
     const items: ConnectorAuditItem[] = []
     const digest = (value: unknown) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : undefined
     const name = (value: unknown) => typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,100}$/.test(value) ? value : undefined
-    let complete = false, count = 0, last = -1
+    let complete = false, count = 0, last = afterSequence, truncated = false
+    const capture = (event: {run_id:string;sequence:number;timestamp:string;type:string;payload:Record<string,unknown>}) => {
+      if (event.run_id !== runId || !Number.isSafeInteger(event.sequence) || event.sequence <= last ||
+        typeof event.timestamp !== 'string' || !Number.isFinite(Date.parse(event.timestamp))) throw Error('Run audit event identity is invalid')
+      last = event.sequence
+      const state = event.type.startsWith('agent_connector.') ? event.type.slice('agent_connector.'.length) : ''
+      if (['requested', 'completed', 'unknown', 'denied'].includes(state)) {
+        const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload : {}
+        if (payload.project_id !== projectId) throw Error('Run audit event Project is invalid')
+        const receipt = payload.receipt && typeof payload.receipt === 'object' && !Array.isArray(payload.receipt) ? payload.receipt as Json : {}
+        items.push({ sequence: event.sequence, timestamp: event.timestamp,
+          state: state as ConnectorAuditItem['state'], connector: name(payload.connector) ?? name(receipt.connector),
+          action: name(payload.action) ?? name(receipt.action),
+          requestDigest: digest(payload.request_digest) ?? digest(receipt.request_digest),
+          responseDigest: digest(receipt.response_digest), outcome: name(receipt.outcome) })
+      }
+    }
     try {
       const before = await this.runDetail(runId, overall.signal)
       overall.signal.throwIfAborted()
       if (before.projectId !== projectId || this.user() !== subject) throw Error('Run audit authority changed')
+      if (this.runEventPageAvailable) {
+        const page = await client.eventPage(runId, { afterSequence, limit: 100, signal: overall.signal })
+        for (const event of page.events) { overall.signal.throwIfAborted(); if (this.user() !== subject) throw Error('Run audit authority changed'); capture(event) }
+        if (page.next_after_sequence !== last || (page.truncated && page.events.length === 0)) throw Error('Run audit page cursor is invalid')
+        truncated = page.truncated
+      } else {
+      if (!terminal(before.status)) throw Error('Finite connector audit is unavailable for an active Run on this Core version')
+      if (afterSequence !== -1) throw Error('Connector audit pagination is unavailable on this Core version')
       let bounded = false, streamTimedOut = false
       const streamTimeout = setTimeout(() => { streamTimedOut = true; stream.abort() }, 3500)
       try {
         for await (const event of client.events(runId, { signal: stream.signal })) {
         overall.signal.throwIfAborted()
         if (this.user() !== subject) throw Error('Run audit authority changed')
-        if (event.run_id !== runId || !Number.isSafeInteger(event.sequence) || event.sequence <= last ||
-          typeof event.timestamp !== 'string' || !Number.isFinite(Date.parse(event.timestamp))) throw Error('Run audit event identity is invalid')
-        last = event.sequence
-        const state = event.type.startsWith('agent_connector.') ? event.type.slice('agent_connector.'.length) : ''
-        if (['requested', 'completed', 'unknown', 'denied'].includes(state)) {
-          const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload : {}
-          if (payload.project_id !== projectId) throw Error('Run audit event Project is invalid')
-          const receipt = payload.receipt && typeof payload.receipt === 'object' && !Array.isArray(payload.receipt) ? payload.receipt as Json : {}
-          const item: ConnectorAuditItem = { sequence: event.sequence, timestamp: event.timestamp,
-            state: state as ConnectorAuditItem['state'], connector: name(payload.connector) ?? name(receipt.connector),
-            action: name(payload.action) ?? name(receipt.action),
-            requestDigest: digest(payload.request_digest) ?? digest(receipt.request_digest),
-            responseDigest: digest(receipt.response_digest),
-            outcome: name(receipt.outcome) }
-          items.push(item)
-          if (items.length >= 100) { bounded = true; break }
-        }
+        capture(event)
+        if (items.length >= 100) { bounded = true; break }
         count++
         if (count >= 1000) { bounded = true; break }
         }
@@ -189,11 +201,13 @@ export class RemoteJourneyClient {
         stream.abort()
       }
       complete = !bounded && !streamTimedOut
+      }
       overall.signal.throwIfAborted()
       if (this.user() !== subject) throw Error('Run audit authority changed')
       const after = await this.runDetail(runId, overall.signal)
       overall.signal.throwIfAborted()
       if (after.projectId !== projectId || this.user() !== subject) throw Error('Run audit authority changed')
+      if (this.runEventPageAvailable) return { runId, projectId, items, complete: terminal(before.status) && terminal(after.status) && !truncated, mode:'page', nextAfterSequence:last, truncated, checkedAt:new Date().toISOString(), runStatus:after.status }
       return { runId, projectId, items, complete }
     } finally {
       clearTimeout(timeout)

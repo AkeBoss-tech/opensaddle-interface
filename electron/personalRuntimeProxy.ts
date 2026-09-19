@@ -66,6 +66,7 @@ const allowed:Array<[PersonalRuntimeProxyRequest['method'],RegExp]>=[
  ['GET',/^\/api\/v2\/command-invocations\/[A-Za-z0-9._~-]+$/],
  ['GET',/^\/api\/v2\/runs\/[A-Za-z0-9._~-]+\/connectors$/],
  ['GET',/^\/api\/v2\/runs\/[A-Za-z0-9._~-]+\/events(?:\?after_sequence=(?:0|[1-9][0-9]{0,14}))?$/],
+ ['GET',/^\/api\/v2\/runs\/[A-Za-z0-9._~-]+\/event-page\?after_sequence=(?:-1|0|[1-9][0-9]{0,14})&limit=(?:[1-9]|[1-9][0-9]|1[0-9][0-9]|200)$/],
  ['GET',/^\/api\/v2\/runs\/[A-Za-z0-9._~-]+\/connector-write-proposals$/],
  ['GET',/^\/api\/v2\/connector-write-proposals\/awp_[a-f0-9]{32}$/],
  ['POST',connectorWriteApproval],

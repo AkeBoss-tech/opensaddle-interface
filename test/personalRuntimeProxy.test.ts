@@ -66,6 +66,21 @@ test('PROJECT-RUN-AUDIT-DESKTOP-1: completed Run SSE events cross only a bounded
  for(const path of ['/api/v2/runs/run-one/events?after_sequence=-1','/api/v2/runs/run-one/events?after_sequence=1&admin=true','/api/v2/runs/run-one/events?after_sequence=9999999999999999999'])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},server),/path/)
  assert.equal(seen.length,2)
 })
+test('PROJECT-RUN-AUDIT-PAGE-1: desktop reads one finite active-Run page and rejects expanded queries',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',method:'GET' as const},seen:string[]=[]
+ const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);seen.push(request.url);assert.equal(request.headers.get('Authorization'),'Bearer private-token');return Response.json({schema_version:'opensaddle.run-event-page.v1',run_id:'run-one',events:[],next_after_sequence:-1,truncated:false})}
+ const path='/api/v2/runs/run-one/event-page?after_sequence=-1&limit=100'
+ const response=await proxyPersonalRuntimeRequest(handoff,{...base,path},server)
+ assert.equal(response.status,200)
+ assert.equal(seen.length,1)
+ for(const invalid of [
+  '/api/v2/runs/run-one/event-page',
+  '/api/v2/runs/run-one/event-page?after_sequence=-1&limit=201',
+  '/api/v2/runs/run-one/event-page?after_sequence=-1&limit=100&admin=true',
+  '/api/v2/runs/run-one/event-page?after_sequence=-2&limit=100',
+ ])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,path:invalid},server),/path/)
+ assert.equal(seen.length,1)
+})
 test('main proxy rejects a stale expected identity and cancels oversized streaming bodies',async()=>{await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'other',expectedProjectId:'project',path:'/api/v2/personal-runtime'},async()=>Response.json({})),/authority changed/);let cancelled=false;const body=new ReadableStream<Uint8Array>({pull(controller){controller.enqueue(new Uint8Array(1_048_576));},cancel(){cancelled=true}});await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'/api/v2/personal-runtime'},async()=>new Response(body)),/exceeded its bound/);assert.equal(cancelled,true)})
 
 test('desktop proxy permits explicit retained document lifecycle without wildcard paths',async()=>{

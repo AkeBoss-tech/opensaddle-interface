@@ -29,6 +29,35 @@ test('v2-only local startup preserves v2 services without probing legacy permiss
   } finally { globalThis.fetch = original }
 })
 
+test('PROJECT-RUN-AUDIT-PAGE-1: exact advertised finite capability enables active Run audit without SSE', async () => {
+  const original = globalThis.fetch
+  let pageReads = 0, streamReads = 0
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname
+    if (path === '/api/health') return Response.json({ detail: 'v2 only' }, { status: 404 })
+    if (path === '/api/v2/capabilities') return Response.json({ authenticated_subject: 'owner',
+      command_center: { available: true, path: '/api/v2/command-center', schema_version: 'opensaddle.command-center.v1' },
+      run_event_page_v1: { available: true, schema_version: 'opensaddle.run-event-page.v1',
+        path_template: '/api/v2/runs/{run_id}/event-page', max_limit: 200 } })
+    if (path.endsWith('/members')) return Response.json({ project_id: 'P', members: [] })
+    if (path.endsWith('/event-page')) { pageReads++; return Response.json({ schema_version:'opensaddle.run-event-page.v1',
+      run_id:'R',events:[],next_after_sequence:-1,truncated:false }) }
+    if (path.endsWith('/events')) { streamReads++; throw Error('active SSE must not be opened') }
+    if (path.endsWith('/runs/R')) return Response.json({ run_id:'R',project_id:'P',task:'Inspect',status:'running',
+      cancellation_requested:false,requested_by:'owner',policy:{obligations:{}} })
+    return Response.json({detail:'not found'},{status:404})
+  }
+  try {
+    const services = await initServices({ currentUserId:'stale',getGrants:()=>[],setGrants:()=>{},
+      connection:{id:'fixture',name:'Fixture',mode:'remote',baseUrl:'https://core.example',allowMockFallback:false} })
+    const audit = await services.journey!.connectorAudit!('P','R')
+    assert.equal(audit.mode,'page')
+    assert.equal(audit.complete,false)
+    assert.equal(pageReads,1)
+    assert.equal(streamReads,0)
+  } finally { globalThis.fetch = original }
+})
+
 test('legacy health still enables its advertised local project and permission clients', async () => {
   const original = globalThis.fetch
   const paths: string[] = []
