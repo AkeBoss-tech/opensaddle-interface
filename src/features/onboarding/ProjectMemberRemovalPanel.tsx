@@ -77,8 +77,8 @@ export function ProjectMemberRemovalPanel({ authority, projectId, snapshot, onRe
     </div>}
     {error && <p role="alert">{error}</p>}
     {stale && <button disabled={busy} onClick={() => void reload()}>Reload Project roster</button>}
-    {receipt && <p role="status">{receipt.subject} removed from this Project. {receipt.cancelledBeforeExecution} queued Runs and {receipt.cancelledPaused} paused Runs cancelled; {receipt.cancellationRequested} active Runs have cancellation requested, not confirmed stopped. {snapshot.membershipRemovalRevokesCredentials !== false
-      ? <>{receipt.revokedWorkerCredentials} issued worker credentials revoked; shared workers may need new credentials in other Projects.</>
-      : <>{receipt.removedWorkerAssignments} Project worker assignments removed. Externally issued credentials still require issuer revocation; this receipt does not confirm those credentials, invitations, agent sessions, or other grants were revoked.</>} Previously delivered data or completed external effects cannot be withdrawn.</p>}
+    {receipt && <p role="status">{receipt.subject} removed from this Project. {receipt.cancelledBeforeExecution} queued Run{receipt.cancelledBeforeExecution === 1 ? '' : 's'} and {receipt.cancelledPaused} paused Run{receipt.cancelledPaused === 1 ? '' : 's'} cancelled; {receipt.cancellationRequested} active Run{receipt.cancellationRequested === 1 ? '' : 's'} {receipt.cancellationRequested === 1 ? 'has' : 'have'} cancellation requested, not confirmed stopped. {snapshot.membershipRemovalRevokesCredentials !== false
+      ? <>{receipt.revokedWorkerCredentials} issued worker credential{receipt.revokedWorkerCredentials === 1 ? '' : 's'} revoked; shared workers may need new credentials in other Projects.</>
+      : <>{receipt.removedWorkerAssignments} Project worker assignment{receipt.removedWorkerAssignments === 1 ? '' : 's'} removed. Externally issued credentials still require issuer revocation; this receipt does not confirm those credentials, invitations, agent sessions, or other grants were revoked.</>} Previously delivered data or completed external effects cannot be withdrawn.</p>}
   </div>
 }

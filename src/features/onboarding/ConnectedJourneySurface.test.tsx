@@ -1,6 +1,26 @@
 import assert from'node:assert/strict';import test from'node:test';import React from'react';import{act,create,type ReactTestRenderer}from'react-test-renderer';import{ConnectedJourneySurface,type JourneyAuthority}from'./ConnectedJourneySurface';import{MemoryRouter}from'react-router-dom'
+import { RemoteJourneyClient } from '../../services/remoteJourney'
 (globalThis as typeof globalThis&{IS_REACT_ACT_ENVIRONMENT:boolean}).IS_REACT_ACT_ENVIRONMENT=true
 const snap=(projectId:string)=>({projectId,members:[{subject:'owner',role:'owner',status:'active'}],workers:[],canManage:true})
+const renderedText=(node:any):string=>typeof node==='string'?node:(node.children??[]).map(renderedText).join('')
+test('CONNECTED-MACHINE-STATUS-1: PostgreSQL worker without a reported status renders an unavailable state',async()=>{
+ const original=globalThis.fetch
+ globalThis.fetch=async input=>{
+  const path=new URL(String(input)).pathname
+  if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]})
+  if(path.endsWith('/members'))return Response.json({schema_version:'project-members.v1',project_id:'P',revision:1,viewer_subject:'owner',members:[{subject:'owner',role:'owner',status:'active'}]})
+  if(path.endsWith('/workers'))return Response.json({schema_version:'project-workers.v1',project_id:'P',workers:[{worker_id:'fixture-worker',project_ids:['P'],runtime_kind:'remote_worker',registered_by:'owner',last_seen_at:null}]})
+  if(path.endsWith('/sources')||path.endsWith('/participants'))return Response.json({project_id:'P',items:[]})
+  return Response.json({active_runs:[],outcomes:[]})
+ }
+ let view:ReactTestRenderer|undefined
+ try{
+  const authority=new RemoteJourneyClient('https://core.example',()=> 'owner','fixture-token')
+  await act(async()=>{view=create(<ConnectedJourneySurface authority={authority} projectId="P"/>);await new Promise(resolve=>setImmediate(resolve))})
+  const machines=view!.root.findAllByType('section').find(node=>node.findAllByType('h2').some(heading=>renderedText(heading)==='Machines'))!
+  assert.equal(renderedText(machines.findAllByType('p')[0]),'fixture-worker · remote worker · Status unavailable')
+ }finally{if(view)await act(async()=>view!.unmount());globalThis.fetch=original}
+})
 test('route replacement hides protected roster and rejects stale response',async()=>{let resolve!:(value:ReturnType<typeof snap>)=>void;const old:JourneyAuthority={snapshot:async()=>new Promise(r=>{resolve=r}),invite:async()=>{},enroll:async()=>{}};const fresh:JourneyAuthority={snapshot:async()=>snap('B'),invite:async()=>{},enroll:async()=>{}};let view!:ReactTestRenderer;await act(async()=>{view=create(<ConnectedJourneySurface authority={old} projectId="A"/>)});await act(async()=>{view.update(<ConnectedJourneySurface authority={fresh} projectId="B"/>);await Promise.resolve()});resolve(snap('A'));await act(async()=>{await Promise.resolve()});assert.match(JSON.stringify(view.toJSON()),/owner/);assert.doesNotMatch(JSON.stringify(view.toJSON()),/Project access.*A/);view.unmount()})
 test('invitation refreshes from authority and releases the operation lock',async()=>{let count=0;const authority:JourneyAuthority={snapshot:async()=>({projectId:'P',members:[{subject:'owner',role:'owner',status:'active'}],invitations:count?[{invitationId:'I',recipientSubject:'member',status:'pending',revision:1,expiresAt:'later'}]:[],workers:[],canManage:true}),invite:async()=>{count++},enroll:async()=>{}};let view!:ReactTestRenderer;await act(async()=>{view=create(<ConnectedJourneySurface authority={authority} projectId="P"/>);await Promise.resolve()});const input=view.root.findAllByType('input')[0];await act(async()=>input.props.onChange({target:{value:'member'}}));let button=view.root.findAllByType('button').find(node=>node.children.includes('Invite teammate'))!;await act(async()=>{await button.props.onClick()});button=view.root.findAllByType('button').find(node=>node.children.includes('Invite teammate'))!;await act(async()=>{await button.props.onClick()});assert.equal(count,2);await act(async()=>view.unmount())})
 test('same-project authority replacement synchronously hides the prior roster',async()=>{let resolve!:(value:ReturnType<typeof snap>)=>void;const first:JourneyAuthority={snapshot:async()=>snap('P'),invite:async()=>{},enroll:async()=>{}};const second:JourneyAuthority={snapshot:async()=>new Promise(r=>{resolve=r}),invite:async()=>{},enroll:async()=>{}};let view!:ReactTestRenderer;await act(async()=>{view=create(<ConnectedJourneySurface authority={first} projectId="P"/>);await Promise.resolve()});assert.match(JSON.stringify(view.toJSON()),/owner/);await act(async()=>view.update(<ConnectedJourneySurface authority={second} projectId="P"/>));assert.doesNotMatch(JSON.stringify(view.toJSON()),/owner/);resolve(snap('P'));await act(async()=>{await Promise.resolve();view.unmount()})})
@@ -17,6 +37,7 @@ test('PROJECT-MEMBER-REMOVAL-1: normal People panel reviews exact member and rev
  await act(async()=>{button('Confirm removal')!.props.onClick();await new Promise(resolve=>setImmediate(resolve))})
  assert.deepEqual(calls,[['P','member','member',4]])
  assert.match(JSON.stringify(view.toJSON()),/cancellation requested.*not confirmed stopped/s)
+ assert.match(renderedText(view.root.findByProps({'aria-label':'Project membership removal'}).findByProps({role:'status'})),/1 active Run has cancellation requested/)
  await act(async()=>view.unmount())
 })
 test('PROJECT-MEMBER-REMOVAL-1: external credential issuer receipt never claims worker credentials were revoked',async()=>{
@@ -33,8 +54,7 @@ test('PROJECT-MEMBER-REMOVAL-1: external credential issuer receipt never claims 
  assert.deepEqual(calls,[['P','member','member',4]])
  const after=JSON.stringify(view.toJSON())
  const status=view.root.findByProps({'aria-label':'Project membership removal'}).findByProps({role:'status'})
- const statusText=(node:any):string=>typeof node==='string'?node:(node.children??[]).map(statusText).join('')
- assert.match(statusText(status),/1 Project worker assignments removed/)
+ assert.match(renderedText(status),/1 Project worker assignment removed/)
  assert.match(after,/Externally issued credentials still require issuer revocation/)
  assert.doesNotMatch(after,/issued worker credentials revoked/)
  await act(async()=>view.unmount())

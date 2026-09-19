@@ -382,7 +382,7 @@ export class RemoteJourneyClient {
     return {
       projectId,
       members: memberItems.map(value => { const item = value as Json; return { subject: String(item.subject), role: String(item.role), status: String(item.status) } }),
-      workers: (Array.isArray(workers.workers) ? workers.workers : []).map(value => { const item = value as Json; return { workerId: String(item.worker_id), runtimeKind: String(item.runtime_kind), status: String(item.status) } }),
+      workers: (Array.isArray(workers.workers) ? workers.workers : []).map(value => { const item = value as Json; return { workerId: String(item.worker_id), runtimeKind: String(item.runtime_kind), status: typeof item.status === 'string' && item.status.trim() ? item.status : 'Status unavailable' } }),
       invitations: mappedInvitations,
       participantDiscoveryAvailable,
       participants: (Array.isArray(participantList.items) ? participantList.items : []).map(value => { const item = value as Json; return { participantId: String(item.participant_id), title: String(item.title), lifecycle: String(item.lifecycle) } }),

@@ -1,0 +1,18 @@
+{
+  "schema_version": "opensaddle.interface-regression-receipt.v1",
+  "invariant": "CONNECTED-MACHINE-STATUS-1",
+  "base_revision": "8915a5c3c5d858a9d7f92f3697dbfa5a40fdca3f",
+  "test": "src/features/onboarding/ConnectedJourneySurface.test.tsx",
+  "test_overlay": "the same current test file was copied into an isolated git archive of base_revision",
+  "command": "node --import tsx --test --test-name-pattern CONNECTED-MACHINE-STATUS-1 src/features/onboarding/ConnectedJourneySurface.test.tsx",
+  "pre_fix": {
+    "status": "assertion_failed",
+    "observed_machine_text": "fixture-worker · remote worker · undefined"
+  },
+  "post_fix": {
+    "status": "passed",
+    "expected_machine_text": "fixture-worker · remote worker · Status unavailable"
+  },
+  "boundary": "mounted connected Project panel backed by a PostgreSQL-shaped project-workers.v1 response",
+  "limits": "The test uses a deterministic HTTP response fixture; it does not claim a live PostgreSQL browser session."
+}
