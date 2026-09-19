@@ -260,6 +260,19 @@ forms through the real HTTP client with transport responses injected. This is a
 new feature; no missing-module baseline is represented as regression evidence.
 
 
+## PROJECT-SIGNED-VIEW-ACTIVATION
+
+The Project Plugins surface lists only compatible, exact signed Project
+Perspective candidates and shows their publisher fingerprint, manifest and
+content digests. It does not apply an environment change when a package is
+installed or enabled: the user reviews Core's preview and explicitly applies it.
+Current Project, account, candidate enablement and environment revisions are
+rechecked before applying; the host then confirms an exact renderer before
+saving the personal view preference. Disablement requires the current exact
+package revision and preserves the saved preference/environment for fallback.
+The mounted `ProjectViewCatalog.test.tsx` exercises the production HTTP clients
+and presentation layer; a disposable real-Core browser run is separate evidence.
+
 ## RENDERER-SETTINGS-DELIVERY
 
 Installed Project views receive current exact-package resolved preferences on

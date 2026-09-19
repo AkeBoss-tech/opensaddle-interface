@@ -12,7 +12,7 @@ export function installedProjectViews(renderers:ApplicationRendererDescriptor[])
 const HOST_API=1
 const HOST_CAPABILITIES=new Set(['projection.project-runs.v1','projection.live.v1','navigation.task.open.v1','navigation.task.create.v1','read.project-sources.v1','read.project-devices.v1','read.project-approvals.v1','subscription.resources.v1','command.artifact-read.v1'])
 /** Undefined means compatible. Older signed packages keep the v1 schema contract. */
-export function projectViewCompatibility(renderer:ApplicationRendererDescriptor,mount:'perspective'|'widget'='perspective'):string|undefined{
+export function projectViewCompatibility(renderer:Pick<ApplicationRendererDescriptor,'descriptor'>,mount:'perspective'|'widget'='perspective'):string|undefined{
  const contract=renderer.descriptor?.ui_contract
  if(contract===undefined)return mount==='perspective'?undefined:'Widgets require a signed UI contract.'
  if(!contract||typeof contract!=='object'||Array.isArray(contract))return 'Invalid UI contract.'

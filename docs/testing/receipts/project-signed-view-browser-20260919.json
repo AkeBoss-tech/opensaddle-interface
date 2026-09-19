@@ -1,0 +1,54 @@
+{
+  "schema_version": "opensaddle.interface-browser-receipt.v1",
+  "date": "2026-09-19",
+  "invariant": "PROJECT-SIGNED-VIEW-ACTIVATION",
+  "result": "passed_disposable_browser",
+  "scope": "Normal connected Project Plugins and Workspace routes against a disposable local Core process; not a personal installation or release qualification.",
+  "source": {
+    "core_head_at_run": "905e704c9efce89bee62a1d006793fda3811c97c",
+    "interface_base_head": "90a068dc1fa57a9908fe92d39b78a7780a32fe38",
+    "interface_changes": "uncommitted task changes",
+    "project": "renderer-proof",
+    "package": "dev.opensaddle.project-starter@1.0.0",
+    "publisher_key_fingerprint": "1a888b25fb02f85cba2a38b99878c32e2d04106e6706700859efc407250f20f3",
+    "manifest_digest": "d1b677065f1508147f674d31bb0a3889ed0d89efb8742c2ec0cf1f91f38e4da9",
+    "renderer_content_digest": "5c4a03b871984438949ef806c6dad6096704853b7de1de76d476ece92af0a0b7"
+  },
+  "fixture": {
+    "browser": "Chrome through computer-use browser control",
+    "interface_origin": "http://127.0.0.1:5319",
+    "core_origin": "http://127.0.0.1:58781",
+    "authority": "Core fixture creates a real Project, owner token, ExtensionService and v2 API. A disposable owner_subject manager stub enables the real owner-only personal catalog route without starting a worker. Vite injects the fixture bearer token server-side; the browser never receives it as application configuration.",
+    "package_generation": "Core's Project Perspective starter emitted a manifest and HTML; an ephemeral Ed25519 key signed the exact manifest. No publisher key or package was pretrusted or preinstalled for this Project view."
+  },
+  "observations": [
+    "The normal Project Plugins route showed an empty signed view list before installation.",
+    "The file installer showed package and publisher identity. The browser-computed public-key fingerprint matched the independently computed fixture fingerprint. Trust and signed install were separate explicit actions.",
+    "After install, the Project candidate showed exact publisher fingerprint, manifest digest and content digest, with no Project enablement or environment selection.",
+    "Enable and preview set Project enablement and displayed the exact Project, package, publisher, content and proposed environment digest. No environment apply was invoked before the separate Apply and use action.",
+    "Apply and use selected environment revision 2 and saved the personal preference plugin.project-board. The Workspace view selector selected project-board and the signed board iframe rendered one completed fixture task.",
+    "Switching the Workspace selector to Dialogue worked; switching back reopened the same signed view without reinstalling.",
+    "Disable exact package removed the active Project renderer while preserving environment revision 2 and the plugin.project-board preference; Workspace fell back to Dialogue with an explicit preserved-preference notice. Core showed disabled revision 2 and zero active project-board renderers.",
+    "A later disable/re-enable cycle reached enabled revision 5 while environment revision stayed 2. The UI offered Use this view without a redundant environment change."
+  ],
+  "screenshots": [
+    {"path": "out/screenshots/project-view-20260919/catalog.png", "sha256": "1969c76a6e0e66803e23366ca233b5a53aa3eb0d3398d4400782220a3c33d618"},
+    {"path": "out/screenshots/project-view-20260919/board.png", "sha256": "f14113bb16cea98c4a074072903cb8599f1227e81172d7c71f1d6c5052f32c37"},
+    {"path": "out/screenshots/project-view-20260919/disabled-fallback.png", "sha256": "ba1a466e2186d5122b673b6769f1765e2156b1eab548ebe96efb9944693c9d94"}
+  ],
+  "limits": [
+    "This is a local browser/fixture run, not an installed personal runtime or packaged desktop acceptance.",
+    "The fixture manager stub proves the real catalog owner route against a fixture owner, not the production supervisor lifecycle.",
+    "Core reports desired configuration and authorization; runtime health remains unavailable and disablement does not claim process termination.",
+    "The signing key was generated for the disposable run and is not a production publisher identity."
+  ],
+  "checks": {
+    "focused_mounted_tests": "24 passed",
+    "project_catalog_test": "1 passed, including stale environment refusal, no redundant environment apply after re-enable, and exact previous-environment restoration",
+    "typescript": "passed",
+    "production_build": "passed",
+    "changed_file_lint": "passed with no warnings after cleanup",
+    "repository_lint": "fails on a pre-existing react-hooks(rules-of-hooks) error in src/perspectives/scoped/ScopedWorkspace.tsx:45"
+  },
+  "cleanup": "Browser tab and both disposable loopback services stopped; ports 5319 and 58781 were no longer listening. Temporary fixture state, tokens and proxy configuration were removed."
+}
