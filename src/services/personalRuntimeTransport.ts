@@ -30,6 +30,8 @@ export function installPersonalRuntimeTransport(identity:RuntimeIdentity){
    const pending=window.opensaddle!.personalRuntimeRequest!({
     path:`${url.pathname}${url.search}`,method,
     ...(request.headers.has('X-OpenSaddle-Renderer-Host-Token')?{rendererHostToken:request.headers.get('X-OpenSaddle-Renderer-Host-Token')!}:{}),
+    ...(method==='POST'&&/^\/api\/v2\/agents\/[A-Za-z0-9._~-]+\/tasks$/.test(url.pathname)&&!url.search&&request.headers.has('Idempotency-Key')
+      ?{idempotencyKey:request.headers.get('Idempotency-Key')!}:{}),
     expectedBaseUrl:authority.baseUrl,expectedInstallationId:authority.installationId,expectedProjectId:authority.projectId,
     ...(body?{body}:{}),
    })

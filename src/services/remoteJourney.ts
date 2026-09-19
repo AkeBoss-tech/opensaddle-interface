@@ -40,9 +40,10 @@ export class RemoteJourneyClient {
   private readonly authorizedContextAvailable: boolean
   private readonly portableContinuationAvailable: boolean
   private readonly nativeSessionResume: boolean
+  private readonly membershipRemovalAvailable: boolean
   private readonly delegationIntents = new Map<string, string>()
   private readonly storage?: Storage
-  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false, authorizedContextAvailable = false, portableContinuationAvailable = false, nativeSessionResume = false, storage: Storage | undefined = typeof window === 'undefined' ? undefined : window.localStorage) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable; this.authorizedContextAvailable = authorizedContextAvailable; this.portableContinuationAvailable=portableContinuationAvailable;this.nativeSessionResume=nativeSessionResume;this.storage=storage }
+  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false, authorizedContextAvailable = false, portableContinuationAvailable = false, nativeSessionResume = false, storage: Storage | undefined = typeof window === 'undefined' ? undefined : window.localStorage, membershipRemovalAvailable = false) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable; this.authorizedContextAvailable = authorizedContextAvailable; this.portableContinuationAvailable=portableContinuationAvailable;this.nativeSessionResume=nativeSessionResume;this.storage=storage;this.membershipRemovalAvailable=membershipRemovalAvailable }
 
   private async request(path: string, method: string, body?: unknown, signal?: AbortSignal): Promise<Json> {
     const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-OpenSaddle-User': this.user(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body), signal })
@@ -57,6 +58,29 @@ export class RemoteJourneyClient {
   invitations(projectId: string) { return this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/invitations`, 'GET') }
   async invite(projectId: string, subject: string) { await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/invitations`, 'POST', { recipient_subject: subject, role: 'member', ttl_seconds: 3600 }) }
   addMember(projectId: string, subject: string, role: 'admin' | 'member' | 'requester' | 'approver' | 'auditor') { return this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/members`, 'PUT', { subject, role }) }
+  async removeMember(projectId: string, subject: string, role: string, expectedRevision: number) {
+    if (!this.membershipRemovalAvailable) throw Error('Project membership removal is unavailable')
+    if (!projectId || !subject || subject.length > 200 || !role || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1) throw Error('Project membership review is invalid')
+    const actor = this.user()
+    const roster = await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/members`, 'GET')
+    if (this.user() !== actor || roster.schema_version !== 'project-members.v1' || roster.project_id !== projectId
+      || roster.viewer_subject !== actor || roster.revision !== expectedRevision || !Array.isArray(roster.members)
+      || roster.members.length > 10000) throw Error('Project membership changed; reload before deciding')
+    const target = roster.members.filter(value => value && typeof value === 'object' && !Array.isArray(value) && (value as Json).subject === subject)
+    if (target.length !== 1 || (target[0] as Json).role !== role || (target[0] as Json).status !== 'active') throw Error('Project membership changed; reload before deciding')
+    const caller = roster.members.find(value => value && typeof value === 'object' && !Array.isArray(value) && (value as Json).subject === actor) as Json | undefined
+    if (!caller || caller.status !== 'active' || (actor !== subject && !(caller.role === 'owner' || caller.role === 'admin' && role !== 'owner' && role !== 'admin'))) throw Error('Project membership authority changed; reload before deciding')
+    if (this.user() !== actor) throw Error('Project membership authority changed; reload before deciding')
+    const receipt = await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/members/remove`, 'POST', { subject, expected_revision: expectedRevision })
+    if (this.user() !== actor || receipt.schema_version !== 'opensaddle.project-member-removal.v1'
+      || receipt.project_id !== projectId || receipt.subject !== subject || receipt.removed_by !== actor
+      || receipt.membership_revision !== expectedRevision + 1 || receipt.process_termination_confirmed !== false
+      || !Array.isArray(receipt.cancelled_before_execution) || !Array.isArray(receipt.cancelled_paused)
+      || !Array.isArray(receipt.cancellation_requested) || !Number.isSafeInteger(receipt.revoked_worker_credentials)
+      || Number(receipt.revoked_worker_credentials) < 0 || receipt.worker_credentials_may_cover_other_projects !== true)
+      throw Error('Project removal outcome is unconfirmed; reload the roster')
+    return receipt
+  }
   acceptInvitation(projectId: string, id: string, expectedRevision: number) { return this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/invitations/${encodeURIComponent(id)}/accept`, 'POST', { expected_revision: expectedRevision }) }
   revokeInvitation(projectId: string, id: string, expectedRevision: number) { return this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/invitations/${encodeURIComponent(id)}/revoke`, 'POST', { expected_revision: expectedRevision }) }
   async enroll(projectId: string, workerId: string) { await this.registerWorker({ workerId, organizationId: projectId, projectIds: [projectId], runtimeKind: 'remote_worker' }) }
@@ -348,6 +372,8 @@ export class RemoteJourneyClient {
       nativeSessionResume: this.nativeSessionResume,
       results,
       rosterAvailable: true,
+      rosterRevision: members.schema_version === 'project-members.v1' && Number.isSafeInteger(members.revision) && Number(members.revision) >= 1 && members.viewer_subject === this.user() ? Number(members.revision) : undefined,
+      membershipRemovalAvailable: this.membershipRemovalAvailable,
       currentSubject: this.user(),
       canManage: memberItems.some(value => { const item = value as Json; return item.subject === this.user() && (item.role === 'owner' || item.role === 'admin') }),
       capacityAvailable: this.capacityAvailable,

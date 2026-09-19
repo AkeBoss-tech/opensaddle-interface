@@ -1153,3 +1153,41 @@ continues to show its separate, verified execution record. Owning transport
 and mounted Operations tests: `src/services/controlPlaneV2Client.test.ts`,
 `src/services/remoteOperations.test.ts`, and
 `src/features/operations/OperationsPage.test.tsx`.
+
+## PROJECT-MEMBER-REMOVAL-1
+
+The normal Project People panel offers removal only when authenticated Core
+advertises single-Project, revision-required membership removal and returns a
+current roster revision. A human reviews the exact target, role, revision,
+scoped session/credential consequences, and active-Run cancellation semantics.
+Immediately before one POST, the client re-reads the roster and verifies the
+same viewer, target role, and revision. A lost response remains unconfirmed;
+the UI sends no automatic retry and requires a roster reload. Active Runs are
+shown as cancellation requested, never confirmed stopped. A removed member's
+approved but undispatched connector-write request appears as `revoked` after
+exact GET refresh, without an approval button. The desktop proxy admits only
+the exact Project route and two-field body. Owning public tests:
+`src/features/onboarding/ConnectedJourneySurface.test.tsx`,
+`src/services/remoteJourney.test.ts`,
+`src/features/runs/ConnectorWriteReviewJourney.test.tsx`, and
+`test/personalRuntimeProxy.test.ts`.
+
+## AGENT-SETUP-DESKTOP-1
+
+The adopted desktop runtime forwards only the normal human Agent Setup reads,
+research/proposal/publish writes, and agent task submission routes. The task
+idempotency key crosses renderer IPC only for the exact task route; the main
+process validates its bounded value and task body before adding the header.
+Neighboring routes, omitted task keys, and arbitrary renderer headers remain
+unavailable. The packaged Agent Setup first failed at builder-options before
+the route fix. Owning tests: `test/personalRuntimeProxy.test.ts` and
+`src/services/personalRuntimeTransport.test.ts`.
+
+## PROJECT-RUN-AUDIT-DESKTOP-1
+
+The adopted desktop runtime permits a completed Run's finite SSE audit on the
+exact Run events route with an optional bounded sequence cursor. The proxy
+keeps its existing response size and deadline bounds. An active Run's open SSE
+stream cannot be delivered through the buffered IPC response and is not
+claimed as supported by this invariant. Owning test:
+`test/personalRuntimeProxy.test.ts`.

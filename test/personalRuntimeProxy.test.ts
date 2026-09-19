@@ -23,6 +23,49 @@ test('PROJECT-AGENT-WRITE-REVIEW-1: desktop forwards only exact human review rea
  ] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method,path,...(body===undefined?{}:{body})},server),/path|approval body/)
  assert.equal(seen.length,3)
 })
+test('PROJECT-MEMBER-REMOVAL-1: desktop forwards exact revision-bound Project removal only',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'},seen:string[]=[]
+ const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);seen.push(request.method+' '+new URL(request.url).pathname);assert.equal(request.headers.get('Authorization'),'Bearer private-token');assert.deepEqual(JSON.parse(await request.text()),{subject:'member',expected_revision:4});return Response.json({})}
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path:'/api/v2/projects/project/members/remove',body:JSON.stringify({subject:'member',expected_revision:4})},server)
+ assert.equal(seen.length,1)
+ for(const [path,body] of [
+  ['/api/v2/projects/project/members/remove/other','{"subject":"member","expected_revision":4}'],
+  ['/api/v2/projects/project/members/remove','{"subject":"member","expected_revision":true}'],
+  ['/api/v2/projects/project/members/remove','{"subject":"member","expected_revision":4,"all_projects":true}'],
+  ['/api/v2/projects/project/members/remove','{"subject":"","expected_revision":4}'],
+  ['/api/v2/projects/other/members/remove','{"subject":"member","expected_revision":4}'],
+ ] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path,body},server),/path|removal body|authority changed/)
+ assert.equal(seen.length,1)
+})
+test('AGENT-SETUP-DESKTOP-1: adopted runtime admits exact Agent Setup routes and a task idempotency key only',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'},seen:string[]=[]
+ const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);seen.push(request.method+' '+new URL(request.url).pathname);assert.equal(request.headers.get('Authorization'),'Bearer private-token');if(request.url.endsWith('/agents/ptc_one/tasks')){assert.equal(request.headers.get('Idempotency-Key'),'task-key-1');assert.deepEqual(JSON.parse(await request.text()),{expected_participant_revision:1,task:'Review source',authorized_context_source_ids:[]})}else assert.equal(request.headers.get('Idempotency-Key'),null);return Response.json({})}
+ for(const path of ['/api/v2/projects/project/agent-builder-options','/api/v2/projects/project/agent-proposals','/api/v2/participants/ptc_one'])await proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},server)
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path:'/api/v2/projects/project/agent-research',body:'{}'},server)
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path:'/api/v2/projects/project/agent-proposals',body:'{}'},server)
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path:'/api/v2/agent-proposals/agp_'+'a'.repeat(32)+'/publish',body:JSON.stringify({expected_digest:'b'.repeat(64),acknowledge_assumptions:true})},server)
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path:'/api/v2/agents/ptc_one/tasks',body:JSON.stringify({expected_participant_revision:1,task:'Review source',authorized_context_source_ids:[]}),idempotencyKey:'task-key-1'},server)
+ assert.equal(seen.length,7)
+ for(const request of [
+  {...base,method:'POST',path:'/api/v2/agent-proposals/agp_'+'a'.repeat(32)+'/delete',body:'{}'},
+  {...base,method:'POST',path:'/api/v2/agents/ptc_one/tasks',body:JSON.stringify({expected_participant_revision:1,task:'Review source',authorized_context_source_ids:[]})},
+  {...base,method:'POST',path:'/api/v2/agents/ptc_one/tasks',body:JSON.stringify({expected_participant_revision:1,task:'Review source',authorized_context_source_ids:[]}),idempotencyKey:'bad key'},
+  {...base,method:'GET',path:'/api/v2/projects/project/agent-builder-options',idempotencyKey:'task-key-1'},
+ ] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,request,server),/path|idempotency/)
+ assert.equal(seen.length,7)
+})
+test('PROJECT-RUN-AUDIT-DESKTOP-1: completed Run SSE events cross only a bounded exact route',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'},seen:string[]=[]
+ const event='id: 1\nevent: agent_connector.completed\ndata: {"run_id":"run-one","sequence":1}\n\n'
+ const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);seen.push(request.url);assert.equal(request.headers.get('Authorization'),'Bearer private-token');return new Response(event,{headers:{'Content-Type':'text/event-stream'}})}
+ for(const path of ['/api/v2/runs/run-one/events','/api/v2/runs/run-one/events?after_sequence=1']){
+  const result=await proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},server)
+  assert.equal(result.contentType,'text/event-stream')
+  assert.equal(Buffer.from(result.bodyBase64,'base64').toString(),event)
+ }
+ for(const path of ['/api/v2/runs/run-one/events?after_sequence=-1','/api/v2/runs/run-one/events?after_sequence=1&admin=true','/api/v2/runs/run-one/events?after_sequence=9999999999999999999'])await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},server),/path/)
+ assert.equal(seen.length,2)
+})
 test('main proxy rejects a stale expected identity and cancels oversized streaming bodies',async()=>{await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'other',expectedProjectId:'project',path:'/api/v2/personal-runtime'},async()=>Response.json({})),/authority changed/);let cancelled=false;const body=new ReadableStream<Uint8Array>({pull(controller){controller.enqueue(new Uint8Array(1_048_576));},cancel(){cancelled=true}});await assert.rejects(proxyPersonalRuntimeRequest(handoff,{method:'GET',expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project',path:'/api/v2/personal-runtime'},async()=>new Response(body)),/exceeded its bound/);assert.equal(cancelled,true)})
 
 test('desktop proxy permits explicit retained document lifecycle without wildcard paths',async()=>{

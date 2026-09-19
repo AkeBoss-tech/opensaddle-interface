@@ -3,6 +3,7 @@ import { CodingTaskOptions, codingTaskSpec, emptyCodingTaskDraft, type CodingTas
 import { CodingResultPanel } from './CodingResultPanel'
 import type { CodingResultAuthority } from '../../services/codingResultReview'
 import { ProjectKnowledgePanel, type ProjectKnowledgeAuthority } from '../projects/ProjectKnowledgePanel'
+import { ProjectMemberRemovalPanel } from './ProjectMemberRemovalPanel'
 import React, { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 void React
@@ -13,6 +14,8 @@ export type JourneySnapshot = {
   workers: Array<{ workerId: string; status: string; runtimeKind: string }>
   invitations?: Array<{ invitationId: string; recipientSubject: string; status: string; revision: number; expiresAt: string }>
   rosterAvailable?: boolean
+  rosterRevision?: number
+  membershipRemovalAvailable?: boolean
   canManage?: boolean
   currentSubject?: string
   results?: Array<{ runId: string; title: string; verified: boolean; artifactAvailable?: boolean; workerId?: string; status?: string; updatedAt?: string; nativeAdapterId?: NativeAdapterId; nativeModel?: string; authorizedContext?: AuthorizedContextHandle }>
@@ -76,6 +79,7 @@ export interface JourneyAuthority {
   enroll(projectId: string, workerId: string): Promise<void>
   acceptInvitation?(projectId: string, id: string, revision: number): Promise<unknown>
   revokeInvitation?(projectId: string, id: string, revision: number): Promise<unknown>
+  removeMember?(projectId: string, subject: string, role: string, expectedRevision: number): Promise<unknown>
   review?(projectId: string, runId: string): Promise<{ runId: string; status: string; workerId: string; resource: { artifact_id: string; digest: string }; text: string; codingTask?: boolean }>
   createProject?(projectId: string): Promise<unknown>
   delegate?(projectId: string, sourceId: string, task: string, nativeAdapterId?: NativeAdapterId, authorizedContextSourceIds?: string[], codingTask?: CodingTaskSpec): Promise<unknown>
@@ -237,7 +241,7 @@ export function ConnectedJourneySurface({ authority, projectId, projectKnowledge
       {value.invitations?.map(item => <article key={item.invitationId}><p><strong>{item.recipientSubject}</strong> · invitation {item.status}{item.status === 'pending' ? ` · expires ${new Date(item.expiresAt).toLocaleString()}` : ''}</p>{item.status === 'pending' && <div className="page-actions">{authority.acceptInvitation && (value.rosterAvailable === false || item.recipientSubject === value.currentSubject) && <button className="primary-btn" onClick={() => void act(() => authority.acceptInvitation!(projectId, item.invitationId, item.revision))}>Accept invitation</button>}{authority.revokeInvitation && value.canManage && <button className="tiny-btn" onClick={() => void act(() => authority.revokeInvitation!(projectId, item.invitationId, item.revision))}>Revoke invitation</button>}</div>}</article>)}
       {value.canManage && <div className="form-row"><label>Teammate identity<input value={subject} onChange={event => setSubject(event.target.value)} /></label><button className="primary-btn" disabled={!subject.trim()} onClick={() => void act(() => authority.invite(projectId, subject.trim()))}>Invite teammate</button></div>}
     </section>
-    {value.rosterAvailable !== false && <><section className="cc-panel"><h2>People</h2>{value.members.map(item => <p key={item.subject}><strong>{item.subject}</strong> · {item.role} · {item.status}</p>)}</section><section className="cc-panel"><h2>Machines</h2>{value.workers.length ? value.workers.map(item => <p key={item.workerId}><strong>{item.workerId}</strong> · {item.runtimeKind.replaceAll('_', ' ')} · {item.status}</p>) : <p>No machine is registered for this Project.</p>}{value.canManage && <><p>Registering a machine creates its Project assignment. The worker still connects separately with its issued credential.</p><div className="form-row"><label>Machine name<input value={worker} onChange={event => setWorker(event.target.value)} /></label><button className="primary-btn" disabled={!worker.trim()} onClick={() => void act(() => authority.enroll(projectId, worker.trim()))}>Register machine</button></div></>}</section></>}
+    {value.rosterAvailable !== false && <><section className="cc-panel"><h2>People</h2>{value.members.map(item => <p key={item.subject}><strong>{item.subject}</strong> · {item.role} · {item.status}</p>)}<ProjectMemberRemovalPanel authority={authority} projectId={projectId} snapshot={value} onRefresh={load}/></section><section className="cc-panel"><h2>Machines</h2>{value.workers.length ? value.workers.map(item => <p key={item.workerId}><strong>{item.workerId}</strong> · {item.runtimeKind.replaceAll('_', ' ')} · {item.status}</p>) : <p>No machine is registered for this Project.</p>}{value.canManage && <><p>Registering a machine creates its Project assignment. The worker still connects separately with its issued credential.</p><div className="form-row"><label>Machine name<input value={worker} onChange={event => setWorker(event.target.value)} /></label><button className="primary-btn" disabled={!worker.trim()} onClick={() => void act(() => authority.enroll(projectId, worker.trim()))}>Register machine</button></div></>}</section></>}
     {value.rosterAvailable !== false && <section className="cc-panel"><span className="eyebrow">Admission control</span><h2>Project capacity</h2>
       {value.capacityAvailable === false ? <p>Resource capacity is unavailable from this server. Runs use the server's existing admission behavior.</p> : !capacity ? <p role="status">Capacity status is unavailable{value.capacityError ? `: ${value.capacityError}` : '.'}</p> : !capacity.accountingEnforced ? <><p>No Project capacity limits are configured. Resource accounting is not enforced for new Runs.</p><p>Monetary budgets, account quotas, interactive reservations, and fairness are unavailable.</p></> : <>
         <p><strong>{capacity.admissionState === 'blocked' ? 'New Run admission blocked' : capacity.admissionState === 'available' ? 'Queued Runs can be admitted' : 'No Runs are waiting for admission'}</strong>{capacity.state === 'overcommitted' ? ' · existing work keeps its reservations until release' : ''}</p>

@@ -2,7 +2,7 @@ type Json = Record<string, unknown>
 export type ConnectorWriteProposal = {
   proposalId: string; projectId: string; runId: string; requestDigest: string
   connector: string; action: string; arguments: Json; agentId: string; onBehalfOf: string
-  state: 'proposed' | 'approved' | 'dispatching' | 'completed' | 'effect_unknown'
+  state: 'proposed' | 'approved' | 'revoked' | 'dispatching' | 'completed' | 'effect_unknown'
   expiresAt: string; approvedBy?: string; receipt?: Json
 }
 export type ConnectorWriteSnapshot = { proposals: ConnectorWriteProposal[]; complete: boolean }
@@ -10,7 +10,7 @@ export type ConnectorWriteSnapshot = { proposals: ConnectorWriteProposal[]; comp
 const digest = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const proposalId = (value: unknown): value is string => typeof value === 'string' && /^awp_[a-f0-9]{32}$/.test(value)
 const object = (value: unknown): value is Json => value !== null && typeof value === 'object' && !Array.isArray(value)
-const states = new Set(['proposed', 'approved', 'dispatching', 'completed', 'effect_unknown'])
+const states = new Set(['proposed', 'approved', 'revoked', 'dispatching', 'completed', 'effect_unknown'])
 
 export class ConnectorWriteReviewClient {
   private readonly baseUrl: string
@@ -82,7 +82,7 @@ export class ConnectorWriteReviewClient {
         if (!object(raw) || !proposalId(raw.proposal_id) || ids.has(raw.proposal_id)) throw Error('Write proposal list item is invalid')
         ids.add(raw.proposal_id)
         const proposal = this.parse(raw, projectId, runId, raw.proposal_id)
-        if (proposal.state === 'completed') throw Error('Write proposal list state is invalid')
+        if (proposal.state === 'completed' || proposal.state === 'revoked') throw Error('Write proposal list state is invalid')
         proposals.push(proposal)
       }
       // The pending list drops completed writes. Recheck only proposals this
