@@ -1,4 +1,5 @@
-import type { AuthoritativeRunDetail } from '../features/runs/AuthoritativeRunSurface'
+import type { AuthoritativeRunDetail, ConnectorAudit, ConnectorAuditItem } from '../features/runs/AuthoritativeRunSurface'
+import { ControlPlaneV2Client } from './controlPlaneV2Client'
 import type { CodingTaskSpec } from '../features/onboarding/CodingTaskOptions'
 import { RemoteMalleableShellClient } from './remoteMalleableShell'
 import type { AuthorizedContextHandle, PortableCheckpoint, PortableContinuationIntent } from '../features/onboarding/ConnectedJourneySurface'
@@ -35,10 +36,13 @@ export class RemoteJourneyClient {
   private readonly storage?: Storage
   constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false, authorizedContextAvailable = false, portableContinuationAvailable = false, nativeSessionResume = false, storage: Storage | undefined = typeof window === 'undefined' ? undefined : window.localStorage) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable; this.authorizedContextAvailable = authorizedContextAvailable; this.portableContinuationAvailable=portableContinuationAvailable;this.nativeSessionResume=nativeSessionResume;this.storage=storage }
 
-  private async request(path: string, method: string, body?: unknown): Promise<Json> {
-    const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-OpenSaddle-User': this.user(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
+  private async request(path: string, method: string, body?: unknown, signal?: AbortSignal): Promise<Json> {
+    const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-OpenSaddle-User': this.user(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body), signal })
+    signal?.throwIfAborted()
     if (!response.ok) { const value = await response.json().catch(() => null) as { detail?: unknown } | null; throw new RemoteJourneyRequestError(journeyErrorMessage(value?.detail, response.status),response.status) }
-    return await response.json() as Json
+    const value = await response.json() as Json
+    signal?.throwIfAborted()
+    return value
   }
 
   createProject(projectId: string) { return this.request('/api/v2/projects', 'POST', { project_id: projectId }) }
@@ -83,19 +87,86 @@ export class RemoteJourneyClient {
     return result
   }
 
-  run(runId: string) { return this.request(`/api/v2/runs/${encodeURIComponent(runId)}`, 'GET') }
-  async runDetail(runId: string): Promise<AuthoritativeRunDetail> {
-    const run = await this.run(runId)
+  run(runId: string, signal?: AbortSignal) { return this.request(`/api/v2/runs/${encodeURIComponent(runId)}`, 'GET', undefined, signal) }
+  async runDetail(runId: string, signal?: AbortSignal): Promise<AuthoritativeRunDetail> {
+    const run = await this.run(runId, signal)
     if (run.run_id !== runId || typeof run.project_id !== 'string' || !run.project_id || typeof run.task !== 'string' || typeof run.status !== 'string' || typeof run.cancellation_requested !== 'boolean') throw Error('Authoritative Run identity or status is invalid')
     const projectId = run.project_id, subject = this.user()
     let manager = false
     try {
-      const roster = await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/members`, 'GET')
+      const roster = await this.request(`/api/v2/projects/${encodeURIComponent(projectId)}/members`, 'GET', undefined, signal)
       if (roster.project_id !== projectId || !Array.isArray(roster.members)) throw Error('Project roster identity mismatch')
       manager = roster.members.some(raw => { const member = raw as Json; return member.subject === subject && member.status === 'active' && ['owner','admin'].includes(String(member.role)) })
-    } catch { /* No manager controls are inferred when membership cannot be read. */ }
+    } catch { signal?.throwIfAborted(); /* No manager controls are inferred when membership cannot be read. */ }
+    signal?.throwIfAborted()
     if (subject !== this.user()) throw Error('Run authority changed during status read')
     return { runId, projectId, task: run.task, status: run.status, cancellationRequested: run.cancellation_requested, canCancel: manager || run.requested_by === subject, workerId: typeof run.assigned_worker_id === 'string' ? run.assigned_worker_id : undefined, updatedAt: typeof run.updated_at === 'string' ? run.updated_at : undefined, codingTask: (((run.policy as Json | undefined)?.obligations as Json | undefined)?.coding_task as Json | undefined)?.schema_version === 'opensaddle.coding-task.v1', ...this.authorizedContextSelection(run) }
+  }
+  async connectorAudit(projectId: string, runId: string, signal?: AbortSignal): Promise<ConnectorAudit> {
+    const subject = this.user()
+    signal?.throwIfAborted()
+    const overall = new AbortController(), stream = new AbortController()
+    const abort = () => overall.abort()
+    const stopStream = () => stream.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    overall.signal.addEventListener('abort', stopStream, { once: true })
+    const timeout = setTimeout(abort, 5000)
+    const client = new ControlPlaneV2Client(this.baseUrl, { getAuthHeaders: () => ({
+      'X-OpenSaddle-User': subject, ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+    }), fetchImplementation: (input, init) => fetch(input, init) })
+    const items: ConnectorAuditItem[] = []
+    const digest = (value: unknown) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : undefined
+    const name = (value: unknown) => typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,100}$/.test(value) ? value : undefined
+    let complete = false, count = 0, last = -1
+    try {
+      const before = await this.runDetail(runId, overall.signal)
+      overall.signal.throwIfAborted()
+      if (before.projectId !== projectId || this.user() !== subject) throw Error('Run audit authority changed')
+      let bounded = false, streamTimedOut = false
+      const streamTimeout = setTimeout(() => { streamTimedOut = true; stream.abort() }, 3500)
+      try {
+        for await (const event of client.events(runId, { signal: stream.signal })) {
+        overall.signal.throwIfAborted()
+        if (this.user() !== subject) throw Error('Run audit authority changed')
+        if (event.run_id !== runId || !Number.isSafeInteger(event.sequence) || event.sequence <= last ||
+          typeof event.timestamp !== 'string' || !Number.isFinite(Date.parse(event.timestamp))) throw Error('Run audit event identity is invalid')
+        last = event.sequence
+        const state = event.type.startsWith('agent_connector.') ? event.type.slice('agent_connector.'.length) : ''
+        if (['requested', 'completed', 'unknown', 'denied'].includes(state)) {
+          const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload : {}
+          if (payload.project_id !== projectId) throw Error('Run audit event Project is invalid')
+          const receipt = payload.receipt && typeof payload.receipt === 'object' && !Array.isArray(payload.receipt) ? payload.receipt as Json : {}
+          const item: ConnectorAuditItem = { sequence: event.sequence, timestamp: event.timestamp,
+            state: state as ConnectorAuditItem['state'], connector: name(payload.connector) ?? name(receipt.connector),
+            action: name(payload.action) ?? name(receipt.action),
+            requestDigest: digest(payload.request_digest) ?? digest(receipt.request_digest),
+            responseDigest: digest(receipt.response_digest),
+            outcome: name(receipt.outcome) }
+          items.push(item)
+          if (items.length >= 100) { bounded = true; break }
+        }
+        count++
+        if (count >= 1000) { bounded = true; break }
+        }
+      } catch (reason) {
+        if (!streamTimedOut || overall.signal.aborted || !(reason instanceof Error) || reason.name !== 'AbortError') throw reason
+        bounded = true
+      } finally {
+        clearTimeout(streamTimeout)
+        stream.abort()
+      }
+      complete = !bounded && !streamTimedOut
+      overall.signal.throwIfAborted()
+      if (this.user() !== subject) throw Error('Run audit authority changed')
+      const after = await this.runDetail(runId, overall.signal)
+      overall.signal.throwIfAborted()
+      if (after.projectId !== projectId || this.user() !== subject) throw Error('Run audit authority changed')
+      return { runId, projectId, items, complete }
+    } finally {
+      clearTimeout(timeout)
+      signal?.removeEventListener('abort', abort)
+      overall.abort()
+    }
   }
   cancel(runId: string) { return this.request(`/api/v2/runs/${encodeURIComponent(runId)}/cancel`, 'POST', {}) }
   private continuationKey(projectId:string,runId:string) { return `opensaddle:portable-continuation:v1:${encodeURIComponent(this.baseUrl)}:${encodeURIComponent(this.user())}:${encodeURIComponent(projectId)}:${encodeURIComponent(runId)}` }
