@@ -47,9 +47,9 @@ describe('ControlPlaneV2Client', () => {
     assert.deepEqual(events.map((event) => event.sequence), [4])
   })
 
-  it('uses the external-session create, list, and checkpoint endpoints without changing authority', async () => {
+  it('uses the external-session create, list, and checkpoint endpoints only for observed records', async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = []
-    const session = { session_id: 'ses_1', project_id: 'project-1', harness: 'codex', external_session_id: 'thread-1', transcript_locator: 'file:///transcript', workspace_locator: null, authority_mode: 'hybrid', source_capabilities: { read: true }, checkpoint_digest: null, authority_snapshot: {}, authority_hash: 'hash', created_by: 'alice', created_at: 'now', updated_at: 'now' }
+    const session = { session_id: 'ses_1', project_id: 'project-1', harness: 'codex', external_session_id: 'thread-1', transcript_locator: 'file:///transcript', workspace_locator: null, authority_mode: 'source_managed', source_capabilities: { read: true }, checkpoint_digest: null, authority_snapshot: {authority_mode:'source_managed',opensaddle_enforcement:false}, authority_hash: 'hash', created_by: 'alice', created_at: 'now', updated_at: 'now' }
     const client = new ControlPlaneV2Client('https://control.example', {
       fetchImplementation: async (url, init) => {
         requests.push({ url: String(url), init })
@@ -57,10 +57,13 @@ describe('ControlPlaneV2Client', () => {
         return json(session, 201)
       },
     })
-    await client.createExternalSession({ projectId: 'project-1', harness: 'codex', externalSessionId: 'thread-1', transcriptLocator: 'file:///transcript', authorityMode: 'hybrid', sourceCapabilities: { read: true } })
+    await client.createExternalSession({ projectId: 'project-1', harness: 'codex', externalSessionId: 'thread-1', transcriptLocator: 'file:///transcript', authorityMode: 'source_managed', sourceCapabilities: { read: true } })
     assert.equal((await client.listExternalSessions('project-1')).length, 1)
-    await client.checkpointExternalSession({ sessionId: 'ses_1', checkpointDigest: digest, authorityMode: 'opensaddle_managed' })
-    assert.deepEqual(JSON.parse(String(requests[2].init?.body)), { checkpoint_digest: digest, authority_mode: 'opensaddle_managed' })
+    await client.checkpointExternalSession({ sessionId: 'ses_1', checkpointDigest: digest, authorityMode: 'source_managed' })
+    assert.deepEqual(JSON.parse(String(requests[2].init?.body)), { checkpoint_digest: digest, authority_mode: 'source_managed' })
+    await assert.rejects(client.createExternalSession({ projectId: 'project-1', harness: 'codex', externalSessionId: 'thread-2', transcriptLocator: 'file:///transcript', authorityMode: 'hybrid' as never }),/observational only/)
+    await assert.rejects(client.checkpointExternalSession({ sessionId: 'ses_1', checkpointDigest: digest, authorityMode: 'opensaddle_managed' as never }),/observational only/)
+    assert.equal(requests.length,3)
   })
 
   it('surfaces an API error without treating the legacy endpoint as a fallback', async () => {

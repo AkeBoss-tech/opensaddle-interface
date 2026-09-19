@@ -8,7 +8,7 @@
 
 export type ControlPlaneRole = 'owner' | 'admin' | 'member' | 'requester' | 'approver' | 'auditor' | 'worker'
 export type SourceKind = 'uploaded_snapshot' | 'connected_revision'
-export type AuthorityMode = 'source_managed' | 'opensaddle_managed' | 'hybrid'
+export type AuthorityMode = 'source_managed'
 export type ExternalHarness = 'codex' | 'claude_code' | 'other'
 
 export interface ControlPlaneCapabilities {
@@ -76,6 +76,8 @@ export interface ControlPlaneExternalSession {
   checkpoint_digest: string | null
   authority_snapshot: Record<string, unknown>
   authority_hash: string
+  declared_authority_mode?: 'opensaddle_managed' | 'hybrid'
+  recorded_authority_hash?: string
   created_by: string
   created_at: string
   updated_at: string
@@ -189,6 +191,7 @@ export class ControlPlaneV2Client {
     authorityMode: AuthorityMode
     sourceCapabilities?: Record<string, boolean>
   }): Promise<ControlPlaneExternalSession> {
+    if (input.authorityMode !== 'source_managed') throw Error('External sessions are observational only')
     return this.request('/api/v2/external-sessions', {
       method: 'POST',
       body: {
@@ -213,6 +216,7 @@ export class ControlPlaneV2Client {
     checkpointDigest: string
     authorityMode: AuthorityMode
   }): Promise<ControlPlaneExternalSession> {
+    if (input.authorityMode !== 'source_managed') throw Error('External sessions are observational only')
     return this.request(`/api/v2/external-sessions/${encodeURIComponent(input.sessionId)}/checkpoint`, {
       method: 'POST',
       body: { checkpoint_digest: input.checkpointDigest, authority_mode: input.authorityMode },

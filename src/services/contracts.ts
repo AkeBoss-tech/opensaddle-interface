@@ -238,7 +238,9 @@ export interface ExternalOperationSession {
   externalSessionId: string
   transcriptLocator: string
   workspaceLocator?: string
-  authorityMode: 'source_managed' | 'opensaddle_managed' | 'hybrid'
+  authorityMode: 'source_managed'
+  declaredAuthorityMode?: 'opensaddle_managed' | 'hybrid'
+  recordedAuthorityHash?: string
   sourceCapabilities: Record<string, boolean>
   checkpointDigest?: string
   authorityHash: string

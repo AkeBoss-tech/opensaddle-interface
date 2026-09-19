@@ -1141,3 +1141,15 @@ surface. Owning public client/mounted task tests:
 Electron forwards only the exact human review paths and digest-only approval
 body; agent dispatch remains unavailable to the renderer proxy. Owning public
 proxy test: `test/personalRuntimeProxy.test.ts`.
+
+## EXTERNAL-SESSION-OBSERVATION-1
+
+An external-session registry record is displayed as observed metadata, never
+as proof that OpenSaddle controlled the native harness. New registration and
+checkpoint requests select only `source_managed`. A legacy managed/cooperative
+declaration remains visible only as an explicitly unverified historical claim;
+the effective Core projection must be `source_managed`. Native Run evidence
+continues to show its separate, verified execution record. Owning transport
+and mounted Operations tests: `src/services/controlPlaneV2Client.test.ts`,
+`src/services/remoteOperations.test.ts`, and
+`src/features/operations/OperationsPage.test.tsx`.
