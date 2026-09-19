@@ -224,6 +224,22 @@ test('PROJECT-MEMBER-REMOVAL-1: client re-reads exact roster before one revision
  try{const client=new RemoteJourneyClient('https://core.example',()=> 'owner','token',false,false,false,false,false,undefined,true);assert.deepEqual(await client.removeMember(project,subject,'member',revision),receipt);assert.deepEqual(paths,['GET /api/v2/projects/P/members','POST /api/v2/projects/P/members/remove'])}finally{globalThis.fetch=original}
 })
 
+test('PROJECT-MEMBER-REMOVAL-1: external-issuer receipt requires exact no-revocation proof',async()=>{
+ const original=globalThis.fetch,project='P',subject='member',revision=4
+ const roster={schema_version:'project-members.v1',project_id:project,revision,viewer_subject:'owner',members:[{subject:'owner',role:'owner',status:'active'},{subject,role:'member',status:'active'}]}
+ const receipt={schema_version:'opensaddle.project-member-removal.v1',removal_id:'pmr_pg',project_id:project,subject,removed_by:'owner',membership_revision:5,process_termination_confirmed:false,cancelled_before_execution:[],cancelled_paused:[],cancellation_requested:[],revoked_worker_credentials:0,worker_credentials_available:false,worker_credentials_may_cover_other_projects:false,removed_worker_project_assignments:['worker-one']}
+ let current:Record<string,unknown>=receipt,posts=0
+ globalThis.fetch=async(_input,init)=>{if(init?.method==='POST'){posts++;return Response.json(current)}return Response.json(roster)}
+ try{
+  const pg=new RemoteJourneyClient('https://core.example',()=> 'owner',undefined,false,false,false,false,false,undefined,true,false,false)
+  assert.deepEqual(await pg.removeMember(project,subject,'member',revision),receipt)
+  for(const invalid of [{...receipt,worker_credentials_available:undefined},{...receipt,revoked_worker_credentials:1},{...receipt,worker_credentials_may_cover_other_projects:true},{...receipt,removed_worker_project_assignments:undefined}]){
+   current=invalid;await assert.rejects(pg.removeMember(project,subject,'member',revision),/unconfirmed/)
+  }
+  assert.equal(posts,5)
+ }finally{globalThis.fetch=original}
+})
+
 test('PROJECT-MEMBER-REMOVAL-1: changed revision, role or caller withholds removal POST',async()=>{
  const original=globalThis.fetch,client=new RemoteJourneyClient('https://core.example',()=> 'owner','token',false,false,false,false,false,undefined,true)
  let posts=0
@@ -242,11 +258,11 @@ test('PROJECT-MEMBER-REMOVAL-1: changed revision, role or caller withholds remov
 
 test('PROJECT-MEMBER-REMOVAL-1: negotiated capability and current roster revision gate the People control',async()=>{
  const original=globalThis.fetch
- let advertised=false
+ let advertised=false, authorityScope:string|undefined, revokesCredentials:unknown
  globalThis.fetch=async input=>{
   const path=new URL(String(input)).pathname
   if(path==='/api/health')return Response.json({detail:'v2 only'},{status:503})
-  if(path==='/api/v2/capabilities')return Response.json({authenticated_subject:'owner',command_center:{available:true,path:'/api/v2/command-center',schema_version:'opensaddle.command-center.v1'},project_membership_removal_v1:{available:advertised,scope:'single_project',revision_required:true}})
+  if(path==='/api/v2/capabilities')return Response.json({authenticated_subject:'owner',command_center:{available:true,path:'/api/v2/command-center',schema_version:'opensaddle.command-center.v1'},project_membership_removal_v1:{available:advertised,scope:'single_project',revision_required:true,authority_scope:authorityScope,credential_authority_revocation:revokesCredentials}})
   if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]})
   if(path.endsWith('/members'))return Response.json({schema_version:'project-members.v1',project_id:'P',revision:4,viewer_subject:'owner',members:[{subject:'owner',role:'owner',status:'active'}]})
   if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]})
@@ -261,5 +277,14 @@ test('PROJECT-MEMBER-REMOVAL-1: negotiated capability and current roster revisio
   assert.equal(current.membershipRemovalAvailable,true)
   assert.equal(current.rosterRevision,4)
   assert.equal(current.currentSubject,'owner')
+  assert.equal(current.membershipRemovalRevokesCredentials,true)
+  authorityScope='membership_approval_run_worker_assignment'; revokesCredentials=false
+  const pg=await (await create()).journey!.snapshot('P')
+  assert.equal(pg.membershipRemovalAvailable,true)
+  assert.equal(pg.membershipRemovalRevokesCredentials,false)
+  for(const invalid of [{scope:'unknown',revokes:false},{scope:'project_authorities',revokes:false},{scope:'membership_approval_run_worker_assignment',revokes:'false'}]){
+   authorityScope=invalid.scope;revokesCredentials=invalid.revokes
+   assert.equal((await (await create()).journey!.snapshot('P')).membershipRemovalAvailable,false)
+  }
  }finally{globalThis.fetch=original}
 })

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import type { JourneyAuthority, JourneySnapshot } from './ConnectedJourneySurface'
 
 type Review = { subject: string; role: string; revision: number }
-type Receipt = { subject: string; cancellationRequested: number; cancelledBeforeExecution: number; cancelledPaused: number; revokedWorkerCredentials: number }
+type Receipt = { subject: string; cancellationRequested: number; cancelledBeforeExecution: number; cancelledPaused: number; revokedWorkerCredentials: number; removedWorkerAssignments: number }
 void React
 
 export function ProjectMemberRemovalPanel({ authority, projectId, snapshot, onRefresh }: {
@@ -39,10 +39,16 @@ export function ProjectMemberRemovalPanel({ authority, projectId, snapshot, onRe
         value.process_termination_confirmed !== false || !Array.isArray(value.cancellation_requested) ||
         !Array.isArray(value.cancelled_before_execution) || !Array.isArray(value.cancelled_paused) ||
         !Number.isSafeInteger(value.revoked_worker_credentials) || Number(value.revoked_worker_credentials) < 0 ||
-        value.worker_credentials_may_cover_other_projects !== true) throw Error('Removal outcome is unconfirmed')
+        (snapshot.membershipRemovalRevokesCredentials !== false
+          ? value.worker_credentials_may_cover_other_projects !== true || value.worker_credentials_available === false
+          : value.worker_credentials_available !== false || value.revoked_worker_credentials !== 0 ||
+            value.worker_credentials_may_cover_other_projects !== false || !Array.isArray(value.removed_worker_project_assignments) ||
+            value.removed_worker_project_assignments.some(item => typeof item !== 'string' || !item || item.length > 200) ||
+            new Set(value.removed_worker_project_assignments).size !== value.removed_worker_project_assignments.length)) throw Error('Removal outcome is unconfirmed')
       setReceipt({ subject: review.subject, cancellationRequested: value.cancellation_requested.length,
         cancelledBeforeExecution: value.cancelled_before_execution.length, cancelledPaused:value.cancelled_paused.length,
-        revokedWorkerCredentials:Number(value.revoked_worker_credentials) })
+        revokedWorkerCredentials:Number(value.revoked_worker_credentials),
+        removedWorkerAssignments: Array.isArray(value.removed_worker_project_assignments) ? value.removed_worker_project_assignments.length : 0 })
       setReview(undefined); setError('')
       await onRefresh()
     } catch {
@@ -63,12 +69,16 @@ export function ProjectMemberRemovalPanel({ authority, projectId, snapshot, onRe
     </button>)}
     {review && <div role="group" aria-label="Review Project access removal">
       <p>Remove <strong>{review.subject}</strong> ({review.role}) from this Project at membership revision {review.revision}?</p>
-      <p>Scoped agent sessions and invitations are revoked. Worker credentials this member issued for this Project will be revoked; shared workers may need new credentials in other Projects. Queued and paused work is cancelled; active Runs receive a cancellation request, not a confirmed stop. In-flight effects may already have occurred. Team and other Project memberships remain.</p>
+      {snapshot.membershipRemovalRevokesCredentials !== false
+        ? <p>Scoped agent sessions and invitations are revoked. Worker credentials this member issued for this Project will be revoked; shared workers may need new credentials in other Projects. Queued and paused work is cancelled; active Runs receive a cancellation request, not a confirmed stop. In-flight effects may already have occurred. Team and other Project memberships remain.</p>
+        : <p>Project membership and this member’s Project worker assignments will be removed; supported Run approvals will expire. Credentials issued outside this Core require revocation at their issuer. This receipt will not confirm invitation, agent-session, or other grant revocation. Queued and paused work will be cancelled; active Runs will receive a cancellation request, not a confirmed stop. In-flight effects may already have occurred. Team and other Project memberships remain.</p>}
       <button disabled={busy} onClick={() => void submit()}>{review.subject === caller.subject ? 'Confirm leaving Project' : 'Confirm removal'}</button>
       <button disabled={busy} onClick={() => setReview(undefined)}>Keep member</button>
     </div>}
     {error && <p role="alert">{error}</p>}
     {stale && <button disabled={busy} onClick={() => void reload()}>Reload Project roster</button>}
-    {receipt && <p role="status">{receipt.subject} removed from this Project. {receipt.cancelledBeforeExecution} queued Runs and {receipt.cancelledPaused} paused Runs cancelled; {receipt.cancellationRequested} active Runs have cancellation requested, not confirmed stopped. {receipt.revokedWorkerCredentials} issued worker credentials revoked; shared workers may need new credentials in other Projects. Previously delivered data or completed external effects cannot be withdrawn.</p>}
+    {receipt && <p role="status">{receipt.subject} removed from this Project. {receipt.cancelledBeforeExecution} queued Runs and {receipt.cancelledPaused} paused Runs cancelled; {receipt.cancellationRequested} active Runs have cancellation requested, not confirmed stopped. {snapshot.membershipRemovalRevokesCredentials !== false
+      ? <>{receipt.revokedWorkerCredentials} issued worker credentials revoked; shared workers may need new credentials in other Projects.</>
+      : <>{receipt.removedWorkerAssignments} Project worker assignments removed. Externally issued credentials still require issuer revocation; this receipt does not confirm those credentials, invitations, agent sessions, or other grants were revoked.</>} Previously delivered data or completed external effects cannot be withdrawn.</p>}
   </div>
 }

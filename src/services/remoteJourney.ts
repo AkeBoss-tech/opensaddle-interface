@@ -42,10 +42,11 @@ export class RemoteJourneyClient {
   private readonly portableContinuationAvailable: boolean
   private readonly nativeSessionResume: boolean
   private readonly membershipRemovalAvailable: boolean
+  private readonly membershipRemovalRevokesCredentials: boolean
   private readonly runEventPageAvailable: boolean
   private readonly delegationIntents = new Map<string, string>()
   private readonly storage?: Storage
-  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false, authorizedContextAvailable = false, portableContinuationAvailable = false, nativeSessionResume = false, storage: Storage | undefined = typeof window === 'undefined' ? undefined : window.localStorage, membershipRemovalAvailable = false, runEventPageAvailable = false) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable; this.authorizedContextAvailable = authorizedContextAvailable; this.portableContinuationAvailable=portableContinuationAvailable;this.nativeSessionResume=nativeSessionResume;this.storage=storage;this.membershipRemovalAvailable=membershipRemovalAvailable;this.runEventPageAvailable=runEventPageAvailable }
+  constructor(baseUrl: string, user: () => string, token?: string, capacityAvailable = false, nativeAdaptersAvailable = false, authorizedContextAvailable = false, portableContinuationAvailable = false, nativeSessionResume = false, storage: Storage | undefined = typeof window === 'undefined' ? undefined : window.localStorage, membershipRemovalAvailable = false, runEventPageAvailable = false, membershipRemovalRevokesCredentials = true) { this.baseUrl = baseUrl; this.user = user; this.token = token; this.capacityAvailable = capacityAvailable; this.nativeAdaptersAvailable = nativeAdaptersAvailable; this.authorizedContextAvailable = authorizedContextAvailable; this.portableContinuationAvailable=portableContinuationAvailable;this.nativeSessionResume=nativeSessionResume;this.storage=storage;this.membershipRemovalAvailable=membershipRemovalAvailable;this.runEventPageAvailable=runEventPageAvailable;this.membershipRemovalRevokesCredentials=membershipRemovalRevokesCredentials }
 
   private async request(path: string, method: string, body?: unknown, signal?: AbortSignal): Promise<Json> {
     const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-OpenSaddle-User': this.user(), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body), signal })
@@ -79,7 +80,14 @@ export class RemoteJourneyClient {
       || receipt.membership_revision !== expectedRevision + 1 || receipt.process_termination_confirmed !== false
       || !Array.isArray(receipt.cancelled_before_execution) || !Array.isArray(receipt.cancelled_paused)
       || !Array.isArray(receipt.cancellation_requested) || !Number.isSafeInteger(receipt.revoked_worker_credentials)
-      || Number(receipt.revoked_worker_credentials) < 0 || receipt.worker_credentials_may_cover_other_projects !== true)
+      || Number(receipt.revoked_worker_credentials) < 0
+      || (this.membershipRemovalRevokesCredentials
+        ? receipt.worker_credentials_may_cover_other_projects !== true || receipt.worker_credentials_available === false
+        : receipt.worker_credentials_available !== false || receipt.revoked_worker_credentials !== 0
+          || receipt.worker_credentials_may_cover_other_projects !== false
+          || !Array.isArray(receipt.removed_worker_project_assignments)
+          || receipt.removed_worker_project_assignments.some(value => typeof value !== 'string' || !value || value.length > 200)
+          || new Set(receipt.removed_worker_project_assignments).size !== receipt.removed_worker_project_assignments.length))
       throw Error('Project removal outcome is unconfirmed; reload the roster')
     return receipt
   }
@@ -388,6 +396,7 @@ export class RemoteJourneyClient {
       rosterAvailable: true,
       rosterRevision: members.schema_version === 'project-members.v1' && Number.isSafeInteger(members.revision) && Number(members.revision) >= 1 && members.viewer_subject === this.user() ? Number(members.revision) : undefined,
       membershipRemovalAvailable: this.membershipRemovalAvailable,
+      membershipRemovalRevokesCredentials: this.membershipRemovalRevokesCredentials,
       currentSubject: this.user(),
       canManage: memberItems.some(value => { const item = value as Json; return item.subject === this.user() && (item.role === 'owner' || item.role === 'admin') }),
       capacityAvailable: this.capacityAvailable,

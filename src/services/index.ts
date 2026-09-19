@@ -178,6 +178,7 @@ export function initServices(opts: {
       let runApprovalReviewAvailable = false
       let connectorWriteReviewAvailable = false
       let projectMembershipRemovalAvailable = false
+      let membershipRemovalRevokesCredentials = true
       let projectTaskFeedAvailable = false
       let commandCenterAvailable = false
       let managedKrailAvailable = false
@@ -324,7 +325,7 @@ export function initServices(opts: {
               renderer_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               run_approval_review_v1?: {available?:boolean;scope?:string;model_call_authorization?:boolean}
               agent_connector_sessions_v1?: {available?:boolean;authority_mode?:string;write_actions_available?:boolean}
-              project_membership_removal_v1?: {available?:boolean;scope?:string;revision_required?:boolean}
+              project_membership_removal_v1?: {available?:boolean;scope?:string;revision_required?:boolean;credential_authority_revocation?:boolean;authority_scope?:string}
               project_model_budget_v1?: { available?: boolean; scope?: string; configured_per_project?: boolean }
               managed_connector_connections_v1?: {available?:boolean;scope?:string;path_template?:string;credential_types?:string[]}
               run_event_page_v1?: {available?:boolean;schema_version?:string;path_template?:string;max_limit?:number}
@@ -349,7 +350,8 @@ export function initServices(opts: {
             rendererSettingsAvailable = capabilities.renderer_settings_v1?.available===true&&capabilities.renderer_settings_v1.execution_policy===false&&[JSON.stringify(['project','user_project']),JSON.stringify(['user','team','project','user_project'])].includes(JSON.stringify(capabilities.renderer_settings_v1.scopes))
             runApprovalReviewAvailable = capabilities.run_approval_review_v1?.available===true&&capabilities.run_approval_review_v1.scope==='run_admission'&&capabilities.run_approval_review_v1.model_call_authorization===false
             connectorWriteReviewAvailable = capabilities.agent_connector_sessions_v1?.available===true&&capabilities.agent_connector_sessions_v1.authority_mode==='broker_scoped'&&capabilities.agent_connector_sessions_v1.write_actions_available===true
-            projectMembershipRemovalAvailable = capabilities.project_membership_removal_v1?.available===true&&capabilities.project_membership_removal_v1.scope==='single_project'&&capabilities.project_membership_removal_v1.revision_required===true
+            projectMembershipRemovalAvailable = capabilities.project_membership_removal_v1?.available===true&&capabilities.project_membership_removal_v1.scope==='single_project'&&capabilities.project_membership_removal_v1.revision_required===true&&((capabilities.project_membership_removal_v1.credential_authority_revocation===undefined&&capabilities.project_membership_removal_v1.authority_scope===undefined)||(capabilities.project_membership_removal_v1.credential_authority_revocation===true&&capabilities.project_membership_removal_v1.authority_scope==='project_authorities')||(capabilities.project_membership_removal_v1.credential_authority_revocation===false&&capabilities.project_membership_removal_v1.authority_scope==='membership_approval_run_worker_assignment'))
+            membershipRemovalRevokesCredentials = capabilities.project_membership_removal_v1?.credential_authority_revocation!==false
             projectModelBudgetAvailable = capabilities.project_model_budget_v1?.available===true&&capabilities.project_model_budget_v1.scope==='hosted_model_routes_only'&&capabilities.project_model_budget_v1.configured_per_project===true
             managedConnectionsAvailable = capabilities.managed_connector_connections_v1?.available===true&&capabilities.managed_connector_connections_v1.scope==='personal_local_project'&&capabilities.managed_connector_connections_v1.path_template==='/api/v2/projects/{project_id}/connector-connections'&&JSON.stringify(capabilities.managed_connector_connections_v1.credential_types)===JSON.stringify(['api_key'])
             runEventPageAvailable = capabilities.run_event_page_v1?.available===true&&capabilities.run_event_page_v1.schema_version==='opensaddle.run-event-page.v1'&&capabilities.run_event_page_v1.path_template==='/api/v2/runs/{run_id}/event-page'&&capabilities.run_event_page_v1.max_limit===200
@@ -465,7 +467,7 @@ export function initServices(opts: {
       const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
       const agentProfiles = backendAvailable && agentProfilesAvailable ? new RemoteAgentProfileClient(baseUrl, getUserId, token) : undefined
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
-      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable, authorizedContextAvailable, portableContinuationAvailable, nativeSessionResume, undefined, projectMembershipRemovalAvailable, runEventPageAvailable) : undefined
+      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable, authorizedContextAvailable, portableContinuationAvailable, nativeSessionResume, undefined, projectMembershipRemovalAvailable, runEventPageAvailable, membershipRemovalRevokesCredentials) : undefined
       const personalRuntime=backendAvailable&&personalRuntimeAvailable?new PersonalRuntimeClient(baseUrl,getUserId,token):undefined
       const tools = connection.mode === 'remote'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)

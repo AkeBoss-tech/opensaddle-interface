@@ -16,6 +16,7 @@ export type JourneySnapshot = {
   rosterAvailable?: boolean
   rosterRevision?: number
   membershipRemovalAvailable?: boolean
+  membershipRemovalRevokesCredentials?: boolean
   canManage?: boolean
   currentSubject?: string
   results?: Array<{ runId: string; title: string; verified: boolean; artifactAvailable?: boolean; workerId?: string; status?: string; updatedAt?: string; nativeAdapterId?: NativeAdapterId; nativeModel?: string; authorizedContext?: AuthorizedContextHandle }>
