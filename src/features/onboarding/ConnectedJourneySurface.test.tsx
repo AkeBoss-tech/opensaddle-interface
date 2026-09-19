@@ -19,6 +19,26 @@ test('PROJECT-MEMBER-REMOVAL-1: normal People panel reviews exact member and rev
  assert.match(JSON.stringify(view.toJSON()),/cancellation requested.*not confirmed stopped/s)
  await act(async()=>view.unmount())
 })
+test('PROJECT-MEMBER-REMOVAL-1: external credential issuer receipt never claims worker credentials were revoked',async()=>{
+ const calls:unknown[][]=[]
+ const authority:JourneyAuthority={snapshot:async()=>({projectId:'P',members:[{subject:'owner',role:'owner',status:'active'},{subject:'member',role:'member',status:'active'}],workers:[],canManage:true,currentSubject:'owner',rosterRevision:4,membershipRemovalAvailable:true,membershipRemovalRevokesCredentials:false}),invite:async()=>{},enroll:async()=>{},removeMember:async(...args)=>{calls.push(args);return{schema_version:'opensaddle.project-member-removal.v1',removal_id:'pmr_pg',project_id:'P',subject:'member',removed_by:'owner',membership_revision:5,revoked_worker_credentials:0,worker_credentials_available:false,worker_credentials_may_cover_other_projects:false,removed_worker_project_assignments:['worker-one'],cancelled_before_execution:[],cancelled_paused:[],cancellation_requested:['run-active'],process_termination_confirmed:false}}}
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(<ConnectedJourneySurface authority={authority} projectId="P"/>);await Promise.resolve()})
+ const button=(name:string)=>view.root.findAllByType('button').find(node=>node.children.join('')===name)
+ await act(async()=>button('Review removal of member')!.props.onClick())
+ const before=JSON.stringify(view.toJSON())
+ assert.match(before,/require revocation at their issuer/)
+ assert.doesNotMatch(before,/Worker credentials this member issued.*will be revoked/)
+ await act(async()=>{button('Confirm removal')!.props.onClick();await new Promise(resolve=>setImmediate(resolve))})
+ assert.deepEqual(calls,[['P','member','member',4]])
+ const after=JSON.stringify(view.toJSON())
+ const status=view.root.findByProps({'aria-label':'Project membership removal'}).findByProps({role:'status'})
+ const statusText=(node:any):string=>typeof node==='string'?node:(node.children??[]).map(statusText).join('')
+ assert.match(statusText(status),/1 Project worker assignments removed/)
+ assert.match(after,/Externally issued credentials still require issuer revocation/)
+ assert.doesNotMatch(after,/issued worker credentials revoked/)
+ await act(async()=>view.unmount())
+})
 test('PROJECT-MEMBER-REMOVAL-1: capability absence withholds removal and lost acknowledgement never retries',async()=>{
  const current={projectId:'P',members:[{subject:'owner',role:'owner',status:'active'},{subject:'member',role:'member',status:'active'}],workers:[],currentSubject:'owner',canManage:true,rosterRevision:4}
  let sends=0
