@@ -1,0 +1,35 @@
+{
+  "invariant": "PROJECT-TASK-JOURNEY-20260919",
+  "interface_baseline": "b4e21283c2a2c2e9dccea669f4e8a6c6863801d8",
+  "before": {
+    "task_link": "Existing composer returned no exact /project/project-A/tasks/run-123 link; assertion failed, /tmp/opensaddle-20260919/issue39-baseline.txt",
+    "authenticated_subject": "Existing connected controls used stale UI identity; canCancel false instead of true, /tmp/opensaddle-20260919/issue39-identity-baseline.txt",
+    "cancelled_result": "Existing Run surface requested absent result bytes after cancellation; review call count 1 instead of 0, /tmp/opensaddle-20260919/issue39-cancel-baseline.txt"
+  },
+  "after": {
+    "feature_suite": "359 passed, 0 failed; /tmp/opensaddle-20260919/issue39-feature-suite.log",
+    "workspace_suite": "343 passed, 0 failed; /tmp/opensaddle-20260919/issue39-workspace-suite.log",
+    "typecheck": "passed; /tmp/opensaddle-20260919/issue39-typecheck.log",
+    "lint": "passed with existing warnings",
+    "fixture_compile": "passed"
+  },
+  "browser": {
+    "interface": "local Vite browser, 127.0.0.1:5176",
+    "core_commit": "2f80acb96aa28c161c0092575c6f36536aa98f5f",
+    "knowledge_commit": "ba98652b3199b009b3e8c6475f55c290aa446565",
+    "state": "disposable local SQLite and blob state",
+    "completed_run": "run_b551a21e6eb54ea8aa783560d071ecba",
+    "completed_observations": ["Project Agents navigation", "reviewed proposal and explicit publish", "awaiting approval with exact reviewed scope and digest", "UI approval", "deterministic worker completed", "result artifact read", "connector requested and completed audit digest", "result and audit still visible after reload", "Project and Work task feeds"],
+    "cancelled_run": "run_db34273307ce4ae9abeff2a26be00475",
+    "cancelled_observations": ["actual requester cancellation control", "cancelled before dispatch", "no absent-result access error", "cancelled status persisted after reload"],
+    "screenshots": ["/tmp/opensaddle-20260919/issue39-cancelled-task.png", "/tmp/opensaddle-20260919/issue39-completed-result-audit.png"]
+  },
+  "final_fixture_source_check": {
+    "run_id": "run_2fa154a5d02d47c5bce4b65302991730",
+    "status": "completed",
+    "artifact_count": 1,
+    "connector_events": ["agent_connector.requested", "agent_connector.completed"],
+    "path": "Final fixture source started with --approval-worker; public API proposed and published a reviewed agent, admitted a task, approved its exact review digest, and observed the completed Run, one artifact, and requested/completed connector events."
+  },
+  "limits": "The worker and repository response were local fixtures. No model, external connector provider, remote worker, active-provider cancellation, or packaged desktop application was exercised. The task heading currently displays the full compiled agent prompt; a human-readable task title with advanced instructions disclosure remains UI polish."
+}

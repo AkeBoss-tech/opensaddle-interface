@@ -1,5 +1,37 @@
-import assert from'node:assert/strict';import test from'node:test';import{readFileSync}from'node:fs';import{RemoteJourneyClient}from'./remoteJourney'
+import assert from'node:assert/strict';import test from'node:test';import{readFileSync}from'node:fs';import{RemoteJourneyClient}from'./remoteJourney';import{initServices}from'.'
 const actualAuthorizedContextResponse=JSON.parse(readFileSync(new URL('./fixtures/authorized-context-packet.json',import.meta.url),'utf8'))
+
+// PROJECT-TASK-AUTHORITY: Core's authenticated subject, rather than cached browser profile, owns Run controls.
+test('connected task controls use the authenticated Core subject and withhold them when identity is missing',async()=>{
+  const original=globalThis.fetch
+  let coreSubject: string|undefined='fixture-owner'
+  const users:string[]=[]
+  const tokens:string[]=[]
+  globalThis.fetch=async(input,init)=>{
+    const request=new Request(input,init),path=new URL(request.url).pathname
+    if(path==='/api/health')return Response.json({detail:'v2 only'},{status:503})
+    if(path==='/api/v2/capabilities')return Response.json({authenticated_subject:coreSubject,command_center:{available:true,path:'/api/v2/command-center',schema_version:'opensaddle.command-center.v1'}})
+    users.push(request.headers.get('X-OpenSaddle-User')??'')
+    tokens.push(request.headers.get('Authorization')??'')
+    if(path==='/api/v2/runs/R')return Response.json({run_id:'R',project_id:'P',task:'Fixture task',status:'awaiting_approval',cancellation_requested:false,requested_by:'fixture-owner'})
+    if(path==='/api/v2/projects/P/members')return Response.json({project_id:'P',members:[{subject:'fixture-owner',role:'owner',status:'active'}]})
+    return Response.json({detail:'not found'},{status:404})
+  }
+  const create=(token:string)=>initServices({getGrants:()=>[],setGrants:()=>{},currentUserId:'stale-browser-user',getCurrentUserId:()=> 'stale-browser-user',connection:{id:'fixture',name:'Fixture',mode:'remote',baseUrl:'https://core.example',token,allowMockFallback:false}})
+  try{
+    const connected=await create('fixture-token')
+    assert.equal((await connected.journey!.runDetail!('R')).canCancel,true)
+    assert.deepEqual(users.slice(-2),['fixture-owner','fixture-owner'])
+    coreSubject='other-owner'
+    const switched=await create('replacement-token')
+    assert.equal((await switched.journey!.runDetail!('R')).canCancel,false)
+    assert.deepEqual(users.slice(-2),['other-owner','other-owner'])
+    assert.deepEqual(tokens.slice(-2),['Bearer replacement-token','Bearer replacement-token'])
+    coreSubject=undefined
+    const missing=await create('malformed-token')
+    assert.equal(missing.journey,undefined)
+  }finally{globalThis.fetch=original}
+})
 test('connected journey mutations preserve authenticated project and machine scope',async()=>{const original=globalThis.fetch,calls:Array<[string,RequestInit]> = [];globalThis.fetch=async(url,init)=>{calls.push([String(url),init??{}]);return new Response(JSON.stringify({ok:true}),{status:201,headers:{'Content-Type':'application/json'}})};try{const client=new RemoteJourneyClient('https://core.example/',()=> 'owner','private');await client.createProject('project-1');await client.addMember('project-1','member-2','member');await client.registerWorker({workerId:'machine-a',organizationId:'org-1',projectIds:['project-1'],runtimeKind:'remote_worker'});await client.createRun({projectId:'project-1',sourceId:'src_12345678',task:'Review the existing change'});assert.deepEqual(calls.map(([url])=>url),['https://core.example/api/v2/projects','https://core.example/api/v2/projects/project-1/members','https://core.example/api/v2/workers','https://core.example/api/v2/runs']);assert.ok(calls.every(([,init])=>(init.headers as Record<string,string>).Authorization==='Bearer private'));assert.match(String(calls[2][1].body),/"worker_id":"machine-a"/)}finally{globalThis.fetch=original}})
 test('connected journey denial never becomes a success receipt',async()=>{const original=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({detail:'project owner or admin role required'}),{status:403,headers:{'Content-Type':'application/json'}});try{await assert.rejects(new RemoteJourneyClient('https://core.example',()=> 'member','token').addMember('project-1','other','member'),/project owner or admin role required/)}finally{globalThis.fetch=original}})
 test('current roster is composed only from matching authenticated projections',async()=>{const original=globalThis.fetch;globalThis.fetch=async(url)=>new Response(JSON.stringify(String(url).endsWith('/members')?{project_id:'P',members:[{subject:'owner',role:'owner',status:'active'}]}:String(url).endsWith('/workers')?{project_id:'P',workers:[{worker_id:'machine-a',runtime_kind:'remote_worker',status:'unknown'}]}:{project_id:'P',invitations:[]}),{headers:{'Content-Type':'application/json'}});try{const value=await new RemoteJourneyClient('https://core.example',()=> 'owner','token').snapshot('P');assert.equal(value.members[0].subject,'owner');assert.equal(value.workers[0].workerId,'machine-a')}finally{globalThis.fetch=original}})

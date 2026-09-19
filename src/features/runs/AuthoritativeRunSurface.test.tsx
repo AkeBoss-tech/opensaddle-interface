@@ -22,6 +22,17 @@ test('running task loads exact status and cancellation stays requested until aut
  assert.match(view.root.findAllByType('a').find(node=>node.children.join('')==='Inspect result artifacts')!.props.href,/run=run-real.*project=P/)
  await act(async()=>view.unmount());assert.equal(requests,1)
 })
+test('cancelled task shows its terminal state without treating absent result bytes as an access failure',async()=>{
+ let reads=0
+ const authority:AuthoritativeRunAuthority={runDetail:async()=>({...detail,status:'cancelled'}),review:async()=>{reads++;throw Error('no published result')}}
+ let view!:ReactTestRenderer
+ await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} runId="run-real" projectId="P"/></MemoryRouter>);await flush()})
+ try {
+  assert.match(JSON.stringify(view.toJSON()),/Cancellation acknowledged/)
+  assert.equal(reads,0)
+  assert.doesNotMatch(JSON.stringify(view.toJSON()),/The result is unavailable/)
+ } finally { await act(async()=>view.unmount()) }
+})
 test('route replacement fences late private status and unmount never cancels',async()=>{
  let resolve!:(value:AuthoritativeRunDetail)=>void,cancels=0
  const old:AuthoritativeRunAuthority={runDetail:()=>new Promise(done=>{resolve=done}),cancel:async()=>{cancels++}}

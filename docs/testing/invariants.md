@@ -1,5 +1,11 @@
 # Interface invariants
 
+## PROJECT-TASK-JOURNEY-20260919
+
+From a selected Project, an authorized user can open reviewed Agents, submit a task, and follow the exact Core-issued Run to approval, result artifacts, and digest-only connector activity. The task composer retains its draft when admission is rejected or the response names another Project; it does not invent a Run link. Connected task controls use the authenticated Core subject, so a stale browser identity cannot hide the actual requester's cancellation control or confer it on another subject. Missing or malformed authenticated identity withholds v2 task services. A cancelled or interrupted Run shows its terminal state and any artifact inspection path without interpreting absent result bytes as a connection or access failure. Cancellation after dispatch does not prove provider effects were undone.
+
+The existing focused composer test, mounted Run detail test, remote service-boundary test, and v2 negotiation fixtures cover these public behaviors. The same new link, authenticated-subject, and cancelled-result assertions failed against their pre-fix production paths; see `receipts/project-task-journey-20260919.json`. A disposable installed-Core browser journey reached exact approval, completed result, connector audit, reload, and pre-dispatch cancellation. The fixture supplied a deterministic worker and a fake scoped repository read; it did not call a model or external provider.
+
 - **LOCAL-PROJECT-EMPTY-START-1** — A new Interface workspace contains no fabricated Projects, people, machines, Runs, or conversations. Local Projects appear only after the authoritative local service registers a user-selected folder and remain available after the service restarts.
 - **AUTHORIZED-CONTEXT-INSPECTOR-1** — A Run Inspector shows only a currently reauthorized immutable launch packet whose packet, request, capability, Project, and Run identities match the admitted Run. Protected packet content is cleared before refresh and synchronously on authority, Project, or Run replacement; denial and malformed responses reveal only an unavailable state.
 - **RUN-CANCELLATION-AUTHORITY-1** — An active Run offers cancellation only to its exact requester or a current Project manager. After Core records the request, authoritative refresh replaces the action with a pending-cancellation status.

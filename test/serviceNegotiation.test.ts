@@ -11,6 +11,7 @@ test('v2-only local startup preserves v2 services without probing legacy permiss
     paths.push(path)
     if (path === '/api/v2/capabilities') return Response.json({
       capability_mode: 'local',
+      authenticated_subject: 'owner',
       dashboard_layout_v1: { available: true, scope: 'user' },
       command_center: { available: true, path: '/api/v2/command-center', schema_version: 'opensaddle.command-center.v1' },
     })
@@ -58,6 +59,7 @@ test('online research capability keeps the reviewed agent builder available', as
   globalThis.fetch = async (input) => {
     const path = new URL(String(input)).pathname
     if (path === '/api/v2/capabilities') return Response.json({ capability_mode: 'local',
+      authenticated_subject: 'owner',
       agent_builder_v1: { available: true, review_required: true, online_research_available: true,
         schema_version: 'opensaddle.agent-proposal.v1' } })
     return new Response(null, { status: 404 })

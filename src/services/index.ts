@@ -158,7 +158,8 @@ export function initServices(opts: {
       const connection = opts.connection ?? defaultConnectionProfile()
       const baseUrl = connection.baseUrl
       const token = connection.token
-      const getUserId = () => personalRuntimeSubject(baseUrl) ?? opts.getCurrentUserId?.() ?? opts.currentUserId
+      let authenticatedSubject: string | undefined
+      const getUserId = () => authenticatedSubject ?? personalRuntimeSubject(baseUrl) ?? opts.getCurrentUserId?.() ?? opts.currentUserId
       let backendAvailable = false
       let backendMode: string | undefined
       let modelProvider: string | undefined
@@ -295,8 +296,8 @@ export function initServices(opts: {
             signal: AbortSignal.timeout(1200),
           })
           if (capabilityResponse.ok) {
-            v2CapabilitiesAvailable = true
             const capabilities = await capabilityResponse.json() as {
+              authenticated_subject?: unknown
               project_team_presentation_v1?: {available?:boolean}
               teams_v1?: {available?:boolean}
               project_conversations_v1?: {available?:boolean;scope?:string;provider_execution?:boolean;user_messages?:boolean;child_tasks?:boolean;child_results?:boolean;conversation_context?:{available?:boolean;opt_in?:boolean;max_messages?:number;max_task_characters?:number}}
@@ -321,6 +322,11 @@ export function initServices(opts: {
               registered_git_evidence?: { available?: boolean; schema_version?: string; list_path_template?: string; inspection_path_template?: string; setup_path_template?: string; capture_path_template?: string; review_path_template?: string; semantic_authority?: string }
               native_adapters?: { available?: boolean; schema_version?: string; supported_adapter_ids?: unknown; unsupported_adapter_ids?: unknown; readiness_path_template?: string; report_path_template?: string; selection_field?: string; observation_authority?: string; policy_authority?: string }; portable_run_continuations?: { available?: boolean; schema_version?: string; checkpoint_path_template?: string; continuation_path_template?: string; mode?: string; native_session_resume?: boolean }; authorized_context_packets?: { available?: boolean; schema_version?: string; selection_field?: string; inspector_path_template?: string; worker_path_template?: string; reauthorization_schema_version?: string; unavailable_reason?: string; sources_path_template?: string }; personal_runtime?: {available?:boolean;schema_version?:string;status_path?:string;action_path?:string;authority?:string;ui_process_owner?:boolean;recovery_path?:string}
             }
+            if (typeof capabilities.authenticated_subject !== 'string' || !capabilities.authenticated_subject.trim()
+              || capabilities.authenticated_subject.length > 512 || /[\u0000-\u001f\u007f]/.test(capabilities.authenticated_subject))
+              throw Error('Authenticated Core identity is unavailable')
+            authenticatedSubject = capabilities.authenticated_subject
+            v2CapabilitiesAvailable = true
             backendAvailable = true
             backendMode = capabilities.capability_mode ?? backendMode
             standalonePluginSettingsAvailable = capabilities.standalone_plugin_settings_v1?.available===true&&capabilities.standalone_plugin_settings_v1.execution_policy===false&&JSON.stringify(capabilities.standalone_plugin_settings_v1.scopes)===JSON.stringify(['user','team'])
@@ -369,6 +375,8 @@ export function initServices(opts: {
             personalRuntimeAvailable=personal?.available===true&&personal.schema_version==='opensaddle.personal-runtime.v1'&&personal.status_path==='/api/v2/personal-runtime'&&personal.action_path==='/api/v2/personal-runtime/lifecycle'&&personal.authority==='local_installation_owner'&&personal.ui_process_owner===false&&personal.recovery_path==='/api/v2/personal-runtime/recovery'
           }
         } catch {
+          authenticatedSubject = undefined
+          v2CapabilitiesAvailable = false
           commandCenterAvailable = false
         }
       }
