@@ -15,7 +15,7 @@ const proposal = { proposal_id: proposalId, project_id: 'P', run_id: 'run_1', re
   expires_at: '2099-01-01T00:00:00Z', approved_by: null, receipt: null,
   review_scope: 'exact_connector_write', dispatch_reservation_started: false }
 const list = (value = proposal) => ({ schema_version: 'opensaddle.connector-write-proposals.v1', run_id: 'run_1',
-  proposals: value.state === 'completed' ? [] : [value], truncated: false })
+  proposals: value.state === 'completed' || value.state === 'revoked' ? [] : [value], truncated: false })
 const flush = () => new Promise(resolve => setTimeout(resolve, 25))
 
 // PROJECT-AGENT-WRITE-REVIEW-1: normal task detail requires a human click for one exact digest.
@@ -89,6 +89,28 @@ test('cross-Run proposal response and caller replacement withhold write argument
     return Response.json(run)
   }
   await assert.rejects(client.discover('P', 'run_1'), /authority changed/)
+  assert.equal(posts, 0)
+})
+
+test('PROJECT-MEMBER-REMOVAL-1: a revoked approval is rechecked by exact ID and offers no approval or dispatch action', async t => {
+  const original = globalThis.fetch
+  let state: 'approved' | 'revoked' = 'approved', posts = 0, view: ReactTestRenderer | undefined
+  t.after(async () => { if (view) await act(async () => view!.unmount()); globalThis.fetch = original })
+  globalThis.fetch = async (input, init) => {
+    const path = new URL(String(input)).pathname
+    if (path.endsWith('/runs/run_1/connector-write-proposals')) return Response.json(list({ ...proposal, state }))
+    if (path.includes('/connector-write-proposals/')) { if (init?.method === 'POST') posts++; return Response.json({ ...proposal, state }) }
+    if (path.endsWith('/runs/run_1')) return Response.json(run)
+    return new Response('{}', { status: 404 })
+  }
+  const client = new ConnectorWriteReviewClient('https://core.example', () => 'owner')
+  await act(async () => { view = create(<MemoryRouter><AuthoritativeRunSurface authority={{ runDetail: async () => ({ runId: 'run_1', projectId: 'P', task: run.task, status: 'running', cancellationRequested: false, canCancel: false, codingTask: false }) }} connectorWriteReview={client} projectId="P" runId="run_1" /></MemoryRouter>); await flush() })
+  state = 'revoked'
+  const refresh = view!.root.findAllByType('button').find(node => node.children.join('') === 'Check write requests')!
+  await act(async () => { refresh.props.onClick(); await flush() })
+  const rendered = JSON.stringify(view!.toJSON())
+  assert.match(rendered, /State:.*revoked.*Approval revoked. A new request and review are required/s)
+  assert.doesNotMatch(rendered, /Approve exact write/)
   assert.equal(posts, 0)
 })
 

@@ -216,3 +216,50 @@ test('Run detail uses authoritative status and scoped cancellation authority wit
  globalThis.fetch=async(input)=>{const path=new URL(String(input)).pathname;paths.push(path);return Response.json(path.endsWith('/members')?{project_id:'P',members:[{subject:'owner',role:'owner',status:'active'}]}:{run_id:'run-real',project_id:'P',task:'Actual task',status:'running',requested_by:'requester',cancellation_requested:true,policy:{obligations:{coding_task:{schema_version:'opensaddle.coding-task.v1'}}}})}
  try{const client=new RemoteJourneyClient('https://core.example',()=>subject);let value=await client.runDetail('run-real');assert.equal(value.canCancel,true);assert.equal(value.cancellationRequested,true);assert.equal(value.status,'running');assert.equal(value.codingTask,true);subject='other';value=await client.runDetail('run-real');assert.equal(value.canCancel,false);assert.ok(paths.every(path=>path.startsWith('/api/v2/')));globalThis.fetch=async()=>Response.json({run_id:'other',project_id:'P'});await assert.rejects(client.runDetail('run-real'),/identity or status/)}finally{globalThis.fetch=original}
 })
+test('PROJECT-MEMBER-REMOVAL-1: client re-reads exact roster before one revision-bound POST',async()=>{
+ const original=globalThis.fetch,paths:string[]=[],project='P',subject='member',revision=4
+ const roster={schema_version:'project-members.v1',project_id:project,revision,viewer_subject:'owner',members:[{subject:'owner',role:'owner',status:'active'},{subject,role:'member',status:'active'}]}
+ const receipt={schema_version:'opensaddle.project-member-removal.v1',removal_id:'pmr_one',project_id:project,subject,removed_by:'owner',membership_revision:5,process_termination_confirmed:false,cancelled_before_execution:[],cancelled_paused:[],cancellation_requested:['run_active'],revoked_worker_credentials:1,worker_credentials_may_cover_other_projects:true}
+ globalThis.fetch=async(input,init)=>{const request=new Request(input,init);paths.push(request.method+' '+new URL(request.url).pathname);assert.equal(request.headers.get('X-OpenSaddle-User'),'owner');if(request.method==='GET')return Response.json(roster);assert.deepEqual(JSON.parse(await request.text()),{subject,expected_revision:revision});return Response.json(receipt)}
+ try{const client=new RemoteJourneyClient('https://core.example',()=> 'owner','token',false,false,false,false,false,undefined,true);assert.deepEqual(await client.removeMember(project,subject,'member',revision),receipt);assert.deepEqual(paths,['GET /api/v2/projects/P/members','POST /api/v2/projects/P/members/remove'])}finally{globalThis.fetch=original}
+})
+
+test('PROJECT-MEMBER-REMOVAL-1: changed revision, role or caller withholds removal POST',async()=>{
+ const original=globalThis.fetch,client=new RemoteJourneyClient('https://core.example',()=> 'owner','token',false,false,false,false,false,undefined,true)
+ let posts=0
+ const roster={schema_version:'project-members.v1',project_id:'P',revision:5,viewer_subject:'owner',members:[{subject:'owner',role:'owner',status:'active'},{subject:'member',role:'admin',status:'active'}]}
+ try{
+  globalThis.fetch=async(_input,init)=>{if(init?.method==='POST')posts++;return Response.json(roster)}
+  await assert.rejects(client.removeMember('P','member','member',4),/changed/)
+ await assert.rejects(client.removeMember('P','member','member',5),/changed/)
+  let actor='owner'
+  const switched=new RemoteJourneyClient('https://core.example',()=>actor,'token',false,false,false,false,false,undefined,true)
+  globalThis.fetch=async(_input,init)=>{if(init?.method==='POST')posts++;actor='other';return Response.json({...roster,revision:4,members:[{subject:'owner',role:'owner',status:'active'},{subject:'member',role:'member',status:'active'}]})}
+  await assert.rejects(switched.removeMember('P','member','member',4),/changed/)
+  assert.equal(posts,0)
+ }finally{globalThis.fetch=original}
+})
+
+test('PROJECT-MEMBER-REMOVAL-1: negotiated capability and current roster revision gate the People control',async()=>{
+ const original=globalThis.fetch
+ let advertised=false
+ globalThis.fetch=async input=>{
+  const path=new URL(String(input)).pathname
+  if(path==='/api/health')return Response.json({detail:'v2 only'},{status:503})
+  if(path==='/api/v2/capabilities')return Response.json({authenticated_subject:'owner',command_center:{available:true,path:'/api/v2/command-center',schema_version:'opensaddle.command-center.v1'},project_membership_removal_v1:{available:advertised,scope:'single_project',revision_required:true}})
+  if(path.endsWith('/invitations'))return Response.json({project_id:'P',invitations:[]})
+  if(path.endsWith('/members'))return Response.json({schema_version:'project-members.v1',project_id:'P',revision:4,viewer_subject:'owner',members:[{subject:'owner',role:'owner',status:'active'}]})
+  if(path.endsWith('/workers'))return Response.json({project_id:'P',workers:[]})
+  if(path.endsWith('/participants')||path.endsWith('/sources'))return Response.json({project_id:'P',items:[]})
+  return Response.json({active_runs:[],outcomes:[]})
+ }
+ const create=()=>initServices({getGrants:()=>[],setGrants:()=>{},currentUserId:'cached-other',getCurrentUserId:()=> 'cached-other',connection:{id:'fixture',name:'Fixture',mode:'remote',baseUrl:'https://core.example',token:'session',allowMockFallback:false}})
+ try{
+  assert.equal((await (await create()).journey!.snapshot('P')).membershipRemovalAvailable,false)
+  advertised=true
+  const current=await (await create()).journey!.snapshot('P')
+  assert.equal(current.membershipRemovalAvailable,true)
+  assert.equal(current.rosterRevision,4)
+  assert.equal(current.currentSubject,'owner')
+ }finally{globalThis.fetch=original}
+})

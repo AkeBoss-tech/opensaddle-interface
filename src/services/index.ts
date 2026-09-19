@@ -173,6 +173,7 @@ export function initServices(opts: {
       let rendererSettingsAvailable = false
       let runApprovalReviewAvailable = false
       let connectorWriteReviewAvailable = false
+      let projectMembershipRemovalAvailable = false
       let projectTaskFeedAvailable = false
       let commandCenterAvailable = false
       let managedKrailAvailable = false
@@ -316,6 +317,7 @@ export function initServices(opts: {
               renderer_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               run_approval_review_v1?: {available?:boolean;scope?:string;model_call_authorization?:boolean}
               agent_connector_sessions_v1?: {available?:boolean;authority_mode?:string;write_actions_available?:boolean}
+              project_membership_removal_v1?: {available?:boolean;scope?:string;revision_required?:boolean}
               project_task_feed_v1?: {available?:boolean;scope?:string;schema_version?:string}
               command_center?: { available?: boolean; path?: string; schema_version?: string }
               managed_krail?: boolean
@@ -337,6 +339,7 @@ export function initServices(opts: {
             rendererSettingsAvailable = capabilities.renderer_settings_v1?.available===true&&capabilities.renderer_settings_v1.execution_policy===false&&[JSON.stringify(['project','user_project']),JSON.stringify(['user','team','project','user_project'])].includes(JSON.stringify(capabilities.renderer_settings_v1.scopes))
             runApprovalReviewAvailable = capabilities.run_approval_review_v1?.available===true&&capabilities.run_approval_review_v1.scope==='run_admission'&&capabilities.run_approval_review_v1.model_call_authorization===false
             connectorWriteReviewAvailable = capabilities.agent_connector_sessions_v1?.available===true&&capabilities.agent_connector_sessions_v1.authority_mode==='broker_scoped'&&capabilities.agent_connector_sessions_v1.write_actions_available===true
+            projectMembershipRemovalAvailable = capabilities.project_membership_removal_v1?.available===true&&capabilities.project_membership_removal_v1.scope==='single_project'&&capabilities.project_membership_removal_v1.revision_required===true
             projectTaskFeedAvailable = capabilities.project_task_feed_v1?.available===true&&capabilities.project_task_feed_v1.scope==='current_memberships'&&capabilities.project_task_feed_v1.schema_version==='opensaddle.project-task-feed.v1'
             commandCenterAvailable = capabilities.command_center?.available === true
               && capabilities.command_center.path === '/api/v2/command-center'
@@ -449,7 +452,7 @@ export function initServices(opts: {
       const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
       const agentProfiles = backendAvailable && agentProfilesAvailable ? new RemoteAgentProfileClient(baseUrl, getUserId, token) : undefined
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
-      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable, authorizedContextAvailable, portableContinuationAvailable, nativeSessionResume) : undefined
+      const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable, authorizedContextAvailable, portableContinuationAvailable, nativeSessionResume, undefined, projectMembershipRemovalAvailable) : undefined
       const personalRuntime=backendAvailable&&personalRuntimeAvailable?new PersonalRuntimeClient(baseUrl,getUserId,token):undefined
       const tools = connection.mode === 'remote'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)

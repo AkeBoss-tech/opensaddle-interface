@@ -6,6 +6,7 @@ function stateCopy(proposal: ConnectorWriteProposal): string {
   switch (proposal.state) {
     case 'proposed': return Date.parse(proposal.expiresAt) <= Date.now() ? 'Expired. Core will reject approval.' : 'Awaiting a human decision. No write has been authorized.'
     case 'approved': return 'Approved for this exact request. The agent must separately dispatch it.'
+    case 'revoked': return 'Approval revoked. A new request and review are required.'
     case 'dispatching': return 'Dispatch reserved. The external effect may already have occurred.'
     case 'effect_unknown': return 'External outcome unknown. Do not assume the effect failed or retry it.'
     case 'completed': return 'Core recorded a completed connector dispatch. Inspect the receipt and external system to verify the effect.'
