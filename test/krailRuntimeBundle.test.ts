@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -112,6 +112,17 @@ test('packaged KRAIL runtime requires its pinned interpreter', () => {
   }
 })
 
+test('packaged runtime rejects a directory advertised as an executable', { skip: process.platform === 'win32' }, () => {
+  const value = fixture()
+  try {
+    value.manifest.commands.admin = 'bin'
+    writeFileSync(path.join(value.runtime, 'manifest.json'), JSON.stringify(value.manifest))
+    assert.equal(resolveKrailRuntime(value.resourceRoot), null)
+  } finally {
+    rmSync(value.resourceRoot, { recursive: true, force: true })
+  }
+})
+
 test('packaged KRAIL runtime rejects a tampered dependency report', () => {
   const value = fixture()
   try {
@@ -119,6 +130,52 @@ test('packaged KRAIL runtime rejects a tampered dependency report', () => {
     assert.equal(resolveKrailRuntime(value.resourceRoot), null)
   } finally {
     rmSync(value.resourceRoot, { recursive: true, force: true })
+  }
+})
+
+test('packaged runtime keeps launcher and digest targets inside its resource root', { skip: process.platform === 'win32' }, () => {
+  const value = fixture()
+  const outside = mkdtempSync(path.join(os.tmpdir(), 'opensaddle-external-runtime-'))
+  try {
+    const admin = path.join(value.runtime, 'bin', 'krail-admin')
+    const internal = path.join(value.runtime, 'bin', 'internal-admin')
+    renameSync(admin, internal)
+    symlinkSync('internal-admin', admin)
+    assert.equal(resolveKrailRuntime(value.resourceRoot)?.adminCommand, admin)
+
+    rmSync(admin)
+    const externalAdmin = path.join(outside, 'external-admin')
+    writeFileSync(externalAdmin, '#!/bin/sh\nexit 0\n')
+    chmodSync(externalAdmin, 0o755)
+    symlinkSync(externalAdmin, admin)
+    assert.equal(resolveKrailRuntime(value.resourceRoot), null)
+
+    rmSync(admin)
+    symlinkSync('internal-admin', admin)
+    const report = path.join(value.runtime, 'dependency-install-report.json')
+    const externalReport = path.join(outside, 'dependency-install-report.json')
+    renameSync(report, externalReport)
+    symlinkSync(externalReport, report)
+    assert.equal(resolveKrailRuntime(value.resourceRoot), null)
+
+    rmSync(report)
+    renameSync(externalReport, report)
+    const manifest = path.join(value.runtime, 'manifest.json')
+    const externalManifest = path.join(outside, 'manifest.json')
+    renameSync(manifest, externalManifest)
+    symlinkSync(externalManifest, manifest)
+    assert.equal(resolveKrailRuntime(value.resourceRoot), null)
+
+    rmSync(manifest)
+    renameSync(externalManifest, manifest)
+    assert.equal(resolveKrailRuntime(value.resourceRoot)?.adminCommand, admin)
+    const externalRuntime = path.join(outside, 'krail-runtime')
+    renameSync(value.runtime, externalRuntime)
+    symlinkSync(externalRuntime, value.runtime)
+    assert.equal(resolveKrailRuntime(value.resourceRoot), null)
+  } finally {
+    rmSync(value.resourceRoot, { recursive: true, force: true })
+    rmSync(outside, { recursive: true, force: true })
   }
 })
 

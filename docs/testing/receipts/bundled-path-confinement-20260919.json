@@ -1,0 +1,23 @@
+{
+  "schema_version": "opensaddle.interface-bundle-path-verification.v1",
+  "baseline_commit": "2a4962f8f70defcab1eaf05ba50ed62b4575e15a",
+  "tested_source_tree": "0a489925bbc0acb5b674b602af02c90271f9f115",
+  "invariant": "DESKTOP-PINNED-BUNDLE-1",
+  "public_boundary": "resolveKrailRuntime resource-root acceptance",
+  "before": [
+    "External launcher symlink returned available runtime instead of null",
+    "Directory launcher returned available runtime instead of null"
+  ],
+  "after": {
+    "owning_tests": 9,
+    "parent_recheck_tests": 9,
+    "typecheck": "passed",
+    "electron_build": "passed",
+    "diff_check": "passed"
+  },
+  "limits": [
+    "macOS resource-root tests, not signed installer or clean-user qualification",
+    "No protection against hostile modifications after validation",
+    "Explicit operator executable override remains separate"
+  ]
+}
