@@ -11,6 +11,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import base64
+import hmac
 import os
 from pathlib import Path
 import subprocess
@@ -20,10 +21,11 @@ import threading
 import httpx
 import uvicorn
 from fastapi.testclient import TestClient
+from fastapi import HTTPException, Request
 
 from opensaddle.control_plane.api import ControlPlaneSettings, create_control_plane_app
 from opensaddle.control_plane.agent_research import MediaWikiSearchAdapter
-from opensaddle.control_plane.auth import LocalBootstrapAuthenticator
+from opensaddle.control_plane.auth import LocalBootstrapAuthenticator, Principal
 from opensaddle.control_plane.artifact_blobs import ScopedLocalArtifactBlobStore
 from opensaddle.control_plane.connectors import GitHubReadOnlyBroker
 from opensaddle.control_plane.local_project_bridge import bridge_registered_local_project
@@ -46,6 +48,23 @@ class FixtureRepositoryAccess:
         return connector == "github" and action == "get_repository" and arguments == {"owner": "fixture", "repo": "public"}
 
 
+class FixtureUsersAuthenticator:
+    """Two throwaway loopback identities for testing browser authority replacement."""
+
+    def __init__(self, owner_token, viewer_token, outsider_token):
+        self.owner_token, self.viewer_token, self.outsider_token = owner_token, viewer_token, outsider_token
+
+    async def authenticate(self, request):
+        scheme, _, candidate = request.headers.get("authorization", "").partition(" ")
+        if scheme.lower() == "bearer" and hmac.compare_digest(candidate, self.owner_token):
+            return Principal("fixture-owner", frozenset({"owner", "admin", "member", "requester", "approver", "auditor", "worker"}))
+        if scheme.lower() == "bearer" and hmac.compare_digest(candidate, self.viewer_token):
+            return Principal("fixture-viewer", frozenset({"member", "requester", "approver", "auditor"}))
+        if self.outsider_token and scheme.lower() == "bearer" and hmac.compare_digest(candidate, self.outsider_token):
+            return Principal("fixture-outsider", frozenset({"member", "requester", "approver", "auditor"}))
+        raise PermissionError("fixture authentication required")
+
+
 class FixturePolicy(RolePolicyEngine):
     def __init__(self, require_approval=False):
         self.require_approval = require_approval
@@ -56,7 +75,7 @@ class FixturePolicy(RolePolicyEngine):
                        obligations={**decision.obligations, "connector_actions": {"github": ["get_repository"]}})
 
 
-def fixture_worker(base_url, credential, stop):
+def fixture_worker(base_url, credential, stop, *, store, await_cancellation=False):
     """Run one provider-free task through the real worker and scoped connector HTTP routes."""
     worker = "fixture-worker"
     headers = {"authorization": "Bearer " + credential}
@@ -75,6 +94,23 @@ def fixture_worker(base_url, credential, stop):
                 path = f"/api/v2/workers/{worker}/runs/{run_id}"
                 started = client.post(path + "/start", headers=headers, json={"lease_epoch": epoch})
                 started.raise_for_status()
+                if await_cancellation:
+                    print(f"FIXTURE_RUN_RUNNING_AWAITING_CANCELLATION {run_id}", flush=True)
+                    while not stop.is_set() and not store.get_run(run_id)["cancellation_requested"]:
+                        stop.wait(0.15)
+                    if stop.is_set():
+                        return
+                    # Leave a short, observable requested state. The worker has
+                    # performed no connector or model action in this mode.
+                    stop.wait(1.5)
+                    if stop.is_set():
+                        return
+                    acknowledged = client.post(path + "/renew", headers=headers,
+                                               json={"lease_epoch": epoch})
+                    if acknowledged.status_code != 409 or store.get_run(run_id)["status"] != "cancelled":
+                        raise ValueError("worker cancellation acknowledgement was not recorded")
+                    print(f"FIXTURE_RUN_CANCELLED {run_id}", flush=True)
+                    continue
                 assignment = client.get(path + "/participant-assignment", headers=headers,
                                         params={"lease_epoch": epoch})
                 assignment.raise_for_status()
@@ -110,10 +146,19 @@ def main():
     parser.add_argument("--research-provider", choices=("none", "mediawiki"), default="none")
     parser.add_argument("--reviewed-memory", action="store_true", help="seed one reviewed local test note")
     parser.add_argument("--approval-worker", action="store_true", help="require task review, then use a provider-free fixture worker")
+    parser.add_argument("--worker-await-cancellation", action="store_true", help="hold a started fixture worker without provider effects until cancellation")
     args = parser.parse_args()
+    if args.worker_await_cancellation and not args.approval_worker:
+        raise SystemExit("--worker-await-cancellation requires --approval-worker")
     token = os.environ.get("OPENSADDLE_BROWSER_FIXTURE_TOKEN", "")
+    viewer_token = os.environ.get("OPENSADDLE_BROWSER_FIXTURE_VIEWER_TOKEN", "")
+    outsider_token = os.environ.get("OPENSADDLE_BROWSER_FIXTURE_OUTSIDER_TOKEN", "")
     if len(token) < 16:
         raise SystemExit("Set a throwaway 16+ character OPENSADDLE_BROWSER_FIXTURE_TOKEN")
+    if viewer_token and (len(viewer_token) < 16 or hmac.compare_digest(token, viewer_token)):
+        raise SystemExit("Set a distinct throwaway 16+ character viewer token")
+    if outsider_token and (not viewer_token or len(outsider_token) < 16 or outsider_token in {token, viewer_token}):
+        raise SystemExit("Set a distinct throwaway 16+ character outsider token alongside the viewer token")
     with tempfile.TemporaryDirectory(prefix="opensaddle-agent-browser-") as directory:
         root = Path(directory)
         research_adapter = MediaWikiSearchAdapter() if args.research_provider == "mediawiki" else None
@@ -133,7 +178,8 @@ def main():
         lease = DeterministicSecretLeaseIssuer()
         broker = GitHubReadOnlyBroker(FixtureRepository(), FixtureRepositoryAccess(), lease)
         settings = ControlPlaneSettings(
-            database_path=root / "control.db", authenticator=LocalBootstrapAuthenticator("fixture-owner", token),
+            database_path=root / "control.db", authenticator=(FixtureUsersAuthenticator(token, viewer_token, outsider_token)
+                if viewer_token else LocalBootstrapAuthenticator("fixture-owner", token)),
             policy_engine=(PersonalLocalPolicyEngine(owner_subject="fixture-owner", project_id=project,
                 resource_demand={"cpu_millicores": 100, "memory_mib": 64, "concurrency": 1})
                 if args.reviewed_memory else FixturePolicy(require_approval=args.approval_worker)), worker_credential_pepper="fixture-worker-pepper-32-characters",
@@ -146,6 +192,20 @@ def main():
         app = create_control_plane_app(settings)
         store = app.state.run_store
         store.create_project(project, "fixture-owner")
+        if viewer_token:
+            store.add_member(project, "fixture-viewer", "approver")
+            @app.post("/fixture/revoke-viewer", status_code=204)
+            async def revoke_fixture_viewer(request: Request):
+                scheme, _, candidate = request.headers.get("authorization", "").partition(" ")
+                if scheme.lower() != "bearer" or not hmac.compare_digest(candidate, token):
+                    raise HTTPException(403, "fixture owner token required")
+                # Deliberate test-only authority mutation; there is no public
+                # Project member deletion route in this Core build.
+                with store._connect() as connection:
+                    connection.execute("DELETE FROM control_plane_memberships WHERE project_id=? AND subject=?",
+                                       (project, "fixture-viewer"))
+                    connection.commit()
+                return None
         if args.reviewed_memory:
             source = bridge_registered_local_project(registry=registry, run_store=store, local_project_id=project,
                 project_id=project, created_by="fixture-owner")["source"]
@@ -182,6 +242,7 @@ def main():
                 "observed_at": now.isoformat(), "expires_at": (now + timedelta(minutes=8)).isoformat()})
             worker_thread = threading.Thread(target=fixture_worker,
                                              args=(f"http://127.0.0.1:{args.port}", credential["token"], worker_stop),
+                                             kwargs={"store": store, "await_cancellation": args.worker_await_cancellation},
                                              daemon=True)
             worker_thread.start()
         print(f"READY http://127.0.0.1:{args.port} project=browser-fixture", flush=True)

@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom'
 import type { AuthorizedContextHandle, AuthorizedContextPacket } from '../onboarding/ConnectedJourneySurface'
 import type { CodingResultAuthority } from '../../services/codingResultReview'
 import { CodingResultPanel } from '../onboarding/CodingResultPanel'
-export type AuthoritativeRunDetail = { runId:string;projectId:string;task:string;status:string;workerId?:string;updatedAt?:string;cancellationRequested:boolean;canCancel:boolean;codingTask:boolean;authorizedContext?:AuthorizedContextHandle }
+export type AuthoritativeRunDetail = { runId:string;projectId:string;task:string;executionInstructions?:string;status:string;workerId?:string;updatedAt?:string;cancellationRequested:boolean;canCancel:boolean;codingTask:boolean;authorizedContext?:AuthorizedContextHandle }
 export type ConnectorAuditItem = { sequence:number;timestamp:string;state:'requested'|'completed'|'unknown'|'denied';connector?:string;action?:string;requestDigest?:string;responseDigest?:string;outcome?:string }
 export type ConnectorAudit = { runId:string;projectId:string;items:ConnectorAuditItem[];complete:boolean }
 export interface AuthoritativeRunAuthority {
@@ -23,13 +23,13 @@ export function AuthoritativeRunSurface({authority,runId,codingResults,projectId
   const [packet,setPacket]=useState<{authority:AuthoritativeRunAuthority;runId:string;value?:AuthorizedContextPacket;error?:string}>()
   const [connectorAudit,setConnectorAudit]=useState<{authority:AuthoritativeRunAuthority;runId:string;value?:ConnectorAudit;error?:string}>()
   const auditAbort=useRef<AbortController|undefined>(undefined)
-  const [busy,setBusy]=useState(false),generation=useRef(0),packetGeneration=useRef(0),operation=useRef<symbol|undefined>(undefined),finished=useRef(false)
+  const [busy,setBusy]=useState(false),generation=useRef(0),packetGeneration=useRef(0),operation=useRef<symbol|undefined>(undefined)
   const refresh=async()=>{
     const current=++generation.current
-    try{const detail=await authority.runDetail(runId);if(detail.runId!==runId||(projectId!==undefined&&detail.projectId!==projectId))throw Error('Task does not belong to this project.');if(current===generation.current){finished.current=terminal(detail.status);setState({authority,runId,projectId,detail})}}
+    try{const detail=await authority.runDetail(runId);if(detail.runId!==runId||(projectId!==undefined&&detail.projectId!==projectId))throw Error('Task does not belong to this project.');if(current===generation.current)setState({authority,runId,projectId,detail})}
     catch(reason){if(current===generation.current){packetGeneration.current++;auditAbort.current?.abort();setConnectorAudit(undefined);setPacket(undefined);setState({authority,runId,projectId,error:reason instanceof Error?reason.message:String(reason)})}}
   }
-  useEffect(()=>{finished.current=false;operation.current=undefined;setBusy(false);setPacket(undefined);setConnectorAudit(undefined);setState({authority,runId,projectId});void refresh();const timer=setInterval(()=>{if(!finished.current&&!operation.current)void refresh()},2500);return()=>{generation.current++;packetGeneration.current++;auditAbort.current?.abort();auditAbort.current=undefined;operation.current=undefined;clearInterval(timer)}},[authority,runId,projectId])
+  useEffect(()=>{operation.current=undefined;setBusy(false);setPacket(undefined);setConnectorAudit(undefined);setState({authority,runId,projectId});void refresh();const timer=setInterval(()=>{if(!operation.current)void refresh()},2500);return()=>{generation.current++;packetGeneration.current++;auditAbort.current?.abort();auditAbort.current=undefined;operation.current=undefined;clearInterval(timer)}},[authority,runId,projectId])
   const owned=state?.authority===authority&&state.runId===runId&&state.projectId===projectId?state:undefined,detail=owned?.detail,currentPacket=packet?.authority===authority&&packet.runId===runId?packet:undefined
   const cancel=async()=>{
     if(!detail||!authority.cancel||operation.current)return
@@ -56,8 +56,9 @@ export function AuthoritativeRunSurface({authority,runId,codingResults,projectId
     {projectId&&<Link to={`/project/${encodeURIComponent(projectId)}`}>Back to workspace</Link>}
     {owned?.error?<p role="alert">Task unavailable: {owned.error}</p>:!detail?<p role="status">Loading the authoritative Run…</p>:<>
       <section className="cc-panel"><h2>Execution</h2><p role="status">{detail.status}</p><p>{detail.workerId?`Assigned worker: ${detail.workerId}`:'No worker assignment reported.'}</p>{detail.updatedAt&&<p>Updated {detail.updatedAt}</p>}
-        {detail.status==='cancelled'?<p>Cancellation acknowledged · the Run is stopped.</p>:detail.cancellationRequested?<p>Cancellation requested · {terminal(detail.status)?'execution ended without a cancellation acknowledgment.':'waiting for the worker to acknowledge a stop.'}</p>:detail.canCancel&&authority.cancel&&!terminal(detail.status)?<button className="secondary-btn" disabled={busy} onClick={()=>void cancel()}>Request cancellation</button>:null}
+        {detail.status==='cancelled'?<p>Cancellation acknowledged · Core marks this Run cancelled. Previously dispatched effects may still have occurred.</p>:detail.cancellationRequested?<p>Cancellation requested · {terminal(detail.status)?'execution ended without a cancellation acknowledgment.':'waiting for the worker to acknowledge a stop.'}</p>:detail.canCancel&&authority.cancel&&!terminal(detail.status)?<button className="secondary-btn" disabled={busy} onClick={()=>void cancel()}>Request cancellation</button>:null}
         <Link to={`/project/${encodeURIComponent(detail.projectId)}/collaboration`}>Project tasks and knowledge</Link>
+        {detail.executionInstructions&&<details><summary>Execution instructions</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:'20rem',overflow:'auto'}}>{detail.executionInstructions}</pre></details>}
         <details><summary>Exact Run</summary><p>{detail.runId}</p><p>{detail.projectId}</p></details>
       </section>
       {detail.status==='awaiting_approval'&&!approvalReview&&<p role="status">Task approval review is unavailable on this connection.</p>}

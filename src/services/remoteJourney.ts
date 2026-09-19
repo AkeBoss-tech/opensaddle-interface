@@ -5,6 +5,14 @@ import { RemoteMalleableShellClient } from './remoteMalleableShell'
 import type { AuthorizedContextHandle, PortableCheckpoint, PortableContinuationIntent } from '../features/onboarding/ConnectedJourneySurface'
 
 type Json = Record<string, unknown>
+function displayTask(run: Json): string {
+  if (run.user_task !== undefined && (typeof run.user_task !== 'string' || !run.user_task.trim() || run.user_task.length > 131072)) throw Error('Authoritative user task is invalid')
+  if (typeof run.user_task === 'string') return run.user_task
+  const obligations = run.policy && typeof run.policy === 'object' && !Array.isArray(run.policy) ? (run.policy as Json).obligations : undefined
+  if (obligations && typeof obligations === 'object' && !Array.isArray(obligations)
+    && typeof (obligations as Json).agent_definition_digest === 'string') return 'Agent task'
+  return typeof run.task === 'string' ? run.task : 'Run'
+}
 const submissionErrorMessages: Record<string, string> = {
   run_submission_pending: 'The earlier submission is still pending. Retry the same task to reconcile it; a replacement run will not be created.',
   run_idempotency_conflict: 'This submission key is already bound to different arguments. Refresh the task state before submitting a changed task.',
@@ -91,6 +99,7 @@ export class RemoteJourneyClient {
   async runDetail(runId: string, signal?: AbortSignal): Promise<AuthoritativeRunDetail> {
     const run = await this.run(runId, signal)
     if (run.run_id !== runId || typeof run.project_id !== 'string' || !run.project_id || typeof run.task !== 'string' || typeof run.status !== 'string' || typeof run.cancellation_requested !== 'boolean') throw Error('Authoritative Run identity or status is invalid')
+    const task = displayTask(run)
     const projectId = run.project_id, subject = this.user()
     let manager = false
     try {
@@ -100,7 +109,7 @@ export class RemoteJourneyClient {
     } catch { signal?.throwIfAborted(); /* No manager controls are inferred when membership cannot be read. */ }
     signal?.throwIfAborted()
     if (subject !== this.user()) throw Error('Run authority changed during status read')
-    return { runId, projectId, task: run.task, status: run.status, cancellationRequested: run.cancellation_requested, canCancel: manager || run.requested_by === subject, workerId: typeof run.assigned_worker_id === 'string' ? run.assigned_worker_id : undefined, updatedAt: typeof run.updated_at === 'string' ? run.updated_at : undefined, codingTask: (((run.policy as Json | undefined)?.obligations as Json | undefined)?.coding_task as Json | undefined)?.schema_version === 'opensaddle.coding-task.v1', ...this.authorizedContextSelection(run) }
+    return { runId, projectId, task, executionInstructions: run.task !== task ? run.task : undefined, status: run.status, cancellationRequested: run.cancellation_requested, canCancel: manager || run.requested_by === subject, workerId: typeof run.assigned_worker_id === 'string' ? run.assigned_worker_id : undefined, updatedAt: typeof run.updated_at === 'string' ? run.updated_at : undefined, codingTask: (((run.policy as Json | undefined)?.obligations as Json | undefined)?.coding_task as Json | undefined)?.schema_version === 'opensaddle.coding-task.v1', ...this.authorizedContextSelection(run) }
   }
   async connectorAudit(projectId: string, runId: string, signal?: AbortSignal): Promise<ConnectorAudit> {
     const subject = this.user()
@@ -314,16 +323,16 @@ export class RemoteJourneyClient {
     ])
     if ((participantDiscoveryAvailable && (!('project_id' in participantList) || participantList.project_id !== projectId)) || (sourceDiscoveryAvailable && (!('project_id' in sourceList) || sourceList.project_id !== projectId))) throw Error('Connected journey discovery Project identity mismatch')
     const memberItems = Array.isArray(members.members) ? members.members : []
-    const outcomes = (Array.isArray(center.outcomes) ? center.outcomes : []).flatMap(value => { const item = value as Json; return item.project_id === projectId && typeof item.run_id === 'string' && typeof item.artifact_available === 'boolean' ? [{ runId: item.run_id, fallbackTitle: String(item.task ?? item.title), verified: item.verified === true, artifactAvailable:item.artifact_available }] : [] })
+    const outcomes = (Array.isArray(center.outcomes) ? center.outcomes : []).flatMap(value => { const item = value as Json; return item.project_id === projectId && typeof item.run_id === 'string' && typeof item.artifact_available === 'boolean' ? [{ runId: item.run_id, verified: item.verified === true, artifactAvailable:item.artifact_available }] : [] })
     const results = await Promise.all(outcomes.map(async outcome => {
       const detail = await this.run(outcome.runId)
       if (detail.project_id !== projectId || detail.run_id !== outcome.runId) throw Error('Connected journey result Run identity mismatch')
-      return { runId: outcome.runId, title: typeof detail.task === 'string' ? detail.task : outcome.fallbackTitle, verified: outcome.verified, artifactAvailable:outcome.artifactAvailable, workerId: typeof detail.assigned_worker_id === 'string' ? detail.assigned_worker_id : undefined, status: typeof detail.status === 'string' ? detail.status : undefined, updatedAt: typeof detail.updated_at === 'string' ? detail.updated_at : undefined, ...this.nativeSelection(detail), ...this.authorizedContextSelection(detail) }
+      return { runId: outcome.runId, title: displayTask(detail), verified: outcome.verified, artifactAvailable:outcome.artifactAvailable, workerId: typeof detail.assigned_worker_id === 'string' ? detail.assigned_worker_id : undefined, status: typeof detail.status === 'string' ? detail.status : undefined, updatedAt: typeof detail.updated_at === 'string' ? detail.updated_at : undefined, ...this.nativeSelection(detail), ...this.authorizedContextSelection(detail) }
     }))
     const activeItems=(Array.isArray(center.active_runs) ? center.active_runs : []).flatMap(value => { const item=value as Json;return item.project_id===projectId&&typeof item.run_id==='string'&&Number.isSafeInteger(item.lease_epoch)&&Number(item.lease_epoch)>=0&&typeof item.requested_by==='string'&&typeof item.cancellation_requested==='boolean'?[item]:[] })
     const known=new Set(activeItems.map(item=>item.run_id as string)),pendingIndex=this.pendingContinuations(projectId);let portableContinuationError=pendingIndex.error
     for(const pending of pendingIndex.items){if(known.has(pending.runId))continue;let item:Json;try{item=await this.run(pending.runId)}catch(reason){portableContinuationError=reason instanceof Error?reason.message:String(reason);continue}if(item.project_id===projectId&&item.run_id===pending.runId&&Number.isSafeInteger(item.lease_epoch)&&Number(item.lease_epoch)>=0&&typeof item.requested_by==='string'&&typeof item.cancellation_requested==='boolean'){activeItems.push(item);known.add(pending.runId)}}
-    const activeRuns = await Promise.all(activeItems.map(async item=>{let checkpoints:PortableCheckpoint[]|undefined,checkpointError:string|undefined;if(item.status==='paused'){try{checkpoints=await this.checkpoints(projectId,item.run_id as string)}catch(reason){checkpointError=reason instanceof Error?reason.message:String(reason)}}return{ runId:item.run_id as string,task:String(item.task??'Run'),status:String(item.status),leaseEpoch:Number(item.lease_epoch),requestedBy:item.requested_by as string,cancellationRequested:item.cancellation_requested as boolean,...this.nativeSelection(item),...(checkpoints?{checkpoints}:{}),...(checkpointError?{checkpointError}:{}),...(this.pendingContinuation(projectId,item.run_id as string)?{pendingContinuation:this.pendingContinuation(projectId,item.run_id as string)}:{}) } }))
+    const activeRuns = await Promise.all(activeItems.map(async item=>{let checkpoints:PortableCheckpoint[]|undefined,checkpointError:string|undefined;if(item.status==='paused'){try{checkpoints=await this.checkpoints(projectId,item.run_id as string)}catch(reason){checkpointError=reason instanceof Error?reason.message:String(reason)}}return{ runId:item.run_id as string,task:displayTask(item),status:String(item.status),leaseEpoch:Number(item.lease_epoch),requestedBy:item.requested_by as string,cancellationRequested:item.cancellation_requested as boolean,...this.nativeSelection(item),...(checkpoints?{checkpoints}:{}),...(checkpointError?{checkpointError}:{}),...(this.pendingContinuation(projectId,item.run_id as string)?{pendingContinuation:this.pendingContinuation(projectId,item.run_id as string)}:{}) } }))
     return {
       projectId,
       members: memberItems.map(value => { const item = value as Json; return { subject: String(item.subject), role: String(item.role), status: String(item.status) } }),

@@ -19,17 +19,103 @@
     "knowledge_commit": "ba98652b3199b009b3e8c6475f55c290aa446565",
     "state": "disposable local SQLite and blob state",
     "completed_run": "run_b551a21e6eb54ea8aa783560d071ecba",
-    "completed_observations": ["Project Agents navigation", "reviewed proposal and explicit publish", "awaiting approval with exact reviewed scope and digest", "UI approval", "deterministic worker completed", "result artifact read", "connector requested and completed audit digest", "result and audit still visible after reload", "Project and Work task feeds"],
+    "completed_observations": [
+      "Project Agents navigation",
+      "reviewed proposal and explicit publish",
+      "awaiting approval with exact reviewed scope and digest",
+      "UI approval",
+      "deterministic worker completed",
+      "result artifact read",
+      "connector requested and completed audit digest",
+      "result and audit still visible after reload",
+      "Project and Work task feeds"
+    ],
     "cancelled_run": "run_db34273307ce4ae9abeff2a26be00475",
-    "cancelled_observations": ["actual requester cancellation control", "cancelled before dispatch", "no absent-result access error", "cancelled status persisted after reload"],
-    "screenshots": ["/tmp/opensaddle-20260919/issue39-cancelled-task.png", "/tmp/opensaddle-20260919/issue39-completed-result-audit.png"]
+    "cancelled_observations": [
+      "actual requester cancellation control",
+      "cancelled before dispatch",
+      "no absent-result access error",
+      "cancelled status persisted after reload"
+    ],
+    "screenshots": [
+      "/tmp/opensaddle-20260919/issue39-cancelled-task.png",
+      "/tmp/opensaddle-20260919/issue39-completed-result-audit.png"
+    ]
   },
   "final_fixture_source_check": {
     "run_id": "run_2fa154a5d02d47c5bce4b65302991730",
     "status": "completed",
     "artifact_count": 1,
-    "connector_events": ["agent_connector.requested", "agent_connector.completed"],
+    "connector_events": [
+      "agent_connector.requested",
+      "agent_connector.completed"
+    ],
     "path": "Final fixture source started with --approval-worker; public API proposed and published a reviewed agent, admitted a task, approved its exact review digest, and observed the completed Run, one artifact, and requested/completed connector events."
   },
-  "limits": "The worker and repository response were local fixtures. No model, external connector provider, remote worker, active-provider cancellation, or packaged desktop application was exercised. The task heading currently displays the full compiled agent prompt; a human-readable task title with advanced instructions disclosure remains UI polish."
+  "limits": "Initial journey used a provider-free local worker. Human-readable task headings, active cancellation, and stale-access withdrawal are covered by the continuation against newer installed Core; see continuation limits.",
+  "continuation": {
+    "interface_baseline": "d6ae281da9bf37b02d4eaa94e01ab3b19614e8da",
+    "installed_core_commit": "9f6073d7ece017baf8177e2e46818a7efbe064ee",
+    "before": {
+      "terminal_revocation": "Mounted completed Run retained result and audit after authenticated authority denial; /tmp/opensaddle-20260919/issue39-terminal-revocation-baseline.txt",
+      "run_heading": "Mounted Run heading displayed compiled agent instructions instead of Core user_task; /tmp/opensaddle-20260919/issue39-task-heading-baseline.txt",
+      "project_cards": "Project active/result cards displayed compiled agent instructions; /tmp/opensaddle-20260919/issue39-project-title-baseline.txt",
+      "command_center": "Command Center active card displayed compiled agent instructions; /tmp/opensaddle-20260919/issue39-command-center-baseline.txt",
+      "cancel_copy": "Terminal cancellation copy falsely asserted the Run was stopped without warning about possible prior effects; /tmp/opensaddle-20260919/issue39-cancel-copy-baseline.txt"
+    },
+    "after": {
+      "feature_suite": "362 passed, 0 failed; /tmp/opensaddle-20260919/issue39-continuation-features.log",
+      "workspace_suite": "343 passed, 0 failed; /tmp/opensaddle-20260919/issue39-continuation-workspace.log",
+      "typecheck": "passed; /tmp/opensaddle-20260919/issue39-continuation-typecheck.log",
+      "lint": "passed; /tmp/opensaddle-20260919/issue39-continuation-lint.log",
+      "fixture_compile": "passed",
+      "diff_check": "passed"
+    },
+    "browser": {
+      "normal_project_and_command_center": {
+        "completed_run": "run_a5daa01743bc4d86ba1e4ebaf6cde98b",
+        "approval_run": "run_e7d0f13dfc2a4ce3bc9cdea741761750",
+        "observations": [
+          "Command Center active and outcome cards show original Core user_task",
+          "Project task list and result heading show original Core user_task",
+          "compiled task remains separate execution instructions on Run detail"
+        ],
+        "screenshots": [
+          "/tmp/opensaddle-20260919/issue39-command-center-original-tasks.png",
+          "/tmp/opensaddle-20260919/issue39-project-original-tasks.png",
+          "/tmp/opensaddle-20260919/issue39-original-task-advanced-instructions.png"
+        ]
+      },
+      "active_cancellation": {
+        "run_id": "run_d94a986d4b0745d28620364cc8ee9b3b",
+        "observations": [
+          "approved Run assigned to fixture worker and reached running",
+          "request remained pending until worker observed cancellation",
+          "worker public renewal was denied after Core marked cancelled and cleared assignment",
+          "reload retained terminal state and original task",
+          "no model or external provider call and no connector event"
+        ],
+        "screenshots": [
+          "/tmp/opensaddle-20260919/issue39-active-before-cancel.png",
+          "/tmp/opensaddle-20260919/issue39-active-cancel-requested.png",
+          "/tmp/opensaddle-20260919/issue39-active-cancel-acknowledged.png"
+        ]
+      },
+      "membership_withdrawal": {
+        "observations": [
+          "second user could initially see completed result and awaiting approval under live Project membership",
+          "fixture-only owner action withdrew that membership",
+          "Core returned project membership required and open terminal Run cleared result, approval, and audit",
+          "outsider token did not see protected Run"
+        ],
+        "screenshots": [
+          "/tmp/opensaddle-20260919/issue39-revocation-before.png",
+          "/tmp/opensaddle-20260919/issue39-revocation-after.png",
+          "/tmp/opensaddle-20260919/issue39-approval-before-revocation.png",
+          "/tmp/opensaddle-20260919/issue39-approval-after-revocation.png"
+        ]
+      }
+    },
+    "limits": "All continuation runs used a disposable installed-Core SQLite fixture and deterministic local worker. Membership withdrawal used a fixture-only owner endpoint because Core exposes no public member-removal route. No model, external provider effect, physical worker interruption, or packaged desktop application was exercised. Core cancellation status does not prove earlier effects were undone."
+  }
 }
