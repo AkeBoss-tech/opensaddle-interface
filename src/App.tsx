@@ -45,6 +45,7 @@ import { OperationsPage } from './features/operations/OperationsPage'
 import { PerspectivesPage } from './features/perspectives/PerspectivesPage'
 import { RunRegistryProvider } from './features/runs/RunRegistry'
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage'
+import { AgentSetupPage } from './features/projects/AgentSetupPage'
 import { ProjectOnboardingPage } from './features/onboarding/ProjectOnboardingPage'
 import { ConnectedLocalProjectPage } from './features/projects/ConnectedLocalProjectPage'
 import { ConnectedLocalSettingsPage } from './features/projects/ConnectedLocalSettingsPage'
@@ -64,6 +65,7 @@ import './styles/scaffold.css'
 import './features/memory/project-memory.css'
 import './features/evidence/evidence.css'
 import './features/investigation/components/investigation.css'
+import './features/projects/agent-setup.css'
 
 const IconPacksPage = lazy(() => import('./pages/IconPacksPage').then((module) => ({ default: module.IconPacksPage })))
 
@@ -350,6 +352,7 @@ function Shell() {
             <Route path="/project/:projectId/knowledge" element={<ConnectedProjectKnowledgePage />} />
             <Route path="/project/:projectId/plugins" element={<ConnectedProjectPluginsPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
+            <Route path="/project/:projectId/agents" element={<AgentSetupPage />} />
             <Route path="/project/:projectId/appearance" element={<PresentationPage />} />
             <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
@@ -384,6 +387,7 @@ function Shell() {
             <Route path="/chat/:chatId" element={<ChatPage />} />
             <Route path="/project/:projectId" element={<ProjectWorkspacePage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
+            <Route path="/project/:projectId/agents" element={<AgentSetupPage />} />
             <Route path="/project/:projectId/manage" element={<ProjectPage />} />
             <Route path="/runs" element={<RunsPage />} />
             <Route path="/wiki" element={<WikiPage />} />

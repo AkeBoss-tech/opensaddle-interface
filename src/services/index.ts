@@ -36,6 +36,7 @@ import { RemoteCommandCenterClient } from './remoteCommandCenter'
 import { RemoteMalleableShellClient } from './remoteMalleableShell'
 import { RemoteKrailProposalClient } from './remoteKrailProposals'
 import { RemoteParticipantClient } from './remoteParticipants'
+import { RemoteAgentProfileClient, type AgentProfileClient } from './remoteAgentProfiles'
 import { RemoteOperationsSessionClient } from './remoteOperations'
 import { RemoteJourneyClient } from './remoteJourney'
 import { PersonalRuntimeClient } from './personalRuntime'
@@ -65,6 +66,7 @@ export interface ServiceBundle {
   commandCenter?: CommandCenterClient
   krailProposals?: KrailProposalClient
   participants?: ParticipantClient
+  agentProfiles?: AgentProfileClient
   operationsSessions?: OperationsSessionClient
   malleableShell?: MalleableShellClient
   journey?: JourneyAuthority
@@ -171,6 +173,7 @@ export function initServices(opts: {
       let commandCenterAvailable = false
       let managedKrailAvailable = false
       let participantsAvailable = false
+      let agentProfilesAvailable = false
       let resourceCapacityAvailable = false
       let nativeAdaptersAvailable = false
       let authorizedContextAvailable = false
@@ -312,6 +315,7 @@ export function initServices(opts: {
               command_center?: { available?: boolean; path?: string; schema_version?: string }
               managed_krail?: boolean
               participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
+              agent_builder_v1?: { available?: boolean; review_required?: boolean; online_research_available?: boolean; schema_version?: string }
               resource_capacity?: { available?: boolean; schema_version?: string; project_config_path_template?: string; status_path_template?: string }
               coding_tasks?: {available?:boolean;selection_field?:string;schema_version?:string;supported_adapter_ids?:unknown;result_schema_version?:string;review_path_template?:string}
               registered_git_evidence?: { available?: boolean; schema_version?: string; list_path_template?: string; inspection_path_template?: string; setup_path_template?: string; capture_path_template?: string; review_path_template?: string; semantic_authority?: string }
@@ -328,6 +332,10 @@ export function initServices(opts: {
               && capabilities.command_center.schema_version === 'opensaddle.command-center.v1'
             managedKrailAvailable = capabilities.managed_krail === true
             participantsAvailable = capabilities.participants?.available === true && capabilities.participants.schema_version === 'opensaddle.participant.v1' && capabilities.participants.project_path_template === '/api/v2/projects/{project_id}/participants'
+            agentProfilesAvailable = capabilities.agent_builder_v1?.available === true
+              && capabilities.agent_builder_v1.review_required === true
+              && capabilities.agent_builder_v1.online_research_available === false
+              && capabilities.agent_builder_v1.schema_version === 'opensaddle.agent-proposal.v1'
             resourceCapacityAvailable = capabilities.resource_capacity?.available === true && capabilities.resource_capacity.schema_version === 'opensaddle.resource-capacity.v1' && capabilities.resource_capacity.project_config_path_template === '/api/v2/projects/{project_id}/capacity-limits' && capabilities.resource_capacity.status_path_template === '/api/v2/projects/{project_id}/capacity'
             const native = capabilities.native_adapters
             nativeAdaptersAvailable = native?.available === true && native.schema_version === 'opensaddle.native-adapter-readiness.v1' && JSON.stringify(native.supported_adapter_ids) === JSON.stringify(['codex-app-server','claude-code-stream-json']) && JSON.stringify(native.unsupported_adapter_ids) === JSON.stringify(['cursor']) && native.readiness_path_template === '/api/v2/projects/{project_id}/native-adapters' && native.report_path_template === '/api/v2/workers/{worker_id}/native-adapter-readiness' && native.selection_field === 'native_adapter_id' && native.observation_authority === 'worker_self_reported' && native.policy_authority === 'core'
@@ -426,6 +434,7 @@ export function initServices(opts: {
         ? new RemoteKrailProposalClient(baseUrl, getUserId, token)
         : undefined
       const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
+      const agentProfiles = backendAvailable && agentProfilesAvailable ? new RemoteAgentProfileClient(baseUrl, getUserId, token) : undefined
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
       const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable, authorizedContextAvailable, portableContinuationAvailable, nativeSessionResume) : undefined
       const personalRuntime=backendAvailable&&personalRuntimeAvailable?new PersonalRuntimeClient(baseUrl,getUserId,token):undefined
@@ -458,6 +467,7 @@ export function initServices(opts: {
         commandCenter,
         krailProposals,
         participants,
+        agentProfiles,
         operationsSessions,
         malleableShell,
         journey,
