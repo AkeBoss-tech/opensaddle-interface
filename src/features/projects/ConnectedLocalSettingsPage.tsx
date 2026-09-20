@@ -15,10 +15,24 @@ export function ConnectedLocalSettingsPage() {
   const [token, setToken] = useState(connection.token ?? '')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
-  const [projects,setProjects]=useState<RegisteredLocalProject[]>([])
-  const [harnesses,setHarnesses]=useState<HarnessCapability[]>([])
+  const [discovery,setDiscovery]=useState<{
+    source: typeof services; status: 'ready' | 'unavailable';
+    projects: RegisteredLocalProject[]; harnesses: HarnessCapability[]
+  } | null>(null)
+  const discoveryStatus = !services?.localProjects?.listProjects ? 'unavailable'
+    : discovery?.source === services ? discovery.status : 'loading'
+  const projects = discoveryStatus === 'ready' ? discovery!.projects : []
+  const harnesses = discoveryStatus === 'ready' ? discovery!.harnesses : []
   useEffect(() => { setName(connection.name); setUrl(connection.baseUrl); setToken(connection.token ?? '') }, [connection])
-  useEffect(()=>{let live=true;if(!services?.localProjects)return;void Promise.all([services.localProjects.listProjects?.()??Promise.resolve([]),services.localProjects.harnessCapabilities()]).then(([next,capabilities])=>{if(live){setProjects(next);setHarnesses(capabilities.harnesses)}}).catch(()=>{if(live){setProjects([]);setHarnesses([])}});return()=>{live=false}},[services])
+  useEffect(()=>{
+    let live=true
+    if(!services?.localProjects?.listProjects)return
+    setDiscovery(null)
+    void Promise.all([services.localProjects.listProjects(),services.localProjects.harnessCapabilities()])
+      .then(([projects,capabilities])=>{if(live)setDiscovery({source:services,status:'ready',projects,harnesses:capabilities.harnesses})})
+      .catch(()=>{if(live)setDiscovery({source:services,status:'unavailable',projects:[],harnesses:[]})})
+    return()=>{live=false}
+  },[services])
   const connect = async () => {
     setBusy(true); setMessage(null)
     try { await connectToServer({ name, baseUrl: url, token: token || undefined }); setMessage('Connection verified. Loading the authoritative server profile…') }
@@ -34,7 +48,7 @@ export function ConnectedLocalSettingsPage() {
     {services?.controlPlane.connected ? <PersonalRuntimePanel authority={services.personalRuntime}/> : <section className="settings-card"><h2>Personal runtime</h2><p role="status">Reconnecting to your runtime. Task and runtime controls will return when the connection is restored.</p></section>}
     {services?.controlPlane.connected&&!services.personalRuntime&&runtimeAdoptionPending&&<section className="settings-card"><h2>Personal runtime</h2><p role="status">Checking whether an existing runtime can be reconnected.</p></section>}
     {services?.controlPlane.connected&&!services.personalRuntime&&!runtimeAdoptionPending&&runtimeResume?.kind==='blocked'&&<section className="settings-card"><h2>Existing runtime needs attention</h2><p role="alert">{runtimeResume.reason==='recovery_required'?'The retained runtime has unresolved work or process cleanup. Inspect recovery before restarting.':runtimeResume.reason==='runtime_may_be_running'?'The prior runtime may still be running or its connection could not be verified. Reconnect it before starting another process.':runtimeResume.reason==='authority_changed'?'The connection or local account changed. Reopen the app to check the runtime under the current identity before setup or restart.':'The retained runtime identity or private state could not be verified. Setup is blocked until this state is repaired.'}</p></section>}
-    {services?.controlPlane.connected&&!services.personalRuntime&&!runtimeAdoptionPending&&runtimeResume?.kind!=='blocked'&&<PersonalRuntimeCommissioningForm key={runtimeResume?.kind==='offline'?runtimeResume.installationId:'fresh'} projects={projects} harnesses={harnesses} resumeCandidate={runtimeResume?.kind==='offline'?runtimeResume:undefined} onCommission={window.opensaddle?.commissionPersonalRuntime?async request=>{const handoff=await window.opensaddle!.commissionPersonalRuntime(request);installPersonalRuntimeTransport(handoff);await connectToServer({name:'Personal runtime',baseUrl:handoff.baseUrl,transientToken:true})}:undefined}/>}
+    {services?.controlPlane.connected&&!services.personalRuntime&&!runtimeAdoptionPending&&runtimeResume?.kind!=='blocked'&&<PersonalRuntimeCommissioningForm key={runtimeResume?.kind==='offline'?runtimeResume.installationId:'fresh'} projects={projects} harnesses={harnesses} discoveryStatus={discoveryStatus} resumeCandidate={runtimeResume?.kind==='offline'?runtimeResume:undefined} onCommission={window.opensaddle?.commissionPersonalRuntime?async request=>{const handoff=await window.opensaddle!.commissionPersonalRuntime(request);installPersonalRuntimeTransport(handoff);await connectToServer({name:'Personal runtime',baseUrl:handoff.baseUrl,transientToken:true})}:undefined}/>}
     <section className="settings-card"><h2>Security boundary</h2><p>This is a trusted-local workflow. The selected coding agent retains the local user’s OS, process, network, and credential authority. Detached Git worktrees and exact-diff approval are governance controls, not container, VM, tenant, or enterprise isolation.</p></section>
   </div>
 }

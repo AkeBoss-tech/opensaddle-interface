@@ -1,6 +1,25 @@
 import assert from'node:assert/strict';import test from'node:test';import React from'react';import{act,create}from'react-test-renderer';import{PersonalRuntimeCommissioningForm}from'./PersonalRuntimeCommissioningForm';import type{HarnessCapability}from'../../services/contracts'
 ;(globalThis as typeof globalThis&{IS_REACT_ACT_ENVIRONMENT:boolean}).IS_REACT_ACT_ENVIRONMENT=true
 const harness=(id:'codex'|'claude',ready=true)=>({id,label:id,description:id,kind:'native',availability:ready?'available':'missing',readiness:ready?'ready':'unavailable',resolvedPath:ready?`/opt/${id}`:undefined,auth:{state:'configured'},models:[],capabilities:{streaming:true,tools:true,mcp:true,skills:true,reasoningControls:true,contextMetadata:true,cancellation:true,policyControls:'native'}} as HarnessCapability)
+// DESKTOP-COMMISSION-DISCOVERY-1: absence is asserted only after successful discovery.
+test('pending or failed discovery cannot report a lost Project or offer stale setup controls',async t=>{
+ let view:any
+ const props={projects:[],harnesses:[],resumeCandidate:{projectId:'P',installationId:'I'},onCommission:async()=>{throw Error('unexpected commission')}}
+ t.after(async()=>{if(view)await act(async()=>view.unmount())})
+ await act(async()=>{view=create(<PersonalRuntimeCommissioningForm {...props} discoveryStatus="loading"/>)})
+ assert.match(JSON.stringify(view.toJSON()),/Checking registered projects and coding agents/)
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/no longer registered|Register a real local project|not installed/)
+ assert.equal(view.root.findAllByType('form').length,0)
+ await act(async()=>view.update(<PersonalRuntimeCommissioningForm {...props} projects={[{projectId:'P',root:'/repo',createdAt:1}]} harnesses={[harness('codex')]} discoveryStatus="unavailable"/>))
+ assert.match(JSON.stringify(view.toJSON()),/Could not check registered projects and coding agents/)
+ assert.doesNotMatch(JSON.stringify(view.toJSON()),/no longer registered|not installed|\/repo/)
+ assert.equal(view.root.findAllByType('form').length,0)
+ await act(async()=>view.update(<PersonalRuntimeCommissioningForm {...props} discoveryStatus="ready"/>))
+ assert.match(JSON.stringify(view.toJSON()),/no longer registered/)
+ await act(async()=>view.update(<PersonalRuntimeCommissioningForm {...props} projects={[{projectId:'P',root:'/repo',createdAt:1}]} harnesses={[harness('codex')]} discoveryStatus="ready"/>))
+ assert.equal(view.root.findAllByType('form').length,1)
+ assert.match(JSON.stringify(view.toJSON()),/Codex is ready/)
+})
 test('mounted commissioning form exposes truthful empty and unavailable states',async()=>{let view:any;await act(async()=>{view=create(<PersonalRuntimeCommissioningForm projects={[]} harnesses={[]}/>)});assert.match(JSON.stringify(view.toJSON()),/Register a real local project/);await act(async()=>{view.update(<PersonalRuntimeCommissioningForm projects={[{projectId:'P',root:'/repo',createdAt:1}]} harnesses={[harness('codex'),harness('claude',false)]}/>) });const radios=view.root.findAllByProps({type:'radio'});assert.equal(radios[0].props.disabled,false);assert.equal(radios[1].props.disabled,true);assert.equal(view.root.findByProps({type:'submit'}).props.disabled,true)})
 test('mounted form submits exact explicit request only after selection',async()=>{let request:unknown;let view:any;await act(async()=>{view=create(<PersonalRuntimeCommissioningForm projects={[{projectId:'P',root:'/repo',createdAt:1}]} harnesses={[harness('codex')]} onCommission={async value=>{request=value}}/>)});const select=view.root.findByType('select');await act(async()=>select.props.onChange({target:{value:'P'}}));await act(async()=>{await view.root.findByType('form').props.onSubmit({preventDefault(){}})});assert.deepEqual(request,{projectId:'P',workspace:'/repo',adapter:'codex',executable:'/opt/codex',cpuMillicores:2000,memoryMiB:4096,maxConcurrency:1})})
 test('pending commission locks inputs and synchronously suppresses duplicate submit',async()=>{let calls=0,resolve!:()=>void;const pending=new Promise<void>(next=>{resolve=next});let view:any;await act(async()=>{view=create(<PersonalRuntimeCommissioningForm projects={[{projectId:'P',root:'/repo',createdAt:1}]} harnesses={[harness('codex')]} onCommission={async()=>{calls++;await pending}}/>)});await act(async()=>view.root.findByType('select').props.onChange({target:{value:'P'}}));const form=view.root.findByType('form');await act(async()=>{form.props.onSubmit({preventDefault(){}});form.props.onSubmit({preventDefault(){}});await Promise.resolve()});assert.equal(calls,1);assert.equal(view.root.findByType('select').props.disabled,true);assert.match(JSON.stringify(view.toJSON()),/Commissioning/);await act(async()=>{resolve();await pending});assert.equal(view.root.findByType('select').props.disabled,false)})

@@ -28,11 +28,13 @@ export function PersonalRuntimeCommissioningForm({
   harnesses,
   onCommission,
   resumeCandidate,
+  discoveryStatus = 'ready',
 }: {
   projects: RegisteredLocalProject[]
   harnesses: HarnessCapability[]
   onCommission?: (request: PersonalRuntimeCommissionRequest) => Promise<void>
   resumeCandidate?: ResumeCandidate
+  discoveryStatus?: 'loading' | 'unavailable' | 'ready'
 }) {
   const restarting = Boolean(resumeCandidate)
   const [projectId, setProjectId] = useState(resumeCandidate?.projectId ?? '')
@@ -50,7 +52,7 @@ export function PersonalRuntimeCommissioningForm({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (pendingRef.current) return
+    if (pendingRef.current || discoveryStatus !== 'ready') return
     pendingRef.current = true
     setPending(true)
     setMessage('')
@@ -78,6 +80,13 @@ export function PersonalRuntimeCommissioningForm({
       setPending(false)
     }
   }
+
+  if (discoveryStatus !== 'ready') return <section className="settings-card">
+    <h2>{restarting ? 'Restart existing runtime' : 'Set up personal runtime'}</h2>
+    <p role={discoveryStatus === 'loading' ? 'status' : 'alert'}>{discoveryStatus === 'loading'
+      ? 'Checking registered projects and coding agents…'
+      : 'Could not check registered projects and coding agents. Reopen Settings to try again.'}</p>
+  </section>
 
   return <section className="settings-card">
     <h2>{restarting ? 'Restart existing runtime' : 'Set up personal runtime'}</h2>

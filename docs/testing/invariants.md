@@ -678,6 +678,16 @@ result remains unapproved. Receipt: `receipts/personal-runtime-task-live-2026091
 This checks the real protocol/client journey, not visual interaction, streaming
 presentation, native session resumption, or a human approval decision.
 
+## DESKTOP-COMMISSION-DISCOVERY-1
+
+Pending discovery of registered Projects and coding agents shows a loading state,
+and failed or unsupported discovery shows an unavailable state. Neither implies
+that the retained Project is missing or a provider is uninstalled, nor exposes
+setup controls backed by stale discovery. Missing-Project advice requires a
+successfully returned registry. Settings binds discovery to the current services
+identity and ignores replies after replacement or unmount. The mounted
+commissioning form regression failed before and passed after the change.
+
 ## DESKTOP-PERSONAL-STATUS-1
 
 While mounted with an authenticated personal runtime authority, Settings rereads
