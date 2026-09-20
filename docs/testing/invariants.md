@@ -1380,3 +1380,6 @@ is verified through actual browser layout at desktop and 390px mobile widths.
 The public preview stages and sample review choices make no Command Center calls.
 Unconfigured StoreProvider starts without prior cached projects and does not
 rewrite their saved bytes, including after a local appearance change.
+
+## DESKTOP-RESPONSIVENESS-1
+Project/task selection preserves unrelated retained history by reference; streamed message updates replace only the affected message. Workspace persistence coalesces bursts with a one-second maximum scheduling delay and flushes pending data on normal page close/unmount. An abrupt process kill may lose the last second of renderer-local changes; server-owned execution records remain authoritative. Regression: mounted StoreProvider with 10,000 retained messages.

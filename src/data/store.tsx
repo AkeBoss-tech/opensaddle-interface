@@ -292,14 +292,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return snapshot.harnesses
   }, [services])
 
-  useEffect(() => {
-    if (connection.mode === 'unconfigured') return
+  const localSaveRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; pending: AppData | null }>({ timer: null, pending: null })
+  const flushLocalSave = useCallback(() => {
+    const save = localSaveRef.current
+    if (save.timer !== null) window.clearTimeout(save.timer)
+    save.timer = null
+    if (!save.pending) return
+    const snapshot = save.pending
+    save.pending = null
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
     } catch {
       toast('Local save unavailable', 'Browser storage is full or blocked. Your current session remains in memory.')
     }
-  }, [connection.mode, data, toast])
+  }, [toast])
+
+  // Coalesce navigation and streaming bursts; never serialize the entire
+  // retained workspace inside each interaction. Continuous updates still
+  // flush once per second, and normal close/reload flushes the latest state.
+  useEffect(() => {
+    if (connection.mode === 'unconfigured') return
+    localSaveRef.current.pending = data
+    if (localSaveRef.current.timer === null) {
+      localSaveRef.current.timer = window.setTimeout(flushLocalSave, 1000)
+    }
+  }, [connection.mode, data, flushLocalSave])
+
+  useEffect(() => {
+    window.addEventListener('pagehide', flushLocalSave)
+    return () => {
+      window.removeEventListener('pagehide', flushLocalSave)
+      flushLocalSave()
+    }
+  }, [connection.mode, flushLocalSave])
 
   useEffect(() => {
     document.body.dataset.theme = data.settings.theme === 'dark' ? undefined : data.settings.theme
@@ -800,11 +825,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     setTheme: (t) => patch((d) => { d.settings.theme = t; return d }),
     updateSettings: (s) => patch((d) => { d.settings = { ...d.settings, ...s, notifications: { ...d.settings.notifications, ...(s.notifications ?? {}) } }; return d }),
-    setActiveProject: (id) => patch((d) => { d.activeProjectId = id; return d }),
-    setActiveChat: (id) => patch((d) => {
-      d.activeChatId = id
-      if (id) d.recentChatIds = [id, ...d.recentChatIds.filter((x) => x !== id)].slice(0, 12)
-      return d
+    setActiveProject: (id) => setData((d) => d.activeProjectId === id ? d : { ...d, activeProjectId: id }),
+    setActiveChat: (id) => setData((d) => d.activeChatId === id ? d : {
+      ...d,
+      activeChatId: id,
+      recentChatIds: id ? [id, ...d.recentChatIds.filter((x) => x !== id)].slice(0, 12) : d.recentChatIds,
     }),
     hydrateThread: async (id) => {
       const threads = services?.threads
@@ -1102,10 +1127,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ?? dataRef.current.messages.find((message) => message.id === id)
       const next = current ? { ...current, ...p } : undefined
       if (next) messageSyncSnapshotsRef.current.set(id, next)
-      patch((d) => {
+      setData((d) => {
         const i = d.messages.findIndex((m) => m.id === id)
-        if (i >= 0) d.messages[i] = { ...d.messages[i], ...p }
-        return d
+        if (i < 0) return d
+        const messages = [...d.messages]
+        messages[i] = { ...messages[i], ...p }
+        return { ...d, messages }
       })
       // Assistant/system messages are projections of the authoritative run
       // stream. The server writes their durable content when a run completes;
