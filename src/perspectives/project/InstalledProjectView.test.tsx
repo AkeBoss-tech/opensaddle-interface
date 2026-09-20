@@ -494,7 +494,7 @@ test('installed command SDK resolves exact descriptors and artifacts through the
  const descriptor={command_id:'artifact.review',version:1,descriptor_digest:'b'.repeat(64),title:'Review',description:'Read exact evidence',effect:'read',required_actions:['artifacts:read'],available:{available:true},input_schema:{type:'object'},output_schema:{type:'object'}}
  globalThis.fetch=async(input,options)=>{
   const path=new URL(String(input)).pathname
-  if(path.endsWith('/content'))return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})
+  if(path.endsWith('/content')){await new Promise(resolve=>setTimeout(resolve,20));return new Response(fragment,{headers:{'Content-Type':renderer.media_type}})}
   if(path.endsWith('/application-renderers'))return Response.json({project_id:'P',renderers:revoked?[]:[renderer]})
   if(path==='/api/v2/projects/P/commands')return Response.json({commands:[descriptor,{...descriptor,command_id:'execute',effect:'execute'}]})
   if(path==='/api/v2/runs/R')return Response.json({run_id:'R',project_id:'P'})
@@ -508,6 +508,7 @@ test('installed command SDK resolves exact descriptors and artifacts through the
  let view!:ReactTestRenderer
  t.after(async()=>{if(view)await act(async()=>view.unmount());Object.assign(globalThis,{fetch:oldFetch,addEventListener:oldAdd,removeEventListener:oldRemove})})
  await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[{id:'R',title:'Task',status:'completed',verified:false,source:'result'}]}} connectionKey="member" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node})})
+ await waitForAuthorizedFrame(view)
  await act(async()=>view.root.findByType('iframe').props.onLoad())
  const init=messages.find(m=>m.kind==='init'),send=(data:any)=>act(async()=>{for(const fn of listeners)fn({source,data:{...init,...data}})})
  await send({kind:'ready'});await send({kind:'request',action:'read_commands',request_id:'commands'})
