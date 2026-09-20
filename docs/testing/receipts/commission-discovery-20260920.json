@@ -1,0 +1,21 @@
+{
+  "invariant": "DESKTOP-COMMISSION-DISCOVERY-1",
+  "base_revision": "7d90376f303838a25bfa03d15179442a85827fda",
+  "observed_bug": "Native packaged Settings briefly reported retained Project missing before registry/provider discovery resolved.",
+  "pre_fix": "Same mounted regression failed at Checking registered projects assertion; actual output claimed existing Project was no longer registered.",
+  "post_fix": "14 commissioning and runtime-panel tests passed; typecheck passed.",
+  "logs": {
+    "before": {
+      "path": "/tmp/opensaddle-20260920/commission-discovery-before.log",
+      "sha256": "1341df4cc5fc3ca4170def37f03f07ff83bc2ccf3287434eb00f2c338386ce4c"
+    },
+    "after": {
+      "path": "/tmp/opensaddle-20260920/commission-discovery-after.log",
+      "sha256": "2078fbba27afa3a8d8e605a8bda8c523df381dca33eb344ddeeab14a92e1313d"
+    }
+  },
+  "limits": [
+    "Mounted component proof plus prior real UI reproduction; fixed native package observation pending.",
+    "No new provider task, grant, credentials or lifecycle semantics changed."
+  ]
+}
