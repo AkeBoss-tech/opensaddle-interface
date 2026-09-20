@@ -170,6 +170,7 @@ export class FactoryCodingClient {
     const policy = object(run.policy), obligations = object(policy.obligations)
     if (obligations.factory_binding === undefined) return null
     const binding = object(obligations.factory_binding)
+    if (binding.execution_scope !== 'single_coding_run_prepared_goal') return null
     const checks = binding.fixed_acceptance_proof_checks
     if (!Array.isArray(checks) || !checks.length || checks.length > 16) throw Error('Factory Run criteria are invalid')
     const criteria = checks.map((raw,index) => { const row = object(raw); if (row.criterion_id !== `acceptance_${index+1}` || row.evidence_required !== true || row.human_acceptance_required !== true) throw Error('Factory Run criteria are invalid'); return {criterionId:row.criterion_id as string,criterion:name(row.criterion,2000)} })
