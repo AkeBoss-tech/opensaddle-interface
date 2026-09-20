@@ -4,7 +4,7 @@ export interface ConnectionPresentation {
   label: string
   title: string
   connected: boolean
-  kind: 'connected' | 'demo' | 'connecting' | 'reconnecting'
+  kind: 'connected' | 'demo' | 'connecting' | 'reconnecting' | 'unconfigured'
 }
 
 export function connectionPresentation(input: {
@@ -13,6 +13,7 @@ export function connectionPresentation(input: {
   desktop: boolean
 }): ConnectionPresentation {
   const { connection, controlPlane, desktop } = input
+  if (connection.mode === 'unconfigured') return { label: 'Not connected', title: 'Choose an OpenSaddle server to open your workspace', connected: false, kind: 'unconfigured' }
   if (connection.mode === 'demo') {
     return {
       label: 'Demo',

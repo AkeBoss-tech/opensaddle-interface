@@ -134,7 +134,7 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
   })
   const recovering = connection.mode === 'remote' && !connectionState.connected
   const isOpenRouter = controlPlane?.modelProvider === 'openrouter'
-  const [serverName, setServerName] = useState(connection.name)
+  const [serverName, setServerName] = useState(connection.mode === 'unconfigured' ? '' : connection.name)
   const [serverUrl, setServerUrl] = useState(connection.mode === 'remote' ? connection.baseUrl : '')
   const [serverToken, setServerToken] = useState(connection.token ?? '')
   const [connecting, setConnecting] = useState(false)
@@ -145,7 +145,7 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
   const activeCopy = SETTINGS_COPY[active]
   const activeProject = data.projects.find((project) => project.id === data.activeProjectId) ?? data.projects[0]
   useEffect(() => {
-    setServerName(connection.name)
+    setServerName(connection.mode === 'unconfigured' ? '' : connection.name)
     setServerUrl(connection.mode === 'remote' ? connection.baseUrl : '')
     setServerToken(connection.token ?? '')
   }, [connection])
@@ -204,7 +204,7 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
             ? 'OpenSaddle is connected'
             : recovering
               ? connectionState.label
-              : 'Running from browser cache'}</h2>
+              : connection.mode === 'unconfigured' ? 'Choose your workspace connection' : 'Running from browser cache'}</h2>
           <p>
             {controlPlane?.connected
               ? `${controlPlane.mode === 'company' ? 'Company' : 'Local'} control plane · ${controlPlane.storage ?? 'server'} persistence`
@@ -234,7 +234,7 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
       </section>
 
       <section className="card connection-card" id="settings-connection" hidden={active !== 'settings-connection'}>
-        <div className="card-header"><div><h3>OpenSaddle connection</h3><p>{connection.mode === 'remote' ? `${connection.name} · ${connection.baseUrl}` : 'Demo mode uses seeded data and simulated runs.'}</p></div><span className={`sync-badge ${controlPlane?.connected ? 'synced' : recovering || connection.mode === 'demo' ? 'local' : 'error'}`}>{connection.mode === 'remote' ? (controlPlane?.connected ? 'Connected' : connectionState.label) : 'Demo'}</span></div>
+        <div className="card-header"><div><h3>OpenSaddle connection</h3><p>{connection.mode === 'remote' ? `${connection.name} · ${connection.baseUrl}` : connection.mode === 'unconfigured' ? 'Connect a server to load the projects you can access.' : 'Demo mode uses seeded data and simulated runs.'}</p></div><span className={`sync-badge ${controlPlane?.connected ? 'synced' : recovering || connection.mode === 'demo' ? 'local' : 'error'}`}>{connection.mode === 'remote' ? (controlPlane?.connected ? 'Connected' : connectionState.label) : connection.mode === 'unconfigured' ? 'Not connected' : 'Demo'}</span></div>
         <div className="card-body">
           {desktopRuntimeMessage && (
             <p className="provider-note" role={desktopRuntimeMessage.kind === 'error' ? 'alert' : 'status'}>
@@ -242,6 +242,7 @@ function SettingsContent({ active }: { active: SettingsDestinationId }) {
               {desktopRuntimeMessage.message}
             </p>
           )}
+          {connection.mode === 'unconfigured' && <p className="provider-note">This website does not automatically connect to your computer. Use an existing OpenSaddle server URL, or open the desktop app for a local workspace.</p>}
           <div className="form-row"><label>Connection name</label><input value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="My OpenSaddle server" /></div>
           <div className="form-row"><label>Server URL</label><input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://opensaddle.example.com" /></div>
           <div className="form-row"><label>Bearer token <span className="muted">(kept in this session only)</span></label><input type="password" value={serverToken} onChange={(e) => setServerToken(e.target.value)} placeholder="Optional for local servers" /></div>

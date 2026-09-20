@@ -1,3 +1,4 @@
+import { WorkspaceLanding } from './WorkspaceLanding'
 import type {RendererSettingsAuthority} from '../../services/rendererSettings'
 import type {ProjectTaskFeedAuthority} from '../../services/projectTaskFeed'
 import type {ManagerConversationsAuthority} from '../../services/managerConversations'
@@ -60,7 +61,7 @@ type CommandCenterProps = {localSetupAvailable?:boolean;rendererSettings?:Render
 
 export function CommandCenterSurface(props:CommandCenterProps) {
   const {connected,managerContext,projectDirectory,managerConversations,dashboardIdentity,identity}=props
-  return <main className="content-page cc-page">
+  return <main className={`content-page cc-page${connected?'':' cc-page--disconnected'}`}>
     {connected&&projectDirectory&&(managerContext||managerConversations)&&<ManagerScopePanel conversations={managerConversations} client={managerContext} directory={projectDirectory} identity={dashboardIdentity??identity}/>}
     <CommandCenterDashboard {...props}/>
   </main>
@@ -93,7 +94,7 @@ function CommandCenterDashboard({localSetupAvailable,client,connected,identity,p
 
   const projectName = (projectId: string) => projects.find((project) => project.id === projectId)?.name ?? projectId
 
-  if(!connected)return <section className="cc-dashboard"><EmptyState title="Command Center unavailable" description="Connect an OpenSaddle control plane to load authoritative priorities, work, and outcomes." action={<Link className="cc-text-link" to="/settings">Connection settings</Link>} /></section>
+  if(!connected)return <WorkspaceLanding/>
   if(!client&&localSetupAvailable)return <section className="cc-dashboard"><EmptyState title="Set up your workspace" description="Your local server is connected. Set up a personal runtime to use the manager, run coding tasks and review results." action={<Link className="cc-text-link" to="/settings">Set up personal runtime</Link>} /></section>
   const current=state.kind!=='loading'&&state.identity===identity&&state.client===client
   const snapshot=current&&state.kind==='ready'?state.snapshot:undefined

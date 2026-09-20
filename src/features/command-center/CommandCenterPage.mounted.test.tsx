@@ -11,8 +11,33 @@ const deferred=<T,>()=>{let resolve!:(value:T)=>void,reject!:(reason:Error)=>voi
 const client=(get:()=>Promise<CommandCenterSnapshot>):CommandCenterClient=>({get})
 const view=(api:CommandCenterClient|undefined,connected=true,identity:object=api??{})=><MemoryRouter><CommandCenterSurface client={api} connected={connected} identity={identity} projects={[]}/></MemoryRouter>
 const markup=(renderer:ReturnType<typeof create>)=>JSON.stringify(renderer.toJSON())
+const text=(node:any):string=>typeof node==='string'?node:(node.children??[]).map(text).join('')
 
-test('a disconnected mounted surface cannot republish a deferred protected snapshot',async()=>{const old=deferred<CommandCenterSnapshot>();const api=client(()=>old.promise);let renderer!:ReturnType<typeof create>;await act(async()=>{renderer=create(view(api));await Promise.resolve()});await act(async()=>{renderer.update(view(undefined,false,{}));await Promise.resolve()});old.resolve(snapshot('Private old project'));await act(async()=>{await old.promise});assert.match(markup(renderer),/Command Center unavailable/);assert.doesNotMatch(markup(renderer),/Private old project|old outcome/)})
+test('a disconnected mounted surface cannot republish a deferred protected snapshot',async()=>{const old=deferred<CommandCenterSnapshot>();const api=client(()=>old.promise);let renderer!:ReturnType<typeof create>;await act(async()=>{renderer=create(view(api));await Promise.resolve()});await act(async()=>{renderer.update(view(undefined,false,{}));await Promise.resolve()});old.resolve(snapshot('Private old project'));await act(async()=>{await old.promise});assert.match(markup(renderer),/Put agents/);assert.doesNotMatch(markup(renderer),/Private old project|old outcome/)})
+
+// WEB-CONNECTION-1: preview controls never load private workspace data or dispatch work.
+test('disconnected home offers a truthful interactive preview and explicit workspace connection',async()=>{
+ let calls=0,renderer!:ReturnType<typeof create>
+ const api=client(async()=>{calls++;return snapshot('Private project')})
+ await act(async()=>{renderer=create(view(api,false));await Promise.resolve()})
+ assert.match(markup(renderer),/Put agents.*Keep control/s)
+ assert.match(markup(renderer),/Illustrative preview.*No agents run in this preview/s)
+ assert.match(markup(renderer),/Cloud sign-in and remote machine enrollment are planned/)
+ const links=renderer.root.findAllByType('a')
+ const connectionLinks=links.filter(link=>text(link).includes('Connect workspace'))
+ assert.ok(connectionLinks.length>0,'landing offers a connection action')
+ for(const link of connectionLinks)assert.equal(link.props.href,'/settings?section=connection')
+ const button=(label:string)=>renderer.root.findAllByType('button').find(node=>text(node).includes(label))!
+ await act(async()=>button('Review').props.onClick())
+ assert.match(markup(renderer),/Keyboard navigation patch/)
+ await act(async()=>button('Accept in preview').props.onClick())
+ assert.match(markup(renderer),/Example accepted. No workspace was changed/)
+ await act(async()=>button('Request changes in preview').props.onClick())
+ assert.match(markup(renderer),/Example returned for changes. No request was sent/)
+ assert.equal(calls,0)
+ assert.doesNotMatch(markup(renderer),/Private project/)
+ await act(async()=>renderer.unmount())
+})
 
 test('replacement client success and error both fence the earlier connection',async()=>{for(const oldSettles of['resolve','reject']as const){const old=deferred<CommandCenterSnapshot>(),fresh=deferred<CommandCenterSnapshot>();const a=client(()=>old.promise),b=client(()=>fresh.promise);let renderer!:ReturnType<typeof create>;await act(async()=>{renderer=create(view(a,true,{client:a}));await Promise.resolve()});await act(async()=>{renderer.update(view(b,true,{client:b}));await Promise.resolve()});fresh.resolve(snapshot('Current B'));await act(async()=>{await fresh.promise});assert.match(markup(renderer),/Current B/);if(oldSettles==='resolve')old.resolve(snapshot('Private A'));else old.reject(Error('old credential revoked'));await act(async()=>{await old.promise.catch(()=>undefined)});assert.match(markup(renderer),/Current B/);assert.doesNotMatch(markup(renderer),/Private A|old credential revoked/)}})
 
@@ -158,6 +183,6 @@ test('local first-run home leads to runtime setup instead of an ineffective retr
   assert.doesNotMatch(markup(renderer),/command_center_v1|Check again/)
   await act(async()=>renderer.update(view(undefined,false)))
   assert.doesNotMatch(markup(renderer),/Set up personal runtime/)
-  assert.equal(renderer.root.findAllByType('a').find(link=>link.children.includes('Connection settings'))?.props.href,'/settings')
+  assert.equal(renderer.root.findAllByType('a').find(link=>text(link).includes('Connect workspace'))?.props.href,'/settings?section=connection')
   await act(async()=>renderer.unmount())
 })
