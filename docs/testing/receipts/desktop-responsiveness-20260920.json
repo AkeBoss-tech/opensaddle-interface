@@ -1,0 +1,40 @@
+{
+  "invariant": "DESKTOP-RESPONSIVENESS-1",
+  "date": "2026-09-20",
+  "base": "5b30dd0e229a38a3035ce0acb35e8d89aff4734d",
+  "regression": {
+    "command": "node --import tsx --test src/data/store.responsiveness.test.tsx",
+    "before": "AssertionError: project navigation must retain the history array (false !== true)",
+    "after": "passed; 10,000 retained messages, immutable streaming update, bounded persistence and pagehide flush",
+    "runner_note": "Core scripts/prove_regression.py only supports pytest and tests/ overlays; equivalent direct before/after Node test used for Interface."
+  },
+  "checks": {
+    "renderer_suite": "446 passed",
+    "focused_store_suite": "10 passed",
+    "typescript": "passed",
+    "electron_build": "passed",
+    "packaging": "macOS arm64 unsigned 0.2.2",
+    "command_center_suite": "24 passed after moving manager planning below the dashboard",
+    "first_commit_ci": "full Interface production checks passed for 7bfcf9c"
+  },
+  "installed_app": {
+    "path": "/Applications/OpenSaddle.app",
+    "previous_version": "0.1.0",
+    "version": "0.2.2",
+    "asar_sha256": "3b6b527ac55ee46c8bb5dfa6ccc01ef2f536a5c32a6f28493789f2f8039356c7",
+    "core_pin": "28a13f6517ebf1bb26bd079c5f48e31dbb194bc1",
+    "knowledge_pin": "15df0a9d69cc33a6a02f81c80d2767bfe4a6dd4d",
+    "backup": "Original application and user profile retained privately before replacement"
+  },
+  "native_evidence": {
+    "observed": "Upgraded app renders retained local workspace, saved manager conversation and connected local status",
+    "process_samples": "Main and renderer predominantly idle in two-second samples; not evidence for all interaction workloads",
+    "limitation": "Native automation reports noWindowsAvailable on coordinate input; keyboard did not produce a verified navigation. Full task journey and user acceptance remain unverified.",
+    "normal_quit": "0.2.2 exited normally through the application menu before final layout update"
+  },
+  "limitations": [
+    "One-second scheduling delay for renderer-local snapshot saves; abrupt termination can lose changes in that window.",
+    "Git commands have a per-command five-second timeout, not a global deadline for all discovery.",
+    "No claim that every cause of reported freezing is fixed."
+  ]
+}

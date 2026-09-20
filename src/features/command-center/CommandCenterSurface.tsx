@@ -66,8 +66,8 @@ type CommandCenterProps = {localSetupAvailable?:boolean;rendererSettings?:Render
 export function CommandCenterSurface(props:CommandCenterProps) {
   const {connected,managerContext,projectDirectory,managerConversations,dashboardIdentity,identity}=props
   return <main className={`content-page cc-page${connected?'':' cc-page--disconnected'}`}>
-    {connected&&projectDirectory&&(managerContext||managerConversations)&&<ManagerScopePanel conversations={managerConversations} client={managerContext} directory={projectDirectory} identity={dashboardIdentity??identity}/>}
     <CommandCenterDashboard {...props}/>
+    {connected&&projectDirectory&&(managerContext||managerConversations)&&<details className="cc-manager-details"><summary>Plan across projects</summary><ManagerScopePanel conversations={managerConversations} client={managerContext} directory={projectDirectory} identity={dashboardIdentity??identity}/></details>}
   </main>
 }
 

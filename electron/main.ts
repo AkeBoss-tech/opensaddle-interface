@@ -133,7 +133,7 @@ interface WorkspaceScanSnapshot {
 
 function gitOutput(folderPath: string, args: string[]): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile('git', args, { cwd: folderPath, windowsHide: true }, (error, stdout) => {
+    execFile('git', args, { cwd: folderPath, windowsHide: true, timeout: 5_000, maxBuffer: 2 * 1024 * 1024 }, (error, stdout) => {
       resolve(error ? null : stdout)
     })
   })
