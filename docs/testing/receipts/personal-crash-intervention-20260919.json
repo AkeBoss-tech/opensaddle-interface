@@ -1,0 +1,95 @@
+{
+  "schema_version": "opensaddle.test-receipt.v1",
+  "invariant": "PERSONAL-RUNTIME-AUTHORITY-1",
+  "scope": "Core supervisor crash on copied developer fixture; Interface parser/display repair",
+  "sources": {
+    "interface": {
+      "repository": "https://github.com/AkeBoss-tech/opensaddle-interface.git",
+      "revision": "a04644388b815aa851b9da8e4f0989353ae109f9",
+      "tree": "5e2fde2e182f9bea7dbb93adc346f36b812ffa9e",
+      "evidence": {
+        "kind": "verified_git_archive",
+        "receiptSha256": "6cbec6f4da6a0738c71c7cf3388573896da13cf22038f8f24b6776d7b7826c24",
+        "archiveSha256": "5ee1053e433c5067e1d030e276bd5f799b94db559736cf9440dd245c935c58a6"
+      }
+    },
+    "core_revision": "8bcff3b324ca47c98d6867feba5230facb79c08c",
+    "core_wheel_sha256": "724205648703cbf8604ae04566efb449bc70665d9e0938defa3148e36a410a7d",
+    "krail_revision": "e2c6009481e132e4784451137eb63f7d74a6b899",
+    "krail_wheel_sha256": "0633916a4473464cdbdcdf495ce9127c3313263292ed3b65acdc95d7a5cdf7d1"
+  },
+  "source_patch_sha256": {
+    "src/services/personalRuntime.ts": "bab2234cbd1738f1dcba7dfb61ae81efbc0c0d4cc39c7622a4d065eef47a983b",
+    "src/features/projects/PersonalRuntimePanel.tsx": "e90513f7e3c87ac9147213d087e79368d4dc782729c308614b0c796699ad2fd1",
+    "src/features/projects/PersonalRuntimePanel.test.tsx": "1e455c6ce901d02481ca84a97db72238070ea15eebc1237f40b79fc9c991529f",
+    "docs/testing/invariants.md": "98807bd2c35a3d36d3ea12ab33123337bbaa3e4325fd65d6c731dd454740259b"
+  },
+  "regression": {
+    "baseline_archive": "a046443 git archive with identical new test overlay",
+    "baseline": "6 pass, 1 assertion failure: Personal runtime worker is invalid",
+    "fixed": "7 panel, 5 parser, 358 workspace, 421 feature, 2 SDK passed; typecheck/build/lint passed",
+    "final_focused": "12/12 passed after preserving Stop worker for the unresolved-Run intervention case; baseline archive overlay remains 6 pass/1 failed assertion"
+  },
+  "parent_owning_rerun": "12 passed, no failures; actual PersonalRuntimeClient and mounted panel with HTTP fixture",
+  "actual_runtime_evidence": {
+    "fault": "SIGKILL of exact task-owned Core supervisor; previous worker process group remained alive",
+    "fence": "Core restart reported intervention_required and refused premature start",
+    "recovery": "After verified manual cleanup of exact owned orphan group, explicit revision-bound start reported ready",
+    "identity_and_token_digests_preserved": true,
+    "retained_before": {
+      "runs": 1,
+      "artifacts": 1,
+      "reviews": 1,
+      "run_status": "completed",
+      "artifact": [
+        "art_fb78242ddcde4c8fa169df02a2bbba4c",
+        "7be052d0c5e909c0607a8e1a0e622ea5151ff8686140bdf9b83cdc565605dc79",
+        10
+      ],
+      "review": [
+        1,
+        "accepted",
+        "7be052d0c5e909c0607a8e1a0e622ea5151ff8686140bdf9b83cdc565605dc79"
+      ]
+    },
+    "retained_after": {
+      "runs": 1,
+      "artifacts": 1,
+      "reviews": 1,
+      "run_status": "completed",
+      "artifact": [
+        "art_fb78242ddcde4c8fa169df02a2bbba4c",
+        "7be052d0c5e909c0607a8e1a0e622ea5151ff8686140bdf9b83cdc565605dc79",
+        10
+      ],
+      "review": [
+        1,
+        "accepted",
+        "7be052d0c5e909c0607a8e1a0e622ea5151ff8686140bdf9b83cdc565605dc79"
+      ]
+    },
+    "new_runs": 0,
+    "model_turns": 0,
+    "proof_boundary": "Retained Core/database evidence and agent-observed UI actions; no saved DOM/AX dump. Mounted UI regression uses deterministic HTTP fixture."
+  },
+  "negative_copy": {
+    "mutation": "copied adoption Project ID changed",
+    "classification": {
+      "kind": "blocked",
+      "reason": "retained_state_invalid"
+    }
+  },
+  "screenshots": "Three private screenshots show navigation context only; target runtime/result/review panels are below the fold, so they provide no visual proof of those states.",
+  "profile_incident": {
+    "first_launch_excluded_from_isolated_proof": true,
+    "description": "First launch omitted explicit Electron user-data-dir; standard app profile had19 recently touched cache/log/Preferences files. No prelaunch snapshot, so neither write attribution nor unchanged connection/session state can be certified. No rollback attempted; later launches used verified private user-data-dir.",
+    "user_app_not_signaled": true
+  },
+  "limits": [
+    "Copied retained state with adoption IPC paths rebound, not untouched restore or clean customer installation.",
+    "Post-fix private app used a diagnostic Interface overlay, not a newly pinned release build; screenshots were not state proof.",
+    "Manual orphan cleanup was required; unattended self-heal is not proven.",
+    "No new provider turn, connector effect, signed application, DMG or Windows qualification."
+  ],
+  "cleanup": "All task-owned app/Core/worker processes exited; owned ports closed. Original retained fixture preserved."
+}
