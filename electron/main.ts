@@ -21,6 +21,7 @@ import { listPublicTokenPrices } from './tokenPricing.js'
 import { desktopRendererDocument, rendererRequestAllowed, validateDesktopRendererMessage, validateDesktopRendererRequest, type DesktopRendererRequest } from './applicationRendererPolicy.js'
 import { migrateApplicationState, type ApplicationStateSchema } from './applicationState.js'
 import { adoptPersonalRuntime, commissionPersonalRuntimeProcess, preparePersonalRuntimeStateDir, validatePersonalRuntimeInventory, type DesktopPersonalRuntimeRequest } from './personalRuntimeCommissioning.js'
+import { canonicalPersonalRuntimeStateDir, inspectPersonalRuntimeResume, readPersonalRuntimeAdoptionMetadata } from './personalRuntimeResume.js'
 import { proxyPersonalRuntimeRequest } from './personalRuntimeProxy.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -1013,14 +1014,33 @@ app.whenReady().then(async () => {
     })
   })
 
+  const personalRuntimeProbePaths = async () => {
+    const requestedStateDir = path.join(opensaddleStateDir(), 'personal-runtime')
+    const stateDir = await canonicalPersonalRuntimeStateDir(requestedStateDir)
+    const ipcKey = createHash('sha256').update(stateDir).digest('hex').slice(0, 16)
+    return { stateDir, ipcDir: path.join(homedir(), '.opensaddle', 'runtime-ipc', ipcKey) }
+  }
+  ipcMain.handle('runtime:inspect-personal-resume', async event => {
+    if (!fromMainFrame(event)) throw Error('personal_runtime_sender_denied')
+    return inspectPersonalRuntimeResume(await personalRuntimeProbePaths())
+  })
+
   ipcMain.handle('runtime:commission-personal', async (event, request: DesktopPersonalRuntimeRequest) => {
     if (!fromMainFrame(event)) throw Error('personal_runtime_sender_denied')
+    if (!request || typeof request !== 'object') throw Error('Personal runtime request is invalid')
+    const resume = await inspectPersonalRuntimeResume(await personalRuntimeProbePaths())
+    if (resume.kind === 'offline') {
+      if (request.restartExistingInstallationId !== resume.installationId || request.projectId !== resume.projectId)
+        throw Error('Existing personal runtime identity changed; restart was not authorized')
+    } else if (resume.kind !== 'none') throw Error('Existing personal runtime requires recovery or reconnection')
+    else if (request.restartExistingInstallationId !== undefined)
+      throw Error('Existing personal runtime is unavailable for restart')
     if (!await ensureOpenSaddle()) throw Error('Local project registry is unavailable')
     await validatePersonalRuntimeInventory({baseUrl:opensaddleUrl,request})
     const launch = await resolveOpenSaddleLaunch(); if (!launch) throw Error('Packaged OpenSaddle runtime is unavailable')
     const personalUrl = await unusedLoopbackUrl(), stateDir = await realpath(preparePersonalRuntimeStateDir(path.join(opensaddleStateDir(), 'personal-runtime'))), ipcKey=createHash('sha256').update(stateDir).digest('hex').slice(0,16),ipcDir=await realpath(preparePersonalRuntimeStateDir(path.join(homedir(),'.opensaddle','runtime-ipc',ipcKey))),commandIndex = launch.args.indexOf('serve-api')
     if(Buffer.byteLength(path.join(ipcDir,'p.sock'))>103)throw Error('Personal runtime IPC path is too long for this system')
-    const result = await commissionPersonalRuntimeProcess({ command:launch.command,commandPrefix:commandIndex<0?[]:launch.args.slice(0,commandIndex),request,config:{projectDatabase:path.join(opensaddleStateDir(),'projects.db'),stateDir,ipcDir,port:Number(new URL(personalUrl).port),handoffFd:3},expected:{baseUrl:personalUrl,projectId:request.projectId,ipcDir} })
+    const result = await commissionPersonalRuntimeProcess({ command:launch.command,commandPrefix:commandIndex<0?[]:launch.args.slice(0,commandIndex),request,config:{projectDatabase:path.join(opensaddleStateDir(),'projects.db'),stateDir,ipcDir,port:Number(new URL(personalUrl).port),handoffFd:3},expected:{baseUrl:personalUrl,projectId:request.projectId,installationId:resume.kind==='offline'?resume.installationId:undefined,ipcDir} })
     const metadata={schema_version:'opensaddle.personal-runtime-desktop.v1',base_url:result.handoff.baseUrl,installation_id:result.handoff.installationId,project_id:result.handoff.projectId,adoption_socket:result.handoff.adoptionSocket,ipc_dir:result.handoff.ipcDir}
     chmodSync(stateDir,0o700);await writeFile(path.join(stateDir,'desktop-adoption.json'),JSON.stringify(metadata),{encoding:'utf8',mode:0o600})
     activePersonalRuntime=result.handoff
@@ -1029,8 +1049,8 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('runtime:adopt-personal', async (event) => {
     if (!fromMainFrame(event)) throw Error('personal_runtime_sender_denied')
-    const stateDir=path.join(opensaddleStateDir(),'personal-runtime'),raw=JSON.parse(await readFile(path.join(stateDir,'desktop-adoption.json'),'utf8')) as Record<string,unknown>
-    if(raw.schema_version!=='opensaddle.personal-runtime-desktop.v1'||typeof raw.base_url!=='string'||typeof raw.installation_id!=='string'||typeof raw.project_id!=='string'||typeof raw.adoption_socket!=='string'||typeof raw.ipc_dir!=='string')throw Error('Personal runtime adoption metadata is invalid')
+    const { stateDir, ipcDir } = await personalRuntimeProbePaths()
+    const raw = await readPersonalRuntimeAdoptionMetadata({ stateDir, ipcDir })
     const handoff=await adoptPersonalRuntime({stateDir,ipcDir:raw.ipc_dir,socketPath:raw.adoption_socket,baseUrl:raw.base_url,installationId:raw.installation_id,projectId:raw.project_id})
     activePersonalRuntime=handoff
     return publicPersonalRuntime(handoff)

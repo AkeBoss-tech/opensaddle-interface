@@ -17,6 +17,7 @@ import {
 import { defaultConnectionProfile, initServices, type ConnectionProfile, type ServiceBundle } from '../services'
 import { loadSessionConnection, saveSessionConnection } from './connectionSession'
 import { installPersonalRuntimeTransport } from '../services/personalRuntimeTransport'
+import type { PersonalRuntimeResumeStatus } from '../services/personalRuntimeCommissioning'
 import { detectRuntimeMode, modeLabel } from '../services/capabilities'
 import { evaluatePermissions } from '../services/permissions'
 import { adoptNativeContinuation } from '../lib/nativeContinuation'
@@ -194,6 +195,7 @@ interface StoreApi {
   runtimeModeLabel: string
   persistenceStatus: 'local' | 'loading' | 'syncing' | 'synced' | 'needs_setup' | 'error'
   runtimeAdoptionPending?: boolean
+  runtimeResume: Exclude<PersonalRuntimeResumeStatus, {kind:'none'}> | null
   threadHistoryHydrated: boolean
   lastSavedAt: number | null
   connection: ConnectionProfile
@@ -217,20 +219,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [connection, setConnection] = useState<ConnectionProfile>(() => loadSessionConnection(defaultConnectionProfile()))
   const [runtimeAdoptionPending, setRuntimeAdoptionPending] = useState(() => Boolean(window.opensaddleDesktop && window.opensaddle?.adoptPersonalRuntime))
+  const [runtimeResume, setRuntimeResume] = useState<Exclude<PersonalRuntimeResumeStatus, {kind:'none'}> | null>(null)
   const connectionRef = useRef(connection)
   connectionRef.current = connection
   useEffect(() => {
     let live = true
     const startingConnection = connectionRef.current
+    const startingUser = data.currentUserId
     if (!window.opensaddleDesktop || !window.opensaddle?.adoptPersonalRuntime) return
     void window.opensaddle.adoptPersonalRuntime().then((handoff) => {
-      if (!live || connectionRef.current !== startingConnection) return
+      if (!live || connectionRef.current !== startingConnection || currentUserRef.current !== startingUser) return
       installPersonalRuntimeTransport(handoff)
+      setRuntimeResume(null)
       const next: ConnectionProfile = { id:`remote-${handoff.baseUrl.replace(/\/$/,'')}`,name:'Personal runtime',mode:'remote',baseUrl:handoff.baseUrl.replace(/\/$/,''),allowMockFallback:false }
       saveSessionConnection(next, undefined, false)
       setServices(null)
       setConnection(next)
-    }).catch(() => undefined).finally(() => { if (live) setRuntimeAdoptionPending(false) })
+    }).catch(async () => {
+      let status: PersonalRuntimeResumeStatus = {kind:'blocked',reason:'retained_state_invalid'}
+      try { status = await window.opensaddle?.inspectPersonalRuntimeResume?.() ?? status } catch { /* Retained state is not safe to treat as a fresh setup. */ }
+      if (!live || connectionRef.current !== startingConnection || currentUserRef.current !== startingUser) return
+      if (status.kind === 'offline' && typeof status.projectId === 'string' && typeof status.installationId === 'string') setRuntimeResume(status)
+      else if (status.kind === 'none') setRuntimeResume(null)
+      else setRuntimeResume({kind:'blocked',reason:status.kind === 'blocked' && ['recovery_required','runtime_may_be_running'].includes(status.reason) ? status.reason : 'retained_state_invalid'})
+    }).finally(() => { if (live) setRuntimeAdoptionPending(false) })
     return () => { live = false }
   }, [])
   const [harnessCapabilities, setHarnessCapabilities] = useState<HarnessCapability[]>([])
@@ -748,6 +760,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     persistenceStatus,
     threadHistoryHydrated,
     runtimeAdoptionPending,
+    runtimeResume,
     lastSavedAt,
     connection,
     harnessCapabilities,
@@ -770,6 +783,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       workspaceHydratedRef.current = false
       durableHydratedServiceRef.current = null
       setServices(null)
+      setRuntimeResume({kind:'blocked',reason:'authority_changed'})
       const next={ id: `remote-${baseUrl}`, name: profile.name.trim() || baseUrl, mode: 'remote' as const, baseUrl, token: profile.token, allowMockFallback: false }
       saveSessionConnection(next, undefined, profile.transientToken !== true)
       setConnection(next)
@@ -1327,14 +1341,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return d
     }),
-    switchUser: (userId) => patch((d) => {
+    switchUser: (userId) => { setRuntimeResume({kind:'blocked',reason:'authority_changed'}); return patch((d) => {
       const member = d.members.find((m) => m.id === userId)
       if (!member) return d
       d.currentUserId = member.id
       d.settings.displayName = member.name
       d.settings.email = member.email
       return d
-    }),
+    }) },
     createApi: (input) => {
       const apiItem: QuickApi = { ...input, id: uid('api'), createdAt: Date.now(), records: input.records ?? [], runHistory: [] }
       patch((d) => { d.apis.unshift(apiItem); return d })
@@ -1622,7 +1636,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     services,
     runtimeModeLabel: modeLabel(detectRuntimeMode()),
-  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, threadHistoryHydrated, runtimeAdoptionPending, lastSavedAt, connection, harnessCapabilities, refreshHarnessCapabilities, localProjectManifests, rescanLocalProject, threadPayload, reportThreadSyncError, workspaceRecoveries])
+  }), [data, toast, toasts, dismissToast, patch, services, persistenceStatus, threadHistoryHydrated, runtimeAdoptionPending, runtimeResume, lastSavedAt, connection, harnessCapabilities, refreshHarnessCapabilities, localProjectManifests, rescanLocalProject, threadPayload, reportThreadSyncError, workspaceRecoveries])
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>
 }

@@ -26,3 +26,21 @@ test('first-run setup distinguishes provider login from missing CLI without rend
  assert.doesNotMatch(displayed,/Run claude login|private token|secret-command/)
  assert.equal(view.root.findAllByProps({type:'radio'})[1].props.disabled,true)
 })
+
+test('offline retained runtime requires explicit same-Project restart choices',async()=>{
+ const projects=[{projectId:'P',root:'/repo',createdAt:1},{projectId:'other',root:'/other',createdAt:1}]
+ let request:unknown
+ let view:any
+ await act(async()=>{view=create(React.createElement(PersonalRuntimeCommissioningForm,{projects,harnesses:[harness('codex')],resumeCandidate:{projectId:'P',installationId:'installation-1'},onCommission:async(value:unknown)=>{request=value}} as any))})
+ assert.match(JSON.stringify(view.toJSON()),/Restart existing runtime/)
+ assert.equal(view.root.findByType('select').props.value,'P')
+ assert.equal(view.root.findByType('select').props.disabled,true)
+ assert.equal(view.root.findByProps({type:'submit'}).props.disabled,true)
+ await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}))
+ assert.equal(request,undefined)
+ await act(async()=>view.root.findByProps({type:'radio',value:'codex'}).props.onChange())
+ const limits=view.root.findAllByProps({inputMode:'numeric'})
+ await act(async()=>{limits[0].props.onChange({target:{value:'2000'}});limits[1].props.onChange({target:{value:'4096'}})})
+ await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}))
+ assert.deepEqual(request,{projectId:'P',workspace:'/repo',adapter:'codex',executable:'/opt/codex',cpuMillicores:2000,memoryMiB:4096,maxConcurrency:1,restartExistingInstallationId:'installation-1'})
+})

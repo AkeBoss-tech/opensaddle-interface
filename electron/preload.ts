@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('opensaddle', {
   }>,
   commissionPersonalRuntime: (request: unknown) => ipcRenderer.invoke('runtime:commission-personal', request),
   adoptPersonalRuntime: () => ipcRenderer.invoke('runtime:adopt-personal'),
+  inspectPersonalRuntimeResume: () => ipcRenderer.invoke('runtime:inspect-personal-resume'),
   personalRuntimeRequest: (request: unknown) => ipcRenderer.invoke('runtime:personal-request', request),
   pickRepository: () => ipcRenderer.invoke('runtime:pick-repo') as Promise<string | null>,
   discoverProjects: () => ipcRenderer.invoke('runtime:discover-projects') as Promise<Array<{
