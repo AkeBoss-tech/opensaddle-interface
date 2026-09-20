@@ -209,7 +209,10 @@ interface StoreApi {
 const StoreContext = createContext<StoreApi | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [initialLoad] = useState(() => loadWorkspace())
+  const [connection, setConnection] = useState<ConnectionProfile>(() => loadSessionConnection(defaultConnectionProfile()))
+  const [initialLoad] = useState(() => connection.mode === 'unconfigured'
+    ? { data: createEmptyWorkspace(), recoveries: listWorkspaceRecoveries() }
+    : loadWorkspace())
   const [data, setData] = useState<AppData>(() => initialLoad.data)
   const [workspaceRecoveries, setWorkspaceRecoveries] = useState<WorkspaceRecovery[]>(() => initialLoad.recoveries)
   const [toasts, setToasts] = useState<Array<{ id: string; title: string; message: string }>>([])
@@ -217,7 +220,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [persistenceStatus, setPersistenceStatus] = useState<StoreApi['persistenceStatus']>('loading')
   const [threadHistoryHydrated, setThreadHistoryHydrated] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
-  const [connection, setConnection] = useState<ConnectionProfile>(() => loadSessionConnection(defaultConnectionProfile()))
   const [runtimeAdoptionPending, setRuntimeAdoptionPending] = useState(() => Boolean(window.opensaddleDesktop && window.opensaddle?.adoptPersonalRuntime))
   const [runtimeResume, setRuntimeResume] = useState<Exclude<PersonalRuntimeResumeStatus, {kind:'none'}> | null>(null)
   const connectionRef = useRef(connection)
@@ -291,12 +293,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [services])
 
   useEffect(() => {
+    if (connection.mode === 'unconfigured') return
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
     } catch {
       toast('Local save unavailable', 'Browser storage is full or blocked. Your current session remains in memory.')
     }
-  }, [data, toast])
+  }, [connection.mode, data, toast])
 
   useEffect(() => {
     document.body.dataset.theme = data.settings.theme === 'dark' ? undefined : data.settings.theme

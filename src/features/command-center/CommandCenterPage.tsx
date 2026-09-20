@@ -1,6 +1,7 @@
 import { useStore } from '../../data/store'
 import { CommandCenterSurface } from './CommandCenterSurface'
 import './command-center.css'
+import './workspace-landing.css'
 
 const EMPTY_IDENTITY={}
 export { CommandCenterSurface } from './CommandCenterSurface'

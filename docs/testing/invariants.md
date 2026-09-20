@@ -1332,3 +1332,20 @@ rejection changes only the historical review record, not execution, source
 verification, or generic PostgreSQL agent capabilities. Owning tests:
 `src/services/hostedAgentCapability.test.ts` and
 `src/features/runs/AgentResultReviewJourney.test.tsx`.
+
+## WEB-CONNECTION-1
+
+An unconfigured non-loopback browser origin must not probe the visitor's local
+Core, repeatedly reconnect, or simulate agent/tool actions. Explicit server URLs,
+retained session connections, desktop defaults and loopback development keep
+existing behavior. The disconnected home offers real connection links, labels
+cloud entry/enrollment as planned, and never republishes a deferred protected
+snapshot. An empty project list leaves the shell's main view full width.
+
+Owning tests: `src/data/store.webConnection.test.tsx` and
+`src/features/command-center/CommandCenterPage.mounted.test.tsx`. The shell width
+is verified through actual browser layout at desktop and 390px mobile widths.
+
+The public preview stages and sample review choices make no Command Center calls.
+Unconfigured StoreProvider starts without prior cached projects and does not
+rewrite their saved bytes, including after a local appearance change.

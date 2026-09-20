@@ -13,6 +13,6 @@ export function loadSessionConnection(fallback: ConnectionProfile, storage: Stor
 
 export function saveSessionConnection(profile: ConnectionProfile, storage: Storage | undefined = typeof sessionStorage === 'undefined' ? undefined : sessionStorage, includeToken = true) {
   if (!storage) return
-  if (profile.mode === 'demo') storage.removeItem(KEY)
+  if (profile.mode !== 'remote') storage.removeItem(KEY)
   else storage.setItem(KEY, JSON.stringify(includeToken ? profile : { ...profile, token: undefined }))
 }

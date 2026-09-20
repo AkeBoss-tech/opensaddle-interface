@@ -35,6 +35,8 @@ export function WorkspaceStatusBar() {
       <button onClick={() => navigate('/settings')}>
         {connectionState.kind === 'demo'
           ? 'Simulated workspace'
+          : connectionState.kind === 'unconfigured'
+          ? 'Choose a connection'
           : !connectionState.connected
           ? 'Waiting for server'
           : persistenceStatus === 'syncing'

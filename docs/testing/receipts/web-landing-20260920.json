@@ -1,0 +1,67 @@
+{
+  "schema_version": "opensaddle.interface.receipt.v1",
+  "recorded_at": "2026-09-20T05:20:14.308523+00:00",
+  "invariant": "WEB-CONNECTION-1",
+  "base_revision": "d939ab6459b755512d238863148f92c613c63f72",
+  "scope": "Public web entry and interactive landing page",
+  "source_sha256": {
+    "src/features/command-center/WorkspaceLanding.tsx": "c527a93a7946b653a58b41bb00e8ac137791ec9c5117644d9cc727ab86a244a5",
+    "src/features/command-center/workspace-landing.css": "9adb504abc1be070efcad5467cc892902381ffa83f9ec25cdb6dc300f7744f99",
+    "src/data/store.webConnection.test.tsx": "532450c56a0a80a3a7a6718d8794c7c48f2fa0254d2d5f5847c4f9fb9da998a6",
+    "src/features/command-center/CommandCenterPage.mounted.test.tsx": "e25387860ca485177b462c7caa50d62c163c3767d687ecc317624be6d3c10c78",
+    "src/services/index.ts": "bab2d48ebb0d28b4ea0ce6e6989396d029bf10cad31754b2ddad35fea360767e",
+    "src/data/store.tsx": "881eb6edebd7d883ece3e5dadd3525c4de0d9c477ff6926d4566b11f0a2a8fc2"
+  },
+  "validation": {
+    "full_suite": {
+      "workspace": 360,
+      "features": 442,
+      "scoped_sdk": 2,
+      "failed": 0,
+      "note": "Before final logo section; affected mounted suites repeated after final code changes."
+    },
+    "final_focused": {
+      "passed": 14,
+      "failed": 0
+    },
+    "build": "passed; existing large chunk warning",
+    "lint": "passed with repository warnings",
+    "regression": {
+      "mechanism": "Identical JS test overlaid onto a git archive; repository prove_regression.py supports pytest paths only. No worktree used.",
+      "base_failure": "Assertion expected no requests; received four localhost health/capability requests.",
+      "cache_failure": "Base StoreProvider plus unconfigured service change: assertion expected empty projects, received private retained project.",
+      "after": "All three public StoreProvider contract cases pass."
+    },
+    "browser": {
+      "environment": "Chrome local Vite, preview.localhost:5179/opensaddle-interface/home (non-loopback hostname exercises public entry)",
+      "widths": [
+        390,
+        1512
+      ],
+      "mobile_document_width": 390,
+      "screenshots": "Inspected inline in browser tool; no file export claimed.",
+      "observations": [
+        "Actual OpenSaddle mark and integration assets loaded",
+        "Mobile preview Review activated by keyboard; Accept updates example state only",
+        "No horizontal overflow at 390px",
+        "Connect workspace reaches settings connection form with empty server URL",
+        "No console errors in inspected landing tab",
+        "Viewport override reset"
+      ],
+      "not_qualified": [
+        "Cloud sign-in",
+        "Remote enrollment",
+        "Windows installation",
+        "New provider execution from the landing preview"
+      ]
+    }
+  },
+  "logs_sha256": {
+    "/tmp/opensaddle-landing-tests.log": "c65b11cce43df414732a6d7f2db130b8095a5e02c8d7892bc21550168954d993",
+    "/tmp/opensaddle-landing-focused.log": "562eda10557444a1448a63ddee3f314aac99a1239c142e0d7566782adc585b2f",
+    "/tmp/opensaddle-landing-build.log": "a450190619da490f8eae447dbfec16c15423d3c11da95b5978abfe364b7f5c18",
+    "/tmp/opensaddle-landing-lint.log": "91eadd273cbb8a993aa18370c23fed328f9c587a19d92b27ab5ae79ecd4ecb1e",
+    "/tmp/opensaddle-web-regression-before-final.log": "8d5030f92b03c2192cebbb8652ca3e0f6ddbcaceacb95939251ba5c5edfecb51",
+    "/tmp/opensaddle-web-cache-regression-before.log": "f17b77f9244aecba3d3a4224e362b671fbb3eacc462c1cf53a6c806e73bd0c4f"
+  }
+}

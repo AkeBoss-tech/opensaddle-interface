@@ -1170,7 +1170,7 @@
 .system-pill { text-decoration:none; transition:border-color .15s ease, background .15s ease; }
 .system-pill:hover { border-color:var(--border-strong); background:#20211e; }
 .system-pill .pulse.demo { background:var(--blue); box-shadow:none; animation:none; }
-.system-pill .pulse.connecting, .system-pill .pulse.reconnecting { background:var(--dim); box-shadow:none; animation:none; }
+.system-pill .pulse.unconfigured, .system-pill .pulse.connecting, .system-pill .pulse.reconnecting { background:var(--dim); box-shadow:none; animation:none; }
 .system-pill-sync { color:var(--dim); padding-left:5px; border-left:1px solid var(--border); }
 
 .settings-overview {

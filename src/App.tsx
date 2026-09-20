@@ -95,6 +95,7 @@ function Shell() {
   const loc = useLocation()
   const settingsFocused = loc.pathname === '/settings'
   const globalStart = loc.pathname === '/start'
+  const publicLanding = connection.mode === 'unconfigured' && (loc.pathname === '/home' || loc.pathname === '/')
   const connectedLocal = useProductSurface(services, JSON.stringify([connection.id, connection.mode, connection.baseUrl, data.currentUserId]))
 
   const openArtifactReview = useCallback(async () => {
@@ -313,10 +314,10 @@ function Shell() {
 
   return (
     <div
-      className={`app ${settingsFocused ? 'settings-focus' : ''} ${globalStart ? 'global-start' : ''}`}
+      className={`app ${settingsFocused || connection.mode === 'unconfigured' || (!connectedLocal && data.projects.length === 0) ? 'settings-focus' : ''} ${globalStart ? 'global-start' : ''} ${publicLanding ? 'public-landing' : ''}`}
       style={{ '--sidebar-w': `${connectedLocal ? 326 : globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
     >
-      {!settingsFocused && !connectedLocal && (
+      {!settingsFocused && !connectedLocal && connection.mode !== 'unconfigured' && (
         <ThreadFirstSidebar
           collapsed={sidebarCollapsed}
           globalMode={globalStart}
@@ -331,11 +332,11 @@ function Shell() {
       )}
       {!settingsFocused && connectedLocal && <ConnectedWorkspaceSidebar onAddProject={() => setProjectModal(true)} />}
       <PresentationAppearance/><main className={`main ${browserOpen ? 'native-browser-open' : ''}`}>
-        {!settingsFocused && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
+        {!settingsFocused && !publicLanding && <Topbar crumbs={crumbs} sidebarCollapsed={connectedLocal ? false : sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onBack={() => nav(-1)} onForward={() => nav(1)} onPalette={() => setPalette(true)} onBrowser={connectedLocal ? undefined : () => { setBrowserOpen(true); setBrowserCollapsed(false) }} />}
         <div ref={workspaceRef} className="workspace-split">
         <div className="page-wrap">
           <SurfaceErrorBoundary key={`${loc.pathname}:${connectedLocal}`} onRetry={() => nav(0)}>
-          {connectedLocal ? <Routes>
+          {connection.mode === 'unconfigured' ? <Routes><Route path="/home" element={<CommandCenterPage/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="*" element={<Navigate to="/home" replace/>}/></Routes> : connectedLocal ? <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/home" element={<ScopedWorkspace client={services?.malleableShell?.scopedRenderers}>{services?.commandCenter ? <CommandCenterPage /> : <ConnectedWorkspaceHome onAddProject={() => setProjectModal(true)} />}</ScopedWorkspace>} />
             <Route path="/review" element={<ReviewWorkspacePage />} />
@@ -432,7 +433,7 @@ function Shell() {
           {browserCollapsed && <button className="native-browser-restore" type="button" title="Restore browser" onClick={() => setBrowserCollapsed(false)}>‹</button>}
         </>}
         </div>
-        {!settingsFocused && !connectedLocal && <WorkspaceStatusBar />}
+        {!settingsFocused && !connectedLocal && !publicLanding && <WorkspaceStatusBar />}
       </main>
       <ToastStack />
       <CommandPalette open={palette} onClose={() => setPalette(false)} items={items} />

@@ -114,7 +114,7 @@ export interface ServiceBundle {
 export interface ConnectionProfile {
   id: string
   name: string
-  mode: 'demo' | 'remote'
+  mode: 'demo' | 'remote' | 'unconfigured'
   baseUrl: string
   token?: string
   allowMockFallback: boolean
@@ -128,6 +128,7 @@ export function connectionProfileForRuntime(input: {
   runtimeMode: RuntimeMode
   configuredUrl?: string
   desktopUrl?: string
+  browserHostname?: string
   allowMockFallback?: boolean
 }): ConnectionProfile {
   const explicitUrl = input.configuredUrl ?? input.desktopUrl
@@ -136,6 +137,10 @@ export function connectionProfileForRuntime(input: {
       id: 'explicit-dev-fixture', name: 'Development fixture', mode: 'demo',
       baseUrl: 'http://127.0.0.1:8765', allowMockFallback: true,
     }
+  }
+  if (!explicitUrl && input.runtimeMode !== 'desktop' && input.browserHostname
+    && !['localhost', '127.0.0.1', '[::1]', '::1'].includes(input.browserHostname)) {
+    return { id: 'unconfigured-browser', name: 'Choose a connection', mode: 'unconfigured', baseUrl: '', allowMockFallback: false }
   }
   const baseUrl = explicitUrl ?? 'http://127.0.0.1:8765'
   return {
@@ -156,6 +161,7 @@ export function defaultConnectionProfile(): ConnectionProfile {
     runtimeMode: detectRuntimeMode(),
     configuredUrl: env.VITE_OPENSADDLE_URL,
     desktopUrl,
+    browserHostname: typeof window !== 'undefined' ? window.location?.hostname : undefined,
     allowMockFallback: env.VITE_ALLOW_MOCK_FALLBACK === 'true',
   })
 }
@@ -462,7 +468,13 @@ export function initServices(opts: {
       } else {
         permissions = new LocalPermissionClient(opts.getGrants, opts.setGrants)
       }
-      const runtime = connection.mode === 'remote'
+      const unavailable = async (): Promise<never> => { throw new Error('Choose an OpenSaddle server in connection settings first.') }
+      const runtime: RuntimeClient = connection.mode === 'unconfigured'
+        ? { estimate: unavailable, startRun: unavailable, delegate: unavailable, cancel: unavailable,
+            pause: unavailable, resume: unavailable, retry: unavailable, steer: unavailable, queue: unavailable,
+            updateQueue: unavailable, respondToRequest: unavailable,
+            subscribe: (_id, _event, onError) => { onError?.(new Error('No OpenSaddle server is connected.')); return () => {} } }
+        : connection.mode === 'remote'
           ? new OpenSaddleRuntimeClient(baseUrl, new MockRuntimeClient(), {
             token,
             getUserId,
@@ -517,7 +529,9 @@ export function initServices(opts: {
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
       const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable, authorizedContextAvailable, portableContinuationAvailable, nativeSessionResume, undefined, projectMembershipRemovalAvailable, runEventPageAvailable, membershipRemovalRevokesCredentials) : undefined
       const personalRuntime=backendAvailable&&personalRuntimeAvailable?new PersonalRuntimeClient(baseUrl,getUserId,token):undefined
-      const tools = connection.mode === 'remote'
+      const tools: ToolClient = connection.mode === 'unconfigured'
+        ? { list: async () => [], connect: unavailable, disconnect: unavailable, call: unavailable }
+        : connection.mode === 'remote'
         ? new RemoteIntegrationToolClient(baseUrl, getUserId, token)
         : new MockOAuthToolClient(opts.getGrants, opts.currentUserId)
       const sandbox = new WorkerSandboxClient()
