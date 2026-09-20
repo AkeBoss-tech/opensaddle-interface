@@ -36,7 +36,7 @@ interface Window {
   opensaddleDesktop?: boolean
   opensaddle?: {
     opensaddleUrl: string
-    getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; opensaddleConnected: boolean; opensaddleError: string | null; opensaddleNotice: string | null; sessionBridgeUrl: string; /** @deprecated */ krailUrl: string; krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }; clis: string[] }>
+    getRuntimeInfo: () => Promise<{ mode: string; opensaddleUrl: string; opensaddleConnected: boolean; opensaddleError: string | null; opensaddleNotice: string | null; sessionBridgeUrl: string; /** @deprecated */ krailUrl: string; krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path' | 'unavailable'; version?: string }; clis: string[] }>
     commissionPersonalRuntime: (request: import('./services/personalRuntimeCommissioning').PersonalRuntimeCommissionRequest) => Promise<{baseUrl:string;installationId:string;ownerSubject:string;projectId:string;adoptionSocket:string;ipcDir:string}>
     adoptPersonalRuntime: () => Promise<{baseUrl:string;installationId:string;ownerSubject:string;projectId:string;adoptionSocket:string;ipcDir:string}>
     inspectPersonalRuntimeResume: () => Promise<import('./services/personalRuntimeCommissioning').PersonalRuntimeResumeStatus>

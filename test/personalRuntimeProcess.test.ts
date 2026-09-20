@@ -60,3 +60,47 @@ exit 2
   rmSync(root,{recursive:true,force:true})
  }
 })
+
+test('commissioned runtime receives the selected pinned KRAIL command instead of an ambient override', async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'personal-pinned-env-'))
+  const stateDir = path.join(root, 'state')
+  const marker = path.join(root, 'observed-command')
+  const script = path.join(root, 'child.cjs')
+  mkdirSync(stateDir)
+  const pinned = path.join(root, 'pinned-krail-admin')
+  const foreign = path.join(root, 'foreign-krail-admin')
+  const previous = process.env.OPENSADDLE_KRAIL_ADMIN_COMMAND
+  const handoff = {
+    schema_version: 'opensaddle.personal-runtime-handoff.v1',
+    protocol_version: 'opensaddle.personal-runtime.v1',
+    base_url: 'http://127.0.0.1:8766/',
+    installation_id: 'installation-test',
+    owner_subject: 'owner-test',
+    project_id: 'project-test',
+    bearer_token: 'fixture-only-token',
+    adoption_socket: path.join(stateDir, 'p.sock'),
+    ipc_dir: stateDir,
+  }
+  writeFileSync(script, `const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(marker)},process.env.OPENSADDLE_KRAIL_ADMIN_COMMAND||'');fs.writeSync(3,${JSON.stringify(JSON.stringify(handoff) + '\n')});setTimeout(()=>{},5000);`)
+  process.env.OPENSADDLE_KRAIL_ADMIN_COMMAND = foreign
+  try {
+    const result = await commissionPersonalRuntimeProcess({
+      command: process.execPath,
+      commandPrefix: [script],
+      request: { projectId: 'project-test', workspace: root, adapter: 'codex', executable: process.execPath, cpuMillicores: 1000, memoryMiB: 1024, maxConcurrency: 1 },
+      config: { projectDatabase: path.join(root, 'projects.db'), stateDir, ipcDir: stateDir, port: 8766, handoffFd: 3 },
+      expected: { baseUrl: handoff.base_url, projectId: handoff.project_id, ipcDir: stateDir },
+      env: { ...process.env, OPENSADDLE_KRAIL_ADMIN_COMMAND: pinned },
+    })
+    try { assert.equal(readFileSync(marker, 'utf8'), pinned) }
+    finally {
+      result.process.kill('SIGTERM')
+      if (result.process.exitCode === null && result.process.signalCode === null)
+        await new Promise<void>(resolve => result.process.once('close', () => resolve()))
+    }
+  } finally {
+    if (previous === undefined) delete process.env.OPENSADDLE_KRAIL_ADMIN_COMMAND
+    else process.env.OPENSADDLE_KRAIL_ADMIN_COMMAND = previous
+    rmSync(root, { recursive: true, force: true })
+  }
+})

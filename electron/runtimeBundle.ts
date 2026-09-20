@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 export interface KrailRuntimeManifest {
@@ -22,6 +22,51 @@ export interface ResolvedKrailRuntime {
   adminCommand: string
   mutationCommand: string
   backendCommand: string
+}
+
+export type DesktopBackendSelection =
+  | { kind: 'selected'; command: string; source: string; bundledRuntime?: ResolvedKrailRuntime }
+  | { kind: 'discover' }
+  | { kind: 'unavailable' }
+
+/** The packaged app has one authority for its executable and KRAIL commands:
+ * the validated resources beside that app. Development may use an explicitly
+ * configured executable before its normal local discovery path. */
+export function selectDesktopBackend(input: {
+  packaged: boolean
+  resourceRoot: string
+  configuredExecutable?: string
+}): DesktopBackendSelection {
+  if (input.packaged) {
+    const bundledRuntime = resolveKrailRuntime(input.resourceRoot)
+    return bundledRuntime
+      ? { kind: 'selected', command: bundledRuntime.backendCommand, source: 'bundled backend', bundledRuntime }
+      : { kind: 'unavailable' }
+  }
+  if (input.configuredExecutable && existsSync(input.configuredExecutable)) {
+    return { kind: 'selected', command: input.configuredExecutable, source: 'configured executable' }
+  }
+  return { kind: 'discover' }
+}
+
+/** Passed to both the sidecar and personal-runtime subprocess boundaries. */
+export function desktopRuntimeEnvironment(input: {
+  inherited: NodeJS.ProcessEnv
+  packaged: boolean
+  bundledRuntime: ResolvedKrailRuntime | null
+}): NodeJS.ProcessEnv {
+  const env = { ...input.inherited }
+  if (input.packaged) {
+    if (!input.bundledRuntime) throw Error('Packaged runtime is unavailable')
+    delete env.OPENSADDLE_EXECUTABLE
+    delete env.OPENSADDLE_KRAIL_RUNTIME_DIR
+    env.OPENSADDLE_KRAIL_ADMIN_COMMAND = input.bundledRuntime.adminCommand
+    env.OPENSADDLE_KRAIL_MUTATION_COMMAND = input.bundledRuntime.mutationCommand
+  } else if (input.bundledRuntime) {
+    env.OPENSADDLE_KRAIL_ADMIN_COMMAND ??= input.bundledRuntime.adminCommand
+    env.OPENSADDLE_KRAIL_MUTATION_COMMAND ??= input.bundledRuntime.mutationCommand
+  }
+  return env
 }
 
 function confinedBundledPath(root: string, candidate: unknown): string | null {
