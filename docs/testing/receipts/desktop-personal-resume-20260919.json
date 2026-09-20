@@ -1,0 +1,49 @@
+{
+  "schema_version": "opensaddle.desktop-personal-resume-proof.v1",
+  "invariant": "DESKTOP-PERSONAL-RESUME-1",
+  "base_interface_revision": "9e196e27a99e34613fdec53f81e24e431cd8aa1e",
+  "baseline": {
+    "test": "offline retained runtime requires explicit same-Project restart choices",
+    "result": "assertion_failed_on_prior_setup_only_view",
+    "private_log": "/tmp/opensaddle-20260919/pinned-agent-review-8bc/readiness/resume-baseline.log"
+  },
+  "verification": {
+    "same_test_after_repair": "passed",
+    "real_check": "passed",
+    "real_check_suites": {
+      "workspace": 358,
+      "features": 420,
+      "scoped_sdk": 2,
+      "control_plane": 124
+    },
+    "typecheck_lint_and_builds": "passed",
+    "private_log": "/tmp/opensaddle-20260919/pinned-agent-review-8bc/readiness/resume-real-check.log"
+  },
+  "owned_ui_journey": {
+    "shell": "private diagnostic copy of prior pinned app with current uncommitted Interface overlay; not a release build",
+    "core_revision": "8bcff3b324ca47c98d6867feba5230facb79c08c",
+    "knowledge_revision": "e2c6009481e132e4784451137eb63f7d74a6b899",
+    "fixture_project": "local_7d528c33-5989-4f21-8f02-a03c63fa596f",
+    "retained_run": "run_7b2d2bf9d91344a2b8bb799fae6df62d",
+    "observed": [
+      "exact existing Project locked in restart form",
+      "coding agent and resource limits required again",
+      "same installation and token bytes after explicit restart",
+      "running runtime with Knowledge available and no unresolved Runs",
+      "same completed result and accepted human decision reopened",
+      "one Run, one artifact, one review after restart"
+    ],
+    "new_provider_turns": 0,
+    "screenshots": [
+      "/tmp/opensaddle-20260919/pinned-agent-review-8bc/readiness/offline-restart-ready.png",
+      "/tmp/opensaddle-20260919/pinned-agent-review-8bc/readiness/restarted-same-runtime.png",
+      "/tmp/opensaddle-20260919/pinned-agent-review-8bc/readiness/retained-result-and-acceptance-visible.png"
+    ]
+  },
+  "limits": [
+    "The desktop was deliberately stopped; abrupt crash and stale-lock recovery require a separate installed qualification.",
+    "This unpinned diagnostic shell does not replace or certify the earlier pinned app or a distributable release.",
+    "Restart can resume claiming already admitted queued work after Core checks; it creates no new task and does not blindly replay unknown effects.",
+    "Immediately after restart the UI reported codex-app-server unavailable. This journey did not wait to establish provider readiness or dispatch another task; running service state alone is not readiness proof."
+  ]
+}

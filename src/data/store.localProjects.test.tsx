@@ -119,6 +119,32 @@ test('desktop bootstrap exposes pending adoption before discovery may prompt', a
   }finally{Object.assign(globalThis,prior);globalThis.IS_REACT_ACT_ENVIRONMENT=false}
 })
 
+test('a connection change cannot turn an inspected offline runtime into fresh setup', async () => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  const prior = {localStorage:globalThis.localStorage,sessionStorage:globalThis.sessionStorage,window:globalThis.window,document:globalThis.document,fetch:globalThis.fetch,React:(globalThis as typeof globalThis & {React?:typeof React}).React}
+  Object.assign(globalThis, {
+    localStorage:new MemoryStorage(),sessionStorage:new MemoryStorage(),React,
+    window:{setTimeout,clearTimeout,setInterval,clearInterval,addEventListener(){},removeEventListener(){},opensaddleDesktop:true,
+      opensaddle:{adoptPersonalRuntime:async()=>{throw Error('owned socket absent')},inspectPersonalRuntimeResume:async()=>({kind:'offline',projectId:'P',installationId:'I'})}},
+    document:{body:{dataset:{},removeAttribute(){},setAttribute(){}}},
+    fetch:async(input:string|URL|Request)=>String(input).endsWith('/api/health')
+      ? Response.json({mode:'local',capabilities:[]}) : new Response('{}',{status:404}),
+  })
+  let connect!: ReturnType<typeof useStore>['connectToServer']
+  function Projection(){const store=useStore();connect=store.connectToServer;return React.createElement('p',null,`${store.runtimeAdoptionPending?'pending':store.runtimeResume?.kind ?? 'fresh'}:${store.runtimeResume?.kind==='blocked'?store.runtimeResume.reason:''}`)}
+  let view:ReactTestRenderer|undefined
+  try {
+    await act(async()=>{view=create(React.createElement(StoreProvider,null,React.createElement(Projection)));await new Promise(resolve=>setTimeout(resolve,20))})
+    assert.match(JSON.stringify(view!.toJSON()),/offline/)
+    await act(async()=>connect({name:'Other',baseUrl:'http://127.0.0.1:31999'}))
+    assert.match(JSON.stringify(view!.toJSON()),/blocked:authority_changed/)
+    assert.doesNotMatch(JSON.stringify(view!.toJSON()),/fresh/)
+  } finally {
+    if(view)await act(async()=>view!.unmount())
+    Object.assign(globalThis,prior);globalThis.IS_REACT_ACT_ENVIRONMENT=false
+  }
+})
+
 // DESKTOP-LOCAL-RECONNECT-1: startup failure must not strand a legacy onboarding server.
 test('mounted desktop recovers local onboarding after the first health failure', async () => {
   const { createServer } = await import('node:http')

@@ -2,7 +2,7 @@ import path from'node:path'
 import{spawn,type ChildProcess}from'node:child_process'
 import{createConnection}from'node:net'
 import{chmodSync,mkdirSync}from'node:fs'
-export interface DesktopPersonalRuntimeRequest{projectId:string;workspace:string;adapter:'codex'|'claude';executable:string;cpuMillicores:number;memoryMiB:number;maxConcurrency:number}
+export interface DesktopPersonalRuntimeRequest{projectId:string;workspace:string;adapter:'codex'|'claude';executable:string;cpuMillicores:number;memoryMiB:number;maxConcurrency:number;restartExistingInstallationId?:string}
 export interface PersonalRuntimeLaunchConfig{projectDatabase:string;stateDir:string;ipcDir:string;port:number;allowedOrigin?:string;handoffFd:number}
 const text=(value:unknown,name:string)=>{if(typeof value!=='string'||!value||value.includes('\0'))throw Error(`${name} is invalid`);return value}
 const integer=(value:unknown,name:string,max:number)=>{if(!Number.isSafeInteger(value)||Number(value)<1||Number(value)>max)throw Error(`${name} is invalid`);return String(value)}
