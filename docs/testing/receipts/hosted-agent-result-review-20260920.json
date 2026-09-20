@@ -1,0 +1,83 @@
+{
+  "schema_version": "opensaddle.hosted-review-ui-qualification.v1",
+  "core_revision": "d9fa73088cf518c31596cb5899d71b7159e3a21c",
+  "core_archive": "/tmp/opensaddle-20260919/hosted-review-ui-core",
+  "core_import_origin": "/tmp/opensaddle-20260919/hosted-review-ui-core/src/opensaddle/__init__.py",
+  "interface_base_revision": "3a9ba1c4c483fe673d9021b1be767e17fb425ad6",
+  "interface_patch": "uncommitted hosted historical review UI only",
+  "project_id": "hosted-review-ui",
+  "worker_type": "deterministic fixture worker via real Core HTTP routes; no external provider/model",
+  "run_id": "run_76f7107e9e1841c496c08ff8708d0882",
+  "original_user_task": "Return the fixture result marker AZURE-4B21.",
+  "artifact_id": "art_92334847d9ce41239a820b7ae919f87b",
+  "artifact_digest": "440d692f4c7773f9779088909e330b85240a60c22c64e3d02ccafaf6d6749268",
+  "worker_result_public_http_statuses": {
+    "claim": 200,
+    "start": 200,
+    "result": 201,
+    "complete": 200
+  },
+  "review": {
+    "initial_revision": 0,
+    "fixture_rejected_revision": 1,
+    "fixture_accepted_revision": 2,
+    "current_decision_after_reload": "accepted",
+    "review_event_count": 2
+  },
+  "run_status_after_reload": "completed",
+  "artifact_count": 1,
+  "result_publication_event_count": 1,
+  "capabilities": {
+    "hosted_external_agent_v1": true,
+    "hosted_external_agent_result_review_v1": true,
+    "agent_builder_v1": false,
+    "agent_result_review_v1": false,
+    "participants": false
+  },
+  "browser": "Chrome via CUA; disposable agent-created tab; normal Project Agents -> task -> Run UI",
+  "checks": {
+    "focused": "9 passed on final source",
+    "feature_suite": "433 passed on final source",
+    "typecheck": "passed on final source",
+    "lint": "passed with pre-existing warnings",
+    "build": "passed on final source",
+    "diff_check": "passed"
+  },
+  "limitations": [
+    "Fixture owner actions qualify UI and Core historical review persistence; they are not a user's actual judgment of provider work.",
+    "Worker output is deterministic fixture bytes; no external agent/provider executed and no source bytes were delivered.",
+    "Source is a registered metadata claim; this test does not verify source content or remote worker behavior.",
+    "The receipt summarizes delegated browser observations; it is not a raw AX dump or exported screenshot. Root reviewed source and receipt, not a saved visual capture."
+  ],
+  "cleanup": {
+    "browser_tab": "closed",
+    "vite_5179": "stopped",
+    "core_53082": "stopped",
+    "disposable_postgres_database": "dropped",
+    "fixture_private_metadata": "removed"
+  },
+  "browser_source_boundary": "Browser positive journey ran before a final narrow fallback change that only reports review unavailable when the separate hosted capability is absent; positive hosted review path was unchanged. Final fallback and positive paths both passed mounted tests afterward.",
+  "final_source_sha256": {
+    "src/services/index.ts": "88c99c78ff36fda126f1b98fed7367c6da4ecafc1c3fa90f18950a983c3cdaa4",
+    "src/services/remoteJourney.ts": "28792f922d4ef0daeffe5e5fde489388489e572424c096d3b66cda45897dbc27",
+    "src/features/runs/AuthoritativeRunSurface.tsx": "3d4914e2f01f7698da18d0f0902d286c7ea577b678541a746bd2f531b464692a",
+    "src/features/runs/ProjectTaskPage.tsx": "74b03baa84fdd8af244534a5b6a420bdcae54a754823146dadaee13031da4f40",
+    "src/pages/RunsPage.tsx": "627e75600e17fa19cadb781c1db747e45cbf54697dde50b65f7eab0ec5eb1271",
+    "src/services/hostedAgentCapability.test.ts": "b693650f342f03f25cadc82fc056d54eedfc96e3dc82501337d50fb44eb60db2",
+    "src/features/runs/AgentResultReviewJourney.test.tsx": "ccacf19a8342f0e4db9d3997d3bd67a606c6d39644a986005a7283586825214c",
+    "docs/testing/invariants.md": "7191cda4fa6ff0ecec2f3d1cb7a6032e7bde15d213656f999fb3fb2a6ed198dc"
+  },
+  "delegated_browser_observations": [
+    "Project Agents page displayed exact registered source revision/digest, enrolled fixture worker, instructions and no Core connector or memory grants before publication.",
+    "After task submission the Run link opened a task page headed 'Return the fixture result marker AZURE-4B21.'; compiled instructions remained in an expandable disclosure.",
+    "Completed Run showed the fixture-worker output 'AZURE-4B21. Deterministic fixture-worker output; no external provider ran.' and 'Human decision: Not decided'.",
+    "Fixture owner clicked Request changes: 'Human decision: rejected by owner'.",
+    "Fixture owner clicked Revise decision, then Accept result: 'Human decision: accepted by owner'.",
+    "After browser reload the same original task heading, exact fixture output, completed execution, and 'accepted by owner' remained visible."
+  ],
+  "log_sha256": {
+    "focused": "6eecba0b8b1f7dbff320b85bbe68782cd68f2b5ee8cb9a66fb09acfe192bb86a",
+    "features": "d5e25c5d990f51ca11ffe637efe87656d71f3b9a6b9e0dc4d55ff359504fdd9c",
+    "build": "f5ebfbf1ca3e787c7eb1d62588b80b0188ea735bfc3cda805d7791ba05f3125f"
+  }
+}

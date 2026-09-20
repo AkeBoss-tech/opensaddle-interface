@@ -1302,3 +1302,20 @@ a changed caller or Project clears previous draft text. A delayed response
 cannot erase a newer retained intent. Owning tests: `src/services/remoteHostedAgents.test.ts`,
 `src/services/hostedAgentCapability.test.ts`, and
 `src/features/projects/HostedAgentSetupPage.test.tsx`.
+
+## OS-HOSTED-RESULT-REVIEW-UI-001
+
+The Interface negotiates `hosted_external_agent_result_review_v1` independently
+of personal generic-agent review. Only a completed Run whose authoritative
+obligations identify the hosted external agent and adapter can show the exact
+final artifact and offer a historical human decision. Running or ordinary Runs
+do not acquire those controls from a global capability. A completed hosted Run
+without the separate capability reports review unavailable and keeps its
+artifact inspection link. Core supplies the
+artifact ID, digest, review revision, current decision and `can_review`;
+Interface checks exact bytes and current authority again before offering a
+decision. Denial removes protected bytes and controls. Human acceptance or
+rejection changes only the historical review record, not execution, source
+verification, or generic PostgreSQL agent capabilities. Owning tests:
+`src/services/hostedAgentCapability.test.ts` and
+`src/features/runs/AgentResultReviewJourney.test.tsx`.

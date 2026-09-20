@@ -193,10 +193,54 @@ test('advertised review feature leaves an ordinary completed non-agent result re
   try{
     const authority=new RemoteJourneyClient('https://core.example',()=> 'owner')
     const review=new AgentResultReviewClient('https://core.example',()=> 'owner')
-    await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} agentResultReview={review} projectId="P" runId="run_accepted"/></MemoryRouter>);await flush()})
+    await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} agentResultReview={review} hostedAgentResultReview={review} projectId="P" runId="run_accepted"/></MemoryRouter>);await flush()})
     await act(async()=>{await flush()})
     assert.match(JSON.stringify(view!.toJSON()),/ORBIT-7E42/)
     assert.equal(reviewGets,0)
     assert.doesNotMatch(JSON.stringify(view!.toJSON()),/Accept result/)
+  }finally{if(view)await act(async()=>view!.unmount());globalThis.fetch=original}
+})
+
+test('completed hosted external-agent Run uses only its separate historical review gate',async()=>{
+  const original=globalThis.fetch;let status='running',revoked=false,posts=0,reviewRevision=0,view:ReactTestRenderer|undefined
+  const review=new AgentResultReviewClient('https://core.example',()=> 'owner')
+  globalThis.fetch=async(input,init)=>{
+    const path=new URL(String(input)).pathname
+    if(path.endsWith('/runs/run_accepted'))return Response.json({run_id:'run_accepted',project_id:'P',task:'Read the README',status,requested_by:'owner',cancellation_requested:false,
+      policy:{obligations:{hosted_agent_id:`hag_${'a'.repeat(32)}`,agent_definition_digest:'b'.repeat(64),native_adapter_id:'external-agent-client'}}})
+    if(path.endsWith('/members'))return Response.json({project_id:'P',members:[{subject:'owner',status:'active',role:'owner'}]})
+    if(path.endsWith('/agent-result/review')){
+      if(revoked)return Response.json({detail:'forbidden'},{status:403})
+      if(init?.method==='POST'){
+        const body=JSON.parse(String(init.body)) as Record<string,unknown>
+        assert.equal(body.artifact_id,'art_final')
+        assert.equal(body.expected_artifact_digest,targetDigest)
+        assert.equal(body.expected_review_revision,0)
+        assert.equal(body.decision,'accepted')
+        posts++;reviewRevision=1
+      }
+      return Response.json(envelope(reviewRevision,reviewRevision?'accepted':undefined))
+    }
+    if(path.endsWith('/art_final/content'))return new Response(target)
+    throw Error(`unexpected path ${path}`)
+  }
+  try{
+    const authority=new RemoteJourneyClient('https://core.example',()=> 'owner')
+    await act(async()=>{view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} projectId="P" runId="run_accepted"/></MemoryRouter>);await flush()})
+    assert.doesNotMatch(JSON.stringify(view!.toJSON()),/Accept result|ORBIT-7E42/)
+    status='completed'
+    await act(async()=>{click(view!,'Refresh task status');await flush()})
+    assert.match(JSON.stringify(view!.toJSON()),/Human review of this hosted result is unavailable on this connection/)
+    assert.doesNotMatch(JSON.stringify(view!.toJSON()),/Accept result|ORBIT-7E42/)
+    await act(async()=>{view!.unmount();view=create(<MemoryRouter><AuthoritativeRunSurface authority={authority} hostedAgentResultReview={review} projectId="P" runId="run_accepted"/></MemoryRouter>);await flush()})
+    await untilRendered(view!,/ORBIT-7E42/)
+    await act(async()=>{click(view!,'Accept result');await flush()})
+    await untilRendered(view!,/accepted by owner/)
+    assert.equal(posts,1)
+    revoked=true
+    await act(async()=>{click(view!,'Check exact result and decision');await flush()})
+    const denied=JSON.stringify(view!.toJSON())
+    assert.doesNotMatch(denied,/ORBIT-7E42|Accept result/)
+    assert.match(denied,/review unavailable \(403\)/)
   }finally{if(view)await act(async()=>view!.unmount());globalThis.fetch=original}
 })
