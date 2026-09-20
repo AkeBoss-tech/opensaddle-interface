@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../../data/store'
 import type { AgentBuilderOptions, AgentDefinition, AgentEvidence, AgentGrant, AgentMemorySource, AgentProfileClient, AgentProposal, AgentResearchDossier } from '../../services/remoteAgentProfiles'
+import { HostedAgentSetupSurface } from './HostedAgentSetupPage'
 
 void React
 
@@ -478,5 +479,7 @@ export function AgentSetupSurface({
 export function AgentSetupPage() {
   const { projectId = '' } = useParams()
   const { services } = useStore()
+  if (!services?.agentProfiles && services?.hostedAgents)
+    return <HostedAgentSetupSurface client={services.hostedAgents} projectId={projectId} />
   return <AgentSetupSurface client={services?.agentProfiles} projectId={projectId} />
 }
