@@ -1,0 +1,63 @@
+{
+  "schema_version": "opensaddle.electron-diagnostic-helper-startup.v1",
+  "scope": "Task-owned macOS diagnostic app and disposable APFS clones; no installed-app launch or production code change",
+  "historical_crash": {
+    "local_time": "2026-09-19 21:22:00 EDT",
+    "crash_report_signal": "EXC_BREAKPOINT (SIGTRAP)",
+    "captured_stderr": "FATAL:electron/shell/app/electron_main_delegate_mac.mm:66: Unable to find helper app",
+    "captured_process_exit_code": 133,
+    "launch_modification": "Main CFBundleIdentifier and CFBundleName changed; helper app names and identifiers unchanged",
+    "correlation": "The retained launch output and attached crash report match on diagnostic process, time, and SIGTRAP; no symbolicated instruction-offset match was established"
+  },
+  "controlled_renderer_probe": {
+    "method": "APFS-cloned private package, minimal hidden BrowserWindow loading local data HTML, did-finish-load marker, private HOME and explicit private user-data directory; strict ad-hoc signature verification",
+    "cases": [
+      {
+        "change": "main CFBundleIdentifier only",
+        "helper_metadata_changed": false,
+        "exit_code": 0,
+        "renderer_did_finish_load": true,
+        "helper_fatal": false
+      },
+      {
+        "change": "main CFBundleIdentifier and CFBundleName",
+        "helper_metadata_changed": false,
+        "exit_signal": "SIGTRAP",
+        "renderer_did_finish_load": false,
+        "helper_fatal": true
+      },
+      {
+        "change": "restored original main name and identifier",
+        "helper_metadata_changed": false,
+        "exit_code": 0,
+        "renderer_did_finish_load": true,
+        "helper_fatal": false
+      },
+      {
+        "change": "main CFBundleName only",
+        "helper_metadata_changed": false,
+        "exit_signal": "SIGTRAP",
+        "renderer_did_finish_load": false,
+        "helper_fatal": true
+      }
+    ]
+  },
+  "asar_hypothesis_check": {
+    "original_header_matches_plist": true,
+    "embedded_integrity_validation_fuse": "disabled",
+    "minimal_stale_header_probe_exited_normally": true,
+    "conclusion": "Stale ASAR header alone did not reproduce this helper fatal under the tested package configuration"
+  },
+  "private_evidence_sha256": {
+    "attached_crash_report": "d91bbae424c534aab9eca3059f27210ef64fc05d99dbb20be75e7a801e8ec944",
+    "selected_historical_launch_records": "075d9f14b47f9b2ad70f27542e74668c93374481db858baa22fc5debbf05aaea",
+    "renderer_helper_probe_receipt": "16204c72949ae92ff9c0bc2e1291f86b93598f68c1a2bd6615cbfc8c01986238",
+    "asar_probe_receipt": "4b659c1542544d3fd624ad07619e1e6bb0a596535c42e68654eb3bf29c6afee7"
+  },
+  "limits": [
+    "This identifies the diagnostic clone's helper-loading crash, not every startup failure or the state of the installed application.",
+    "The reproduction matched the fatal source line and signal, not a symbolicated instruction offset.",
+    "No original installed app or provider task was launched during the controlled probe.",
+    "An earlier separate diagnostic launch lacked explicit private user-data-dir; standard-profile effects cannot be attributed or ruled out without a prelaunch snapshot."
+  ]
+}
