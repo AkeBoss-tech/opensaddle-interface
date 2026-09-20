@@ -1,0 +1,89 @@
+{
+  "schema_version": "opensaddle.desktop-pinned-upgrade-proof.v1",
+  "observed_date": "2026-09-20",
+  "invariants": [
+    "DESKTOP-PERSONAL-STATUS-1",
+    "DESKTOP-PERSONAL-RESUME-1"
+  ],
+  "sources": {
+    "krail": {
+      "repository": "https://github.com/AkeBoss-tech/knowledge.git",
+      "revision": "15df0a9d69cc33a6a02f81c80d2767bfe4a6dd4d",
+      "tree": "7206cd47c6848bb53f8ca25862c50f72b5957115"
+    },
+    "opensaddle": {
+      "repository": "https://github.com/AkeBoss-tech/opensaddle.git",
+      "revision": "28a13f6517ebf1bb26bd079c5f48e31dbb194bc1",
+      "tree": "48bbdde003ab08b03f41ea16487d2e1e419b373f"
+    },
+    "interface": {
+      "repository": "https://github.com/AkeBoss-tech/opensaddle-interface.git",
+      "revision": "b54bac568b21b16b6fe22e830922122a30124c4c",
+      "tree": "2b6c5f95b7656c79c187f6d13d2e7301b320ad80"
+    }
+  },
+  "package": {
+    "profile": "private macOS arm64 application; no DMG, notarization, customer installation or source overlay",
+    "bundle_id": "com.opensaddle.qualification20260920",
+    "product_name": "OpenSaddle",
+    "hashes": {
+      "archiveSha256": "3b665600850db202121c054c07505dd17ce25e2909fe0d0b66a5cadc38abdc23",
+      "requirementsSha256": "5c5a9510da1b9b757ecf013221b90e74311b65c621f0b37f2d9998b51c0478ec",
+      "runtimeLockSha256": "9a4ea74a1f77a3e08e43809e24d51990017caf16df82e9ea3b5e1bbd87fab527",
+      "pythonRuntimeSha256": "6d472fc49a4d95e58214a992c4c92aa73fe2a935837a01a9a36bab0bec6d72f3",
+      "appAsarSha256": "b47bd21b6f9925819081c0fa3cea7bb40b0540314abba3cadbf9ce804841c59a",
+      "bundledRuntimeManifestSha256": "d3a14afe521b1e06d1db81865410a2d74a307435b4e77c65cbed17d26f6464ff",
+      "rendererIndexSha256": "5afbd724c71c9be617989f9f154be1725247f28d37c9f40ed6233ec6239d5fe9",
+      "rendererEntrySha256": "f1bcd70bf96aac803cfbc6cfe664005a4418a61523f7c8bd424c05b44f78d479"
+    },
+    "renderer_entry": "assets/index-BzbLgF9h.js",
+    "private_manifest": "/tmp/opensaddle-20260920/pinned-agent-rebuild-MFYdLaVA/pins-and-sha256.json"
+  },
+  "fixture_preparation": {
+    "boundary": "copied prior private packaged review fixture, separate HOME, state and Chromium user-data directory",
+    "original_file_count": 139,
+    "original_files_changed": 0,
+    "copied_metadata_adjustment": "Set copied worker metadata to stopped and point adoption at new private IPC. No identity or token edits. This is not a crash-recovery drill."
+  },
+  "observations": [
+    "First exact-source package at Interface c6f514c restarted the retained private runtime through Settings, preserving installation identity and token bytes.",
+    "Core reported Codex ready while the mounted c6f514c Settings panel remained unavailable, reproducing the stale-readiness bug.",
+    "Stopped worker using Settings and quit the first private app. Launched rebuilt b54bac5 package against the same copied state. Existing same-version Core daemon was adopted; this replacement is not evidence of live Core migration.",
+    "In rebuilt Settings, Start changed worker from stopped to unavailable; it then changed to ready without navigation or further lifecycle actions. Core status confirmed ready at lifecycle revision 3.",
+    "Normal Project workspace task navigation reopened the completed result AZURE-5D29 and original accepted fixture-owner decision.",
+    "Normal Stop worker changed service and worker to stopped; private app was quit and its retained Core daemon received SIGTERM for cleanup."
+  ],
+  "retained_state": {
+    "same_installation_identity_bytes": true,
+    "same_daemon_token_bytes": true,
+    "run_count": 1,
+    "artifact_count": 1,
+    "agent_result_review_count": 1,
+    "authorized_packet_count": 1,
+    "new_provider_task_turns": 0
+  },
+  "verification": {
+    "mounted_readiness_regression": "Same test failed before fix at status-refresh assertion, passed after; also checks lower-revision rejection.",
+    "personal_runtime_suite": {
+      "passed": 8
+    },
+    "typecheck": "passed",
+    "build": "passed",
+    "ui_evidence": "Native accessibility state plus inline screenshot inspection; no saved screenshot file claimed.",
+    "ci_discovered_test_race": {
+      "test": "installed command SDK resolves exact descriptors and artifacts through the host",
+      "reproduction": "Controlled 20ms renderer content response reproduced iframe-not-yet-present assertion.",
+      "repair_revision": "82c18cf",
+      "repair": "Use existing waitForAuthorizedFrame before iframe onLoad; preserves assertions and production code.",
+      "owning_suite_passed": 11
+    }
+  },
+  "limits": [
+    "Fixture-owner acceptance is retained historical evidence, not Akash acceptance or a real-use trial.",
+    "No new provider task, corrected-knowledge second task, abrupt process kill, network loss, OS reboot or rollback was qualified.",
+    "No fresh customer macOS account or Windows host was tested.",
+    "The initial fixture preparation used developer shell metadata adjustment. Subsequent app restart and worker start/stop used the normal UI.",
+    "The rebuilt app adopted the prior same-version Core daemon; full active-worker/backend migration remains unqualified.",
+    "Provider readiness and a running service do not establish preventive host containment or completed useful work."
+  ]
+}
