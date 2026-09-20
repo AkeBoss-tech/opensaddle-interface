@@ -316,7 +316,7 @@ function Shell() {
   return (
     <div
       className={`app ${settingsFocused || connection.mode === 'unconfigured' || (!connectedLocal && data.projects.length === 0) ? 'settings-focus' : ''} ${globalStart ? 'global-start' : ''} ${publicLanding ? 'public-landing' : ''}`}
-      style={{ '--sidebar-w': `${connectedLocal ? 326 : globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
+      style={{ '--sidebar-w': `${connectedLocal ? 244 : globalStart || sidebarCollapsed ? 58 : sidebarWidth}px` } as React.CSSProperties}
     >
       {!settingsFocused && !connectedLocal && connection.mode !== 'unconfigured' && (
         <ThreadFirstSidebar
