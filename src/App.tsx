@@ -93,9 +93,10 @@ function Shell() {
   const workspaceRef = useRef<HTMLDivElement>(null)
   const nav = useNavigate()
   const loc = useLocation()
-  const settingsFocused = loc.pathname === '/settings'
-  const globalStart = loc.pathname === '/start'
-  const publicLanding = connection.mode === 'unconfigured' && (loc.pathname === '/home' || loc.pathname === '/')
+  const shellPath = loc.pathname.replace(/\/+$/, '') || '/'
+  const settingsFocused = shellPath === '/settings'
+  const globalStart = shellPath === '/start'
+  const publicLanding = connection.mode === 'unconfigured' && (shellPath === '/home' || shellPath === '/')
   const connectedLocal = useProductSurface(services, JSON.stringify([connection.id, connection.mode, connection.baseUrl, data.currentUserId]))
 
   const openArtifactReview = useCallback(async () => {
