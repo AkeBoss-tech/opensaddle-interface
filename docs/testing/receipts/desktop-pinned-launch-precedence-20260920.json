@@ -1,0 +1,43 @@
+{
+  "schema_version": "opensaddle.desktop-pinned-launch-precedence.v1",
+  "invariant": "DESKTOP-PINNED-BUNDLE-1",
+  "base_revision": "a306ca4269c9b28dcd54c94bb4074991a50931f9",
+  "base_export": "git show HEAD:electron/personalRuntimeCommissioning.ts plus identical final test overlay in a private minimal source export",
+  "test_overlay_sha256": "5baee244ad8a526f622a1a1f35e011df3367eb2e8e9531839a62ad009ee79eac",
+  "changed_file_sha256": {
+    "electron/main.ts": "4f5990e51116c3d3c4f2642b9a4d1fe722c91c982842fc47ee8f6c66e99d19f2",
+    "electron/runtimeBundle.ts": "43565b37a8e61d7ee32113b814bd118866c9149f06ae893fa05230bd48d08e31",
+    "electron/personalRuntimeCommissioning.ts": "f2c39aad0cfb31622599fca1a45c9a322e5e1f531e3dd458c9073a242d20e034",
+    "electron/preload.ts": "73be04346417dcbe5448e39d5c58d2ad002bb54cd9962c49659195cfadfdf695",
+    "src/vite-env.d.ts": "5ad14b0522a891a64df18bd67f92aa9e048c8062f54047bc35459542e162e85d",
+    "test/krailRuntimeBundle.test.ts": "05228b0262503ea7640a737138c1fe0f043c32291bef8060067cdaff64300782",
+    "test/personalRuntimeProcess.test.ts": "5baee244ad8a526f622a1a1f35e011df3367eb2e8e9531839a62ad009ee79eac",
+    "docs/testing/invariants.md": "47e127d0dc2cbb4a510bd3d79e1cc199b0d9f4570dd295eb8ca10d1dd00f2e25"
+  },
+  "baseline": {
+    "test": "commissioned runtime receives the selected pinned KRAIL command instead of an ambient override",
+    "assertion": "actual foreign-krail-admin != expected pinned-krail-admin",
+    "exit_code": 1,
+    "log_sha256": "75005fdcb64666c0953a42e4b46a59d5ac5d2d83539d736b64cbc9c7a56d7aa4"
+  },
+  "fixed": {
+    "same_test_exit_code": 0,
+    "same_test_log_sha256": "55eef51f58680c9d388cf2953a7bf61d272dc864888e03c9c7d22252aedf37c3",
+    "owning_checks": "24 passed, 0 failed",
+    "owning_log_sha256": "a3d092e775b1ec150494281b711b9d8caa7249948b4a54661144a16e722b0001",
+    "electron_build_exit_code": 0,
+    "electron_build_log_sha256": "5134f1aeb24ed4532a9bfb21d21f3986c7fccb82355fa4cac70684be4db5e55a",
+    "git_diff_check_exit_code": 0,
+    "metadata_selection_tests": "10 passed, 0 failed",
+    "metadata_test_log_sha256": "6df740d2f89cd46d4ad2d25c83c3102c08eddffeeaf36c3d2eb427502df99cb9",
+    "application_typecheck_exit_code": 0,
+    "application_typecheck_log_sha256": "b3751923da3e72cdefb33008419caa04b98cbd9253423dcc0d64ca836d6aca22"
+  },
+  "proof_scope": "The actual commissioned subprocess receives the selected pinned environment; the production packaged selector chooses validated bundle commands and ignores ambient executable/runtime/KRAIL overrides; development selection retains overrides. Packaged runtime:info reports unavailable when the validated pair is absent rather than claiming an ambient environment/path fallback.",
+  "limitations": [
+    "No large .app/DMG build or fresh-account installation in this change",
+    "No Core or KRAIL schema migration or old-to-new retained state acceptance in this change",
+    "No provider/model run",
+    "No cryptographic attestation of executable content beyond the existing bundle resolver"
+  ]
+}

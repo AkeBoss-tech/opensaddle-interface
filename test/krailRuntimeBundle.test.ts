@@ -4,7 +4,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, sy
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { resolveKrailRuntime } from '../electron/runtimeBundle.ts'
+import { desktopRuntimeEnvironment, resolveKrailRuntime, selectDesktopBackend } from '../electron/runtimeBundle.ts'
 
 function fixture() {
   const resourceRoot = mkdtempSync(path.join(os.tmpdir(), 'opensaddle-krail-runtime-'))
@@ -61,6 +61,45 @@ test('a packaged backend is unavailable when the pinned runtime is invalid', () 
     assert.equal(resolveKrailRuntime(value.resourceRoot), null)
   } finally {
     rmSync(value.resourceRoot, { recursive: true, force: true })
+  }
+})
+
+test('packaged launch selects its validated Core and KRAIL pair despite ambient development overrides', () => {
+  const value = fixture()
+  const alternate = fixture()
+  try {
+    const inherited = {
+      OPENSADDLE_EXECUTABLE: alternate.backend,
+      OPENSADDLE_KRAIL_RUNTIME_DIR: alternate.resourceRoot,
+      OPENSADDLE_KRAIL_ADMIN_COMMAND: path.join(alternate.runtime, 'bin', 'krail-admin'),
+      OPENSADDLE_KRAIL_MUTATION_COMMAND: path.join(alternate.runtime, 'bin', 'krail-mutate'),
+    }
+    const selected = selectDesktopBackend({ packaged: true, resourceRoot: value.resourceRoot,
+      configuredExecutable: inherited.OPENSADDLE_EXECUTABLE })
+    assert.equal(selected.kind, 'selected')
+    if (selected.kind !== 'selected') return
+    assert.equal(selected.command, value.backend)
+    const env = desktopRuntimeEnvironment({ inherited, packaged: true, bundledRuntime: selected.bundledRuntime ?? null })
+    assert.equal(env.OPENSADDLE_KRAIL_ADMIN_COMMAND, path.join(value.runtime, 'bin', 'krail-admin'))
+    assert.equal(env.OPENSADDLE_KRAIL_MUTATION_COMMAND, path.join(value.runtime, 'bin', 'krail-mutate'))
+    assert.equal(env.OPENSADDLE_EXECUTABLE, undefined)
+    assert.equal(env.OPENSADDLE_KRAIL_RUNTIME_DIR, undefined)
+    assert.equal(inherited.OPENSADDLE_EXECUTABLE, alternate.backend)
+
+    const development = selectDesktopBackend({ packaged: false, resourceRoot: value.resourceRoot,
+      configuredExecutable: inherited.OPENSADDLE_EXECUTABLE })
+    assert.equal(development.kind, 'selected')
+    if (development.kind === 'selected') assert.equal(development.command, alternate.backend)
+    const developmentEnv = desktopRuntimeEnvironment({ inherited, packaged: false, bundledRuntime: resolveKrailRuntime(value.resourceRoot) })
+    assert.equal(developmentEnv.OPENSADDLE_KRAIL_ADMIN_COMMAND, inherited.OPENSADDLE_KRAIL_ADMIN_COMMAND)
+
+    rmSync(path.join(value.runtime, 'manifest.json'))
+    assert.deepEqual(selectDesktopBackend({ packaged: true, resourceRoot: value.resourceRoot,
+      configuredExecutable: inherited.OPENSADDLE_EXECUTABLE }), { kind: 'unavailable' })
+    assert.throws(() => desktopRuntimeEnvironment({ inherited, packaged: true, bundledRuntime: null }), /unavailable/)
+  } finally {
+    rmSync(value.resourceRoot, { recursive: true, force: true })
+    rmSync(alternate.resourceRoot, { recursive: true, force: true })
   }
 })
 

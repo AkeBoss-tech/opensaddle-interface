@@ -8,7 +8,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync } from 'node:fs'
 import { readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { desktopCliPath, resolveDesktopCli } from './cliDiscovery.js'
-import { resolveKrailRuntime } from './runtimeBundle.js'
+import { desktopRuntimeEnvironment, resolveKrailRuntime, selectDesktopBackend, type ResolvedKrailRuntime } from './runtimeBundle.js'
 import {
   classifySidecarHealth,
   incompatibleSidecarMessage,
@@ -87,7 +87,7 @@ const SESSION_BRIDGE_URL = process.env.SESSION_BRIDGE_URL ?? process.env.KRAIL_U
 
 function packagedKrailRuntime() {
   return resolveKrailRuntime(
-    process.env.OPENSADDLE_KRAIL_RUNTIME_DIR ?? process.resourcesPath,
+    isDev ? process.env.OPENSADDLE_KRAIL_RUNTIME_DIR ?? process.resourcesPath : process.resourcesPath,
   )
 }
 
@@ -543,6 +543,7 @@ interface OpenSaddleLaunch {
   args: string[]
   cwd: string
   source: string
+  bundledRuntime?: ResolvedKrailRuntime
 }
 
 interface OpenSaddleSidecarOwnership {
@@ -691,16 +692,11 @@ async function resolveOpenSaddleLaunch(): Promise<OpenSaddleLaunch | null> {
     '--port', new URL(opensaddleUrl).port || '8765',
     '--state-dir', stateDir,
   ]
-  const configured = process.env.OPENSADDLE_EXECUTABLE
-  if (configured && existsSync(configured)) {
-    return { command: configured, args: serverArgs, cwd: stateDir, source: 'configured executable' }
-  }
-  if (!isDev) {
-    const bundled = packagedKrailRuntime()
-    return bundled
-      ? { command: bundled.backendCommand, args: serverArgs, cwd: stateDir, source: 'bundled backend' }
-      : null
-  }
+  const selected = selectDesktopBackend({ packaged: !isDev, resourceRoot: process.resourcesPath,
+    configuredExecutable: process.env.OPENSADDLE_EXECUTABLE })
+  if (selected.kind === 'selected') return { command: selected.command, args: serverArgs,
+    cwd: stateDir, source: selected.source, bundledRuntime: selected.bundledRuntime }
+  if (selected.kind === 'unavailable') return null
   const backendRoots = [
     process.env.OPENSADDLE_BACKEND_DIR,
     path.resolve(__dirname, '../../../opensaddle'),
@@ -748,15 +744,11 @@ async function launchOpenSaddle(): Promise<void> {
     return
   }
   opensaddleLaunchError = null
-  const krailRuntime = packagedKrailRuntime()
   const launchEnv: NodeJS.ProcessEnv = {
-    ...process.env,
+    ...desktopRuntimeEnvironment({ inherited: process.env, packaged: !isDev,
+      bundledRuntime: launch.bundledRuntime ?? (isDev ? packagedKrailRuntime() : null) }),
     PATH: desktopCliPath(cliResolutionOptions()),
     OPENSADDLE_DESKTOP: '1',
-  }
-  if (krailRuntime) {
-    launchEnv.OPENSADDLE_KRAIL_ADMIN_COMMAND ??= krailRuntime.adminCommand
-    launchEnv.OPENSADDLE_KRAIL_MUTATION_COMMAND ??= krailRuntime.mutationCommand
   }
   const child = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
@@ -1007,7 +999,7 @@ app.whenReady().then(async () => {
     krailUrl: SESSION_BRIDGE_URL,
     krailRuntime: {
       bundled: Boolean(krailRuntime),
-      source: krailRuntime ? 'bundle' : environmentConfigured ? 'environment' : 'path',
+      source: krailRuntime ? 'bundle' : isDev ? environmentConfigured ? 'environment' : 'path' : 'unavailable',
       version: krailRuntime?.manifest.wheel.name,
     },
     clis: await discoverClis(),
@@ -1040,7 +1032,7 @@ app.whenReady().then(async () => {
     const launch = await resolveOpenSaddleLaunch(); if (!launch) throw Error('Packaged OpenSaddle runtime is unavailable')
     const personalUrl = await unusedLoopbackUrl(), stateDir = await realpath(preparePersonalRuntimeStateDir(path.join(opensaddleStateDir(), 'personal-runtime'))), ipcKey=createHash('sha256').update(stateDir).digest('hex').slice(0,16),ipcDir=await realpath(preparePersonalRuntimeStateDir(path.join(homedir(),'.opensaddle','runtime-ipc',ipcKey))),commandIndex = launch.args.indexOf('serve-api')
     if(Buffer.byteLength(path.join(ipcDir,'p.sock'))>103)throw Error('Personal runtime IPC path is too long for this system')
-    const result = await commissionPersonalRuntimeProcess({ command:launch.command,commandPrefix:commandIndex<0?[]:launch.args.slice(0,commandIndex),request,config:{projectDatabase:path.join(opensaddleStateDir(),'projects.db'),stateDir,ipcDir,port:Number(new URL(personalUrl).port),handoffFd:3},expected:{baseUrl:personalUrl,projectId:request.projectId,installationId:resume.kind==='offline'?resume.installationId:undefined,ipcDir} })
+    const result = await commissionPersonalRuntimeProcess({ command:launch.command,commandPrefix:commandIndex<0?[]:launch.args.slice(0,commandIndex),request,config:{projectDatabase:path.join(opensaddleStateDir(),'projects.db'),stateDir,ipcDir,port:Number(new URL(personalUrl).port),handoffFd:3},expected:{baseUrl:personalUrl,projectId:request.projectId,installationId:resume.kind==='offline'?resume.installationId:undefined,ipcDir},env:desktopRuntimeEnvironment({inherited:process.env,packaged:!isDev,bundledRuntime:launch.bundledRuntime??(isDev?packagedKrailRuntime():null)}) })
     const metadata={schema_version:'opensaddle.personal-runtime-desktop.v1',base_url:result.handoff.baseUrl,installation_id:result.handoff.installationId,project_id:result.handoff.projectId,adoption_socket:result.handoff.adoptionSocket,ipc_dir:result.handoff.ipcDir}
     chmodSync(stateDir,0o700);await writeFile(path.join(stateDir,'desktop-adoption.json'),JSON.stringify(metadata),{encoding:'utf8',mode:0o600})
     activePersonalRuntime=result.handoff

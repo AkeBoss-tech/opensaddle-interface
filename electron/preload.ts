@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('opensaddle', {
     sessionBridgeUrl: string
     /** @deprecated Compatibility alias for sessionBridgeUrl. */
     krailUrl: string
-    krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path'; version?: string }
+    krailRuntime: { bundled: boolean; source: 'bundle' | 'environment' | 'path' | 'unavailable'; version?: string }
     clis: string[]
   }>,
   commissionPersonalRuntime: (request: unknown) => ipcRenderer.invoke('runtime:commission-personal', request),
