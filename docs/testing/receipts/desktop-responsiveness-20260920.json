@@ -13,7 +13,9 @@
     "focused_store_suite": "10 passed",
     "typescript": "passed",
     "electron_build": "passed",
-    "packaging": "macOS arm64 unsigned 0.2.2"
+    "packaging": "macOS arm64 unsigned 0.2.2",
+    "command_center_suite": "24 passed after moving manager planning below the dashboard",
+    "first_commit_ci": "full Interface production checks passed for 7bfcf9c"
   },
   "installed_app": {
     "path": "/Applications/OpenSaddle.app",
@@ -27,7 +29,8 @@
   "native_evidence": {
     "observed": "Upgraded app renders retained local workspace, saved manager conversation and connected local status",
     "process_samples": "Main and renderer predominantly idle in two-second samples; not evidence for all interaction workloads",
-    "limitation": "Native automation reports noWindowsAvailable on coordinate input; keyboard did not produce a verified navigation. Full task journey and user acceptance remain unverified."
+    "limitation": "Native automation reports noWindowsAvailable on coordinate input; keyboard did not produce a verified navigation. Full task journey and user acceptance remain unverified.",
+    "normal_quit": "0.2.2 exited normally through the application menu before final layout update"
   },
   "limitations": [
     "One-second scheduling delay for renderer-local snapshot saves; abrupt termination can lose changes in that window.",
