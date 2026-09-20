@@ -34,6 +34,10 @@ function projectHref(projectId: string) {
   return `/project/${encodeURIComponent(projectId)}`
 }
 
+function outcomeHref(outcome: CommandCenterSnapshot['outcomes'][number]) {
+  return outcome.runId ? `${projectHref(outcome.projectId)}/tasks/${encodeURIComponent(outcome.runId)}` : projectHref(outcome.projectId)
+}
+
 function runHref(runId: string) {
   return `/runs?run=${encodeURIComponent(runId)}`
 }
@@ -140,11 +144,12 @@ function CommandCenterDashboard({localSetupAvailable,client,connected,identity,p
     </section>},
       {id:'outcomes',title:'Recent outcomes',content:<section className="cc-panel" aria-labelledby="cc-outcomes-title">
       <div className="cc-section-heading"><div><span className="eyebrow">Closure</span><h2 id="cc-outcomes-title">Recent outcomes</h2></div><strong className="cc-count">{snapshot.outcomes.length}</strong></div>
-      {snapshot.outcomes.length ? <div className="cc-stack">{snapshot.outcomes.map((outcome) => <Link className="cc-row" to={outcome.runId ? `/review?${new URLSearchParams({ run: outcome.runId, project: outcome.projectId })}` : projectHref(outcome.projectId)} key={outcome.id}>
-        <div className="cc-row-top"><strong>{outcome.title}</strong><span className={`cc-status ${outcome.verified ? 'cc-status--completed' : 'cc-status--unknown'}`}>{outcome.verified ? 'verified' : 'unverified'}</span></div>
+      <p>Open a task to inspect its result and any human decision.</p>
+      {snapshot.outcomes.length ? <div className="cc-stack">{snapshot.outcomes.map((outcome) => <Link className="cc-row" to={outcomeHref(outcome)} key={outcome.id}>
+        <div className="cc-row-top"><strong>{outcome.title}</strong><span className={`cc-status ${outcome.verified ? 'cc-status--completed' : 'cc-status--unknown'}`}>{outcome.verified ? 'Verified' : 'Verification not recorded'}</span></div>
         {outcome.summary && <p>{outcome.summary}</p>}
         <div className="cc-row-meta"><span>{projectName(outcome.projectId)}</span><time dateTime={outcome.completedAt}>{dateTime(outcome.completedAt)}</time></div>
-      </Link>)}</div> : <SectionEmpty>No completed outcomes have authoritative verification yet.</SectionEmpty>}
+      </Link>)}</div> : <SectionEmpty>No recent outcomes were returned.</SectionEmpty>}
     </section>},
     ]:[['objective','Current objective'],['attention','Needs your attention'],['runs','Agents working'],['projects','Projects'],['outcomes','Recent outcomes']].map(([id,title])=>({id,title,content:<section className="cc-panel"><h2>{title}</h2><p>This overview is currently unavailable.</p></section>}))}/>
 

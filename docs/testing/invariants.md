@@ -12,6 +12,18 @@ The existing focused composer test, mounted Run detail test, remote service-boun
 
 The normal Run heading, Project task/result cards, and Command Center active/outcome cards show Core's original `user_task` when supplied; compiled execution instructions remain available only in the Run's explicit disclosure. An already open terminal Run periodically rechecks its authority, and Project membership withdrawal clears its result, approval, and audit content instead of leaving stale protected data on screen. A running Run's cancellation first shows a request pending, then only Core's terminal acknowledgment; that acknowledgment does not assert that any dispatched provider effects were undone. The continuation fixture exercises exact Core `9f6073d` public responses with a provider-free worker, including a second user and fixture-only membership withdrawal. The same heading, terminal revocation, cancellation wording, and Command Center assertions failed before their Interface fixes; see the receipt. This does not establish real model-process interruption or external-effect reversal.
 
+## COMMAND-CENTER-OUTCOME-1
+
+A recent outcome with an exact Run opens its host-owned Project task and result
+route. Project and Run path segments are independently encoded; outcomes without
+a Run fall back to the Project. Active Run connected resources retain the
+separate `/review` route. A false `verified` value means verification was not
+recorded, not that a human rejected or accepted the result. The empty outcome
+state does not imply that completed Runs cannot exist. The mounted Command
+Center test covers these links and labels; its task-link assertion failed
+against the prior `/review` target before the Interface repair. Receipt:
+`receipts/command-center-outcome-20260920.json`.
+
 - **LOCAL-PROJECT-EMPTY-START-1** — A new Interface workspace contains no fabricated Projects, people, machines, Runs, or conversations. Local Projects appear only after the authoritative local service registers a user-selected folder and remain available after the service restarts.
 - **AUTHORIZED-CONTEXT-INSPECTOR-1** — A Run Inspector shows only a currently reauthorized immutable launch packet whose packet, request, capability, Project, and Run identities match the admitted Run. Protected packet content is cleared before refresh and synchronously on authority, Project, or Run replacement; denial and malformed responses reveal only an unavailable state.
 - **RUN-CANCELLATION-AUTHORITY-1** — An active Run offers cancellation only to its exact requester or a current Project manager. After Core records the request, authoritative refresh replaces the action with a pending-cancellation status.

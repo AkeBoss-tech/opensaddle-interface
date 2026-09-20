@@ -1,0 +1,19 @@
+{
+  "invariant": "COMMAND-CENTER-OUTCOME-1",
+  "base_revision": "56033815620a2040d05aee5d32cd17a07a6ebb7b",
+  "test": "src/features/command-center/CommandCenterPage.mounted.test.tsx",
+  "test_sha256": "60a617d38a842f4bf95af7f4c2f4947ce1712750529bfd3eacb6a1ec6dc0eaad",
+  "pre_fix": {
+    "exit_code": 1,
+    "assertion": "Expected /project/P/tasks/run-one, received /review?run=run-one&project=P",
+    "log": "/tmp/opensaddle-20260920/command-center-outcome-before.log",
+    "log_sha256": "c06a990bb89dbb1bbcfa223534dbc7596551e5797d597dd7fb5f6d84c7415ae9"
+  },
+  "post_fix": {
+    "exit_code": 0,
+    "log": "/tmp/opensaddle-20260920/command-center-outcome-after.log",
+    "log_sha256": "2bff9b4feca7a45c28c2cb43943b5c038982b8a1146bc7b39801345e3c7c9fb8"
+  },
+  "owning_checks": "13 Command Center tests passed; Interface typecheck and diff check passed",
+  "scope": "Mounted Interface link and copy checks only; no Core verification receipt or human acceptance inferred"
+}
