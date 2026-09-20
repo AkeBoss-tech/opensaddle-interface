@@ -1274,3 +1274,10 @@ artifact. Goal completion means evidence verified at Run time; it does not
 attest the current workspace. Owning client and mounted journey tests:
 `src/services/factoryCoding.test.ts` and
 `src/features/runs/FactoryJourney.test.tsx`.
+
+Installed-frame clock qualification (2026-09-19): watchdog and resource-subscription
+tests wait for authorized frame readiness on a bounded real clock before advancing
+their mocked protocol clock. Web Crypto digest completion is not implied by a
+React `act` flush. CI run 35478437614 exposed the prior assumption; all protocol,
+revocation and cancellation assertions remain unchanged. No production behavior
+or timeout was relaxed.
