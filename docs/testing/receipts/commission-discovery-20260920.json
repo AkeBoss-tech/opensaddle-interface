@@ -15,7 +15,37 @@
     }
   },
   "limits": [
-    "Mounted component proof plus prior real UI reproduction; fixed native package observation pending.",
+    "Mounted component proof plus prior real UI reproduction. Fresh fixed package built and answered health, but native visual verification is incomplete because inspection timed out.",
     "No new provider task, grant, credentials or lifecycle semantics changed."
-  ]
+  ],
+  "package": {
+    "sources": {
+      "krail": {
+        "repository": "https://github.com/AkeBoss-tech/knowledge.git",
+        "revision": "15df0a9d69cc33a6a02f81c80d2767bfe4a6dd4d",
+        "tree": "7206cd47c6848bb53f8ca25862c50f72b5957115"
+      },
+      "opensaddle": {
+        "repository": "https://github.com/AkeBoss-tech/opensaddle.git",
+        "revision": "28a13f6517ebf1bb26bd079c5f48e31dbb194bc1",
+        "tree": "48bbdde003ab08b03f41ea16487d2e1e419b373f"
+      },
+      "interface": {
+        "repository": "https://github.com/AkeBoss-tech/opensaddle-interface.git",
+        "revision": "916f8c0dff87bf698d62d0e8a264257574b03961",
+        "tree": "e7ccef995d67d0d4ea6608451a5019352e8e5532"
+      }
+    },
+    "renderer_entry_sha256": "9be6b626ed77cd73bb14ff3cc0f288074b53e2ac6020e3e7d58ec8fb04cd7627",
+    "build": "passed",
+    "profile": "private unsigned macOS arm64",
+    "base_health_http": 200,
+    "native_ui_verification": "not completed: native inspection timed out twice while application process remained live; app was not restarted as a timeout workaround",
+    "cleanup": "owned app received normal SIGTERM",
+    "new_provider_task_turns": 0
+  },
+  "ci": {
+    "run_id": 35493251995,
+    "result": "full production checks passed at source 916f8c0"
+  }
 }
