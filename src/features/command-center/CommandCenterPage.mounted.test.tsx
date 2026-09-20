@@ -13,6 +13,29 @@ const view=(api:CommandCenterClient|undefined,connected=true,identity:object=api
 const markup=(renderer:ReturnType<typeof create>)=>JSON.stringify(renderer.toJSON())
 const text=(node:any):string=>typeof node==='string'?node:(node.children??[]).map(text).join('')
 
+// COMMAND-CENTER-OUTCOME-1: completed Runs open the host-owned task and result journey.
+test('outcome links open exact tasks while active resources retain the review route',async t=>{
+ const data:CommandCenterSnapshot={...snapshot('P'),activeRuns:[{runId:'active/1',projectId:'P',task:'Current work',status:'running',updatedAt:'2026-09-07T12:00:00Z'}],outcomes:[
+  {id:'normal',projectId:'P',runId:'run-one',title:'Normal result',verified:false,completedAt:'2026-09-07T12:00:00Z'},
+  {id:'encoded',projectId:'project / one',runId:'run / #2',title:'Encoded result',verified:true,completedAt:'2026-09-07T12:00:00Z'},
+  {id:'project-only',projectId:'P',title:'Project result',verified:false,completedAt:'2026-09-07T12:00:00Z'},
+ ]}
+ let renderer!:ReturnType<typeof create>
+ t.after(async()=>{if(renderer)await act(async()=>renderer.unmount())})
+ await act(async()=>{renderer=create(view(client(async()=>data)));await Promise.resolve()})
+ const link=(label:string)=>renderer.root.findAllByType('a').find(node=>text(node).includes(label))
+ assert.equal(link('Normal result')?.props.href,'/project/P/tasks/run-one')
+ assert.equal(link('Encoded result')?.props.href,'/project/project%20%2F%20one/tasks/run%20%2F%20%232')
+ assert.equal(link('Project result')?.props.href,'/project/P')
+ assert.equal(link('Connected resources')?.props.href,'/review?run=active%2F1&project=P')
+ assert.match(text(link('Normal result')),/Verification not recorded/)
+ assert.match(text(link('Encoded result')),/Verified/)
+ assert.match(markup(renderer),/Open a task to inspect its result and any human decision/)
+ await act(async()=>renderer.update(view(client(async()=>({...data,outcomes:[]})))))
+ assert.match(markup(renderer),/No recent outcomes were returned/)
+ assert.doesNotMatch(markup(renderer),/No completed outcomes have authoritative verification/)
+})
+
 test('a disconnected mounted surface cannot republish a deferred protected snapshot',async()=>{const old=deferred<CommandCenterSnapshot>();const api=client(()=>old.promise);let renderer!:ReturnType<typeof create>;await act(async()=>{renderer=create(view(api));await Promise.resolve()});await act(async()=>{renderer.update(view(undefined,false,{}));await Promise.resolve()});old.resolve(snapshot('Private old project'));await act(async()=>{await old.promise});assert.match(markup(renderer),/Put agents/);assert.doesNotMatch(markup(renderer),/Private old project|old outcome/)})
 
 // WEB-CONNECTION-1: preview controls never load private workspace data or dispatch work.

@@ -1,0 +1,61 @@
+{
+  "invariant": "COMMAND-CENTER-OUTCOME-1",
+  "base_revision": "56033815620a2040d05aee5d32cd17a07a6ebb7b",
+  "test": "src/features/command-center/CommandCenterPage.mounted.test.tsx",
+  "test_sha256": "60a617d38a842f4bf95af7f4c2f4947ce1712750529bfd3eacb6a1ec6dc0eaad",
+  "pre_fix": {
+    "exit_code": 1,
+    "assertion": "Expected /project/P/tasks/run-one, received /review?run=run-one&project=P",
+    "log": "/tmp/opensaddle-20260920/command-center-outcome-before.log",
+    "log_sha256": "c06a990bb89dbb1bbcfa223534dbc7596551e5797d597dd7fb5f6d84c7415ae9"
+  },
+  "post_fix": {
+    "exit_code": 0,
+    "log": "/tmp/opensaddle-20260920/command-center-outcome-after.log",
+    "log_sha256": "2bff9b4feca7a45c28c2cb43943b5c038982b8a1146bc7b39801345e3c7c9fb8"
+  },
+  "owning_checks": "13 Command Center tests passed; Interface typecheck and diff check passed",
+  "scope": "Mounted Interface link and copy checks only; no Core verification receipt or human acceptance inferred",
+  "packaged_ui": {
+    "boundary": "private exact-source unsigned macOS arm64 application, retained fixture; native UI interaction",
+    "sources": {
+      "krail": {
+        "repository": "https://github.com/AkeBoss-tech/knowledge.git",
+        "revision": "15df0a9d69cc33a6a02f81c80d2767bfe4a6dd4d",
+        "tree": "7206cd47c6848bb53f8ca25862c50f72b5957115"
+      },
+      "opensaddle": {
+        "repository": "https://github.com/AkeBoss-tech/opensaddle.git",
+        "revision": "28a13f6517ebf1bb26bd079c5f48e31dbb194bc1",
+        "tree": "48bbdde003ab08b03f41ea16487d2e1e419b373f"
+      },
+      "interface": {
+        "repository": "https://github.com/AkeBoss-tech/opensaddle-interface.git",
+        "revision": "ec6a5b2481ef79eb7bbf8b6c241e0ad05358912b",
+        "tree": "340f825b085d6794a3ea6a902049cd5214b60b29"
+      }
+    },
+    "renderer_entry_sha256": "85741f5341eb60548d630c5233124409fed93d024901fb2f18841f6ae8ebd0e7",
+    "runtime_manifest_sha256": "ce439430b9edcb597bbf5836e198de123af3ebd9ac3738e1188f1aa076684496",
+    "observed": [
+      "Recent outcome displays Verification not recorded and a Project task link.",
+      "Clicked that outcome in the Command Center; task page reauthorized and displayed AZURE-5D29 plus the original accepted fixture-owner decision.",
+      "Result page retained separate Inspect result artifacts link."
+    ],
+    "normal_offline_restart": {
+      "api_lifecycle": "stopped",
+      "state_revision": 4,
+      "knowledge_available": true,
+      "no_unresolved_runs": true,
+      "identity_bytes_unchanged": true,
+      "restart": "normal UI restart after deliberate complete shutdown; no metadata adjustment in this restart"
+    },
+    "new_provider_task_turns": 0,
+    "screenshots": "inspected inline; no saved screenshot file claimed",
+    "limits": [
+      "Fixture-owner acceptance is not user acceptance.",
+      "No new task, crash, provider effect, grant withdrawal or Windows host tested in this navigation check.",
+      "No Core verification receipt was inferred from the human decision."
+    ]
+  }
+}
