@@ -3,12 +3,23 @@ import test from 'node:test'
 import React from 'react'
 import {act,create,type ReactTestRenderer} from 'react-test-renderer'
 import {createHash} from 'node:crypto'
+import {performance} from 'node:perf_hooks'
 import {readProjectViewState} from './state'
 import {InstalledProjectView} from './InstalledProjectView'
 import {installedProjectViews,PROJECT_VIEW_CONTRACT} from './installed'
 import {reportAnnotatorV1,reportAnnotatorV2} from '../../applications/fixturePackages'
 import type {ApplicationRendererDescriptor,MalleableShellClient} from '../../services/contracts'
 ;(globalThis as typeof globalThis & {IS_REACT_ACT_ENVIRONMENT:boolean}).IS_REACT_ACT_ENVIRONMENT=true
+// Renderer integrity uses asynchronous Web Crypto outside React's act queue.
+// Keep readiness waiting on real time while the watchdog/subscription clock is mocked.
+const readinessTimer=globalThis.setTimeout
+async function waitForAuthorizedFrame(view:ReactTestRenderer){
+ const deadline=performance.now()+5000
+ while(!view.root.findAllByType('iframe').length&&performance.now()<deadline){
+  await act(async()=>{await new Promise<void>(resolve=>readinessTimer(resolve,10))})
+ }
+ assert.equal(view.root.findAllByType('iframe').length,1,JSON.stringify(view.toJSON()))
+}
 // INSTALLED-PROJECT-VIEW-1: exact bytes and framed messages, host-owned task navigation.
 test('installed view opens only projected tasks from its exact initialized frame',async t=>{
  const fragment='<p>Tasks</p>',renderer={...reportAnnotatorV1,authority:'core',execution_trust:'trusted_signed_publisher',input_schema:{$id:PROJECT_VIEW_CONTRACT},size:Buffer.byteLength(fragment),content_digest:createHash('sha256').update(fragment).digest('hex')} as unknown as ApplicationRendererDescriptor
@@ -395,7 +406,7 @@ test('host bridge responds to challenges and missing responses recover the view'
  let view!:ReactTestRenderer
  t.after(async()=>{if(view)await act(async()=>view.unmount());t.mock.timers.reset();Object.assign(globalThis,{document:originalDocument,addEventListener:originalAdd,removeEventListener:originalRemove})})
  await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[]}} connectionKey="C" onOpenTask={()=>{}} onNewTask={()=>{}} onUnavailable={reason=>failures.push(reason)}/>,{createNodeMock:()=>node})})
- assert.equal(view.root.findAllByType('iframe').length,1)
+ await waitForAuthorizedFrame(view)
  const bridge=(view.root.findByType('iframe').props.srcDoc as string).match(/<script>([\s\S]*?)<\/script>/)![1]
  runInNewContext(bridge,{parent,addEventListener:(kind:string,fn:(event:any)=>void)=>child.set(kind,[...(child.get(kind)??[]),fn])})
  await act(async()=>view.root.findByType('iframe').props.onLoad())
@@ -444,6 +455,7 @@ test('resource subscriptions update in place, resync and cancel in-flight delive
  let view!:ReactTestRenderer
  t.after(async()=>{release();if(view)await act(async()=>view.unmount());t.mock.timers.reset();Object.assign(globalThis,{fetch:originalFetch,addEventListener:originalAdd,removeEventListener:originalRemove})})
  await act(async()=>{view=create(<InstalledProjectView client={client} renderer={renderer} model={{projectId:'P',tasks:[]}} connectionKey="member" onOpenTask={()=>{}} onNewTask={()=>{}}/>,{createNodeMock:()=>node})})
+ await waitForAuthorizedFrame(view)
  await act(async()=>view.root.findByType('iframe').props.onLoad())
  const init=messages.find(m=>m.kind==='init'),send=(data:any)=>act(async()=>{for(const listener of listeners)listener({source,data:{...init,...data}})})
  const snapshots=()=>messages.filter(m=>m.kind==='resources'),tick=()=>act(async()=>{t.mock.timers.tick(5000)})
