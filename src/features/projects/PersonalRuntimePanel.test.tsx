@@ -1,7 +1,9 @@
-import assert from'node:assert/strict';import test from'node:test';import React from'react';import{act,create,type ReactTestRenderer}from'react-test-renderer';import{PersonalRuntimePanel,type PersonalRuntimeAuthority}from'./PersonalRuntimePanel';import {PersonalRuntimeClient,type PersonalRuntimeStatus} from '../../services/personalRuntime'
+import assert from'node:assert/strict';import test,{afterEach} from'node:test';import React from'react';import{act,create,type ReactTestRenderer}from'react-test-renderer';import{PersonalRuntimePanel,type PersonalRuntimeAuthority}from'./PersonalRuntimePanel';import {PersonalRuntimeClient,type PersonalRuntimeStatus} from '../../services/personalRuntime'
 ;(globalThis as typeof globalThis&{IS_REACT_ACT_ENVIRONMENT:boolean}).IS_REACT_ACT_ENVIRONMENT=true
 const value=(revision=3,lifecycle:PersonalRuntimeStatus['lifecycle']='running'):PersonalRuntimeStatus=>({installationId:'install',ownerSubject:'owner',project:{projectId:'P',sourceId:'source',sourceRevision:'rev',sourceDigest:'digest'},lifecycle,unresolvedAssignments:[],workers:[{workerId:'worker',adapterId:'codex-app-server',state:lifecycle==='running'?'ready':'stopped',readiness:{ready:lifecycle==='running',reason:lifecycle==='running'?undefined:'worker_stopped'}}],knowledge:{available:false,reason:'authorized_packet_provider_unavailable'},stateRevision:revision,updatedAt:'2026-09-08T01:00:00Z'})
-async function mount(authority?:PersonalRuntimeAuthority){let view!:ReactTestRenderer;await act(async()=>{view=create(<PersonalRuntimePanel authority={authority}/>);await Promise.resolve()});return view}
+const mounted:ReactTestRenderer[]=[]
+afterEach(async()=>{await act(async()=>{for(const view of mounted.splice(0))view.unmount()})})
+async function mount(authority?:PersonalRuntimeAuthority){let view!:ReactTestRenderer;await act(async()=>{view=create(<PersonalRuntimePanel authority={authority}/>);await Promise.resolve()});mounted.push(view);return view}
 test('mounted personal runtime is explicitly unsupported without negotiated authority',async()=>{const view=await mount();assert.match(JSON.stringify(view.toJSON()),/does not advertise/);assert.equal(view.root.findAllByType('button').length,0)})
 test('mounted lifecycle action uses displayed revision and shows authoritative unavailable knowledge',async()=>{let call:unknown;const authority:PersonalRuntimeAuthority={status:async()=>value(),lifecycle:async(action,revision)=>{call={action,revision};return value(4,'draining')}};const view=await mount(authority);assert.match(JSON.stringify(view.toJSON()),/authorized_packet_provider_unavailable/);const drain=view.root.findAllByType('button').find(node=>node.children.includes('Drain'))!;await act(async()=>{await drain.props.onClick();await Promise.resolve()});assert.deepEqual(call,{action:'drain',revision:3});assert.match(JSON.stringify(view.toJSON()),/draining/)})
 test('revision conflict retains prior state and refreshes authority',async()=>{let reads=0;const authority:PersonalRuntimeAuthority={status:async()=>{reads++;return value(reads===1?3:4,'running')},lifecycle:async()=>{throw Error('personal_runtime_revision_conflict')}};const view=await mount(authority);const drain=view.root.findAllByType('button').find(node=>node.children.includes('Drain'))!;await act(async()=>{await drain.props.onClick();await Promise.resolve()});const text=JSON.stringify(view.toJSON());assert.match(text,/personal_runtime_revision_conflict/);assert.match(text,/running/);assert.equal(reads,2)})
@@ -42,4 +44,24 @@ test('post-crash orphaned worker projection stays readable and requires Core-ver
     assert.match(rendered, /intervention_required/)
     assert.deepEqual(requests.find(request => request.method === 'POST')?.body, {action: 'start', expected_revision: 0})
   } finally {globalThis.fetch = originalFetch}
+})
+
+test('mounted panel refreshes worker readiness without a lifecycle revision change', async () => {
+  let reads = 0
+  const authority: PersonalRuntimeAuthority = {
+    status: async () => {
+      reads++
+      return reads === 1 || reads === 3
+        ? {...value(reads === 1 ? 3 : 2), workers: [{...value(3).workers[0], state: 'unavailable', readiness: {ready: false, reason: 'worker_starting'}}]}
+        : value(3)
+    },
+    lifecycle: async () => { throw Error('unexpected lifecycle mutation') },
+  }
+  const view = await mount(authority)
+  assert.match(JSON.stringify(view.toJSON()), /codex-app-server: unavailable/)
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 2200)) })
+  assert.ok(reads >= 2, 'the mounted panel should reread authoritative status')
+  assert.match(JSON.stringify(view.toJSON()), /codex-app-server: ready/)
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 2200)) })
+  assert.match(JSON.stringify(view.toJSON()), /codex-app-server: ready/, 'a lower revision must not replace newer readiness')
 })

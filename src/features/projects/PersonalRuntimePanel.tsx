@@ -14,51 +14,92 @@ export function PersonalRuntimePanel({ authority }: { authority?: PersonalRuntim
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
+  const actionPending = useRef(false)
+  const requestEpoch = useRef(0)
+
+  const acceptStatus = (next: PersonalRuntimeStatus) => {
+    setStatus(previous => !previous || next.stateRevision >= previous.stateRevision ? next : previous)
+  }
 
   useEffect(() => {
     const current = ++generation.current
+    const epoch = ++requestEpoch.current
+    let reading = false
+    actionPending.current = false
     setStatus(null)
     setError(null)
     setBusy(false)
     if (!authority) return
-    void authority.status()
-      .then(value => { if (generation.current === current) setStatus(value) })
-      .catch(cause => { if (generation.current === current) setError(cause instanceof Error ? cause.message : String(cause)) })
+    const refresh = async () => {
+      if (reading || actionPending.current) return
+      reading = true
+      const request = requestEpoch.current
+      try {
+        const next = await authority.status()
+        if (generation.current === current && requestEpoch.current === request) {
+          acceptStatus(next)
+          setError(null)
+        }
+      } catch (cause) {
+        if (generation.current === current && requestEpoch.current === request) {
+          setError(cause instanceof Error ? cause.message : String(cause))
+        }
+      } finally {
+        reading = false
+      }
+    }
+    void refresh()
+    const timer = setInterval(() => { void refresh() }, 2000)
+    return () => {
+      clearInterval(timer)
+      if (generation.current === current) generation.current++
+      if (requestEpoch.current === epoch) requestEpoch.current++
+    }
   }, [authority])
 
   const recover = async (runId: string, leaseEpoch: number) => {
-    if (!authority?.recover || !status) return
+    if (!authority?.recover || !status || actionPending.current) return
     const current = generation.current
+    const epoch = ++requestEpoch.current
+    actionPending.current = true
     setBusy(true)
     setError(null)
     try {
       const next = await authority.recover(runId, leaseEpoch, status.stateRevision)
-      if (generation.current === current) setStatus(next)
+      if (generation.current === current && requestEpoch.current === epoch) acceptStatus(next)
     } catch (cause) {
-      if (generation.current === current) setError(cause instanceof Error ? cause.message : String(cause))
+      if (generation.current === current && requestEpoch.current === epoch) setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
-      if (generation.current === current) setBusy(false)
+      if (generation.current === current && requestEpoch.current === epoch) {
+        actionPending.current = false
+        setBusy(false)
+      }
     }
   }
 
   const act = async (action: PersonalRuntimeAction) => {
-    if (!authority || !status) return
+    if (!authority || !status || actionPending.current) return
     const current = generation.current
     const currentAuthority = authority
+    const epoch = ++requestEpoch.current
+    actionPending.current = true
     setBusy(true)
     setError(null)
     try {
       const next = await currentAuthority.lifecycle(action, status.stateRevision)
-      if (generation.current === current) setStatus(next)
+      if (generation.current === current && requestEpoch.current === epoch) acceptStatus(next)
     } catch (cause) {
-      if (generation.current !== current) return
+      if (generation.current !== current || requestEpoch.current !== epoch) return
       setError(cause instanceof Error ? cause.message : String(cause))
       try {
         const next = await currentAuthority.status()
-        if (generation.current === current) setStatus(next)
+        if (generation.current === current && requestEpoch.current === epoch) acceptStatus(next)
       } catch { /* Keep the last known status and the mutation error. */ }
     } finally {
-      if (generation.current === current) setBusy(false)
+      if (generation.current === current && requestEpoch.current === epoch) {
+        actionPending.current = false
+        setBusy(false)
+      }
     }
   }
 

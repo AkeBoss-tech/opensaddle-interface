@@ -666,6 +666,15 @@ result remains unapproved. Receipt: `receipts/personal-runtime-task-live-2026091
 This checks the real protocol/client journey, not visual interaction, streaming
 presentation, native session resumption, or a human approval decision.
 
+## DESKTOP-PERSONAL-STATUS-1
+
+While mounted with an authenticated personal runtime authority, Settings rereads
+the authoritative status so worker readiness appears without a lifecycle action.
+Readiness may change at the same state revision. A prior connection's response,
+an in-flight read overtaken by an action, and a lower-revision projection cannot
+replace the current status. Reads do not overlap, and unmount stops refreshing.
+Covered by `src/features/projects/PersonalRuntimePanel.test.tsx`.
+
 ## SCOPED-RENDERER-TRANSPORT-1
 
 The production shell exposes user/Team renderer selection, signed content and
