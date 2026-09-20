@@ -1,10 +1,11 @@
 import { useProjectDirectory } from './useProjectDirectory'
 import { useEffect } from 'react'
-import { Folder, Home, Plus, Settings, ListTodo, Activity, Users, ArrowUpRight, Laptop } from 'lucide-react'
+import { Folder, Home, Plus, Settings, ListTodo, Activity, Users, ArrowUpRight, Laptop, Search, SlidersHorizontal } from 'lucide-react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Icon } from '../../components/common/Icon'
 import { useStore } from '../../data/store'
 import './connected-workspace.css'
+import '../../styles/workbench-theme.css'
 
 export function ConnectedWorkspaceSidebar({ onAddProject }: { onAddProject: () => void }) {
   const { services } = useStore()
@@ -14,26 +15,31 @@ export function ConnectedWorkspaceSidebar({ onAddProject }: { onAddProject: () =
   const selectedId = location.pathname.split('/')[1] === 'project' ? decodeURIComponent(location.pathname.split('/')[2] ?? '') : undefined
   const selected = projects.find(project => project.id === selectedId)
   return <aside className="sidebar connected-sidebar" id="sidebar">
-    <div className="connected-workspace-rail" aria-label="Workspace rail"><Link to="/home" aria-label="OpenSaddle home" className="connected-rail-home"><Icon name="saddle" className="icon sm" /></Link>{projects.map(project => <Link key={project.id} to={`/project/${project.id}`} aria-label={project.name} title={project.name} className={project.id === selectedId ? 'selected' : ''}>{project.name.slice(0,2).toUpperCase()}</Link>)}{services?.localProjects && <button onClick={onAddProject} aria-label="Add project to workspace"><Plus size={18}/></button>}</div><div className="connected-brand">{selected?.name ?? 'OpenSaddle'}<span>{selected ? 'Project workspace' : 'Local workspace'}</span></div>
+    <Link to="/home" className="connected-brand"><Icon name="saddle" className="icon"/><span>OpenSaddle<small>Your agent workspace</small></span></Link>
+    <button className="connected-search" onClick={()=>window.dispatchEvent(new Event('opensaddle:palette'))}><Search size={16}/><span>Search anything</span><kbd>⌘ K</kbd></button>
     <nav aria-label="Connected workflow" className="connected-navigation">
       <NavLink to="/home"><Home size={17}/>Home</NavLink>
       <NavLink to="/start"><Plus size={17}/>New task</NavLink>
       <NavLink to="/work"><ListTodo size={17}/>Work</NavLink>
     </nav>
     {selected && <nav aria-label="Project views" className="connected-navigation connected-project-views"><span>Views</span><NavLink end to={`/project/${selected.id}`}>Workspace</NavLink><NavLink to={`/project/${selected.id}/overview`}>Overview</NavLink><NavLink to={`/project/${selected.id}/collaboration`}>Tasks</NavLink>{(services?.agentProfiles || services?.hostedAgents) && <NavLink to={`/project/${selected.id}/agents`}>Agents</NavLink>}<NavLink to={`/project/${selected.id}/knowledge`}>Knowledge</NavLink><NavLink to={`/project/${selected.id}/onboarding`}>Onboarding</NavLink><NavLink to={`/project/${selected.id}/plugins`}>Plugins</NavLink><NavLink to={`/project/${selected.id}/devices`}>Devices</NavLink><NavLink to={`/project/${selected.id}/appearance`}>Appearance</NavLink></nav>}
-    {!selectedId && <><div className="connected-project-heading"><span>Projects</span>{services?.localProjects && <button aria-label="Add project" onClick={onAddProject}><Plus size={16}/></button>}</div>
+    <div className="connected-project-heading"><span>Projects</span>{services?.localProjects && <button aria-label="Add project" onClick={onAddProject}><Plus size={16}/></button>}</div>
     <nav aria-label="Projects" className="connected-project-list">
       {projects.map(project => <NavLink key={project.id} to={`/project/${project.id}`}><Folder size={17}/><span>{project.name}</span></NavLink>)}
       {!projects.length && <p>{loading?'Loading projects…':error||'Your projects will appear here.'}</p>}
       {services?.localProjects && <button className="connected-add-project" onClick={onAddProject}><Plus size={16}/>Add project</button>}
-    </nav></>}
-    <nav aria-label="Workspace tools" className="connected-navigation connected-bottom">
-      <NavLink to="/operations"><Activity size={17}/>Operations</NavLink>
-      <NavLink to="/collaboration"><Users size={17}/>People &amp; machines</NavLink>
-      <NavLink to="/teams"><Users size={17}/>Teams</NavLink>
-      <NavLink to="/devices"><Laptop size={17}/>Devices</NavLink>
-      <NavLink to="/settings"><Settings size={17}/>Settings</NavLink>
     </nav>
+    <div className="connected-bottom">
+      <details className="connected-tools"><summary><SlidersHorizontal size={16}/>Workspace tools</summary>
+        <nav aria-label="Workspace tools" className="connected-navigation">
+          <NavLink to="/operations"><Activity size={16}/>Operations</NavLink>
+          <NavLink to="/collaboration"><Users size={16}/>People &amp; machines</NavLink>
+          <NavLink to="/teams"><Users size={16}/>Teams</NavLink>
+          <NavLink to="/devices"><Laptop size={16}/>Devices</NavLink>
+        </nav>
+      </details>
+      <nav className="connected-navigation" aria-label="Settings"><NavLink to="/settings"><Settings size={16}/>Settings</NavLink></nav>
+    </div>
   </aside>
 }
 

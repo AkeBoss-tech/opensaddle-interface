@@ -108,9 +108,12 @@ function CommandCenterDashboard({localSetupAvailable,client,connected,identity,p
     :state.kind==='unavailable'?<EmptyState title="Command Center unavailable" description={state.reason} action={<Button onClick={() => void load()}>Check again</Button>}/>:null
   return <section className="cc-dashboard">
     {notice}
-    {snapshot&&<header className="cc-header">
-      <div><span className="eyebrow">Authoritative workspace view</span><h1>Command Center</h1><p>Decisions first, then active work and outcomes with their evidence status.</p></div>
-      <div className="cc-freshness"><span>Snapshot</span><time dateTime={snapshot.generatedAt}>{dateTime(snapshot.generatedAt)}</time><Button variant="secondary" size="sm" onClick={() => void load()}>Refresh</Button></div>
+    {snapshot&&<header className="cc-header cc-start-header">
+      <div className="cc-start-copy"><span className="eyebrow">Your workspace</span><h1>What are we working on?</h1><p>Start a task, pick up where you left off, or review a result.</p>
+        <Link className="cc-start-task" to="/start"><span>Describe a task to your agent</span><span aria-hidden="true">↗</span></Link>
+        <div className="cc-start-shortcuts"><Link to="/work">Browse tasks</Link><Link to="/settings">Configure agents</Link></div>
+      </div>
+      <div className="cc-freshness"><span>Updated</span><time dateTime={snapshot.generatedAt}>{dateTime(snapshot.generatedAt)}</time><Button variant="secondary" size="sm" onClick={() => void load()}>Refresh</Button></div>
     </header>}
 
     <ProjectWidgetDashboard rendererSettings={rendererSettings} taskFeed={taskFeed} directory={projectDirectory} shell={widgetClient} journey={taskAuthority} stateScope={widgetStateScope} client={dashboardSettings} identity={dashboardIdentity??identity} widgets={snapshot?[
