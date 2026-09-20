@@ -116,3 +116,12 @@ not the intended consumer sign-in experience.
 Existing Core membership, worker, execution, and audit primitives should remain
 authoritative; this entry screen must not introduce another scheduler or local
 permission database that overrides them.
+
+## Static-host deep links
+
+Hosted verification of PR67 found that opening `/home` directly returned GitHub
+Pages' generic 404. The build now publishes `home/index.html` and
+`settings/index.html` with the same absolute asset URLs as the root document.
+Other SPA routes use a `404.html` application fallback. Electron builds with
+`VITE_APP_BASE=./` retain their single relative entry document. Public entry
+routes can therefore load directly without first visiting the site root.
