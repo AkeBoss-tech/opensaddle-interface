@@ -1276,6 +1276,19 @@ attest the current workspace. Owning client and mounted journey tests:
 `src/services/factoryCoding.test.ts` and
 `src/features/runs/FactoryJourney.test.tsx`.
 
+## FACTORY-UI-2
+
+The personal Interface opens an existing two-step Factory execution only after
+negotiating Core's separate exact execution capability. It verifies the cursor's
+Project and execution identity, presents distinct A and B Run links, and never
+creates or automatically advances an execution. Explicit advance requires the
+current A artifact's accepted human review ID and passing checks; its retry
+reuses a persisted intent. Final Goal acceptance requires the exact B review
+and a separate confirmation of every fixed criterion. Legacy single-Run Goal
+acceptance is hidden for two-step Runs. Owning tests:
+`src/services/factoryExecution.test.ts` and
+`src/features/runs/FactoryExecutionPage.test.tsx`.
+
 Installed-frame clock qualification (2026-09-19): watchdog and resource-subscription
 tests wait for authorized frame readiness on a bounded real clock before advancing
 their mocked protocol clock. Web Crypto digest completion is not implied by a

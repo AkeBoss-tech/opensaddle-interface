@@ -1,0 +1,70 @@
+{
+  "browser_journey": {
+    "a_run_id": "run_239d90c4674c4b9884088d5bc0c346a3",
+    "b_run_id": "run_ab6a141c4fd3469ba01d6c4094cddb4b",
+    "core_confirmation": "Independent post-action Core HTTP/DB check: cursor and Goal completed; exactly two retained Runs and fake turn markers A,B",
+    "execution_id": "fexec_329205d0d9914c44929b00d83bf4a69d",
+    "observed": [
+      "A completed with passed checks and accepted exact review; B absent before explicit advance",
+      "Clicking the separate advance control admitted exactly one B Run; B evidence initially unavailable",
+      "B Run detail showed worker patch, passing unittest command, and accepted exact human review",
+      "Both fixed criteria checkboxes were required before final Goal acceptance button enabled",
+      "Final click showed Factory Goal completed; state and both Run links survived browser reload",
+      "Browser console error log was empty"
+    ],
+    "project_id": "project-1"
+  },
+  "checks": {
+    "git_diff_check": "passed",
+    "npm_run_build": {
+      "log_sha256": "18ffd3aace3a4716e1031e1493966d272460cbf0ef97bfefaa43261715aba7a5",
+      "result": "passed"
+    },
+    "npm_test": {
+      "features": 438,
+      "log_sha256": "d790b901834546028c5bb6ce8c95706d155aacd67cac324cc9e68b68e6ec2039",
+      "result": "passed",
+      "scoped_sdk": 2,
+      "scoped_sdk_types": "passed",
+      "workspace": 360
+    }
+  },
+  "environment": {
+    "browser": "Chrome via CUA",
+    "core_api": "local SQLite fixture, via loopback token-injecting proxy",
+    "interface_url": "http://127.0.0.1:5175/opensaddle-interface/",
+    "private_bearer_in_browser": false,
+    "provider": "fake Codex worker process; no model or paid provider calls"
+  },
+  "feature": "FACTORY-UI-2",
+  "limits": [
+    "This is a synthetic local fixture; it does not prove a real Codex provider turn or installed desktop behavior.",
+    "The screenshot was captured and observed inline but cannot be supplied as a saved PNG through the permitted browser API.",
+    "The local Core, proxy, and Vite servers were stopped after verification."
+  ],
+  "observed_at_utc": "2026-09-20T04:43:57.626808+00:00",
+  "schema_version": "opensaddle.ui-verification-receipt.v1",
+  "screenshot": {
+    "captured_inline": true,
+    "completed_view_png_bytes": 66921,
+    "completed_view_png_sha256": "1d62cb5cf070149702e4c4a6bca3391ed7ed7981609dea771d5d3131d27b56c8",
+    "save_limit": "CUA has no documented filesystem save API; browser URL policy rejected opening captured data:image/png for Save As and explicitly prohibited workarounds",
+    "saved_file": false
+  },
+  "tested_source": {
+    "core_fixture_source_tree": "1c3fccf12d57c152a7381da84b53d03c1dfda974",
+    "interface_baseline_commit": "3455f99df660127615057dea59f385d9ca6b9e7c",
+    "interface_worktree_file_sha256": {
+      "docs/testing/invariants.md": "2681324c4060a09f54802fcd39a06f91819f6f064d2d36250a5db048b1b2c064",
+      "src/App.tsx": "d6463030ab5c775f772c75bb13e20527cb3fb3c41245919a9f8d62c59a332782",
+      "src/features/runs/FactoryExecutionPage.test.tsx": "4baed2c8285845121a10c901ab8b1b1c6a313196ae144d84b685bb41a4685453",
+      "src/features/runs/FactoryExecutionPage.tsx": "0c772f5e57528008d2edc944f348661d10402cd589259d3ec4f48cc6b571f3f3",
+      "src/features/runs/FactoryStartPage.tsx": "937548308e6d1ad0c4b0a9896db62e203a6f3dfc047d9f9d9c05e9be91cd97e3",
+      "src/services/codingResultReview.ts": "73360c6b6d108e0db57b969f3e6bb32368c76afd8f68edcfca455b33fb5b57ad",
+      "src/services/factoryCoding.ts": "c7eb935784a6f694146e4014acad346ea1d0306f340f9966d1193f22e1435dba",
+      "src/services/factoryExecution.test.ts": "8cccf19c6225289ca696c1f29aee4b42a887119cca4ff9647b6c5799b2c008c7",
+      "src/services/factoryExecution.ts": "4b6ea71626594f150fc74f1dc4f38e8ef204178bf9ff4990a41c8d4db22ad713",
+      "src/services/index.ts": "71b6cef3f98b48b98933a4d18ae6b5434da6c99aaba6b3716f19a4751bb4ca2c"
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import { ProjectModelBudgetClient } from './projectModelBudget'
 import { FactoryCodingClient } from './factoryCoding'
+import { FactoryExecutionClient } from './factoryExecution'
 import { ManagedConnectorConnectionsClient } from './managedConnectorConnections'
 import {RunApprovalReviewClient} from './runApprovalReview'
 import {StandalonePluginSettingsClient} from './standalonePluginSettings'
@@ -85,6 +86,7 @@ export interface ServiceBundle {
   managedConnections?: ManagedConnectorConnectionsClient
   projectModelBudget?: ProjectModelBudgetClient
   factoryCoding?: FactoryCodingClient
+  factoryExecution?: FactoryExecutionClient
   teams?: TeamsClient
   projectConversations?: (projectId:string)=>ManagerConversationsClient
   managerConversations?: ManagerConversationsClient
@@ -220,6 +222,7 @@ export function initServices(opts: {
       let projectKnowledgeAvailable = false
       let codingTasksAvailable = false
       let factoryCodingCapability: {configured_worker_id:string;adapter_binding:{adapter_id:string;adapter_version:string;adapter_config_digest:string}} | undefined
+      let factoryExecutionAvailable = false
       let portableContinuationAvailable = false
       let nativeSessionResume = false
       let legacyHealthAvailable = false
@@ -351,6 +354,7 @@ export function initServices(opts: {
               resource_capacity?: { available?: boolean; schema_version?: string; project_config_path_template?: string; status_path_template?: string }
               coding_tasks?: {available?:boolean;selection_field?:string;schema_version?:string;supported_adapter_ids?:unknown;result_schema_version?:string;review_path_template?:string}
               factory_single_coding_run_v1?: {available?:boolean;schema_version?:string;definition_path_template?:string;blueprint_path_template?:string;exact_definition_path_template?:string;preview_path_template?:string;prepare_goal_path_template?:string;acceptance_path_template?:string;run_selection_field?:string;goal_preparation_required?:boolean;multi_step_execution?:boolean;configured_worker_id?:string;adapter_binding?:{adapter_id?:string;adapter_version?:string;adapter_config_digest?:string}}
+              factory_two_step_coding_execution_v1?: {available?:boolean;create_path?:string;read_path_template?:string;advance_path_template?:string;accept_path_template?:string;scope?:string;advance_requires_accepted_a_review?:boolean;automatic_advance?:boolean}
               registered_git_evidence?: { available?: boolean; schema_version?: string; list_path_template?: string; inspection_path_template?: string; setup_path_template?: string; capture_path_template?: string; review_path_template?: string; semantic_authority?: string }
               native_adapters?: { available?: boolean; schema_version?: string; supported_adapter_ids?: unknown; unsupported_adapter_ids?: unknown; readiness_path_template?: string; report_path_template?: string; selection_field?: string; observation_authority?: string; policy_authority?: string }; portable_run_continuations?: { available?: boolean; schema_version?: string; checkpoint_path_template?: string; continuation_path_template?: string; mode?: string; native_session_resume?: boolean }; authorized_context_packets?: { available?: boolean; schema_version?: string; selection_field?: string; inspector_path_template?: string; worker_path_template?: string; reauthorization_schema_version?: string; unavailable_reason?: string; sources_path_template?: string }; personal_runtime?: {available?:boolean;schema_version?:string;status_path?:string;action_path?:string;authority?:string;ui_process_owner?:boolean;recovery_path?:string}
             }
@@ -415,6 +419,13 @@ export function initServices(opts: {
             const coding = capabilities.coding_tasks
             codingTasksAvailable = coding?.available === true && coding.selection_field === 'coding_task' && coding.schema_version === 'opensaddle.coding-task.v1' && JSON.stringify(coding.supported_adapter_ids) === JSON.stringify(['codex-app-server']) && coding.result_schema_version === 'opensaddle.coding-result.v1' && coding.review_path_template === '/api/v2/runs/{run_id}/coding-result/review'
             const factory = capabilities.factory_single_coding_run_v1
+            const twoStep = capabilities.factory_two_step_coding_execution_v1
+            factoryExecutionAvailable = twoStep?.available === true && twoStep.create_path === '/api/v2/factory-executions'
+              && twoStep.read_path_template === '/api/v2/factory-executions/{execution_id}'
+              && twoStep.advance_path_template === '/api/v2/factory-executions/{execution_id}/advance'
+              && twoStep.accept_path_template === '/api/v2/factory-executions/{execution_id}/accept'
+              && twoStep.scope === 'personal_sqlite_two_codex_steps_one_configured_worker'
+              && twoStep.advance_requires_accepted_a_review === true && twoStep.automatic_advance === false
             if (factory?.available === true && factory.schema_version === 'opensaddle.factory-repo-task-compile.v1'
                 && factory.definition_path_template === '/api/v2/projects/{project_id}/factories'
                 && factory.blueprint_path_template === '/api/v2/projects/{project_id}/factory-blueprints'
@@ -560,6 +571,7 @@ export function initServices(opts: {
         personalDevices: backendAvailable && personalDevicesAvailable ? new PersonalDevicesClient(baseUrl, getUserId, token, personalDevicePairingAvailable, deviceAssignmentsAvailable) : undefined,
         codingResults: backendAvailable && codingTasksAvailable ? new CodingResultReviewClient(baseUrl, getUserId, token) : undefined,
         factoryCoding: backendAvailable && codingTasksAvailable && factoryCodingCapability ? new FactoryCodingClient(baseUrl,getUserId,token,factoryCodingCapability.configured_worker_id,factoryCodingCapability.adapter_binding) : undefined,
+        factoryExecution: backendAvailable && codingTasksAvailable && factoryExecutionAvailable ? new FactoryExecutionClient(baseUrl,getUserId,token) : undefined,
         projectKnowledge: backendAvailable && projectKnowledgeAvailable ? new RegisteredProjectKnowledgeClient(baseUrl, getUserId, token) : undefined,
         controlPlane: {
           connected: backendAvailable,

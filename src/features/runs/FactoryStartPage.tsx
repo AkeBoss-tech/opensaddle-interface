@@ -13,7 +13,9 @@ const fields = (blueprint: FactoryBlueprint): string[] => {
 
 export function FactoryStartPage() {
   const { projectId = '' } = useParams(), navigate = useNavigate(), { services } = useStore()
-  return <FactoryStartSurface key={`${projectId}:${services?.factoryCoding?.identity()??''}`} projectId={projectId} client={services?.factoryCoding} journey={services?.journey} onLaunched={runId=>navigate(`/project/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(runId)}`)}/>
+  const [executionId,setExecutionId] = useState('')
+  return <><FactoryStartSurface key={`${projectId}:${services?.factoryCoding?.identity()??''}`} projectId={projectId} client={services?.factoryCoding} journey={services?.journey} onLaunched={runId=>navigate(`/project/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(runId)}`)}/>
+    {services?.factoryExecution && <section className="content-page cc-page cc-panel" aria-label="Open existing Factory execution"><h2>Open an existing two-step execution</h2><label>Execution ID<input value={executionId} onChange={event=>setExecutionId(event.target.value.trim())} placeholder="fexec_…"/></label><button disabled={!/^fexec_[0-9a-f]{32}$/.test(executionId)} onClick={()=>navigate(`/project/${encodeURIComponent(projectId)}/factory-executions/${encodeURIComponent(executionId)}`)}>Inspect execution</button></section>}</>
 }
 
 export function FactoryStartSurface({projectId,client,journey,onLaunched}:{projectId:string;client?:FactoryCodingClient;journey?:JourneyAuthority;onLaunched:(runId:string)=>void}) {

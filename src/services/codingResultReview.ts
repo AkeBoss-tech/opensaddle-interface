@@ -6,7 +6,7 @@ export type CodingResult = {
   allowedPaths: string[]; sourceRevision: string; taskSpecDigest: string; executionStatus: 'completed' | 'failed' | 'interrupted'; checksStatus: 'passed' | 'failed' | 'not_run'
   patch: string; patchDigest: string; checks: CodingCheck[]; limitations: string[]
   baseline?: {workspaceDigest:string;indexDigest:string;files:Array<{path:string;digest:string|null}>}; verificationBeforeDigest?:string; verificationAfterDigest?:string; observationScope?:string
-  review: null | { decision: 'accepted' | 'rejected'; reviewedBy: string; reviewedAt: string }
+  review: null | { reviewId?: string; decision: 'accepted' | 'rejected'; reviewedBy: string; reviewedAt: string }
 }
 export interface CodingResultAuthority {
   read(projectId: string, runId: string): Promise<CodingResult>
@@ -59,7 +59,7 @@ export class CodingResultReviewClient implements CodingResultAuthority {
     const verificationAfterDigest = manifest.verification_after_digest === undefined ? undefined : sha(manifest.verification_after_digest)
     if (manifest.checks_status === 'passed' && verificationBeforeDigest !== verificationAfterDigest) throw Error('Coding verification changed the captured working bytes')
     let review: CodingResult['review'] = null
-    if (value.review !== null) { const recorded = object(value.review); if (recorded.decision !== 'accepted' && recorded.decision !== 'rejected') throw Error('Coding result human decision is invalid'); review = { decision: recorded.decision, reviewedBy: text(recorded.reviewed_by), reviewedAt: text(recorded.reviewed_at) } }
+    if (value.review !== null) { const recorded = object(value.review); if (recorded.decision !== 'accepted' && recorded.decision !== 'rejected') throw Error('Coding result human decision is invalid'); review = { reviewId: recorded.review_id === undefined ? undefined : text(recorded.review_id), decision: recorded.decision, reviewedBy: text(recorded.reviewed_by), reviewedAt: text(recorded.reviewed_at) } }
     return { baseline, verificationBeforeDigest, verificationAfterDigest, observationScope: manifest.observation_scope === undefined ? undefined : text(manifest.observation_scope,8192), projectId, runId, artifactId, artifactDigest, allowedPaths, sourceRevision, taskSpecDigest: sha(manifest.task_spec_digest), executionStatus: manifest.execution_status as CodingResult['executionStatus'], checksStatus: manifest.checks_status as CodingResult['checksStatus'], patch: patch.text, patchDigest, checks, limitations: manifest.limitations.map(value => text(value, 8192)), review }
   }
   decide(result: CodingResult, decision: 'accepted' | 'rejected', intentId: string) { return this.request(result.runId, { artifact_id: result.artifactId, expected_artifact_digest: result.artifactDigest, decision, idempotency_key: intentId }) }
