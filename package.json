@@ -8,7 +8,7 @@
     "test": "npm run test:workspace && npm run test:features && npm run test:scoped-sdk",
     "test:workspace": "npm exec --prefix packages/control-plane -- tsx --test test/*.test.ts",
     "test:features": "node --import tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/build-web-entrypoints.mjs",
     "lint": "oxlint src",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
