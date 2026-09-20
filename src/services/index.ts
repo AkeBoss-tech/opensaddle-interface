@@ -40,6 +40,7 @@ import { RemoteMalleableShellClient } from './remoteMalleableShell'
 import { RemoteKrailProposalClient } from './remoteKrailProposals'
 import { RemoteParticipantClient } from './remoteParticipants'
 import { RemoteAgentProfileClient, type AgentProfileClient } from './remoteAgentProfiles'
+import { RemoteHostedAgentClient, type HostedAgentClient } from './remoteHostedAgents'
 import { RemoteOperationsSessionClient } from './remoteOperations'
 import { RemoteJourneyClient } from './remoteJourney'
 import { ConnectorWriteReviewClient } from './connectorWriteReview'
@@ -73,6 +74,7 @@ export interface ServiceBundle {
   krailProposals?: KrailProposalClient
   participants?: ParticipantClient
   agentProfiles?: AgentProfileClient
+  hostedAgents?: HostedAgentClient
   operationsSessions?: OperationsSessionClient
   malleableShell?: MalleableShellClient
   journey?: JourneyAuthority
@@ -189,6 +191,7 @@ export function initServices(opts: {
       let managedKrailAvailable = false
       let participantsAvailable = false
       let agentProfilesAvailable = false
+      let hostedAgentsAvailable = false
       let resourceCapacityAvailable = false
       let nativeAdaptersAvailable = false
       let authorizedContextAvailable = false
@@ -341,6 +344,7 @@ export function initServices(opts: {
               managed_krail?: boolean
               participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
               agent_builder_v1?: { available?: boolean; review_required?: boolean; online_research_available?: boolean; schema_version?: string }
+              hosted_external_agent_v1?: { available?: boolean; scope?: string; review_required?: boolean; project_path_template?: string }
               resource_capacity?: { available?: boolean; schema_version?: string; project_config_path_template?: string; status_path_template?: string }
               coding_tasks?: {available?:boolean;selection_field?:string;schema_version?:string;supported_adapter_ids?:unknown;result_schema_version?:string;review_path_template?:string}
               factory_single_coding_run_v1?: {available?:boolean;schema_version?:string;definition_path_template?:string;blueprint_path_template?:string;exact_definition_path_template?:string;preview_path_template?:string;prepare_goal_path_template?:string;acceptance_path_template?:string;run_selection_field?:string;goal_preparation_required?:boolean;multi_step_execution?:boolean;configured_worker_id?:string;adapter_binding?:{adapter_id?:string;adapter_version?:string;adapter_config_digest?:string}}
@@ -374,6 +378,10 @@ export function initServices(opts: {
               && capabilities.agent_builder_v1.review_required === true
               && typeof capabilities.agent_builder_v1.online_research_available === 'boolean'
               && capabilities.agent_builder_v1.schema_version === 'opensaddle.agent-proposal.v1'
+            hostedAgentsAvailable = capabilities.hosted_external_agent_v1?.available === true
+              && capabilities.hosted_external_agent_v1.scope === 'one_external_worker_no_connectors_or_memory'
+              && capabilities.hosted_external_agent_v1.review_required === true
+              && capabilities.hosted_external_agent_v1.project_path_template === '/api/v2/projects/{project_id}/hosted-agent-proposals'
             resourceCapacityAvailable = capabilities.resource_capacity?.available === true && capabilities.resource_capacity.schema_version === 'opensaddle.resource-capacity.v1' && capabilities.resource_capacity.project_config_path_template === '/api/v2/projects/{project_id}/capacity-limits' && capabilities.resource_capacity.status_path_template === '/api/v2/projects/{project_id}/capacity'
             const native = capabilities.native_adapters
             nativeAdaptersAvailable = native?.available === true && native.schema_version === 'opensaddle.native-adapter-readiness.v1' && JSON.stringify(native.supported_adapter_ids) === JSON.stringify(['codex-app-server','claude-code-stream-json']) && JSON.stringify(native.unsupported_adapter_ids) === JSON.stringify(['cursor']) && native.readiness_path_template === '/api/v2/projects/{project_id}/native-adapters' && native.report_path_template === '/api/v2/workers/{worker_id}/native-adapter-readiness' && native.selection_field === 'native_adapter_id' && native.observation_authority === 'worker_self_reported' && native.policy_authority === 'core'
@@ -489,6 +497,8 @@ export function initServices(opts: {
         : undefined
       const participants = backendAvailable && participantsAvailable ? new RemoteParticipantClient(baseUrl, getUserId, token) : undefined
       const agentProfiles = backendAvailable && agentProfilesAvailable ? new RemoteAgentProfileClient(baseUrl, getUserId, token) : undefined
+      const hostedAgents = backendAvailable && hostedAgentsAvailable && !agentProfilesAvailable
+        ? new RemoteHostedAgentClient(baseUrl, getUserId, token) : undefined
       const operationsSessions = backendAvailable && commandCenterAvailable ? new RemoteOperationsSessionClient(baseUrl, getUserId, token) : undefined
       const journey = backendAvailable && commandCenterAvailable ? new RemoteJourneyClient(baseUrl, getUserId, token, resourceCapacityAvailable, nativeAdaptersAvailable, authorizedContextAvailable, portableContinuationAvailable, nativeSessionResume, undefined, projectMembershipRemovalAvailable, runEventPageAvailable, membershipRemovalRevokesCredentials) : undefined
       const personalRuntime=backendAvailable&&personalRuntimeAvailable?new PersonalRuntimeClient(baseUrl,getUserId,token):undefined
@@ -522,6 +532,7 @@ export function initServices(opts: {
         krailProposals,
         participants,
         agentProfiles,
+        hostedAgents,
         operationsSessions,
         malleableShell,
         journey,

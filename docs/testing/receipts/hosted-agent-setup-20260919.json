@@ -1,0 +1,73 @@
+{
+  "schema_version": "opensaddle.hosted-ui-browser-qualification.v1",
+  "core_export_tree": "f79d37ecdfeabddbd96c240e25f80d6ec200e7a7",
+  "project_id": "hosted-ui",
+  "source_id": "src_2aced558d8d34c71bbf9114a3eab0431",
+  "source_revision": "fixture-rev-1",
+  "source_digest": "13bc42e446d5f2ec5fcbe7b43f066a0189e9df8bf9fe4da732d2323281d52836",
+  "worker_id": "fixture-worker",
+  "proposal_id": "agp_55b16db5b8304afb93a041037a19f942",
+  "definition_digest": "a015d50c76b0c4641b5f21f83c17f8058bc32f6c5ee29572daf626a38823cb82",
+  "agent_id": "hag_6d4cf4504fe147a883ca0c5bae2bb8a5",
+  "run_id": "run_d2eeaa98cbb448ed8c7e1f36bb6e75c8",
+  "run_status": "queued",
+  "proposal_audit_actions": [
+    "proposed",
+    "published"
+  ],
+  "provider_calls": 0,
+  "browser": "Chrome via CUA, disposable tab",
+  "browser_observed": [
+    "Project navigation exposed Agents on PG capability",
+    "draft showed exact source, worker, instructions and no Core grants",
+    "owner acknowledged and published exact proposal",
+    "task submission showed confirmed retained idempotency key and Run link",
+    "reload showed the same published agent, retained key, and Run link",
+    "Run page showed queued with no worker assignment",
+    "Normal Run detail was queued, unassigned and showed no completed result or human review"
+  ],
+  "visual_capture": "CUA screenshots inspected inline; no screenshot file exported by available CUA API",
+  "source_sha256": {
+    "src/services/remoteHostedAgents.ts": "845a6e2f7594606655e7a4efb4954e3fe6a4a7469424f612278325c16d78a7cc",
+    "src/features/projects/HostedAgentSetupPage.tsx": "c0f0d1568374fa5ca3db0f5dfc6ef0dc36c05c069fc5412e9894097fff0f25ab",
+    "src/features/projects/AgentSetupPage.tsx": "6a77e1104525c4f9546c1b9ddf130e6f26c8a09a7415c938085e6a75f2f91831",
+    "src/features/projects/agent-setup.css": "9a3bb50ab7e0c1c75b9ed174bece81ee70b1af282237651659a16a2a4acfaf9f",
+    "src/features/shell/ConnectedWorkspace.tsx": "7b9d96e14a29061052d55bf380b17456e9ce6a91ee94cdc570df5684994dfee1",
+    "src/services/index.ts": "1b1e6cd1019f734b3818555d36594ddab2c500de44deb63c8f18d22807e0db5e",
+    "src/features/projects/HostedAgentSetupPage.test.tsx": "94c2350d7457f953a98a7aad4c0e62e3b5d550498ae68e13f89367f4e509ef11",
+    "src/services/remoteHostedAgents.test.ts": "c96a30022e2041a9dd297bbcf24fcc6c5e503b4c216c28ed41a5b9fb54184301",
+    "src/services/hostedAgentCapability.test.ts": "f7ec42c4b41a70387103214d4a8bb25925e3f8652142cc73c3f6f92c54d423e7",
+    "docs/testing/invariants.md": "562de82238ca57e03a6647f42b3272d602398d0fc072a2e7ead9fc7289c426e0"
+  },
+  "limits": [
+    "One fixture owner acted as both proposer and reviewer; separate member role is covered by Core tests and mounted UI tests.",
+    "Source is a registered metadata claim; no source bytes were reviewed or delivered.",
+    "No external worker/provider executed; Run remains queued, with no result or human acceptance.",
+    "PostgreSQL Run heading still displays compiled instructions; normal user_task projection needs a separate Core presentation seam."
+  ],
+  "checks": {
+    "focused_tests": "11 passed",
+    "feature_suite": "432 passed",
+    "typecheck": "passed",
+    "lint": "passed with repository warnings only",
+    "build": "passed",
+    "diff_check": "passed"
+  },
+  "reviewed_ui_races": [
+    "late A history/pending after B selection fenced",
+    "late A publish/lifecycle/task response after B selection fenced",
+    "cross-Project/caller draft text cleared",
+    "two-window task POST serialized and confirmed key retained",
+    "delayed A confirmation cannot overwrite newer intent"
+  ],
+  "visual_observation": "CUA Chrome screenshot showed readable stacked hosted draft form after CSS correction; screenshot visible in tool result, not exported as local image.",
+  "cleanup": {
+    "chrome_tab": "closed",
+    "vite_5179": "stopped",
+    "core_53081": "stopped",
+    "disposable_database": "dropped",
+    "fixture_bearer": "removed"
+  },
+  "qualification_ownership": "Browser observations and checks performed by delegated harness agent; root reviewed code, receipt and source hashes. Inline CUA screenshots were not exported.",
+  "focused_log_sha256": "ad237f6530cd49d7c862b656256828c9c1f5a32a73f26c479f1d1ef4331d665a"
+}

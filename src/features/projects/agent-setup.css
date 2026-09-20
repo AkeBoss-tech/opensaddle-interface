@@ -3,6 +3,12 @@
 .agent-setup-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, .9fr); gap: 16px; align-items: start; }
 .agent-setup-page .cc-panel { padding: 18px; }
 .agent-setup-page .primary-btn:hover { background: var(--accent); color: #fff; filter: brightness(.94); }
+.hosted-agent-draft-form { display: grid; gap: 14px; }
+.hosted-agent-draft-form label { display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; }
+.hosted-agent-draft-form input, .hosted-agent-draft-form select, .hosted-agent-draft-form textarea { box-sizing: border-box; width: 100%; border: 1px solid var(--border-strong); border-radius: 8px; padding: 9px 10px; background: var(--surface-2); color: var(--text); }
+.hosted-agent-draft-form textarea { min-height: 78px; resize: vertical; }
+.hosted-agent-draft-form > button { justify-self: start; }
+.hosted-agent-draft-form details { min-width: 0; overflow-wrap: anywhere; }
 .agent-setup-page h2 { margin: 0; font-size: 18px; }
 .agent-setup-page h3 { margin: 7px 0; }
 .agent-setup-page h4 { margin: 18px 0 6px; font-size: 12px; }

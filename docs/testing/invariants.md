@@ -1282,3 +1282,23 @@ their mocked protocol clock. Web Crypto digest completion is not implied by a
 React `act` flush. CI run 35478437614 exposed the prior assumption; all protocol,
 revocation and cancellation assertions remain unchanged. No production behavior
 or timeout was relaxed.
+
+## OS-HOSTED-AGENT-UI-001
+
+The Project Agents route negotiates PostgreSQL `hosted_external_agent_v1`
+separately from the personal `agent_builder_v1` and Participant contracts. It
+shows one registered source metadata claim, one enrolled remote worker, exact
+instructions and definition digest for owner/admin publication; it cannot add
+Core connector or memory grants or claim that Core verified source bytes or
+provider execution. Profile pause/enable uses the current revision. A task
+submission retains a random idempotency key and SHA-256 fingerprint before its
+HTTP side effect; cross-window submissions for the same Project agent are
+serialized, and a confirmed admission retains the same key until deliberately
+set aside. After an uncertain response or reload, only re-entering the
+exact task may reuse that key. A different task requires explicit acknowledgement
+that setting aside the retry key does not cancel any admitted Run. Current
+Project, authenticated account, and proposal selection fence late UI responses;
+a changed caller or Project clears previous draft text. A delayed response
+cannot erase a newer retained intent. Owning tests: `src/services/remoteHostedAgents.test.ts`,
+`src/services/hostedAgentCapability.test.ts`, and
+`src/features/projects/HostedAgentSetupPage.test.tsx`.
