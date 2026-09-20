@@ -916,6 +916,31 @@ inert. If the next integrity or access check fails, both representations disappe
 `src/features/runs/TaskResultJourney.test.tsx` exercises the actual remote client
 and task surface, with only the HTTP boundary controlled.
 
+### AGENT-RESULT-REVIEW-1 — Human judgment binds the exact final agent artifact
+
+When Core advertises its historical agent-result review contract, a completed
+generic agent Run shows only the exact final artifact selected by Core. The UI
+checks its bytes against Core's digest, rechecks current authority and revision,
+and records a human accept or reject decision with the exact artifact, expected
+review revision, and one idempotency key. A lost POST response never causes an
+automatic retry; the reviewer checks persisted state first and can explicitly
+retry the same request. An explicit decision correction uses the next Core
+revision. Background checks keep verified text readable while in flight, then
+access loss or source withdrawal removes protected bytes and decision controls.
+A JSON object or array is displayed with indentation in a bounded scroll area;
+the exact original artifact text stays available separately. The completed
+reviewed-agent page does not repeat an undecided-result footer after acceptance.
+A completed non-agent or coding Run retains its existing
+result surface. Human judgment is not execution completion or verification.
+
+`src/features/runs/AgentResultReviewJourney.test.tsx` exercises the mounted task
+page and production HTTP client with only Core responses controlled, including
+an earlier decoy artifact, a lost acknowledgement, a decision correction,
+background authority loss, JSON readability, and the non-agent fallback.
+`src/services/agentResultReviewCapability.test.ts`
+checks capability and identity gating. `test/personalRuntimeProxy.test.ts` checks
+the adopted desktop route and exact review body boundary.
+
 ### PERSONAL-CATALOG-TRANSPORT-1 — Exact installation-owner catalog routes
 
 The desktop proxy admits only catalog package list/install, publisher trust/read,

@@ -18,7 +18,7 @@ export function RunsPage() {
   if (runId && services?.controlPlane.v2Capabilities) {
     const journey = services.journey
     if (!journey?.runDetail) return <main className="content-page"><h1>Task unavailable</h1><p>The connected server does not expose authoritative Run inspection.</p></main>
-    return <AuthoritativeRunSurface authority={journey as typeof journey & {runDetail:NonNullable<typeof journey.runDetail>}} runId={runId} codingResults={services.codingResults}/>
+    return <AuthoritativeRunSurface authority={journey as typeof journey & {runDetail:NonNullable<typeof journey.runDetail>}} runId={runId} codingResults={services.codingResults} agentResultReview={services.agentResultReview}/>
   }
   return <LegacyRunsPage/>
 }

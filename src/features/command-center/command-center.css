@@ -138,6 +138,7 @@
 .task-result-reading .artifact-report p { margin: 0 0 12px; }
 .task-result-reading .artifact-report code { font-size: .9em; }
 .task-result-reading pre, .task-result-source { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32rem; overflow: auto; font-size: 13px; line-height: 1.6; }
+.task-result-reading .task-result-json { white-space: pre; overflow-wrap: normal; max-height: 32rem; overflow: auto; }
 @media (max-width: 760px) {
   .task-detail-page .page-header { flex-direction: column; gap: 16px; }
   .task-detail-page .cc-panel { padding: 18px; }
