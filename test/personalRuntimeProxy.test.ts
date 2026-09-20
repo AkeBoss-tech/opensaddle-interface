@@ -42,6 +42,25 @@ test('PROJECT-AGENT-WRITE-REVIEW-1: desktop forwards only exact human review rea
  ] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method,path,...(body===undefined?{}:{body})},server),/path|approval body/)
  assert.equal(seen.length,3)
 })
+test('AGENT-RESULT-REVIEW-1: desktop forwards exact result review and revision-bound human decision only',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'}
+ const path='/api/v2/runs/run_one/agent-result/review',body={artifact_id:'art_final',expected_artifact_digest:'a'.repeat(64),expected_review_revision:0,decision:'accepted',idempotency_key:'review-once'}
+ const seen:string[]=[]
+ const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);seen.push(request.method+' '+new URL(request.url).pathname);assert.equal(request.headers.get('Authorization'),'Bearer private-token');assert.equal(request.headers.get('X-OpenSaddle-User'),'owner');if(request.method==='POST')assert.deepEqual(JSON.parse(await request.text()),body);return Response.json({})}
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},server)
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'POST',path,body:JSON.stringify(body)},server)
+ assert.deepEqual(seen,['GET '+path,'POST '+path])
+ for(const [method,other,submitted] of [
+  ['GET',path+'?history=true',undefined],
+  ['POST',path+'/dispatch',JSON.stringify(body)],
+  ['PUT',path,JSON.stringify(body)],
+  ['POST',path,JSON.stringify({...body,expected_review_revision:true})],
+  ['POST',path,JSON.stringify({...body,expected_artifact_digest:'bad'})],
+  ['POST',path,JSON.stringify({...body,force:true})],
+  ['POST',path,JSON.stringify({...body,decision:'verify'})],
+ ] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,method,path:other,...(submitted===undefined?{}:{body:submitted})},server),/path|method|agent result review body/)
+ assert.equal(seen.length,2)
+})
 test('PROJECT-MEMBER-REMOVAL-1: desktop forwards exact revision-bound Project removal only',async()=>{
  const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'},seen:string[]=[]
  const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);seen.push(request.method+' '+new URL(request.url).pathname);assert.equal(request.headers.get('Authorization'),'Bearer private-token');assert.deepEqual(JSON.parse(await request.text()),{subject:'member',expected_revision:4});return Response.json({})}

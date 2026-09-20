@@ -43,6 +43,7 @@ import { RemoteAgentProfileClient, type AgentProfileClient } from './remoteAgent
 import { RemoteOperationsSessionClient } from './remoteOperations'
 import { RemoteJourneyClient } from './remoteJourney'
 import { ConnectorWriteReviewClient } from './connectorWriteReview'
+import { AgentResultReviewClient } from './agentResultReview'
 import { PersonalRuntimeClient } from './personalRuntime'
 import type { JourneyAuthority } from '../features/onboarding/ConnectedJourneySurface'
 import { negotiateRunRecovery, type RunRecoverySupport } from './recoverySupport'
@@ -76,6 +77,7 @@ export interface ServiceBundle {
   malleableShell?: MalleableShellClient
   journey?: JourneyAuthority
   codingResults?: CodingResultReviewClient
+  agentResultReview?: AgentResultReviewClient
   projectKnowledge?: RegisteredProjectKnowledgeClient
   managedConnections?: ManagedConnectorConnectionsClient
   projectModelBudget?: ProjectModelBudgetClient
@@ -179,6 +181,7 @@ export function initServices(opts: {
       let rendererSettingsAvailable = false
       let runApprovalReviewAvailable = false
       let connectorWriteReviewAvailable = false
+      let agentResultReviewAvailable = false
       let projectMembershipRemovalAvailable = false
       let membershipRemovalRevokesCredentials = true
       let projectTaskFeedAvailable = false
@@ -327,6 +330,7 @@ export function initServices(opts: {
               standalone_plugin_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               renderer_settings_v1?: {available?:boolean;scopes?:string[];execution_policy?:boolean}
               run_approval_review_v1?: {available?:boolean;scope?:string;model_call_authorization?:boolean}
+              agent_result_review_v1?: {available?:boolean;schema_version?:string;review_path_template?:string;scope?:string}
               agent_connector_sessions_v1?: {available?:boolean;authority_mode?:string;write_actions_available?:boolean}
               project_membership_removal_v1?: {available?:boolean;scope?:string;revision_required?:boolean;credential_authority_revocation?:boolean;authority_scope?:string}
               project_model_budget_v1?: { available?: boolean; scope?: string; configured_per_project?: boolean }
@@ -354,6 +358,7 @@ export function initServices(opts: {
             rendererSettingsAvailable = capabilities.renderer_settings_v1?.available===true&&capabilities.renderer_settings_v1.execution_policy===false&&[JSON.stringify(['project','user_project']),JSON.stringify(['user','team','project','user_project'])].includes(JSON.stringify(capabilities.renderer_settings_v1.scopes))
             runApprovalReviewAvailable = capabilities.run_approval_review_v1?.available===true&&capabilities.run_approval_review_v1.scope==='run_admission'&&capabilities.run_approval_review_v1.model_call_authorization===false
             connectorWriteReviewAvailable = capabilities.agent_connector_sessions_v1?.available===true&&capabilities.agent_connector_sessions_v1.authority_mode==='broker_scoped'&&capabilities.agent_connector_sessions_v1.write_actions_available===true
+            agentResultReviewAvailable = capabilities.agent_result_review_v1?.available===true&&capabilities.agent_result_review_v1.schema_version==='opensaddle.agent-result-review.v1'&&capabilities.agent_result_review_v1.review_path_template==='/api/v2/runs/{run_id}/agent-result/review'&&capabilities.agent_result_review_v1.scope==='historical_run_result_only'
             projectMembershipRemovalAvailable = capabilities.project_membership_removal_v1?.available===true&&capabilities.project_membership_removal_v1.scope==='single_project'&&capabilities.project_membership_removal_v1.revision_required===true&&((capabilities.project_membership_removal_v1.credential_authority_revocation===undefined&&capabilities.project_membership_removal_v1.authority_scope===undefined)||(capabilities.project_membership_removal_v1.credential_authority_revocation===true&&capabilities.project_membership_removal_v1.authority_scope==='project_authorities')||(capabilities.project_membership_removal_v1.credential_authority_revocation===false&&capabilities.project_membership_removal_v1.authority_scope==='membership_approval_run_worker_assignment'))
             membershipRemovalRevokesCredentials = capabilities.project_membership_removal_v1?.credential_authority_revocation!==false
             projectModelBudgetAvailable = capabilities.project_model_budget_v1?.available===true&&capabilities.project_model_budget_v1.scope==='hosted_model_routes_only'&&capabilities.project_model_budget_v1.configured_per_project===true
@@ -528,6 +533,7 @@ export function initServices(opts: {
         rendererSettings: backendAvailable&&rendererSettingsAvailable?new RendererSettingsClient(baseUrl,getUserId,token):undefined,
         runApprovalReview: backendAvailable&&runApprovalReviewAvailable?new RunApprovalReviewClient(baseUrl,getUserId,token):undefined,
         connectorWriteReview: backendAvailable&&connectorWriteReviewAvailable?new ConnectorWriteReviewClient(baseUrl,getUserId,token):undefined,
+        agentResultReview: backendAvailable&&agentResultReviewAvailable?new AgentResultReviewClient(baseUrl,getUserId,token):undefined,
         projectTaskFeed: backendAvailable&&projectTaskFeedAvailable?new ProjectTaskFeedClient(baseUrl,getUserId,token):undefined,
         projectConversations: backendAvailable&&projectConversationsAvailable?(projectId:string)=>new ManagerConversationsClient(baseUrl,getUserId,token,projectChildTasks?journey:undefined,projectChildResults,projectId,projectConversationContext):undefined,
         managerConversations: backendAvailable && managerConversationsAvailable ? new ManagerConversationsClient(baseUrl,getUserId,token,managerChildTasksAvailable?journey:undefined,managerChildResultsAvailable) : undefined,
