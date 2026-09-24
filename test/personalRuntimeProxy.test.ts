@@ -3,6 +3,23 @@ import test from'node:test'
 import{proxyPersonalRuntimeRequest}from'../electron/personalRuntimeProxy'
 
 const handoff={baseUrl:'http://127.0.0.1:8766/',installationId:'install',ownerSubject:'owner',projectId:'project',bearerToken:'private-token',adoptionSocket:'/private/p.sock',ipcDir:'/private'}
+test('HISTORY-SYNC-DESKTOP-1: adopted runtime reads Project history and only sends owner-approved visibility',async()=>{
+ const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'},id='his_'+'a'.repeat(32),seen:Request[]=[]
+ const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);seen.push(request);assert.equal(request.headers.get('Authorization'),'Bearer private-token');return Response.json({items:[]})}
+ for(const path of ['/api/v2/projects/project/history/sessions?offset=0&limit=100','/api/v2/projects/project/history/search?q=footer&limit=50',`/api/v2/projects/project/history/sessions/${id}`])await proxyPersonalRuntimeRequest(handoff,{...base,method:'GET',path},server)
+ await proxyPersonalRuntimeRequest(handoff,{...base,method:'PUT',path:`/api/v2/projects/project/history/sessions/${id}/visibility`,body:'{"visibility":"project","expected_revision":2}'},server)
+ assert.equal(seen.length,4)
+ for(const request of [
+  {method:'GET',path:'/api/v2/projects/other/history/sessions?offset=0&limit=100'},
+  {method:'GET',path:'/api/v2/projects/project/history/search?q=x&limit=50'},
+  {method:'GET',path:'/api/v2/projects/project/history/sessions?offset=0&limit=100&all=true'},
+  {method:'GET',path:`/api/v2/projects/project/history/sessions/${id}?all=true`},
+  {method:'PUT',path:`/api/v2/projects/project/history/sessions/${id}/visibility`,body:'{"visibility":"project","expected_revision":2,"all":true}'},
+  {method:'PUT',path:`/api/v2/projects/project/history/sessions/${id}/visibility`,body:'{"visibility":"project","expected_revision":true}'},
+  {method:'GET',path:'http://example.com/api/v2/projects/project/history/sessions?offset=0&limit=100'},
+ ] as const)await assert.rejects(proxyPersonalRuntimeRequest(handoff,{...base,...request},server),/path|authority|history visibility/)
+ assert.equal(seen.length,4)
+})
 test('MANAGED-CONNECTIONS-UI-1: desktop limits credential operations to the adopted Project and exact bodies',async()=>{
  const base={expectedBaseUrl:handoff.baseUrl,expectedInstallationId:'install',expectedProjectId:'project'},calls:Request[]=[]
  const server:typeof fetch=async(input,init)=>{const request=new Request(input,init);calls.push(request);assert.equal(request.headers.get('Authorization'),'Bearer private-token');return Response.json({})}

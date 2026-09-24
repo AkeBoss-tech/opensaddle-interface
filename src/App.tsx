@@ -56,6 +56,7 @@ import { ConnectedJourneyPage } from './features/onboarding/ConnectedJourneyPage
 import { ProjectDevicesPage } from './features/devices/ProjectDevicesPage'
 import { PersonalDevicesPage } from './features/devices/PersonalDevicesPage'
 import { ConnectedProjectKnowledgePage, ConnectedProjectPluginsPage } from './features/projects/ConnectedProjectViews'
+import { ProjectHistoryPage } from './features/projects/ProjectHistoryPage'
 import { ConnectedWorkspaceSidebar, ConnectedWorkspaceHome } from './features/shell/ConnectedWorkspace'
 import { useProductSurface } from './features/shell/useProductSurface'
 import { SurfaceErrorBoundary } from './ui/SurfaceHost'
@@ -354,6 +355,7 @@ function Shell() {
             <Route path="/project/:projectId" element={<ProjectPerspectivePage />} />
             <Route path="/project/:projectId/overview" element={<ConnectedLocalProjectPage />} />
             <Route path="/project/:projectId/knowledge" element={<ConnectedProjectKnowledgePage />} />
+            <Route path="/project/:projectId/history" element={<ProjectHistoryPage />} />
             <Route path="/project/:projectId/plugins" element={<ConnectedProjectPluginsPage />} />
             <Route path="/project/:projectId/onboarding" element={<ProjectOnboardingPage />} />
             <Route path="/project/:projectId/agents" element={<AgentSetupPage />} />
@@ -384,6 +386,7 @@ function Shell() {
             <Route path="/project/:projectId/appearance" element={<PresentationPage />} />
             <Route path="/project/:projectId/devices" element={<ProjectDevicesPage />} />
             <Route path="/project/:projectId/collaboration" element={<ConnectedJourneyPage />} />
+            <Route path="/project/:projectId/history" element={<ProjectHistoryPage />} />
             <Route path="/project/:projectId/new-task" element={<ConnectedJourneyPage mode="task" />} />
             <Route path="/project/:projectId/factory" element={<FactoryStartPage />} />
             <Route path="/project/:projectId/factory-executions/:executionId" element={<FactoryExecutionPage />} />

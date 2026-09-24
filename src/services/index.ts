@@ -7,6 +7,7 @@ import {StandalonePluginSettingsClient} from './standalonePluginSettings'
 import {RendererSettingsClient} from './rendererSettings'
 import {ProjectTaskFeedClient} from './projectTaskFeed'
 import { ManagerConversationsClient } from './managerConversations'
+import { HistorySyncClient } from './historySync'
 import { ManagerContextClient } from './managerContext'
 import { DashboardSettingsClient } from './dashboardSettings'
 import { TeamsClient } from './teams'
@@ -89,6 +90,7 @@ export interface ServiceBundle {
   factoryExecution?: FactoryExecutionClient
   teams?: TeamsClient
   projectConversations?: (projectId:string)=>ManagerConversationsClient
+  historySync?: HistorySyncClient
   managerConversations?: ManagerConversationsClient
   managerContext?: ManagerContextClient
   dashboardSettings?: DashboardSettingsClient
@@ -208,6 +210,7 @@ export function initServices(opts: {
       let associationsAvailable = false
       let teamsAvailable = false
       let projectConversationsAvailable = false
+      let historySyncAvailable = false
       let projectChildTasks = false
       let projectChildResults = false
       let projectConversationContext = false
@@ -353,6 +356,7 @@ export function initServices(opts: {
               run_event_page_v1?: {available?:boolean;schema_version?:string;path_template?:string;max_limit?:number}
               project_task_feed_v1?: {available?:boolean;scope?:string;schema_version?:string}
               command_center?: { available?: boolean; path?: string; schema_version?: string }
+              history_sync_v1?: {available?:boolean;scope?:string;providers?:unknown;native_resume?:boolean}
               managed_krail?: boolean
               participants?: { available?: boolean; schema_version?: string; project_path_template?: string }
               agent_builder_v1?: { available?: boolean; review_required?: boolean; online_research_available?: boolean; schema_version?: string }
@@ -407,6 +411,7 @@ export function initServices(opts: {
             associationsAvailable = capabilities.project_team_presentation_v1?.available===true
             teamsAvailable = capabilities.teams_v1?.available===true
             projectConversationsAvailable = capabilities.project_conversations_v1?.available===true&&capabilities.project_conversations_v1.scope==='owner_private_fixed_project'&&capabilities.project_conversations_v1.user_messages===true&&capabilities.project_conversations_v1.provider_execution===false
+            historySyncAvailable = capabilities.history_sync_v1?.available===true&&capabilities.history_sync_v1.scope==='owner_private_or_explicit_project'&&capabilities.history_sync_v1.native_resume===false
             projectChildTasks=capabilities.project_conversations_v1?.child_tasks===true
             projectChildResults=capabilities.project_conversations_v1?.child_results===true
             const conversationContextContract=capabilities.project_conversations_v1?.conversation_context
@@ -577,6 +582,7 @@ export function initServices(opts: {
         hostedAgentResultReview: backendAvailable&&hostedAgentResultReviewAvailable?new AgentResultReviewClient(baseUrl,getUserId,token):undefined,
         projectTaskFeed: backendAvailable&&projectTaskFeedAvailable?new ProjectTaskFeedClient(baseUrl,getUserId,token):undefined,
         projectConversations: backendAvailable&&projectConversationsAvailable?(projectId:string)=>new ManagerConversationsClient(baseUrl,getUserId,token,projectChildTasks?journey:undefined,projectChildResults,projectId,projectConversationContext):undefined,
+        historySync: backendAvailable&&historySyncAvailable?new HistorySyncClient(baseUrl,getUserId,token):undefined,
         managerConversations: backendAvailable && managerConversationsAvailable ? new ManagerConversationsClient(baseUrl,getUserId,token,managerChildTasksAvailable?journey:undefined,managerChildResultsAvailable) : undefined,
         managerContext: backendAvailable && managerContextAvailable ? new ManagerContextClient(baseUrl,getUserId,token) : undefined,
         dashboardSettings: backendAvailable && dashboardSettingsAvailable ? new DashboardSettingsClient(baseUrl,getUserId,token) : undefined,
